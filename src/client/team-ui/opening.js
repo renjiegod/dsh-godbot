@@ -68,6 +68,8 @@ export function openingModel({ pending, current, roster }) {
     bot,
     group: room !== undefined,
     slow: pending.slow === true,
+    // 'new-session': the Bot's chat is moving on to a fresh part (index.js followFreshPart).
+    note: pending.note,
   }
 }
 
@@ -79,7 +81,7 @@ export function OpeningCover({ model, column }) {
   h('div', { className: 'bt-opening-card' },
     h('span', { className: 'bt-opening-mark' }, model.bot ? h(BotMark, { bot: model.bot, size: 44 }) : h(PeopleIcon)),
     model.name ? h('span', { className: 'bt-opening-name' }, model.name) : null,
-    h('span', { className: 'bt-opening-note' }, t(model.slow ? 'Still opening…' : 'Opening…'))))
+    h('span', { className: 'bt-opening-note' }, t(model.note === 'new-session' ? 'Starting a new session…' : model.slow ? 'Still opening…' : 'Opening…'))))
 }
 
 export const OPENING_CSS = `

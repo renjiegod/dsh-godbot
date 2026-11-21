@@ -3,7 +3,7 @@ import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useR
 import { createPortal } from 'react-dom'
 import { MarkdownText, writeClipboard } from './dsh-primitives.js'
 import { inkText } from './inks.js'
-import { linkMentions, mentionTarget, dayLabel, contentText, stripHeader, stripToolCallTags, isHiddenTurn, isRelayContext, relaysBefore, relayPart, commRunOf, toolName, toolArgs, reminderPrompts, elapsedLabel, clockLabel, messageClock } from './text.js'
+import { linkMentions, mentionTarget, dayLabel, contentText, currentPart, stripHeader, stripToolCallTags, isHiddenTurn, isRelayContext, relaysBefore, relayPart, commRunOf, toolName, toolArgs, reminderPrompts, elapsedLabel, clockLabel, messageClock } from './text.js'
 import { SmileIcon, ReplyIcon, DotsIcon, CheckIcon, DownloadIcon, CopyIcon, GoalIcon, MemoryIcon } from './icons.js'
 import { ChangesCard } from './changes-card.js'
 import { goalEventText } from './goal.js'
@@ -516,9 +516,17 @@ function MemoryEvent({ sessionId, scope, tool, result, failed, code, roster, act
     panel === undefined ? null : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openMemory(panel) }, t('Manage')))
 }
 
-function PartLine({ time }) {
-  return h('div', { className: 'bt-part-line', role: 'separator' }, Number.isFinite(time) ? h('span', null, dayLabel(time)) : null)
+// Where a part, a session in the Bot's session list, begins.
+function PartLine({ time, fresh = false }) {
+  return h('div', { className: 'bt-part-line', role: 'separator', 'data-fresh': fresh || undefined },
+    h('span', null, Number.isFinite(time) ? t('New session · {time}', { time: dayLabel(time) }) : t('New session')))
 }
+
+// An earlier part nobody talked in shows nothing but its line. Lines in a row keep the
+// last one, and the line where the current part begins (drawn after these) needs none
+// right above it.
+const withoutEmptyParts = items => items.filter((item, index) => item?.kind !== 'divider'
+  || (index + 1 < items.length && items[index + 1]?.kind !== 'divider'))
 
 const scrollParent = (node) => {
   for (let at = node.parentElement; at; at = at.parentElement) {
@@ -607,15 +615,25 @@ function EarlierParts({ sessionId, roster, actions }) {
     ...current,
     pages: current.pages.map(page => ({ ...page, btw: page.btw.filter(card => card?.id !== cardId) })),
   }))
-  const items = []
-  for (const page of view.pages) items.push(...withBtwRows(actions.godbot.earlierReports(page.items, roster.byId[sessionId]), page.btw))
+  const loaded = []
+  for (const page of view.pages) loaded.push(...withBtwRows(actions.godbot.earlierReports(page.items, roster.byId[sessionId]), page.btw))
+  const items = withoutEmptyParts(loaded)
+  // The column's own opening time belongs to this part, not to the earlier messages
+  // above it (styles.js leaves it out here); the oldest one gets its own time instead.
+  const first = !view.loading && !view.failed && !view.cursor && items[0]?.kind !== 'divider' ? items[0]?.time : undefined
+  // A New session nobody has talked in yet says what it is under its line.
+  const bot = roster.byId[sessionId]
+  const fresh = bot !== undefined && currentPart(bot) === sessionId && roster.newSessions?.[bot.id] === 'empty'
   return h('div', { className: 'bt-earlier', role: 'feed', 'aria-label': t('Earlier messages'), 'aria-busy': view.loading },
     h('div', { ref: top, className: 'bt-earlier-top' },
       view.loading ? h(Shimmer, null, t('Loading earlier messages…'))
         : view.failed ? h('button', { type: 'button', className: 'bt-soft', onClick: () => load(view.cursor) }, t('Couldn’t load earlier messages · Retry'))
           : view.cursor ? h('button', { type: 'button', className: 'bt-soft', onClick: () => load(view.cursor) }, t('Load earlier')) : null),
+    Number.isFinite(first) ? h('div', { className: 'bt-time-sep', role: 'separator' }, clockLabel(first)) : null,
     h(ChatRows, { items, sessionId, roster, actions, onBtwDelete: removeBtw }),
-    h(PartLine, { time: view.startedAt }))
+    h(PartLine, { time: view.startedAt, fresh }),
+    fresh ? h('p', { className: 'bt-part-fresh', role: 'note' },
+      t('Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.', { name: bot.name })) : null)
 }
 
 // A Bot chat's entries as the host lists them (the `earlier` and `chat` endpoints): the
@@ -725,6 +743,9 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
     return first?.turn === turn && unseenSince(visit, first.start) ? clockLabel(first.start) : ''
   })
   const body = triggerBody()
+  // A part's handoff draws the earlier parts and, under them, the line with this part's
+  // time: what is new starts below that line, not above the earlier messages.
+  if (unreadOpening && source.kind === 'bot' && source.handoff === true) return h(Fragment, null, body, h('div', { className: 'bt-open-new' }, h(NewDivider)))
   return unreadOpening
     ? h(Fragment, null, h('div', { className: 'bt-open-new' }, h(NewDivider), h('div', { className: 'bt-time-sep', role: 'separator' }, unreadOpening)), body)
     : (body ?? h(CellEmpty))
