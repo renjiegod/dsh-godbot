@@ -437,7 +437,7 @@ npm pack --dry-run
 > [!WARNING]
 > `live-*` 套件和 `test/external/live-control.mjs` 使用本机已登录的账号，会消耗对应订阅或模型额度。测试用的 DSH profile 和工单数据均为临时创建。`L-BOT-WORKFLOW` 可通过 `GODBOT_E2E_CLAUDE_CONFIG_DIR` 和 `GODBOT_E2E_CODEX_HOME` 指定测试账号目录。
 
-仓库的 GitHub Actions（`.github/workflows/verification.yml`）会在 macOS 上运行测试、构建，并对打包产物执行 `release` 套件。
+仓库的 GitHub Actions（`.github/workflows/verification.yml`）在每次 push 和 Pull Request 时于 macOS 上运行单元测试、构建和 `npm pack --dry-run`。对打包产物执行 `release` E2E 套件耗时较长，需在 Actions 页面选择 **Verify Godbot package → Run workflow** 手动触发。
 
 ## 相关文档与第三方声明
 
