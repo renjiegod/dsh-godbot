@@ -9,15 +9,14 @@
 // the verified one.
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
 
 import {
-  CHECK_TTL_MS, cleanVersion, encodeName, fetchJson, installSpecOf,
-  newer, registryPlan, repoSlug, sourceOf,
+  CHECK_TTL_MS, FETCH_TIMEOUT_MS, cleanVersion, encodeName, fetchJson, followsPrereleases, installSpecOf,
+  newer, registryPlan, repoSlug, runningDsh, sourceOf, updatesEnabled,
 } from './update.js'
+import { createNet, newestRelease, releasesApi } from './update-release.js'
 
 const PKG = JSON.parse(readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'))
-const APP_BOOT = '@deepseek-ai/dsh-app-boot'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 
 // Only exact release versions describe a verified installation target.
@@ -29,7 +28,7 @@ function dshRequirement(manifest) {
 
 export function install(rt) {
   const { ctx, config } = rt
-  const enabled = config.updateCheck !== false
+  const enabled = updatesEnabled(config)
 
   const status = {
     current: null, verified: null, kind: 'npm', blockedBy: null,
@@ -50,32 +49,7 @@ export function install(rt) {
       && status.verified !== null && status.verified !== status.current && !blocked(),
   })
 
-  // The version of the DSH that is running us: the app-boot export, or — where
-  // that import cannot see it — the nearest @deepseek-ai package.json above the
-  // entry script.
-  async function currentDsh() {
-    try {
-      const loader = ctx.get?.('loader')
-      const loaded = await loader?.import?.(APP_BOOT)
-      const appBoot = loader?.unwrapExports?.(loaded) ?? loaded?.default ?? loaded
-      const version = cleanVersion(appBoot?.getDshRuntimeVersion?.())
-      if (version) return version
-    } catch { /* the export is not visible here: read the install instead */ }
-    let dir = dirname(String(process.argv[1] ?? ''))
-    for (let depth = 0; depth < 12; depth += 1) {
-      try {
-        const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
-        if (manifest?.name?.startsWith?.('@deepseek-ai/')) {
-          const version = cleanVersion(manifest.version)
-          if (version) return version
-        }
-      } catch { /* not a package directory */ }
-      const parent = dirname(dir)
-      if (parent === dir) break
-      dir = parent
-    }
-    return null
-  }
+  const currentDsh = () => runningDsh(ctx)
 
   // A bundled package manager means the runtime came with the app and only the
   // app's own updater can move it.
@@ -97,11 +71,19 @@ export function install(rt) {
     }
     const repo = repoSlug()
     if (!repo) return null
+    const headers = { 'user-agent': `${PKG.name}/${PKG.version}` }
     try {
-      const release = await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`, { 'user-agent': `${PKG.name}/${PKG.version}` })
-      const tag = cleanVersion(release?.tag_name)
-      if (!tag) return null
-      const manifest = await fetchJson(`https://raw.githubusercontent.com/${repo}/${release.tag_name}/package.json`, { 'user-agent': `${PKG.name}/${PKG.version}` })
+      // A packed archive follows the releases that carry one, prereleases included
+      // on a prerelease; a git install the repository's latest release.
+      let tagName
+      if (source.kind === 'archive') {
+        const net = rt.updateNet ?? createNet({ userAgent: headers['user-agent'], timeoutMs: FETCH_TIMEOUT_MS })
+        tagName = (await newestRelease({ repo, name: PKG.name, prerelease: followsPrereleases(config), net, api: releasesApi() }))?.tag
+      } else {
+        tagName = (await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`, headers))?.tag_name
+      }
+      if (!cleanVersion(tagName)) return null
+      const manifest = await fetchJson(`https://raw.githubusercontent.com/${repo}/${tagName}/package.json`, headers)
       return dshRequirement(manifest)
     } catch { return null }
   }

@@ -299,7 +299,8 @@ export function apply(ctx, godbot) {
   }, 'godbot: roster poll')
 
   // Plugin updates: every window that opens asks the host once (the host keeps its
-  // answer for a while), again each hour, and every two seconds while installing.
+  // answer for a while and asks GitHub on its own clock), again each hour, and every
+  // two seconds while a release downloads or installs.
   const update = createSource({ available: false, phase: 'idle' })
   let wakeUpdate = () => {}
   ctx.effect(() => {
@@ -311,7 +312,9 @@ export function apply(ctx, godbot) {
       const value = await call('update-check', { fresh: false }).catch(() => null)
       if (stopped) return
       if (value) update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp }))
-      timer = setTimeout(loop, value?.phase === 'installing' || value?.dsh?.phase === 'installing' ? 2000 : 60 * 60_000)
+      const moving = value?.phase === 'installing' || value?.phase === 'downloading' || value?.dsh?.phase === 'installing'
+      // A release waiting for an idle moment installs within minutes: follow it closer.
+      timer = setTimeout(loop, moving ? 2000 : value?.phase === 'ready' && value?.mode === 'auto' ? 60_000 : 60 * 60_000)
     }
     wakeUpdate = loop
     void loop()
@@ -873,6 +876,12 @@ export function apply(ctx, godbot) {
     const app = await appUpdates?.status?.()
     if (app) update.set(previous => ({ ...previous, app }))
     if (sameVersion(app?.version, verified)) await appUpdates.open()
+  }
+  // auto, notify or off; the host keeps it in the profile's data folder.
+  actions.setUpdateMode = async (mode) => {
+    const value = await call('update-settings', { mode })
+    update.set(previous => ({ ...previous, ...value }))
+    wakeUpdate()
   }
   actions.checkUpdate = async () => {
     const value = await call('update-check', { fresh: true })

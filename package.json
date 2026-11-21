@@ -3,6 +3,11 @@
   "version": "0.2.0-rc.3",
   "description": "Control native agent sessions and collaborate in a local dsh team.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/renjiegod/dsh-godbot.git"
+  },
+  "homepage": "https://github.com/renjiegod/dsh-godbot#readme",
   "type": "module",
   "exports": {
     ".": "./src/host/plugin.js",

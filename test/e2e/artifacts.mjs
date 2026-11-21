@@ -71,6 +71,16 @@ export async function brokenArchive(candidate, scratch) {
   return { pkg, marker }
 }
 
+// The candidate's own files under another version: a release an installed
+// candidate can update to, built for the same DSH and peers.
+export async function bumpedArchive(candidate, scratch, version) {
+  const staging = await mkdtemp(join(scratch, 'bumped-'))
+  execFileSync('tar', ['-xzf', candidate.path, '--strip-components', '1', '-C', staging])
+  const manifest = join(staging, 'package.json')
+  await writeFile(manifest, JSON.stringify({ ...JSON.parse(await readFile(manifest, 'utf8')), version }, null, 2) + '\n')
+  return pack(staging, scratch)
+}
+
 export async function saveEvidence(dir, filename, data) {
   await mkdir(dir, { recursive: true, mode: 0o700 })
   await writeFile(join(dir, filename), JSON.stringify(data, null, 2) + '\n', { mode: 0o600 })

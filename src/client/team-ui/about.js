@@ -1,6 +1,7 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
-// Settings → About Godbot: the version, updates for Godbot and DSH, and the links to
-// the repository. The sidebar's cloud button shows the same update state.
+// Settings → About Godbot: the version, updates for Godbot and DSH (with the
+// automatic update mode), and the links to the repository. The sidebar's cloud
+// button shows the same update state.
 import { version } from '../../../package.json'
 import { webIconUrl } from '../../host/web-icon.js'
 import { createElement as h, useState } from 'react'
@@ -9,19 +10,64 @@ import { whenText } from './feedback.js'
 import { hostText, t } from './i18n.js'
 import { showsDshRow } from './dsh-offer.js'
 
+// What an automatic install waits for, read from the host's busy reasons.
+function waitingText(waiting) {
+  const turns = waiting?.find(reason => reason.kind === 'turns')?.count
+  if (turns) return t('It installs once no Bot is working ({count} running).', { count: turns })
+  if (waiting?.some(reason => reason.kind === 'terminals')) return t('It installs once every native terminal is handed back.')
+  return t('It installs in a moment, while Godbot is idle.')
+}
+
+export function blockedText(update) {
+  const blocked = update.blocked ?? {}
+  if (blocked.reason === 'dsh') return t('Godbot {version} needs DSH {dsh}.', { version: update.latest, dsh: blocked.dsh })
+  if (blocked.reason === 'peers') return t('Godbot {version} needs a fresh install: run scripts/install-local.mjs again.', { version: update.latest })
+  return t('The Godbot {version} download does not match its release.', { version: update.latest })
+}
+
+export function downloadText(update) {
+  const { done = 0, total = null } = update.progress ?? {}
+  return total > 0
+    ? t('Downloading Godbot {version}… {percent}%', { version: update.latest, percent: Math.min(100, Math.floor((done / total) * 100)) })
+    : t('Downloading Godbot {version}…', { version: update.latest })
+}
+
+/** Two sentences of copy: a space between them, none after CJK end punctuation. */
+export const sentences = (first, second) => (/[。！？]$/u.test(first) ? `${first}${second}` : `${first} ${second}`)
+
+/** The line for a downloaded release: when it installs, or that it waits for a click. */
+export function readyText(update) {
+  const downloaded = t('Godbot {version} is downloaded.', { version: update.latest })
+  return sentences(downloaded, update.mode === 'auto' ? waitingText(update.waiting) : t('Install it when you are ready.'))
+}
+
 function botHint(update) {
   if (update.phase === 'installing') return t('Updating Godbot…')
   if (update.phase === 'installed') return t('Restart DSH to start using Godbot {version}.', { version: update.installed ?? update.latest })
   if (update.phase === 'updated') return t('Godbot {version} is installed.', { version: update.installed ?? update.latest })
+  if (update.phase === 'downloading') return downloadText(update)
   if (update.phase === 'failed') return t('The update did not finish: {reason}', { reason: hostText(update.error ?? '') })
+  if (update.blocked) return blockedText(update)
+  if (update.phase === 'ready') return readyText(update)
   if (update.available) return t('Godbot {version} is available', { version: update.latest })
   if (update.source === 'app') return t('Updates are managed by the desktop host that installed this workspace.')
   if (update.enabled === false) return t('Update checks are off.')
   if (update.source === 'path') return t('Installed from a local folder; update it there.')
   if (!update.checkedAt) return null
-  if (!update.latest && update.source !== 'registry') return t('Updates are not offered for this install.')
+  if (!update.latest && !['registry', 'archive'].includes(update.source)) return t('Updates are not offered for this install.')
   const checked = t('Checked {time}', { time: whenText(update.checkedAt) })
-  return `${update.latest ? t('Up to date') : t('Could not check for updates.')} · ${checked}`
+  // A registry that answers nothing was not reached; a release list can simply be empty.
+  const failed = update.checkFailed === true || (update.source === 'registry' && !update.latest)
+  return `${failed ? t('Could not check for updates.') : t('Up to date')} · ${checked}`
+}
+
+// The sources Godbot can update by itself, and so offer the automatic modes for.
+const SELF_UPDATING = new Set(['archive', 'registry', 'git'])
+
+function modeHint(mode) {
+  if (mode === 'notify') return t('Checks every six hours and downloads new releases; you choose when to install.')
+  if (mode === 'off') return t('Godbot checks only when you click Check for updates.')
+  return t('Checks every six hours, downloads new releases and installs them while Godbot is idle.')
 }
 
 // A desktop host can supply its packaged update state through the Godbot bridge.
@@ -75,8 +121,18 @@ export function AboutPage({ useUpdate, actions, run, Section, Row }) {
     : phase === 'installed' || phase === 'updated' || update.source === 'app' ? null
     : update.available || phase === 'installing'
       ? h('button', { type: 'button', className: 'bt-fb-primary', disabled: phase === 'installing', onClick: () => run(actions.installUpdate()) },
-          phase === 'installing' ? t('Updating…') : phase === 'failed' ? t('Try again') : t('Update'))
+          phase === 'installing' ? t('Updating…') : phase === 'failed' ? t('Try again') : phase === 'downloading' ? t('Install when downloaded') : t('Update'))
       : h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: checking || update.enabled === false, onClick: check }, checking ? t('Checking…') : t('Check for updates'))
+  const modeControl = update.enabled !== false && typeof update.mode === 'string' && SELF_UPDATING.has(update.source)
+    ? h(Row, { label: t('Automatic updates'), hint: modeHint(update.mode) },
+        h('select', {
+          className: 'bt-select', 'aria-label': t('Automatic updates'), value: update.mode,
+          onChange: event => run(actions.setUpdateMode(event.target.value)),
+        },
+        h('option', { value: 'auto' }, t('Install automatically')),
+        h('option', { value: 'notify' }, t('Download, then ask')),
+        h('option', { value: 'off' }, t('Check manually'))))
+    : null
   const dshControl = !dshNew || dshPhase === 'installed' ? null
     : dsh.kind === 'app'
       ? dsh.available ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => run(actions.openAppUpdates(dsh.verified)) }, t('Open updates')) : null
@@ -93,6 +149,7 @@ export function AboutPage({ useUpdate, actions, run, Section, Row }) {
         h('span', { className: 'bt-about-version' }, t('Version {version}', { version })))),
     h(Section, { key: 'updates', title: t('Updates') },
       h(Row, { label: 'Godbot', hint: ownRow?.hint ?? botHint(update) }, botControl, update.available && update.notesUrl ? h('a', linkProps(update.notesUrl), t("What's new")) : null),
+      modeControl,
       dsh?.current ? h(Row, { label: 'DeepSeek Harness', hint: dshHint(dsh, dshShown) }, dshControl) : null),
     h(Section, { key: 'links', title: t('Links') },
       repo ? h(Row, { label: t('Source code'), hint: repo.replace(/^https:\/\//, '') }, h('a', linkProps(repo), h(GitHubMark), t('Open'))) : null,

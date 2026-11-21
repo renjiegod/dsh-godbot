@@ -628,6 +628,12 @@ export function install(rt) {
   })
 
   adapter.sandboxes = sandboxes
+  // A native terminal someone has taken over dies with the plugin: an automatic
+  // update waits until every one has been handed back.
+  rt.addUpdateBlocker?.(() => {
+    const terminals = adapter.terminalLeases.claims.size
+    return terminals > 0 ? { kind: 'terminals', count: terminals } : null
+  })
   let registration
   // A message that arrives during handoff stays in its original DSH step, even
   // if its source is another agent or a scheduled job. Release resumes it once.
