@@ -29,24 +29,12 @@ async function checkInboxDialog(host, note) {
   await dialog.waitFor({ state: 'hidden' })
   assert.ok(await opener.evaluate(button => button === document.activeElement), 'Escape restores focus to the Bot inbox opener')
 
-  await navigation.getByRole('button', { name: '团队管理', exact: true }).click()
-  await navigation.locator('[data-workspace="management"][aria-current="page"]').waitFor()
   await opener.click()
-  await dialog.waitFor()
-  const managementDark = await verifyModalTheme(dialog, '.gb-workspace')
-  assert.equal(managementDark.scheme, 'dark')
-  await page.emulateMedia({ colorScheme: 'light' })
-  await page.waitForFunction(() => !document.body.hasAttribute('data-ds-dark-theme'))
-  const managementLight = await verifyModalTheme(dialog, '.gb-workspace')
-  assert.equal(managementLight.scheme, 'light')
-  assert.notEqual(managementLight.surface, managementDark.surface)
   await close.click()
   await dialog.waitFor({ state: 'hidden' })
-  assert.ok(await opener.evaluate(button => button === document.activeElement), 'Close restores focus to the management inbox opener')
-  await navigation.getByRole('button', { name: 'Bot 团队', exact: true }).click()
-  await navigation.locator('[data-workspace="bot"][aria-current="page"]').waitFor()
+  assert.ok(await opener.evaluate(button => button === document.activeElement), 'Close restores focus to the Bot inbox opener')
 
-  note('inbox-modal-theme-and-focus', { botLight, botDark, managementLight, managementDark })
+  note('inbox-modal-theme-and-focus', { botLight, botDark })
 }
 
 export default async function E9({ makeHost, candidate, note }) {

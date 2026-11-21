@@ -6,7 +6,6 @@ import {
   connectNavigation,
   panelId,
   sessionSelection,
-  sidebarOutlet,
   workspaceHash,
 } from '../../src/client/navigation.js'
 
@@ -170,17 +169,11 @@ function shell(browser, initial = null) {
     uiWorkspace: { openSession },
     slots: { entries: () => [...installed].map((key) => ({ options: { key } })) },
   }
-  const mount = (mode, target) => {
-    changes.push(['enter', mode, target])
-    if (mode === 'bot') openSession(target ?? 'godbot')
-    return () => changes.push(['leave', mode])
-  }
-  const nav = connectNavigation(
-    ctx,
-    browser,
-    (target) => mount('management', target),
-    (target) => mount('bot', target),
-  )
+  const nav = connectNavigation(ctx, browser, (target) => {
+    changes.push(['enter', 'bot', target])
+    openSession('godbot')
+    return () => changes.push(['leave', 'bot'])
+  })
   return {
     nav,
     changes,
@@ -199,17 +192,15 @@ function shell(browser, initial = null) {
   }
 }
 
-test('the sidebar opens the real Bot conversation, switches internal views in one history entry, and restores DSH', async () => {
+test('the sidebar opens the real Bot conversation in one history entry and restores DSH', async () => {
   const browser = browserAt(previousUrl, { seed: 1 }),
     app = shell(browser, 'files')
   app.select(panelId)
   assert.equal(browser.location.hash, workspaceHash)
   assert.equal(app.panel, null)
   assert.equal(app.session, 'godbot')
-  app.nav.openManagement()
-  assert.equal(browser.location.hash, managementHash)
-  assert.equal(app.panel, panelId)
-  app.nav.openBot('worker')
+  app.openSession('worker')
+  app.select(panelId)
   assert.equal(app.session, 'worker')
   assert.equal(browser.history.length, 2)
   app.nav.back()
@@ -221,10 +212,6 @@ test('the sidebar opens the real Bot conversation, switches internal views in on
   assert.deepEqual(app.changes, [
     ['enter', 'bot', undefined],
     ['leave', 'bot'],
-    ['enter', 'management', undefined],
-    ['leave', 'management'],
-    ['enter', 'bot', 'worker'],
-    ['leave', 'bot'],
   ])
   app.nav.dispose()
 })
@@ -232,24 +219,25 @@ test('browser history traversal restores Bot and DSH views without adding histor
   const browser = browserAt(previousUrl),
     app = shell(browser)
   app.select(panelId)
-  app.nav.openManagement()
   browser.history.back()
   await afterNavigation()
   assert.equal(app.panel, null)
   assert.equal(app.session, 'ordinary')
   browser.history.forward()
   await afterNavigation()
-  assert.equal(app.panel, panelId)
-  assert.equal(browser.location.hash, managementHash)
+  assert.equal(app.panel, null)
+  assert.equal(browser.location.hash, workspaceHash)
   assert.equal(browser.history.length, 2)
-  assert.equal(app.changes.length, 5)
+  assert.equal(app.changes.length, 3)
   app.nav.dispose()
 })
 test('a deep link keeps the user in the current tab on Return, even with unrelated browser history', () => {
   for (const hash of [workspaceHash, managementHash]) {
     const browser = browserAt('https://dsh.test/work/' + hash, { seed: 9 }, ['https://elsewhere.test/'])
     const app = shell(browser)
-    assert.equal(app.panel, hash === managementHash ? panelId : null)
+    assert.equal(app.panel, null)
+    assert.equal(browser.location.hash, workspaceHash)
+    assert.deepEqual(app.changes, [['enter', 'bot', hash === managementHash ? { settings: 'tasks' } : undefined]])
     app.nav.back()
     assert.equal(browser.location.href, 'https://dsh.test/work/')
     assert.deepEqual(browser.history.state, { seed: 9 })
@@ -273,14 +261,13 @@ test('the old standalone Agent bookmark opens the Bot workspace with ordinary hi
     app.nav.dispose()
   }
 })
-test('refreshing team management restores its original DSH return session and panel', async () => {
+test('refreshing the Bot workspace restores its original DSH return session and panel', async () => {
   const browser = browserAt(previousUrl),
     old = shell(browser, 'calendar')
   old.select(panelId)
-  old.nav.openManagement()
   old.nav.dispose()
   const fresh = shell(browser)
-  assert.equal(fresh.panel, panelId)
+  assert.equal(fresh.panel, null)
   fresh.nav.back()
   await afterNavigation()
   assert.equal(fresh.panel, 'calendar')
@@ -319,27 +306,4 @@ test('an unavailable return panel falls back to the original DSH session and plu
   assert.equal(browser.listeners, 0)
   assert.equal(app.subscriptions, 0)
   assert.equal(app.changes.filter((row) => row[0] === 'leave').length, 2)
-})
-
-test('the sidebar outlet publishes node, collapsed and drawer changes and drops its detached node', () => {
-  const outlet = sidebarOutlet()
-  const node = {}
-  let notifications = 0
-  const unsubscribe = outlet.subscribeSidebar(() => {
-    notifications++
-  })
-  const open = { node, collapsed: false, drawer: false }
-  outlet.publish(open)
-  outlet.publish({ ...open })
-  assert.equal(notifications, 1)
-  outlet.publish({ ...open, collapsed: true })
-  outlet.publish({ ...open, collapsed: true, drawer: true })
-  assert.equal(notifications, 3)
-  assert.equal(outlet.getSidebar().node, node)
-  outlet.publish(null)
-  assert.equal(notifications, 4)
-  assert.equal(outlet.getSidebar(), null)
-  unsubscribe()
-  outlet.publish(open)
-  assert.equal(notifications, 4)
 })

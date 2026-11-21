@@ -72,7 +72,7 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
       option('member', 'Bot 任务'), option('workflow', '工作流'))),
     target === 'workflow' && field('工作流模板', h('select', { value: workflowId, required: true, onChange: e => chooseWorkflow(e.target.value) },
       option('', '选择工作流'), options.map(w => option(w.id, w.name + ' · v' + w.revision)))),
-    target === 'workflow' && !options.length && empty('在团队管理的任务板保存工作流后即可选择。'),
+    target === 'workflow' && !options.length && empty('在「设置 → 任务板」保存工作流后即可选择。'),
     target === 'workflow' && !!workflowId && field('固定版本', h('select', { value: revision, onChange: e => setRevision(Number(e.target.value)) },
       versions.map(v => option(String(v), 'v' + v)))),
     target === 'member' && field('负责人', h('select', { name: 'ownerId', defaultValue: routine?.ownerId, required: true },
@@ -149,13 +149,13 @@ export function NativeRoutines({ team, members, client, run, onTask, onWorkflowR
   }
   if (editor) {
     const existing = editor.id ? editor : null
-    return h('section', { className: 'gb-page' }, h(RoutineForm, {
+    return h('section', null, h(RoutineForm, {
       key: existing?.id ?? 'new', routine: existing, members, workflows, busy, onCancel: () => setEditor(null),
       onSave: fields => change(existing ? 'update' : 'create',
         existing ? { id: existing.id, revision: existing.revision, ...fields } : fields, () => setEditor(null)),
     }))
   }
-  return h('section', { className: 'gb-page gb-stack', 'aria-label': '团队自动化任务' },
+  return h('section', { className: 'gb-stack', 'aria-label': '团队自动化任务' },
     h('div', { className: 'gb-sectionhead' }, h('h2', null, team.name),
       button('新建自动化任务', () => setEditor({}), { className: 'gb-primary', disabled: readOnly || !members.length })),
     error && h('p', { role: 'alert', className: 'gb-error' }, error, ' ', button('刷新', () => refresh(v => v + 1))),

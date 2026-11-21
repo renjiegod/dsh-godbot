@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { fullTeamRoutines } from '../full-team-routines.mjs'
 import { until } from '../host.mjs'
-import { openManagement } from '../native-ui.mjs'
+import { openFullTeam, openSettingsPage } from '../native-ui.mjs'
 
 export default async function E14({ makeHost, candidate, note }) {
   const host = await makeHost()
@@ -11,9 +11,8 @@ export default async function E14({ makeHost, candidate, note }) {
 
   const { page } = host
   const worker = await host.bot('create-bot', { name: '计划执行 Bot', model: 'deepseek-official/deepseek-flash' })
-  await openManagement(host)
-  const nav = page.getByRole('navigation', { name: '团队管理导航' })
-  await nav.getByRole('button', { name: '自动化任务', exact: true }).click()
+  const openRoutines = () => openSettingsPage(host, /^(定时派工|Scheduled assignments)$/u)
+  await openRoutines()
   const pageRegion = page.getByRole('region', { name: '团队自动化任务' })
   await pageRegion.getByRole('button', { name: '新建自动化任务' }).click()
   const form = page.getByRole('form', { name: '自动化任务设置' })
@@ -36,8 +35,8 @@ export default async function E14({ makeHost, candidate, note }) {
   assert.equal(plan.ownerId, worker.id)
   assert.deepEqual(plan.schedule.weekdays, [1, 5])
   await host.restart()
-  await openManagement(host)
-  if (!await pageRegion.isVisible()) await nav.getByRole('button', { name: '自动化任务', exact: true }).click()
+  await openFullTeam(host)
+  await openRoutines()
   await card.getByText('已暂停', { exact: true }).waitFor()
   await card.getByRole('button', { name: '立即运行' }).click()
   await card.getByText('手动运行', { exact: true }).waitFor()
@@ -46,7 +45,7 @@ export default async function E14({ makeHost, candidate, note }) {
   await card.getByRole('button', { name: '查看任务' }).click()
   await page.locator('[id="gb-task-' + manual.rootTaskId + '"]').getByRole('heading', { name: title }).waitFor()
   await until(() => host.model.calls.some(c => JSON.stringify(c.body.messages).includes(criteria)), 'scheduled Bot assignment reaching fixture model')
-  await nav.getByRole('button', { name: '自动化任务', exact: true }).click()
+  await openRoutines()
   await card.getByRole('button', { name: '恢复', exact: true }).click()
   await card.getByText('已启用', { exact: true }).waitFor()
   await card.getByRole('button', { name: '编辑', exact: true }).click()

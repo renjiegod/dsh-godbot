@@ -1,6 +1,7 @@
 import { createElement as h, useCallback, useEffect, useRef, useState } from 'react'
 import { ScheduleEditor, scheduleLabel } from './bot-schedule-editor.js'
 import scheduleStyle from './bot-schedules.css'
+import { t } from './team-ui/i18n.js'
 
 const stamp = value => new Date(value).toLocaleString(undefined, {
   year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
@@ -141,7 +142,7 @@ export function BotSchedulesPage({ client, roster, actions, start, initialTarget
   }
   const tasks = view?.tasks.filter(task => !filter || task.botId === filter || task.roomId === filter) ?? []
   const newTarget = filter || (targets.some(t => t.id === initialTarget) ? initialTarget : targets[0]?.id)
-  return h('section', { className: 'gb-bot-schedules', 'aria-label': '自动化任务' },
+  return h('section', { className: 'gb-bot-schedules', 'aria-label': t('Scheduled messages') },
     h('style', null, scheduleStyle),
     loadError && h('div', { role: 'alert', className: 'gb-error' }, loadError, ' ', click('重新读取', reload, busy)),
     !view && !loadError && h('p', { role: 'status' }, '正在读取自动化任务…'),

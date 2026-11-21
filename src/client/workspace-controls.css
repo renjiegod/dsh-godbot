@@ -1,12 +1,12 @@
 /* Base controls. Every selector sits wholly inside :where(), so it has zero
    specificity and a component rule wins in every state (:hover, :focus,
    :disabled). :is() would take its most specific argument instead. The native
-   terminal panel keeps its own controls, the same in both workspaces. */
-:where(:is(.gb-root, .gb-modal) :is(button, input, textarea, select, summary):not(.gb-terminal-panel *)) {
+   terminal panel keeps its own controls. */
+:where(:is(.gb-task-settings, .gb-modal) :is(button, input, textarea, select, summary):not(.gb-terminal-panel *)) {
   font: inherit;
   color: inherit;
 }
-:where(:is(.gb-root, .gb-modal) button:not(.gb-terminal-panel *)) {
+:where(:is(.gb-task-settings, .gb-modal) button:not(.gb-terminal-panel *)) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -24,18 +24,18 @@
   white-space: nowrap;
   transition: background-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
 }
-:where(:is(.gb-root, .gb-modal) button:not(.gb-terminal-panel *):enabled:hover) {
+:where(:is(.gb-task-settings, .gb-modal) button:not(.gb-terminal-panel *):enabled:hover) {
   background: var(--bt-active);
 }
-:where(:is(.gb-root, .gb-modal) :is(button, select, input[type='file']):not(.gb-terminal-panel *):disabled) {
+:where(:is(.gb-task-settings, .gb-modal) :is(button, select, input[type='file']):not(.gb-terminal-panel *):disabled) {
   cursor: default;
   opacity: 0.4;
 }
-:where(:is(.gb-root, .gb-modal) :is(button, select, input, textarea, summary):not(.gb-terminal-panel *):focus-visible) {
+:where(:is(.gb-task-settings, .gb-modal) :is(button, select, input, textarea, summary):not(.gb-terminal-panel *):focus-visible) {
   outline: 2px solid var(--bt-accent);
   outline-offset: 2px;
 }
-:where(:is(.gb-root, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *)) {
+:where(:is(.gb-task-settings, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *)) {
   min-width: 0;
   min-height: 36px;
   border: 0.5px solid var(--bt-line-2);
@@ -49,14 +49,14 @@
   accent-color: var(--bt-accent);
   transition: border-color 0.14s ease, box-shadow 0.14s ease;
 }
-:where(:is(.gb-root, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *):hover:not(:disabled, :focus)) {
+:where(:is(.gb-task-settings, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *):hover:not(:disabled, :focus)) {
   border-color: color-mix(in srgb, var(--bt-ink) 24%, transparent);
 }
-:where(:is(.gb-root, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *):focus) {
+:where(:is(.gb-task-settings, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *):focus) {
   border-color: var(--bt-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--bt-accent) 22%, transparent);
 }
-:where(:is(.gb-root, .gb-modal) select:not(.gb-terminal-panel *)) {
+:where(:is(.gb-task-settings, .gb-modal) select:not(.gb-terminal-panel *)) {
   -webkit-appearance: none;
   appearance: none;
   padding-inline-end: 30px;
@@ -65,41 +65,41 @@
   background-position: right 10px center;
   cursor: pointer;
 }
-:is(.gb-root, .gb-modal) input::placeholder,
-:is(.gb-root, .gb-modal) textarea::placeholder {
+:is(.gb-task-settings, .gb-modal) input::placeholder,
+:is(.gb-task-settings, .gb-modal) textarea::placeholder {
   color: var(--bt-ink-3);
 }
-:is(.gb-root, .gb-modal) small,
-:is(.gb-root, .gb-modal) time,
+:is(.gb-task-settings, .gb-modal) small,
+:is(.gb-task-settings, .gb-modal) time,
 .gb-muted {
   color: var(--bt-ink-2);
   font-size: 12px;
 }
-:is(.gb-root, .gb-modal) :is(h1, h2, h3, p, pre, dl, dd) {
+:is(.gb-task-settings, .gb-modal) :is(h1, h2, h3, p, pre, dl, dd) {
   margin: 0;
 }
-:is(.gb-root, .gb-modal) h1 {
+:is(.gb-task-settings, .gb-modal) h1 {
   font-size: 15px;
   font-weight: 500;
 }
-:is(.gb-root, .gb-modal) h2 {
+:is(.gb-task-settings, .gb-modal) h2 {
   font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
-:is(.gb-root, .gb-modal) h3 {
+:is(.gb-task-settings, .gb-modal) h3 {
   font-size: 14px;
   font-weight: 600;
 }
-:is(.gb-root, .gb-modal) pre {
+:is(.gb-task-settings, .gb-modal) pre {
   font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-:is(.gb-root, .gb-modal) summary {
+:is(.gb-task-settings, .gb-modal) summary {
   cursor: pointer;
 }
-:is(.gb-root, .gb-modal) code {
+:is(.gb-task-settings, .gb-modal) code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
 }
@@ -132,12 +132,12 @@
 .gb-field > select {
   width: 100%;
 }
-:is(.gb-root, .gb-modal) :is(.gb-primary, .gb-modal-primary) {
+:is(.gb-task-settings, .gb-modal) :is(.gb-primary, .gb-modal-primary) {
   background: var(--bt-accent);
   color: var(--bt-accent-ink);
   font-weight: 500;
 }
-:is(.gb-root, .gb-modal) :is(.gb-primary, .gb-modal-primary):enabled:hover {
+:is(.gb-task-settings, .gb-modal) :is(.gb-primary, .gb-modal-primary):enabled:hover {
   background: color-mix(in srgb, var(--bt-accent) 88%, #000);
 }
 .gb-row,
@@ -209,7 +209,7 @@
 
 /* A failure note inside a Godbot panel: the same note the Godbot dialogs show
    (.gb-modal-note[role=alert]). It also renders in the Bot workspace, outside
-   .gb-root and .gb-modal, so it carries its own class. */
+   .gb-task-settings and .gb-modal, so it carries its own class. */
 .gb-error {
   display: flex;
   flex-wrap: wrap;
@@ -231,3 +231,33 @@ span.gb-error {
   border: 0;
   background: none;
 }
+
+.gb-task-settings {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.gb-task-settings *, .gb-task-settings *::before, .gb-task-settings *::after {
+  box-sizing: border-box;
+}
+.gb-task-settings .gb-form { max-width: 600px; }
+.gb-task-settings .gb-danger { background: var(--bt-danger-soft); color: var(--bt-danger); }
+.gb-task-settings .gb-danger:enabled:hover {
+  background: color-mix(in srgb, var(--bt-danger) 22%, transparent);
+}
+.gb-alert, .gb-evidence, .gb-text { overflow-wrap: anywhere; }
+.gb-text { white-space: pre-wrap; }
+.gb-alert {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bt-warn) 12%, transparent);
+  color: var(--bt-ink);
+  font-size: 13px;
+}
+.gb-evidence summary { font-size: 13px; }
+.gb-evidence pre { max-height: 240px; overflow: auto; }

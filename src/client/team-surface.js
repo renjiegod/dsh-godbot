@@ -16,7 +16,9 @@ import { ExecutionHistory, executionStyle, TurnExecution } from './execution-his
 import { openWorkspace } from './workspace-entry.js'
 import { botHome } from './session-links.js'
 import { Icon } from './chat-ui.js'
-import { WorkspaceSwitch } from './workspace-switch.js'
+import { WorkspaceActions } from './workspace-actions.js'
+import { TaskSettings } from './task-settings.js'
+import { t } from './team-ui/i18n.js'
 import { BotSchedulesPage } from './bot-schedules.js'
 import { WebBrowserButton } from './browser-viewer.js'
 import { mainSession, sessionSelection } from './navigation.js'
@@ -303,6 +305,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
       key: JSON.stringify([sessionId, turn]), client, botId: bot.id, sessionId, turn, running, legacy,
     }),
     providerAgents: props => h(ProviderAgentsPage, { client, ...props }),
+    taskSettings: (page, focus, actions, readOnly) => h(TaskSettings, { client, actions, page, focus, readOnly }),
     schedulesPage(state, actions, start, publish) {
       const session = mainSession(ctx)
       return h(BotSchedulesPage, { key: start ?? 'all', client, roster: state, actions, start,
@@ -355,15 +358,9 @@ function mountProduct(ctx, client, navigation, target, ready) {
         Fragment,
         null,
         h('style', null, controlsStyle + executionStyle + sandboxSettingsStyle),
-        h(WorkspaceSwitch, {
-          current: 'bot',
-          client,
-          wide,
-          onBack: navigation.back,
-          onManagement: () => navigation.openManagement(),
-        }),
-        h('button', { type: 'button', className: 'gb-schedule-shortcut', title: '自动化任务', 'aria-label': '自动化任务',
-          onClick: () => actions.openSettings('schedules') }, h(Icon, { name: 'clock', size: 17 }), wide ? '自动化任务' : null),
+        h(WorkspaceActions, { client, wide, onBack: navigation.back }),
+        h('button', { type: 'button', className: 'gb-schedule-shortcut', title: t('Scheduled messages'), 'aria-label': t('Scheduled messages'),
+          onClick: () => actions.openSettings('schedules') }, h(Icon, { name: 'clock', size: 17 }), wide ? t('Scheduled messages') : null),
       )
     },
   }

@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { findExecutable } from '../../../src/drivers/external/discover.js'
 import { bumpedArchive, sha256 } from '../artifacts.mjs'
 import { EnvironmentError, until } from '../host.mjs'
-import { openSettingsPage } from '../provider-settings.mjs'
+import { openFullTeam, openSettingsPage } from '../native-ui.mjs'
 
 // An installed archive updates itself from a release. The release list and the
 // archive come from a local server shaped like GitHub's (GODBOT_UPDATE_API); the
@@ -64,6 +64,7 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     assert.ok(existsSync(archive), 'the verified archive is kept where install-local keeps its own')
 
     // About shows the chosen mode and the waiting release; the sidebar's cloud says the same.
+    await openFullTeam(host)
     await openSettingsPage(host, /^(关于 Godbot|About Godbot)$/u)
     const mode = host.page.getByRole('combobox', { name: /^(自动更新|Automatic updates)$/u })
     await mode.waitFor()
