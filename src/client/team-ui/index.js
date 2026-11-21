@@ -578,8 +578,8 @@ export function apply(ctx, godbot) {
   })
   ctx.effect(() => () => sessionSelection.dispose(), 'Godbot session selection')
   // A New session moves the Bot's chat on to a fresh part and archives the part on
-  // screen, and DSH can clear the view while the move runs (a model may be writing the
-  // handoff note meanwhile). From the click until the roster has the fresh part, the
+  // screen, and DSH can clear the view while the move runs. From the click until the
+  // roster has the fresh part, the
   // conversation area says a new session is on its way and nothing else lands the view,
   // not even the Main Bot fallback; then the view goes on in the fresh part, unless the
   // user opened another conversation meanwhile. A move that ends without a fresh part
