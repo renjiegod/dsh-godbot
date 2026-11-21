@@ -19,6 +19,7 @@ jobs:
           cache: npm
       - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@0.2.2-rc.1
       - run: npm ci
+      - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - run: npm pack --dry-run

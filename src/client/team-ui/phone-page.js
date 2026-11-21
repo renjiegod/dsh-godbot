@@ -4,7 +4,7 @@ import qrcode from 'qrcode-generator'
 import { Switch } from './bot-settings.js'
 import { dateLocale, t } from './i18n.js'
 
-const OFF = { server: '', on: false, status: 'off', phones: [], pairing: null }
+const OFF = { server: '', on: false, status: 'off', phones: [], pairing: null, pushEnabled: true, pushAvailable: false }
 // The quiet zone around a QR code is part of the code: scanners need it to find the edges.
 const QUIET = 4
 
@@ -29,6 +29,31 @@ function QrCode({ text }) {
   return h('svg', { className: 'bt-phone-qr', viewBox: `0 0 ${size} ${size}`, role: 'img', 'aria-label': t('Pairing QR code'), shapeRendering: 'crispEdges' },
     h('rect', { width: size, height: size }),
     h('path', { d: path }))
+}
+
+// The relay's own web origin: it serves the Android app at /download/latest.
+export function downloadUrl(server) {
+  try {
+    const url = new URL(server)
+    if (url.protocol !== 'ws:' && url.protocol !== 'wss:') return null
+    return `${url.protocol === 'wss:' ? 'https:' : 'http:'}//${url.host}/download/latest`
+  } catch {
+    return null
+  }
+}
+
+function pushText(phone) {
+  if (!phone.pushEnabled) return t('Off. Phones hear about new work only while the app is open.')
+  if (!phone.on || phone.status !== 'online') return t('Works once phone access is on and the Server is reachable.')
+  if (phone.pushAvailable) return t('On. A phone that is not connected gets a notification when something needs you.')
+  return t('This Server does not send notifications. Phones still get them while the app keeps its connection.')
+}
+
+function phoneHint(entry) {
+  const base = entry.connected ? t('Connected') : t('Paired on {date}', { date: new Date(entry.pairedAt).toLocaleDateString(dateLocale(), { dateStyle: 'medium' }) })
+  if (!entry.push) return base
+  if (entry.lastPush && !entry.lastPush.ok) return `${base} · ${t('Last notification failed: {code}', { code: entry.lastPush.code ?? '' })}`
+  return `${base} · ${t('Notifications on')}`
 }
 
 function minutesLeft(until) {
@@ -58,6 +83,7 @@ export function PhonePage({ roster, actions, Section, Row }) {
     void run(actions.phoneSet({ server }))
   }
   const online = phone.on && phone.status === 'online'
+  const download = downloadUrl(phone.server)
   return h('div', { className: 'bt-phone' },
     h(Section, { title: t('Connection') },
       h(Row, { label: t('Phone access'), hint: statusText(phone), className: phone.error || phone.status === 'offline' ? 'bt-phone-warn' : '' },
@@ -66,6 +92,15 @@ export function PhonePage({ roster, actions, Section, Row }) {
       h('div', { className: 'bt-set-row bt-phone-server' },
         h('input', { className: 'bt-input', value: server, placeholder: 'wss://relay.example.org/v1/link', spellCheck: false, 'aria-label': t('Server'), onChange: event => setServer(event.target.value), onKeyDown: event => { if (event.key === 'Enter') saveServer() } }),
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy || server.trim() === phone.server, onClick: saveServer }, t('Save')))),
+    h(Section, { title: t('Notifications') },
+      h(Row, { label: t('Push notifications'), hint: pushText(phone) },
+        h(Switch, { on: phone.pushEnabled !== false, label: t('Push notifications'), disabled: busy, onChange: push => void run(actions.phoneSet({ push })) }))),
+    download ? h(Section, { title: t('Phone app') },
+      h('div', { className: 'bt-phone-pair' },
+        h(QrCode, { text: download }),
+        h('div', { className: 'bt-phone-pair-copy' },
+          h('span', null, t('Scan to download the Android app from your Server.')),
+          h('a', { className: 'bt-set-hint', href: download, target: '_blank', rel: 'noreferrer' }, download)))) : null,
     error ? h('div', { className: 'bt-connector-error bt-phone-error', role: 'alert' }, error) : null,
     h(Section, { title: t('Pair a phone') }, phone.pairing
       ? h('div', { className: 'bt-phone-pair' },
@@ -81,6 +116,6 @@ export function PhonePage({ roster, actions, Section, Row }) {
       : phone.phones.map(entry => h(Row, {
         key: entry.id,
         label: entry.name || t('Phone'),
-        hint: entry.connected ? t('Connected') : t('Paired on {date}', { date: new Date(entry.pairedAt).toLocaleDateString(dateLocale(), { dateStyle: 'medium' }) }),
+        hint: phoneHint(entry),
       }, h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: busy, onClick: () => void run(actions.phoneRemove(entry.id)) }, t('Remove'))))))
 }
