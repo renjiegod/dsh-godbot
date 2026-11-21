@@ -231,8 +231,9 @@ export function install(rt) {
   // A model whose provider has no key fails every turn, so no Bot is given one unasked.
   const keyed = entries => entries.filter(entry => entry.needsKey !== true)
   const isLocal = ref => rt.isLocalAgentRef?.(ref) === true
-  // Nor is a Bot given a local agent unasked: what it runs on changes only in its settings.
-  const usableOf = entries => keyed(entries).filter(entry => !isLocal(entry.ref))
+  const isRemote = ref => rt.isRemoteAgentRef?.(ref) === true
+  // Agent routes require an explicit selection. Defaults use a model provider.
+  const usableOf = entries => keyed(entries).filter(entry => !isLocal(entry.ref) && !isRemote(entry.ref))
   // By the catalog as last listed, without waiting for a fresh one.
   const isUsable = ref => keyed(catalogCache.value).some(entry => entry.ref === ref)
   // The profile default model of DSH, when it is served and usable; else the first
@@ -252,7 +253,7 @@ export function install(rt) {
   const defaultBotModel = async () => {
     const entries = await catalog()
     const preferred = state.prefs.defaultBotModel
-    return !isLocal(preferred) && entries.some(entry => entry.ref === preferred) ? preferred : pickDefault(entries)
+    return !isLocal(preferred) && !isRemote(preferred) && entries.some(entry => entry.ref === preferred) ? preferred : pickDefault(entries)
   }
 
   // A local agent's model, by its full ref only, so a short name never moves a Bot onto
@@ -271,7 +272,7 @@ export function install(rt) {
   async function resolveModel(text) {
     const wanted = String(text ?? '').trim()
     if (isLocal(wanted)) return resolveLocalModel(wanted)
-    const entries = (await catalog({ fresh: true })).filter(entry => !isLocal(entry.ref))
+    const entries = (await catalog({ fresh: true })).filter(entry => !isLocal(entry.ref) && (!isRemote(entry.ref) || entry.ref === wanted))
     const exact = entries.find(entry => entry.ref === wanted)
     if (exact) return exact.ref
     const key = normalize(wanted)

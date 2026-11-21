@@ -12,6 +12,7 @@ import { ProviderAccounts } from './provider-accounts.js'
 import { ProviderUsage } from './provider-usage.js'
 import { nativeUsageAdapters } from './native-provider-quota.js'
 import { AutomationApi } from './automation-api.js'
+import { AutomationSetup } from './automation-setup.js'
 import { NativeRoutines } from './native-routines.js'
 import { UsagePolicy } from './usage-policy.js'
 import { localProviderUsage, refreshLocalProviderUsage } from './local-provider-usage.js'
@@ -51,6 +52,7 @@ export class GodbotService {
       this.store = this.botTasks.store
       this.team = this.botTasks.team
       this.automation = new AutomationApi(this, config.automation)
+      this.automationSetup = new AutomationSetup(this)
       this.routines = new NativeRoutines(this)
       this.budgets = new UsagePolicy(this)
       this.providerUsage = new ProviderUsage(stateDir, config.drivers ?? {}, { nativeProviders: nativeUsageAdapters(subprocess) })
@@ -70,7 +72,7 @@ export class GodbotService {
     this.budgets.attach(ctx)
     this.automation.github.restore()
     this.routines.arm()
-    if (this.store.get('automationSettings', 'listener')) {
+    if (this.store.get('automationSettings', 'listener') || this.automation.people.oidc.enabled()) {
       await this.automation.start().catch(error => { this.automation.listenError = error.message })
     }
   }
@@ -194,6 +196,9 @@ export class GodbotService {
     }
     if (action === 'sandbox-bot-bind') return rt.bindSandboxBot(req)
     if (action === 'connector.tools') return rt.connectorTools.view(req.botId, req.sessionId)
+    if (action.startsWith('governance.')) return rt.governance.handle(req)
+    if (action.startsWith('components.')) return rt.components.handle(req)
+    if (action.startsWith('remote-agents.')) return rt.remoteAgentEndpoint(req)
     if (action === 'slash.run') return this.submitSlash(req)
     if (action === 'budget.view' || action === 'budget.configure') {
       const subject = req.subject || 'profile'
@@ -204,6 +209,7 @@ export class GodbotService {
     if (req.teamId != null && req.teamId !== botWorkspaceId) throw new Error('请选择当前 Bot 团队。')
     const scoped = { ...req, teamId: botWorkspaceId }
     if (action === 'workflow.list') return this.botTasks.workflows()
+    if (action.startsWith('automation.setup.')) return this.automationSetup.handle(scoped)
     if (action.startsWith('automation.routine.')) return this.routines.owner(scoped)
     if (action.startsWith('automation.')) return this.automation.owner(scoped)
     if (action.startsWith('task.') || action === 'workflow.save' || action === 'workflow.run') return this.botTasks.mutate(scoped)

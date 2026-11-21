@@ -976,6 +976,7 @@ export function install(rt) {
             botId: source.senderSessionId,
             name: source.senderName,
             reportBack: source.reportBack === true,
+            initiator: rt.governance?.messageSource(id, source, event.data.content),
             ...(source.claims === undefined ? {} : { claims: source.claims }),
             // The turn's change line travels with its post; without it a completion
             // notice that arrives after the round closed has nothing to show.
@@ -1035,7 +1036,7 @@ export function install(rt) {
           // claims the running turn nor queues as the next one's trigger.
         } else if (source?.kind === 'schedule' && rt.roomOf(id)) {
           // A group's scheduled task reaches the group as the user's message.
-          queueRoomMessage(rt.roomOf(id).id, { text: reminderText(textOf(event.data.content)) })
+          queueRoomMessage(rt.roomOf(id).id, { text: reminderText(textOf(event.data.content)), initiator: rt.governance?.messageSource(id, source, event.data.content) })
         } else if (source?.kind === REFERENCE_KIND && rt.roomOf(id)) {
           attachReference(roomInbox.get(rt.roomOf(id).id), source, textOf(event.data.content))
         } else if (source?.kind === 'subagent-settled') {
@@ -1063,7 +1064,7 @@ export function install(rt) {
             const content = Array.isArray(event.data.content) ? event.data.content : []
             const images = content.filter(block => block?.type === 'image' && !block.offloaded).map(block => block.attachment)
             const files = content.filter(block => block?.type === 'file' && block.attachment !== undefined).map(block => block.attachment)
-            queueRoomMessage(rt.roomOf(id).id, { text: textOf(event.data.content), ...(images.length > 0 ? { images } : {}), ...(files.length > 0 ? { files } : {}), ...(viaOf(source) ? { via: viaOf(source) } : {}) })
+            queueRoomMessage(rt.roomOf(id).id, { text: textOf(event.data.content), initiator: rt.governance?.messageSource(id, source, event.data.content), ...(images.length > 0 ? { images } : {}), ...(files.length > 0 ? { files } : {}), ...(viaOf(source) ? { via: viaOf(source) } : {}) })
           }
           const own = rt.chatOwners.get(id)
           if (own !== undefined) rt.userWrote(own)

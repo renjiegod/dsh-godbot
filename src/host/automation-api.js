@@ -5,6 +5,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { once } from 'node:events'
 import { GitHubEvents } from './github-events.js'
 import { AutomationError, inspectRun, submitRun } from './automation-runs.js'
+import { pinWorkflow } from './workflows.js'
 import { activeTeam, record, required, teamMember } from './team.js'
 
 const scopes = ['run', 'inspect', 'export']
@@ -44,7 +45,7 @@ const publicGrant = ({ id, label, teamId, targetId, scopes, createdAt, revoked }
   createdAt,
   revoked,
 })
-const publicHook = ({ id, teamId, label, ownerId, title, criteria, paused }) => ({
+const publicHook = ({ id, teamId, label, ownerId, title, criteria, paused, checkOnly, workflowSnapshot }) => ({
   id,
   teamId,
   label,
@@ -52,6 +53,8 @@ const publicHook = ({ id, teamId, label, ownerId, title, criteria, paused }) => 
   title,
   criteria,
   paused,
+  ...(checkOnly ? { checkOnly: true } : {}),
+  ...(workflowSnapshot ? { workflowId: workflowSnapshot.id, workflowRevision: workflowSnapshot.revision } : {}),
 })
 
 export class AutomationApi {
@@ -164,7 +167,8 @@ export class AutomationApi {
     }
     if (action === 'automation.hook') {
       activeTeam(this.store, teamId)
-      const ownerId = teamMember(this.store, teamId, req.ownerId).id
+      const workflow = req.workflowId ? pinWorkflow(this.store, teamId, req.workflowId, req.workflowRevision) : undefined
+      const ownerId = workflow ? null : teamMember(this.store, teamId, req.ownerId).id
       const url = await this.start()
       const key = secret()
       const row = this.store.put(
@@ -174,7 +178,9 @@ export class AutomationApi {
           teamId,
           ownerId,
           title: required(req.title, 'Task template'),
-          criteria: required(req.criteria, 'Acceptance criteria'),
+          criteria: workflow ? '' : required(req.criteria, 'Acceptance criteria'),
+          ...(workflow ? { workflowSnapshot: workflow } : {}),
+          ...(req.checkOnly === true ? { checkOnly: true } : {}),
           key,
           paused: false,
         }),
@@ -237,7 +243,7 @@ export class AutomationApi {
         throw new AutomationError(401, 'Invalid webhook signature')
       const event = objectBody(raw)
       const input = { ownerId: hook.ownerId, title: hook.title, criteria: hook.criteria, event }
-      return { status: 202, data: submitRun(this.service, hook, id, input, sha256(raw)) }
+      return { status: 202, data: submitRun(this.service, hook, id, input, sha256(raw), 'webhook') }
     }
     throw new AutomationError(404, 'Unknown endpoint')
   }

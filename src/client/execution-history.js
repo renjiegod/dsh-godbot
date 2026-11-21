@@ -1,3 +1,4 @@
+import { RemoteRunActivity } from './remote-run-activity.js'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createElement as h, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Icon } from './chat-ui.js'
@@ -339,5 +340,6 @@ export function ExecutionHistory({ client, bot, sessionId, close }) {
     parts.length > 1 && h('label', { className: 'gb-execution-controls' }, '会话',
       h('select', { className: 'gb-execution-select', value: part, onChange: e => select(e.target.value) },
         parts.map((id, index) => h('option', { key: id, value: id }, index === 0 ? '当前会话' : '其他会话 ' + index)))),
+    h(RemoteRunActivity, { key: 'remote:' + part, client, sessionId: part, live: (bot.model ?? bot.appliedModel)?.startsWith('ag-ui-') === true }),
     h(HistoryList, { key: part, client, botId: bot.id, sessionId: part }))
 }

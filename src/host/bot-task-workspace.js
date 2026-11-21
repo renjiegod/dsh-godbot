@@ -1,3 +1,4 @@
+import { delegatedOrigin, runOrigin } from './run-origin.js'
 import { createHash } from 'node:crypto'
 import { TeamActions, teamMember } from './team.js'
 import { listWorkflows, saveWorkflow, startWorkflow } from './workflows.js'
@@ -227,7 +228,10 @@ export class BotTaskWorkspace {
     this.active.set(botId, next.id)
     const dispatch = async () => {
       rt.openWork(next.id, { to: bot.id })
-      await rt.deliver({ role: 'request', fromName: '任务编排', toId: bot.id, sessionId: bot.sessionId, exchangeId: next.id, text: original.text })
+      const run = task?.runId && store.get('automationRuns', task.runId)
+      const initiator = run?.initiator ?? (task?.runId ? runOrigin('unknown', task.runId)
+        : original.from && original.from !== 'user' ? delegatedOrigin(undefined, original.from) : runOrigin('person'))
+      await rt.deliver({ role: 'request', fromName: '任务编排', toId: bot.id, sessionId: bot.sessionId, exchangeId: next.id, text: original.text, initiator })
       if (!this.closing && store.get('botTaskDeliveries', next.id)?.state === 'sending')
         store.update('botTaskDeliveries', next.id, { state: 'sent' })
     }

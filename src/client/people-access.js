@@ -20,13 +20,15 @@ export function PeopleAccess({ team, client }) {
   }
   const permissions = person => h('form', { key:person.id + JSON.stringify(person.permissions), className:'gb-form', onSubmit:event => {
     event.preventDefault()
-    const choices = [...new FormData(event.currentTarget)].filter(([,role]) => role !== 'none')
-    void submit('permissions',{id:person.id, revision:person.revision ?? 0, permissions:Object.fromEntries(choices)})
+    const fields = new FormData(event.currentTarget)
+    const choices = [...fields].filter(([key, role]) => key !== 'oidcEmail' && role !== 'none')
+    void submit('permissions',{id:person.id, revision:person.revision ?? 0, permissions:Object.fromEntries(choices), ...(view.sso ? { oidcEmail: fields.get('oidcEmail') } : {})})
   } }, h('h4',null,person.name), ...view.resources.map(resource =>
     field(resource.name + ' · ' + ({ native:'原生', bot:'Bot', room:'群' }[resource.kind]),
       h('select',{ name:resource.id, defaultValue:person.permissions[resource.id] || 'none' },
         ...Object.entries(roleLabels).map(([role,label]) => h('option',{key:role,value:role},label))))),
     h('button',{ type:'submit',disabled:pending },'保存权限'),
+    view.sso && field('组织账号邮箱', h('input', { type: 'email', name: 'oidcEmail', defaultValue: person.oidcEmail ?? '' })),
     button('生成新设备邀请',() => void submit('invite',{id:person.id}),{ disabled:pending }),
     button('撤销该用户',() => void submit('revoke',{id:person.id}),{ disabled:pending }))
   return h('details',{ className:'gb-card',onToggle:e => {
@@ -37,9 +39,10 @@ export function PeopleAccess({ team, client }) {
   error && h('p',{role:'alert',className:'gb-error'},error),
   h('form',{className:'gb-form',onSubmit:e => {
     e.preventDefault()
-    const name = new FormData(e.currentTarget).get('name')
-    void submit('invite',{name})
+    const form = new FormData(e.currentTarget)
+    void submit('invite',{ name: form.get('name'), email: form.get('email') })
   } },field('用户名称',h('input',{name:'name',required:true,maxLength:100})),
+  view?.sso && field('组织账号邮箱', h('input', { name: 'email', type: 'email', placeholder: '可选' })),
   h('button',{type:'submit',disabled:pending},'创建个人邀请')),
   invitation && h('div',{role:'status','data-sensitive':true},h('p',null,'个人邀请可用一次，15 分钟内有效。'),h('code',null,invitation)),
   ...(view?.people ?? []).filter(person => !person.revoked).map(permissions),

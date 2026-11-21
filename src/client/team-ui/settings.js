@@ -43,7 +43,7 @@ const capitalize = word => word[0].toUpperCase() + word.slice(1)
 // Godbot's pages come first; below a rule, the pages DSH and other plugins register
 // (`settings.section`), then Feedback and About. DSH's General rows join General, and
 // its Models page opens from Godbot's Models page as the advanced settings.
-const SETTINGS_PAGES = [['general', 'General'], ['models', 'Models'], ['local-agents', 'Local agents'], ['bots', 'Bots'], ['bot-models', 'Bot models'], ['groups', 'Group chats'], ['connectors', 'Connectors'], ['im', 'IM'], ['phone', 'Phone'], ['capabilities', 'Capabilities'], ['browser', 'Browser'], ['computer', 'Computer use'], ['tasks', 'Task board'], ['routines', 'Scheduled assignments'], ['schedules', 'Scheduled messages'], ['usage', 'Usage'], ['secrets', 'Secrets'], ['feedback', 'Feedback'], ['about', 'About Godbot']]
+const SETTINGS_PAGES = [['general', 'General'], ['models', 'Models'], ['local-agents', 'Local agents'], ['bots', 'Bots'], ['bot-models', 'Bot models'], ['groups', 'Group chats'], ['connectors', 'Connectors'], ['im', 'IM'], ['phone', 'Phone'], ['capabilities', 'Capabilities'], ['browser', 'Browser'], ['computer', 'Computer use'], ['tasks', 'Task board'], ['automation', '自动化'], ['routines', 'Scheduled assignments'], ['schedules', 'Scheduled messages'], ['usage', 'Usage'], ['remote-agents', '远程 Agent'], ['governance', '执行策略'], ['components', '业务组件'], ['secrets', 'Secrets'], ['feedback', 'Feedback'], ['about', 'About Godbot']]
 const LAST_PAGES = new Set(['feedback', 'about'])
 // DSH sections Godbot's own pages already hold.
 const MERGED_SECTIONS = new Set(['general', 'models'])
@@ -53,7 +53,7 @@ const DSH_ICONS = { account: IconUserOutlineMedium, 'agent-presets': IconAgentPr
 export const dshPages = dsh => (dsh?.sections ?? []).filter(row => row.id !== '' && !MERGED_SECTIONS.has(row.id))
 const hasSection = (dsh, id) => (dsh?.sections ?? []).some(row => row.id === id)
 const dshItem = (dsh, id) => h('div', { key: id, className: 'bt-dsh-item', 'data-item': id }, dsh.renderSlot('settings.general.item', {}, { only: id }))
-const PAGE_ICONS = { ...SETTINGS_ICONS, models: SlidersIcon, 'bot-models': IconPersonalizationOutlineMedium, 'local-agents': TerminalIcon, connectors: ConnectorIcon, im: ChatsIcon, phone: PhoneIcon, capabilities: PlugIcon, browser: GlobeIcon, computer: MonitorIcon, tasks: QueueIcon, routines: ClockIcon, schedules: CalendarIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon }
+const PAGE_ICONS = { ...SETTINGS_ICONS, models: SlidersIcon, 'bot-models': IconPersonalizationOutlineMedium, 'local-agents': TerminalIcon, connectors: ConnectorIcon, im: ChatsIcon, phone: PhoneIcon, capabilities: PlugIcon, browser: GlobeIcon, computer: MonitorIcon, tasks: QueueIcon, automation: ClockIcon, 'remote-agents': TerminalIcon, governance: SlidersIcon, components: PlugIcon, routines: ClockIcon, schedules: CalendarIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon }
 
 // What each MEMORY.md holds by default, in characters of entry text.
 const MEMORY_SIZES = [
@@ -403,6 +403,8 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
           shown === 'browser' ? h(BrowserPage, { roster, actions, run, Section: SetSection, Row: SetRow }) : null,
           shown === 'tasks' || shown === 'routines' || usageLimits
             ? actions.godbot.taskSettings(usageLimits ? 'limits' : shown, shown === 'tasks' ? id : null, actions, roster.readOnly) : null,
+          ['automation', 'remote-agents', 'governance', 'components'].includes(shown)
+            ? actions.godbot.platformSettings(shown, roster, actions, id) : null,
           shown === 'schedules' ? actions.godbot.schedulesPage(roster, actions, id, publishSchedules) : null,
           shown === 'secrets' ? h(SecretsPage, { roster, actions, run, Section: SetSection }) : null,
           shown === 'feedback' ? h(FeedbackPage, { actions, run, Section: SetSection, Row: SetRow }) : null,

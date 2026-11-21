@@ -22,6 +22,8 @@ import { BotSchedulesPage } from './bot-schedules.js'
 import { WebBrowserButton } from './browser-viewer.js'
 import { mainSession, sessionSelection } from './navigation.js'
 import { bindTeamSlashSource, teamSlashSource } from './team-slash.js'
+import { AutomationSetupPage } from './automation-setup.js'
+import { ComponentSettings, GovernanceSettings, RemoteAgentSettings } from './platform-settings.js'
 
 const lastSessionKey = 'dsh.godbot.bot-session.v1'
 const controlsStyle = `
@@ -311,6 +313,10 @@ function mountProduct(ctx, client, navigation, target, ready) {
     }),
     providerAgents: props => h(ProviderAgentsPage, { client, ...props }),
     taskSettings: (page, focus, actions, readOnly) => h(TaskSettings, { client, actions, page, focus, readOnly }),
+    platformSettings(page, roster, actions, initial) {
+      const pages = { automation: AutomationSetupPage, components: ComponentSettings, governance: GovernanceSettings, 'remote-agents': RemoteAgentSettings }
+      return h('div', { className: 'gb-platform' }, h(pages[page], { client, roster, actions, initial }))
+    },
     schedulesPage(state, actions, start, publish) {
       const session = mainSession(ctx)
       return h(BotSchedulesPage, { key: start ?? 'all', client, roster: state, actions, start,

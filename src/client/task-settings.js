@@ -102,7 +102,7 @@ export function TaskSettings({ client, actions, page, focus, readOnly: rosterRea
     actions.openSession(bot.id)
   }
   return h('div', { className: 'gb-task-settings gb-stack' },
-    row(button('刷新', refresh)),
+    row(button('刷新', refresh), !readOnly && button('统一创建自动化', () => actions.openSettings('automation', { kind: page === 'routines' ? 'task' : 'workflow' }))),
     offline && h('div', { className: 'gb-alert', role: 'status' }, '连接中断，正在重试 · ' + offline),
     error && h('div', { className: 'gb-alert', role: 'alert' }, h('span', null, error.message),
       row(button('重试原请求', error.retry), button('关闭', clearError))),

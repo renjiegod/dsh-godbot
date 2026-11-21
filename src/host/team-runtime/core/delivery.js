@@ -82,7 +82,7 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work }) {
+  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work, initiator }) {
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
     if (to === undefined) throw new Error(`Unknown Bot ${toId}`)
@@ -109,6 +109,9 @@ export function install(rt) {
       ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
       ...(abandoned ? { abandoned: true } : {}),
     }
+    const senderSession = fromPart ?? (fromRoomId ? rt.roomOf(fromRoomId)?.sessions?.[fromId] : undefined) ?? (fromId ? rt.chatOf(fromId) : undefined)
+    const origin = initiator ?? (senderSession ? rt.governance?.delegate(senderSession, fromId) : undefined)
+    if (origin) source.godbotInitiator = origin
     const targetSessionId = sessionId ?? rt.chatOf(toId)
     // On disk before it goes out: a message the book could not keep is not sent, so none is
     // delivered with no record of it. A resend keeps the record it has; only a merged request

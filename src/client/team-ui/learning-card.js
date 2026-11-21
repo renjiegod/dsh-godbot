@@ -47,6 +47,7 @@ function ProposalCard({ proposal, initialError = '', onFailure, onResolved, acti
     : [
       h(FileBox, { key: 'file', name: 'SKILL.md', path: `skills/${proposal.name}`, state: update ? 'Updated' : 'Added', blocks: [rows] }),
       proposal.why ? h('p', { className: 'bt-learning-why', key: 'why' }, proposal.why) : null,
+      proposal.demonstration ? h('p', { className: 'bt-learning-why', key: 'demo' }, '浏览器示范 · ' + proposal.demonstration.goal + ' · ' + proposal.demonstration.stepCount + ' 步') : null,
     ]
   const kind = t(agents ? 'AGENTS.md update' : update ? 'Skill update' : 'New skill')
   if (outcome) {

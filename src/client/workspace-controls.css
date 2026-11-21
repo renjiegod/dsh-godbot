@@ -261,3 +261,14 @@ span.gb-error {
 }
 .gb-evidence summary { font-size: 13px; }
 .gb-evidence pre { max-height: 240px; overflow: auto; }
+
+.gb-platform fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-inline-size: 0;
+}
+
+.gb-platform code {
+  overflow-wrap: anywhere;
+}

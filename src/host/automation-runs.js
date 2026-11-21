@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { runOrigin } from './run-origin.js'
 import { nativeRunState } from './native-run-state.js'
 import { startWorkflowSnapshot } from './workflows.js'
 import { activeTeam, now, record, required } from './team.js'
@@ -12,12 +13,14 @@ export class AutomationError extends Error {
 
 const sha256 = (text) => createHash('sha256').update(text).digest('hex')
 
-export function submitRun(service, principal, requestId, input, eventHash) {
+export function submitRun(service, principal, requestId, input, eventHash, sourceKind = 'ci') {
+  const initiator = runOrigin(sourceKind, principal.id, 'owner', principal.checkOnly === true)
   if (service.closing) throw new AutomationError(503, 'Host is stopping')
   if (typeof requestId !== 'string' || !requestId.trim() || requestId.length > 256)
     throw new AutomationError(400, 'A request ID of 1 to 256 characters is required')
-  const workflow = Object.hasOwn(input, 'workflowId') || Object.hasOwn(input, 'revision')
-  if (workflow && (Object.keys(input).some(key => !['workflowId', 'revision', 'requestId'].includes(key)) ||
+  const pinned = eventHash ? principal.workflowSnapshot : undefined
+  const workflow = Boolean(pinned) || Object.hasOwn(input, 'workflowId') || Object.hasOwn(input, 'revision')
+  if (workflow && !pinned && (Object.keys(input).some(key => !['workflowId', 'revision', 'requestId'].includes(key)) ||
       !Number.isSafeInteger(input.revision) || input.revision < 1 || typeof input.workflowId !== 'string' || !input.workflowId.trim()))
     throw new AutomationError(400, 'A workflow run takes only workflowId, a positive integer revision and requestId')
   const title = workflow ? undefined : required(input.title, 'Task title')
@@ -25,7 +28,7 @@ export function submitRun(service, principal, requestId, input, eventHash) {
   if (input.ownerId != null && typeof input.ownerId !== 'string')
     throw new AutomationError(400, 'Invalid member')
   const fingerprint = sha256(JSON.stringify(workflow
-    ? ['workflow', input.workflowId, input.revision]
+    ? ['workflow', pinned?.id ?? input.workflowId, pinned?.revision ?? input.revision, ...(pinned ? ['event', eventHash] : [])]
     : [input.ownerId ?? null, title, criteria, eventHash ?? null]))
   const receiptId = JSON.stringify([principal.id, requestId])
   const { store } = service
@@ -34,18 +37,18 @@ export function submitRun(service, principal, requestId, input, eventHash) {
     if (previous) {
       if (previous.fingerprint !== fingerprint)
         throw new AutomationError(409, 'Request ID already used for different input')
-      return { runId: previous.runId, teamId: principal.teamId, ...(workflow ? { workflowId: input.workflowId, workflowRevision: input.revision } : {}) }
+      return { runId: previous.runId, teamId: principal.teamId, ...(workflow ? { workflowId: pinned?.id ?? input.workflowId, workflowRevision: pinned?.revision ?? input.revision } : {}) }
     }
     if (service.runtime?.readOnly()) throw new AutomationError(409, 'Bot workspace is read-only')
     let result
     if (workflow) {
-      const saved = store.get('workflows', input.workflowId)
+      const saved = pinned ?? store.get('workflows', input.workflowId)
       if (!saved || saved.teamId !== principal.teamId) throw new AutomationError(404, 'Unknown workflow')
-      if (input.revision !== saved.revision) throw new AutomationError(409, 'Workflow revision changed. Reload before running it.')
-      const run = startWorkflowSnapshot(service, saved, principal.id)
+      if (!pinned && input.revision !== saved.revision) throw new AutomationError(409, 'Workflow revision changed. Reload before running it.')
+      const run = startWorkflowSnapshot(service, saved, principal.id, initiator, pinned ? input.event : undefined)
       result = { runId: run.id, teamId: run.teamId, workflowId: run.workflowId, workflowRevision: run.workflowRevision }
     } else {
-      result = assignRun(service, principal, { ownerId: input.ownerId, title, criteria }, eventHash ? input.event : undefined)
+      result = assignRun(service, principal, { ownerId: input.ownerId, title, criteria }, eventHash ? input.event : undefined, initiator)
     }
     store.put('automationRequests', { id: receiptId, fingerprint, runId: result.runId })
     return result
@@ -53,11 +56,11 @@ export function submitRun(service, principal, requestId, input, eventHash) {
 }
 
 // The caller owns the transaction containing the trigger receipt and this assignment.
-export function assignRun(service, principal, { ownerId, title, criteria }, event) {
+export function assignRun(service, principal, { ownerId, title, criteria }, event, initiator = runOrigin('schedule', principal.id, 'owner', principal.checkOnly === true)) {
   const team = activeTeam(service.store, principal.teamId)
   const id = randomUUID()
   const task = service.team.assign({ teamId: team.id, ownerId: ownerId || team.leadId, title, criteria }, null, id, event)
-  service.store.put('automationRuns', record({ id, teamId: team.id, rootTaskId: task.id, principalId: principal.id }))
+  service.store.put('automationRuns', record({ id, teamId: team.id, rootTaskId: task.id, principalId: principal.id, initiator }))
   return { runId: id, teamId: team.id }
 }
 

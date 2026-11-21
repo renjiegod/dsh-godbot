@@ -150,7 +150,10 @@ async function join() {
     history.replaceState(null,'',location.pathname)
     await api('join',{invite:invitation})
   }
+  const signIn = await api('sign-in').catch(() => ({}))
+  byId('single-sign-on').hidden = signIn.sso !== true
   const person = await api('me')
+  byId('single-sign-on').hidden = true
   byId('person').textContent = person.name
   replaceAccess(person.resources)
   await refresh()

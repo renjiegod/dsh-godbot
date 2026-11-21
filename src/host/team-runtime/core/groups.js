@@ -1,3 +1,4 @@
+import { mergeRunOrigins, runOrigin } from '../../run-origin.js'
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 // Group chats: the room log, members' group Sessions, rounds and @mentions, round
 // reports, and the group tools (group_relay, read_own_chat, read_group_chat).
@@ -748,6 +749,7 @@ export function install(rt) {
   // `heard` takes each such line once it is posted.
   async function roomTurn(room, member, sessionId, { text, images = [], files = [] }, note, signal, round, by, said = [], heard = () => {}, onWork = () => {}) {
     if (signal.aborted) return null
+    const initiator = round.initiator ?? runOrigin("person")
     const startedAt = Date.now()
     const exchangeId = randomUUID()
     const turn = { botId: member.id, sessionId, exchangeId }
@@ -787,7 +789,7 @@ export function install(rt) {
       signal.addEventListener('abort', () => finish(null), { once: true })
     })
     try {
-      await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, note, text, images, files, steer: busy, ...(by ? { askedBy: by } : {}) })
+      await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, note, text, images, files, steer: busy, initiator, ...(by ? { askedBy: by } : {}) })
       // The prompt reached the member: its read position moves on.
       room.seen[member.id] = seenAt
       // Still held by an earlier request: this turn cannot start until the user answers.
@@ -1259,6 +1261,7 @@ export function install(rt) {
     const members = room.members.map(rt.botOf).filter(Boolean)
     for (const post of posts) {
       if (post.logged !== undefined) continue
+      round.initiator = mergeRunOrigins(round.initiator, post.initiator)
       const own = round.kickoff || post.kickoff || post.goal !== undefined || post.images !== undefined || (post.references?.length ?? 0) > 0
       if (own) {
         laterPosts.set(room.id, [...(laterPosts.get(room.id) ?? []), post])
@@ -1408,6 +1411,8 @@ export function install(rt) {
       members: room.members,
       startSeq,
       goalRevision: room.goal?.revision,
+      initiator: posts.reduce((prior, post) => mergeRunOrigins(prior, post.initiator), undefined)
+        ?? (opener.goal === 'nudge' ? runOrigin('service', opener.goalId) : runOrigin('person')),
       ...(posts.some(userPost) ? { userMessage: true } : {}),
       ...(opener.kickoff ? { kickoff: true } : {}),
       ...(opener.goal === 'nudge' ? { goalNudge: true } : {}),
@@ -1698,6 +1703,8 @@ export function install(rt) {
   // once, and the members it calls start in that round, so it is not held back until
   // the round ends and never sits in the group Session's QueueDock (#663).
   async function postToRoom(room, sender, text, extra = {}, files = []) {
+    const fromGroup = extra.fromRoomId ? rt.roomOf(extra.fromRoomId)?.sessions?.[sender.id] : room.sessions?.[sender.id]
+    const initiator = extra.godbotInitiator ?? rt.governance?.delegate(fromGroup ?? rt.chatOf(sender.id), sender.id)
     const noticeOnly = extra.resumed === true || extra.stopped === true || (extra.failed !== undefined && !extra.askedBy)
     const running = [...rt.roomProgress.values()].find(round => round.roomId === room.id
       && (noticeOnly ? !round.starting : round.nudge !== undefined && !round.closed && !round.abort?.signal.aborted))
@@ -1713,6 +1720,7 @@ export function install(rt) {
         say(room, { who: sender.name, botId: sender.id, text: line, ...(files.length > 0 ? { files } : {}), ...(extra.claims === undefined ? {} : { claims: extra.claims }), ...(extra.changes === undefined ? {} : { changes: extra.changes }) })
         if (extra.batch !== undefined && line !== '') recordResult(extra.batch, sender.name, room.seq)
       }
+      running.initiator = mergeRunOrigins(running.initiator, initiator)
       callPost(room, running, sender, text, extra)
       if (extra.batchEnd) closeBatch(extra.batch)
       await rt.save()
@@ -1721,7 +1729,7 @@ export function install(rt) {
     const agent = await rt.resolveAgent(rt.sessionOfRoom(room))
     agent.followup(createUserMessage({
       content: [{ type: 'text', text: `[Group post from ${sender.name}]\n${text}` }, ...files.map(attachment => ({ type: 'file', attachment }))],
-      source: { kind: SOURCE_KIND, form: 'relay', role: 'post', exchangeId: randomUUID(), senderName: sender.name, senderSessionId: sender.id, roomId: room.id, ...extra },
+      source: { kind: SOURCE_KIND, form: 'relay', role: 'post', exchangeId: randomUUID(), senderName: sender.name, senderSessionId: sender.id, roomId: room.id, ...(initiator ? { godbotInitiator: initiator } : {}), ...extra },
     }))
     await ctx.sessions.flush(agent.session)
   }
