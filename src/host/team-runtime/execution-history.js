@@ -4,11 +4,12 @@ import { DatabaseSync } from 'node:sqlite'
 import { dshShellOutcome } from '../../drivers/dsh-tool-receipt.js'
 import { readAntigravityToolResult } from './antigravity-tool-result.js'
 import { readClaudeExecutionHistory } from './claude-execution-history.js'
+import { bindToolSlots, mirroredTools, readToolActivity, toolSlots } from './shared/tool-timeline.js'
 
 const fieldLimit = 256 * 1024
 const turnPageSize = 12
 const toolDetails = ['input', 'output', 'changes', 'error']
-const persistedFields = ['name', 'status', 'text', 'cwd', 'exitCode', 'durationMs', 'locations', 'parentId', ...toolDetails]
+const persistedFields = ['name', 'status', 'text', 'layout', 'cwd', 'exitCode', 'durationMs', 'locations', 'parentId', ...toolDetails]
 const now = () => new Date().toISOString()
 const eventTime = event => Number.isFinite(event.time) ? new Date(event.time).toISOString() : now()
 const chronological = (a, b) => b.startedAt.localeCompare(a.startedAt) || (b.nativeOrder ?? 0) - (a.nativeOrder ?? 0) || String(b.turn).localeCompare(String(a.turn))
@@ -26,7 +27,7 @@ function protect(rt, row) {
   // A secret broker result itself is never a useful tool receipt for display.
   if (/(?:^|__)request_secret$/u.test(row.name ?? '')) delete row.output
   if (rt.redactSecrets) {
-    for (const key of ['name', 'text', 'cwd', 'locations', ...toolDetails]) {
+    for (const key of ['name', 'text', 'layout', 'cwd', 'locations', ...toolDetails]) {
       if (row[key] !== undefined) row[key] = redact(row[key], value => rt.redactSecrets(value))
     }
   }
@@ -76,13 +77,33 @@ function identity(event) {
   if (['text', 'input', 'error'].includes(event.type) && Number.isSafeInteger(event.seq)) return 'message:' + event.seq
 }
 
+function assistantEvent(content, seq) {
+  const layout = []
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block?.type === 'text' && typeof block.text === 'string' && block.text)
+        layout.push({ type: 'text', text: block.text })
+      else if (block?.type === 'tool-call' && typeof block.id === 'string')
+        layout.push({ type: 'host-tool', id: block.id })
+      else if (block?.type === 'reasoning' && typeof block.text === 'string') {
+        for (const line of block.text.split('\n')) {
+          const activity = readToolActivity(line)
+          if (activity) layout.push({ type: 'activity', ...activity })
+        }
+      }
+    }
+  }
+  if (layout.some(item => item.type !== 'text') && JSON.stringify(layout).length <= fieldLimit)
+    return { type: 'text', seq, layout }
+  const text = textBlocks(content)
+  return text ? { type: 'text', seq, text, layout: [] } : undefined
+}
+
 function turnEvent(event) {
   const data = event.data ?? {}
   switch (event.type) {
-    case 'assistant/message': {
-      const text = textBlocks(data.message?.content)
-      return text ? { type: 'text', text, seq: event.seq } : undefined
-    }
+    case 'assistant/message':
+      return assistantEvent(data.message?.content, event.seq)
     case 'user/message': {
       const source = data.source ?? data.message?.source
       if (source?.kind !== 'user' && !(source?.kind === 'bot' && source.role === 'request' && !source.handoff)) return
@@ -212,7 +233,22 @@ export class ExecutionHistory {
       db.prepare('INSERT OR IGNORE INTO execution_turns(part, turn, started_at) VALUES (?, ?, ?)').run(sessionId, turn, now())
       db.prepare(`INSERT INTO execution_events(part, turn, identity, data) VALUES (?, ?, ?, ?)
         ON CONFLICT(part, turn, identity) DO UPDATE SET data=excluded.data`).run(sessionId, turn, key, JSON.stringify(row))
+      if (event.type === 'tool') this.rt.chatTimelineChanged?.(sessionId, turn)
     })
+  }
+
+  // Chat pages refresh during streaming. Select only the fields that fit on
+  // a card; file contents and shell output are read when the card is opened.
+  toolSummaries(sessionId, turn) {
+    if (this.closed || !this.ownerOf(sessionId)) return []
+    const db = this.database()
+    this.summaryQuery ??= db.prepare(`SELECT json_extract(data,'$.id') AS id, json_extract(data,'$.name') AS name,
+      substr(coalesce(json_extract(data,'$.locations[0].path'), nullif(json_extract(data,'$.text'),''),
+        json_extract(data,'$.input.file_path'), json_extract(data,'$.input.path')),1,400) AS text,
+      json_extract(data,'$.status') AS status
+      FROM execution_events WHERE part=? AND turn=? AND identity LIKE 'tool:%' ORDER BY seq`)
+    return this.summaryQuery.all(sessionId, turn).map(row =>
+      Object.fromEntries(Object.entries(row).filter(([, value]) => value != null)))
   }
 
   nativeTurns(sessionId) {
@@ -231,14 +267,16 @@ export class ExecutionHistory {
     return promise
   }
 
-  storedEvents(db, sessionId, turn, toolId) {
+  storedEvents(db, sessionId, turn, toolId, onlyTools) {
     const selected = typeof toolId === 'string'
-      ? db.prepare('SELECT seq, data FROM execution_events WHERE part=? AND turn=? AND identity=?').all(sessionId, turn, 'tool:' + toolId)
-      : db.prepare('SELECT seq, data FROM execution_events WHERE part=? AND turn=? ORDER BY seq').all(sessionId, turn)
-    return selected.map(({ seq, data }) => {
+      ? db.prepare('SELECT seq, data, identity FROM execution_events WHERE part=? AND turn=? AND identity=?').all(sessionId, turn, 'tool:' + toolId)
+      : db.prepare(`SELECT seq, data, identity FROM execution_events WHERE part=? AND turn=?
+          ${onlyTools ? "AND identity LIKE 'tool:%'" : ''} ORDER BY seq`).all(sessionId, turn)
+    return selected.map(({ seq, data, identity }) => {
       const row = JSON.parse(data)
       // Older rows may already have the native shell marker but lack the exit code.
-      return { seq, ...row, ...dshShellOutcome(row.name, row.status, row.output, row.exitCode) }
+      return { seq, ...row, ...dshShellOutcome(row.name, row.status, row.output, row.exitCode),
+        ...(row.type === 'text' && row.layout === undefined ? { messageSeq: Number(identity.slice('message:'.length)) } : {}) }
     })
   }
 
@@ -281,7 +319,7 @@ export class ExecutionHistory {
     return turns
   }
 
-  async read({ botId, sessionId, turn, toolId, beforeTurn } = {}) {
+  async read({ botId, sessionId, turn, toolId, beforeTurn, onlyTools } = {}) {
     const allowed = () => !this.closed && typeof botId === 'string' && typeof sessionId === 'string' &&
       this.rt.botOf(botId) && this.ownerOf(sessionId) === botId
     if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
@@ -289,12 +327,19 @@ export class ExecutionHistory {
     const db = this.database()
     if (Number.isSafeInteger(turn)) {
       const running = this.active.get(sessionId) === turn || this.rt.live?.get(sessionId)?.turn === turn
-      let events = this.storedEvents(db, sessionId, turn, toolId)
+      let events = this.storedEvents(db, sessionId, turn, toolId, onlyTools)
       if (!running && !db.prepare('SELECT 1 FROM execution_turns WHERE part=? AND turn=?').get(sessionId, turn)) {
         const prior = (await this.sessionTurns(sessionId, turn))[0]
         const native = prior ? matchNative(prior, await this.nativeTurns(sessionId)) : undefined
         if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
         events = mergeRows(this.rt, native?.events ?? prior?.events ?? [], toolId)
+      } else if (!onlyTools && !running && events.some(row => row.messageSeq !== undefined) && events.some(row => row.type === 'tool')) {
+        const prior = (await this.sessionTurns(sessionId, turn))[0]
+        if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
+        const layouts = new Map(prior?.events.filter(row => row.layout?.length).map(row => [row.seq, row.layout]))
+        events = events.map(row => layouts.has(row.messageSeq) ? protect(this.rt, mergeEvent(row, {
+          type: 'text', layout: layouts.get(row.messageSeq),
+        })) : row)
       }
       const tool = toolId !== undefined && events[0]
       if (tool && (tool.output == null || (tool.status === 'failed' && tool.error == null))) {
@@ -304,7 +349,9 @@ export class ExecutionHistory {
           type: 'tool', id: tool.id, output: tool.output ?? native.output, error: tool.error ?? native.error,
         }))
       }
-      return { events: toolId === undefined ? events.map(summary) : events, running }
+      return { events: toolId !== undefined ? events : onlyTools
+        ? events.filter(row => row.type === 'tool').map(summary)
+        : orderedRows(events).map(summary), running }
     }
     const native = await this.nativeTurns(sessionId)
     if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
@@ -339,13 +386,45 @@ export class ExecutionHistory {
 }
 
 function matchNative(dshTurn, nativeTurns) {
-  const text = dshTurn.events.findLast(event => event.type === 'text' && event.text.trim())?.text.trim()
+  const text = dshTurn.events.filter(event => event.type === 'text').map(event => event.text ??
+    (Array.isArray(event.layout) ? event.layout.findLast(part => part.type === 'text')?.text : undefined))
+    .findLast(text => typeof text === 'string' && text.trim())?.trim()
   if (!text) return
   const timestamp = Date.parse(dshTurn.startedAt)
   const timeWindow = text.length >= 80 ? 5 * 60_000 : 20_000
   const matches = nativeTurns.filter(turn => Math.abs(Date.parse(turn.startedAt) - timestamp) < timeWindow &&
     turn.events.some(event => event.type === 'text' && event.text.trim() === text))
   if (matches.length === 1) return matches[0]
+}
+
+function orderedRows(events) {
+  const tools = events.filter(row => row.type === 'tool')
+  const byId = new Map(tools.map(row => [row.id, row]))
+  const hostIds = new Set()
+  const entries = []
+  for (const row of events) {
+    if (!Array.isArray(row.layout)) continue
+    row.layout.forEach((part, index) => {
+      if (part.type === 'host-tool') hostIds.add(part.id)
+      if (part.type === 'activity') entries.push([`${row.seq}:${index}`, part])
+    })
+  }
+  const mirrors = mirroredTools(tools, hostIds)
+  const slots = bindToolSlots(toolSlots(entries), tools, hostIds, mirrors)
+  const placed = new Set([...hostIds, ...mirrors, ...Array.from(slots.values(), slot => slot.id).filter(Boolean)])
+  const seen = new Set()
+  return events.flatMap(row => {
+    if (row.type === 'tool' && placed.has(row.id)) return []
+    if (!Array.isArray(row.layout) || !row.layout.length) return row
+    return row.layout.flatMap((part, index) => {
+      const seq = `${row.seq}:${index}`
+      if (part.type === 'text') return { type: 'text', text: part.text, seq }
+      const tool = part.type === 'host-tool' ? byId.get(part.id) : slots.get(seq)
+      if (!tool || (tool.id && seen.has(tool.id))) return []
+      if (tool.id) seen.add(tool.id)
+      return { ...tool, type: 'tool', seq }
+    })
+  })
 }
 
 function mergeRows(rt, events, toolId) {

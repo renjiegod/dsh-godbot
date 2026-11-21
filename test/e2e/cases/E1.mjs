@@ -64,17 +64,27 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   const { page } = host
   const flow = page.locator('[data-chat-flow]')
   const progress = 'Claude fixture progress before the report.'
+  const middle = 'Claude fixture progress after both tool starts.'
+  const rewire = 'Now rewire the fixture routing.'
+  const codexProgress = 'Codex fixture progress before the command.'
+  const codexDuring = 'Codex fixture progress while the command runs.'
+  const acpProgress = 'ACP fixture progress after the read starts.'
   const reportBody = 'Tool results and final checks are included.'
   const reportHeading = 'Fixture verification report'
   const claudeTools = [
     ['Read', 'completed', ['fixture-trace.txt', 'Claude fixture file content']],
     ['Grep', 'failed', ['fixture-trace.txt', 'Claude fixture grep error']],
   ]
-  const bashRunning = ['Bash', 'running', ['node --version']]
-  const bashFinished = ['Bash', 'failed', ['node --version', 'Claude fixture standard output', 'Claude fixture standard error'], ['标准输出', '标准错误']]
-  const codexTools = [['Shell', 'completed', ['cat fixture-trace.txt', 'Codex fixture command output']]]
+  const bashRunning = ['Bash', 'running', ['node --version'], [], 'Read fixture version']
+  const bashFinished = ['Bash', 'failed', ['node --version', 'Claude fixture standard output', 'Claude fixture standard error'], ['标准输出', '标准错误'], 'Read fixture version']
+  const claudeOrder = (initialStatus, lateStatus) => [
+    progress, ['Read', 'completed'], ['Grep', 'failed'], middle, ['Bash', initialStatus, 'Read fixture version'],
+    ['Bash', 'completed', 'Check fixture route 1'], ['Bash', 'completed', 'Check fixture route 72'],
+    rewire, ['Bash', 'completed', 'Read the new fixture route'], ['Bash', lateStatus, 'Verify the new fixture route'],
+  ]
+  const codexTools = [['Shell', 'completed', ['cat fixture-trace.txt', 'Codex fixture command output'], [], 'fixture-trace.txt']]
   const acpTools = [
-    ['Read', 'completed', ['acp-fixture-trace.txt', 'ACP fixture file content']],
+    ['Read', 'completed', ['acp-fixture-trace.txt', 'ACP fixture file content'], [], 'acp-fixture-trace.txt'],
     ['Search', 'failed', ['needle from fixture', 'ACP fixture search error']],
     ['Edit', 'completed', ['acp-fixture-trace.txt', 'before fixture edit', 'after fixture edit'], ['文件变更', '修改前', '修改后']],
   ]
@@ -82,21 +92,35 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
     await page.locator('.bt-row-title').filter({ hasText: bot.name }).click()
     await page.locator('.bt-head .bt-pill-name').filter({ hasText: bot.name }).waitFor()
   }
-  const step = (scope, name, status) => scope.locator(`details[data-gb-execution-tool][data-status="${status}"]`)
-    .filter({ has: page.getByText(name, { exact: true }) })
-  const verifyTool = async (scope, [name, status, markers, sections = []]) => {
-    const row = step(scope, name, status)
+  const step = (scope, name, status, target) => {
+    const row = scope.locator(`details[data-gb-execution-tool][data-status="${status}"]`)
+      .filter({ has: page.getByText(name, { exact: true }) })
+    return target ? row.filter({ has: page.getByText(target, { exact: true }) }) : row
+  }
+  const verifyTool = async (scope, [name, status, markers, sections = [], target]) => {
+    const row = step(scope, name, status, target)
     await row.waitFor()
     if (!await row.evaluate(element => element.open)) await row.locator('summary').click()
     for (const marker of markers) await row.locator('pre').filter({ hasText: marker }).first().waitFor()
     for (const label of sections) await row.getByRole('heading', { name: label, exact: true }).waitFor()
   }
   const verifySteps = async expected => {
-    const section = flow.locator('[data-gb-delegated-activity]').last()
-    const expand = section.getByRole('button', { name: /^执行记录(?: · \d+)?$/u })
-    await expand.waitFor()
-    if (await expand.getAttribute('aria-expanded') === 'false') await expand.click()
-    for (const tool of expected) await verifyTool(section, tool)
+    for (const tool of expected) await verifyTool(flow, tool)
+  }
+  const verifyOrder = async (scope, sequence) => {
+    let previous
+    for (const reference of sequence) {
+      const item = Array.isArray(reference) ? step(scope, ...reference) : scope.getByText(reference, { exact: true })
+      await item.waitFor()
+      assert.equal(await item.count(), 1, 'one row for ' + reference)
+      if (previous) {
+        const handle = await item.elementHandle()
+        assert.equal(await previous.evaluate((node, next) => Boolean(node.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING), handle),
+          true, 'out of order near ' + reference)
+        await handle.dispose()
+      }
+      previous = item
+    }
   }
   const verifyReport = async marker => {
     await flow.getByText('TRACE_COMPLETE ' + marker, { exact: true }).waitFor()
@@ -122,8 +146,32 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   }
 
   const claudeRun = await delegate(claude, 'CLAUDE')
-  await openChat(claude)
+  const allowReceipts = Promise.withResolvers()
+  let receiptWaiting = false
+  const delayReceipts = async route => {
+    if (/"onlyTools":\s*true/u.test(route.request().postData() ?? '')) {
+      receiptWaiting = true
+      await allowReceipts.promise
+    }
+    await route.continue()
+  }
+  const dispatchRoute = '**/api/godbot/dispatch'
+  await page.route(dispatchRoute, delayReceipts)
+  try {
+    await openChat(claude)
+    await until(() => receiptWaiting, 'the tool receipt request is waiting')
+    await verifyOrder(flow, [progress, ['Read', 'running']])
+  } finally {
+    allowReceipts.resolve()
+    await page.unrouteAll({ behavior: 'wait' })
+  }
+  assert.equal(await step(flow, 'Grep', 'running').count(), 0, 'Claude is paused before the complete assistant frame')
+  await writeFile(join(host.workspace, 'claude-execution-trace-start'), '')
   await verifySteps([...claudeTools, bashRunning])
+  await verifyOrder(flow, [progress, ['Read', 'completed'], ['Grep', 'failed'], middle, ['Bash', 'running', 'Read fixture version']])
+  await writeFile(join(host.workspace, 'claude-execution-trace-continue'), '')
+  await verifyOrder(flow, claudeOrder('running', 'running'))
+  assert.equal(await flow.locator('details[data-gb-execution-tool]').filter({ has: page.getByText('Bash', { exact: true }) }).count(), 75)
   assert.equal(await flow.getByText(progress, { exact: true }).count(), 1, 'Claude streamed its progress once')
   assert.equal(await flow.getByText(reportHeading, { exact: true }).count(), 0, 'the report has not arrived yet')
   assert.equal((await claudeRun.exchange()).some(row => row.replyTo === claudeRun.requestId), false, 'activity visible before Claude replies')
@@ -133,33 +181,47 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   await openFullTeam(host)
   await openChat(claude)
   await verifySteps([...claudeTools, bashRunning])
+  await verifyOrder(flow, claudeOrder('running', 'running'))
   await writeFile(join(host.workspace, 'claude-execution-trace-release'), '')
   const claudeReply = await claudeRun.waitForReply()
   await verifySteps([bashFinished])
   await verifyReport(claudeRun.marker)
+  const settledClaudeOrder = [...claudeOrder('failed', 'completed'), reportHeading]
+  await verifyOrder(flow, settledClaudeOrder)
   assert.equal(await flow.getByText(progress, { exact: true }).count(), 1, 'completion did not repeat streamed progress')
 
   const codexTarget = await member(host, 'Execution Codex', 'local-codex-cli/default')
   const codexRun = await delegate(codexTarget, 'CODEX')
-  const codexReply = await codexRun.waitForReply()
   await openChat(codexTarget)
+  await verifyOrder(flow, [codexProgress, ['Shell', 'running', 'fixture-trace.txt'], codexDuring])
+  await writeFile(join(host.workspace, 'codex-execution-trace-release'), '')
+  const codexReply = await codexRun.waitForReply()
   await verifySteps(codexTools)
   await verifyReport(codexRun.marker)
+  await verifyOrder(flow, [codexProgress, ['Shell', 'completed', 'fixture-trace.txt'], codexDuring, reportHeading])
   assert.equal(await flow.getByText('Claude fixture file content', { exact: true }).count(), 0, 'Claude output stays in its own chat')
 
   const acpTarget = await member(host, 'Execution Antigravity', 'local-antigravity/default')
   const acpRun = await delegate(acpTarget, 'ACP')
-  const acpReply = await acpRun.waitForReply()
   await openChat(acpTarget)
+  await verifyOrder(flow, [['Read', 'running', 'acp-fixture-trace.txt']])
+  assert.equal(await flow.getByText(acpProgress).count(), 0, 'ACP tool is visible before any response text')
+  await writeFile(join(host.workspace, 'acp-execution-trace-release'), '')
+  const acpReply = await acpRun.waitForReply()
   await verifySteps(acpTools)
   await verifyReport(acpRun.marker)
 
   await host.restart()
   await openFullTeam(host)
-  for (const [bot, tools, delegated] of [[claude, [...claudeTools, bashFinished], claudeRun], [codexTarget, codexTools, codexRun], [acpTarget, acpTools, acpRun]]) {
+  for (const [bot, tools, delegated, order] of [
+    [claude, [...claudeTools, bashFinished], claudeRun, settledClaudeOrder],
+    [codexTarget, codexTools, codexRun, [codexProgress, ['Shell', 'completed', 'fixture-trace.txt'], codexDuring, reportHeading]],
+    [acpTarget, acpTools, acpRun, [['Read', 'completed', 'acp-fixture-trace.txt'], acpProgress, ['Search', 'failed'], ['Edit', 'completed'], reportHeading]],
+  ]) {
     await openChat(bot)
     await verifySteps(tools)
     await verifyReport(delegated.marker)
+    await verifyOrder(flow, order)
     assert.equal((await delegated.exchange()).filter(row => row.id === delegated.requestId || row.replyTo === delegated.requestId).length, 2)
   }
   await openChat(claude)
@@ -168,8 +230,12 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   await history.getByRole('button', { name: /^原生会话回合/u }).click()
   await history.getByText('Historical Claude report from native conversation.', { exact: true }).waitFor()
   await verifyTool(history, ['Bash', 'completed', ['printf earlier-fixture', 'The historical native command ran.']])
+  const recent = history.getByRole('button', { name: /^回合 \d+/u }).first()
+  await recent.click()
+  const settled = recent.locator('..')
+  await verifyOrder(settled, settledClaudeOrder)
   note('delegated-execution', {
-    claude: { requestId: claudeRun.requestId, replyId: claudeReply, steps: claudeTools.length + 1, visibleBeforeReply: true, nativeBackfill: true },
+    claude: { requestId: claudeRun.requestId, replyId: claudeReply, steps: claudeTools.length + 75, visibleBeforeReply: true, nativeBackfill: true },
     codex: { requestId: codexRun.requestId, replyId: codexReply, steps: codexTools.length },
     acp: { requestId: acpRun.requestId, replyId: acpReply, steps: acpTools.length },
     recoveredAfterRestart: true,

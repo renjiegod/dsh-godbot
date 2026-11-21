@@ -1,11 +1,9 @@
 // Godbot owns the conversation, approvals, tool bridge and permissions. Its
 // Claude 0.3.8 transport has no settings stream, and advertises four aliases.
 // Attach the same native controls used by a direct Godbot session to its child.
-import { claudeUsageFrame } from '../drivers/external/claude-usage-data.js'
 import { randomUUID } from 'node:crypto'
 import { ClaudeControlSession, configureClaude, describeClaude } from '../drivers/external/claude-settings.js'
-import { claudeToolResult } from '../drivers/external/tool-results.js'
-import { commandLabel, toolActivity } from './team-runtime/tool-activity.js'
+import { attachClaudeBotTimeline } from './claude-bot-timeline.js'
 
 import { ClaudeEngine } from './team-runtime/core/local-agents/claude.js'
 
@@ -15,100 +13,15 @@ class TeamClaudeControl extends ClaudeControlSession {
     this.session = session
     this.launchModel = options.model
     this.resumeId = options.resumeId
-    const receive = session.onLine.bind(session)
-    const calls = new Map()
-    const currentMessages = new Map()
-    const streamed = new Map()
-    let toolStarts
-    const emit = session.emit.bind(session)
-    session.emit = event => {
-      const trace = event.type === 'activity' ? toolStarts?.shift() : undefined
-      emit(trace ? { ...event, trace } : event)
-    }
-    session.onLine = (line) => {
-      let event
-      try { event = JSON.parse(line) } catch { return }
-      if (event?.type === 'control_response' && this.controlRequests?.has(event.response?.request_id)) {
-        this.receiveControl(event.response)
-        return
-      }
-      const parentId = event?.parent_tool_use_id ?? ''
-      if (event?.type === 'stream_event' && !this.usageDelivery) {
-        const update = event.event
-        if (update?.type === 'message_start') currentMessages.set(parentId, update.message?.id)
-        else if (update?.type === 'content_block_delta' && update.delta?.type === 'text_delta') {
-          const id = currentMessages.get(parentId)
-          const text = update.delta.text
-          if (typeof id !== 'string' || typeof text !== 'string' || !text) return
-          const key = JSON.stringify([parentId, id])
-          const blocks = streamed.get(key) ?? new Map()
-          blocks.set(update.index, (blocks.get(update.index) ?? '') + text)
-          streamed.set(key, blocks)
-          session.emit({ type: 'text', text })
-        }
-        return
-      }
-      if (event?.type === 'assistant') {
-        if (this.usageDelivery) {
-          const report = claudeUsageFrame(event)
-          if (report) this.usageDelivery.report = report
-        }
-        const content = event.message?.content
-        const pendingText = streamed.get(JSON.stringify([parentId, event.message?.id]))
-        if (Array.isArray(content) && (pendingText || content.some(block => block?.type === 'tool_use'))) {
-          // The pinned transport already places tool names in the right order
-          // alongside assistant text. Attach execution data to those same events.
-          toolStarts = []
-          for (const block of content) {
-            if (block?.type === 'text' && typeof block.text === 'string' && pendingText) {
-              const match = [...pendingText].find(([, sent]) => block.text.startsWith(sent))
-              if (match) {
-                pendingText.delete(match[0])
-                block.text = block.text.slice(match[1].length)
-              }
-            }
-            if (block?.type !== 'tool_use') continue
-            const input = block.input
-            const tool = {
-              name: block.name,
-              target: input?.file_path ?? input?.path ?? input?.description ?? commandLabel(input?.command),
-            }
-            const native = typeof block.id === 'string' && !block.name?.startsWith('mcp__godbot__')
-            if (typeof block.id === 'string') calls.set(block.id, { ...tool, native, filePath: input?.file_path })
-            // Godbot's own MCP bridge has exact DSH tool call/result receipts.
-            toolStarts.push(native ? {
-              type: 'tool', id: block.id, name: block.name, status: 'running', input,
-              cwd: options.cwd, ...(parentId ? { parentId } : {}),
-              ...(typeof tool.target === 'string' ? { text: tool.target } : {}),
-            } : undefined)
-            block.name = toolActivity(tool.name, tool.target, 'started').text.slice('▸ '.length)
-          }
-          try { return receive(JSON.stringify(event)) } finally { toolStarts = undefined }
-        }
-      } else if (event?.type === 'user' && Array.isArray(event.message?.content)) {
-        const results = event.message.content.filter(block => block?.type === 'tool_result')
-        for (const block of results) {
-          const tool = calls.get(block.tool_use_id)
-          if (!tool) continue
-          calls.delete(block.tool_use_id)
-          const details = results.length === 1 ? event.tool_use_result : undefined
-          const { status, output, exitCode } = claudeToolResult(block, details)
-          const filePath = details?.filePath ?? tool.filePath
-          const changes = Array.isArray(details?.structuredPatch) ? [{ path: filePath, hunks: details.structuredPatch }] : undefined
-          session.emit({ ...toolActivity(tool.name, tool.target, status), ...(tool.native ? { trace: {
-            type: 'tool', id: block.tool_use_id, name: tool.name, status, output,
-            changes,
-            ...(exitCode !== undefined ? { exitCode } : {}),
-            ...(Number.isFinite(details?.durationMs) && details.durationMs >= 0 ? { durationMs: details.durationMs } : {}),
-          } } : {}) })
-        }
-      } else if (event?.type === 'result') {
-        calls.clear()
-        currentMessages.clear()
-        streamed.clear()
-      }
-      receive(line)
-    }
+    attachClaudeBotTimeline(session, {
+      cwd: options.cwd,
+      usageDelivery: () => this.usageDelivery,
+      onControl: response => {
+        if (!this.controlRequests?.has(response?.request_id)) return false
+        this.receiveControl(response)
+        return true
+      },
+    })
   }
 
   write(message) {

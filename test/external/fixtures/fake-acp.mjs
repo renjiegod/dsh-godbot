@@ -23,8 +23,10 @@
 // `--cursor-modes` lists the modes cursor-agent 2026.11.05 does (agent, plan, ask)
 // and refuses any other, as it does.
 import { spawn } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createInterface } from 'node:readline'
+import { setTimeout as delay } from 'node:timers/promises'
 
 const exitAfterTurn = process.argv.includes('--exit-after-turn')
 const cursorModes = process.argv.includes('--cursor-modes')
@@ -150,11 +152,14 @@ async function runPrompt(session, prompt, requestId) {
     update(sessionId, { sessionUpdate: 'usage_update', used: session.used, size: WINDOW, _meta: { ...meta, 'cognition.ai/subagent_context': { parentAgentId: 'root' } } })
     reply(requestId, { stopReason: 'end_turn', usage: { totalTokens: session.used, inputTokens: session.used - 30, outputTokens: 30, cachedReadTokens: 9_000 } })
   }
-  const trace = agyModes && process.env.GODBOT_E2E_GATE_DIR && text.match(/GODBOT-ACP-EXECUTION-TRACE ([a-f\d-]+)/u)
+  const dir = process.env.GODBOT_E2E_GATE_DIR
+  const trace = agyModes && dir && text.match(/GODBOT-ACP-EXECUTION-TRACE ([a-f\d-]+)/u)
   if (trace) {
     const locations = [{ path: 'acp-fixture-trace.txt' }]
     update(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'trace-read', kind: 'read', status: 'in_progress', locations,
       rawInput: { path: 'acp-fixture-trace.txt' } })
+    while (!existsSync(join(dir, 'acp-execution-trace-release'))) await delay(60)
+    update(sessionId, { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'ACP fixture progress after the read starts.' } })
     update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: 'trace-read', status: 'completed', rawOutput: 'ACP fixture file content' })
     update(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'trace-search', kind: 'search', status: 'in_progress', locations,
       rawInput: { path: 'acp-fixture-trace.txt', query: 'needle from fixture' } })

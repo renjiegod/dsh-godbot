@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import test from 'node:test'
 import { ExecutionHistory } from '../../src/host/team-runtime/execution-history.js'
+import { toolReference } from '../../src/host/team-runtime/shared/tool-timeline.js'
+import { mobileToolDetail, mobileToolRows, withLiveAttempt } from '../../src/host/team-runtime/mobile-tool-timeline.js'
 import { readAntigravityToolResult } from '../../src/host/team-runtime/antigravity-tool-result.js'
 
 async function fixture(t) {
@@ -20,6 +22,48 @@ async function fixture(t) {
     redactSecrets: text => text.replaceAll('fixture-secret', '[redacted]'),
   }
 }
+
+test('phone cards recover legacy start positions and fetch only their own visible tool details', async t => {
+  const rt = await fixture(t)
+  const history = rt.executionHistory = new ExecutionHistory(rt)
+  t.after(() => history.close())
+  rt.state.exchangeTurns = { part: [3] }
+  const ids = ['first', 'second']
+  for (const [i, id] of ids.entries()) history.record('part', {
+    type: 'tool', id, name: 'Read', status: i ? 'failed' : 'completed', output: 'fixture-secret ' + 'x'.repeat(9000),
+  }, 2)
+  const first = { type: 'reasoning', text: '▸ Read · a · 调用' }
+  const second = { type: 'reasoning', text: '▸ Read · b · 调用\n▸ Read · b · 失败\n▸ Read · a · 完成' }
+  const content = [{ type: 'text', text: 'Before' }, first, { type: 'text', text: 'After' }, second]
+  const event = { seq: 4, type: 'assistant/message', data: { turn: 2, step: 1, message: { content } } }
+  const rows = mobileToolRows(rt, 'part', [event])
+  assert.deepEqual([first, second].map(anchor => rows.get(anchor).map(row => [row.toolId, row.text, row.status])), [
+    [['first', 'a', 'completed']], [['second', 'b', 'failed']],
+  ])
+  assert.ok(!JSON.stringify([...rows.values()]).includes('output'))
+  const args = { sessionId: 'part', botId: 'worker', turn: 2, toolId: 'first' }
+  const detail = await mobileToolDetail(rt, args)
+  assert.ok(detail.output.startsWith('[redacted]') && detail.output.endsWith('…') && detail.output.length <= 8193)
+  await assert.rejects(mobileToolDetail(rt, { ...args, botId: 'other' }))
+  await assert.rejects(mobileToolDetail(rt, { ...args, turn: 3 }))
+  assert.equal(mobileToolRows(rt, 'part', [{ ...event, data: { ...event.data, turn: 3 } }]).size, 0)
+})
+
+test('a phone reopening mid-attempt gets the visible blocks at the stream cut, then exactly one saved message', () => {
+  const turn = 7, step = 2
+  const before = { seq: 4, type: 'step/start', data: { turn, step } }
+  const after = { seq: 6, type: 'user/message', data: {} }
+  const activity = toolReference('▸ Bash · 调用', 'call')
+  const attempt = { startedAfterSeq: 4, turn, step, stream: [
+    { type: 'text-chunks', time0: 5, index: 0, dt: [0], texts: ['Check'] },
+    { type: 'reasoning-chunks', time0: 6, index: 1, dt: [0], texts: [activity] },
+  ] }
+  const [, live, steer] = withLiveAttempt([before, after], attempt)
+  assert.deepEqual(live.data.message.content, [{ type: 'text', text: 'Check' }, { type: 'reasoning', text: activity }])
+  assert.equal(steer, after)
+  const saved = [before, after, { ...live, seq: 7 }]
+  assert.equal(withLiveAttempt(saved, attempt), saved)
+})
 
 test('execution history updates one row per call and reads its details across restart', async (t) => {
   const rt = await fixture(t)
@@ -73,6 +117,67 @@ test('execution history respects DSH command failures in new and existing shell 
     ['shell', 'failed', 128], ['structured', 'completed', 0], ['read', 'completed', undefined], ['old', 'failed', 128],
   ])
   assert.deepEqual((await history.read({ ...part, toolId: 'old' })).events[0].output, output)
+})
+
+test('execution history preserves assistant and tool positions after updates and restart', async t => {
+  const rt = await fixture(t)
+  const history = new ExecutionHistory(rt)
+  const part = { botId: 'worker', sessionId: 'part', turn: 2 }
+  let seq = 0
+  const observe = (type, data = {}) => history.observe('part', { type, data: { ...data, turn: 2 }, seq: ++seq })
+  observe('turn/start')
+  history.record('part', { type: 'tool', id: 'a', name: 'Read', status: 'running' })
+  history.record('part', { type: 'tool', id: 'b', name: 'Read', status: 'running' })
+  assert.deepEqual((await history.read({ ...part, onlyTools: true })).events.map(row => row.status), ['running', 'running'])
+  history.record('part', { type: 'tool', id: 'b', status: 'completed' })
+  history.record('part', { type: 'tool', id: 'a', status: 'failed' })
+  history.record('part', { type: 'tool', id: 'mirror', name: 'mcp_godbot_find', status: 'completed' })
+  observe('assistant/message', { message: { content: [
+    { type: 'text', text: 'Starting' },
+    { type: 'reasoning', text: toolReference('▸ Read · a · 调用', 'a') },
+    { type: 'text', text: 'Continuing' },
+    { type: 'reasoning', text: toolReference('▸ Read · b · 调用', 'b') },
+    { type: 'reasoning', text: '▸ mcp_godbot_find · 完成' },
+    { type: 'tool-call', id: 'godbot-host' },
+  ] } })
+  observe('tool/call', { callId: 'godbot-host', name: 'find' })
+  observe('tool/result', { message: { toolCallId: 'godbot-host', content: 'found' } })
+  observe('assistant/message', { message: { content: [{ type: 'text', text: 'Finished' }] } })
+  observe('turn/end')
+  history.close()
+
+  const reopened = new ExecutionHistory(rt)
+  t.after(() => reopened.close())
+  assert.deepEqual((await reopened.read(part)).events.map(row => row.type === 'text' ? row.text : [row.id, row.status]), [
+    'Starting', ['a', 'failed'], 'Continuing', ['b', 'completed'], ['godbot-host', 'completed'], 'Finished',
+  ])
+})
+
+test('existing turns use saved reasoning positions to recover legacy tool receipts', async t => {
+  const rt = await fixture(t)
+  const history = new ExecutionHistory(rt)
+  t.after(() => history.close())
+  const part = { botId: 'worker', sessionId: 'part', turn: 2 }
+  const content = [
+    { type: 'text', text: 'Check the screenshot' },
+    { type: 'reasoning', text: '▸ Bash · locate screenshots · 调用\n▸ Bash · locate screenshots · 完成\n▸ Read · screenshot.png · 调用' },
+    { type: 'text', text: 'The screenshot looks right' },
+    { type: 'reasoning', text: '▸ Read · screenshot.png · 完成\n▸ Bash · final checks · 调用\n▸ Bash · final checks · 完成' },
+  ]
+  rt.ctx = { sessionController: { page: async () => ({ records: [
+    { type: 'turn/start', data: { turn: 2 }, seq: 1 },
+    { type: 'assistant/message', data: { turn: 2, message: { content } }, seq: 2 },
+    { type: 'turn/end', data: { turn: 2 }, seq: 3 },
+  ].map(event => ({ event })) }) } }
+  for (const [id, name] of [['locate', 'Bash'], ['screenshot', 'Read'], ['check', 'Bash']]) {
+    history.record('part', { type: 'tool', id, name, status: 'completed', output: id }, 2)
+  }
+  history.database().prepare('INSERT INTO execution_events(part, turn, identity, data) VALUES (?, ?, ?, ?)').run(
+    'part', 2, 'message:2', JSON.stringify({ type: 'text', text: 'Check the screenshot\n\nThe screenshot looks right' }),
+  )
+  assert.deepEqual((await history.read(part)).events.map(row => row.type === 'tool' ? row.id : row.text), [
+    'Check the screenshot', 'locate', 'screenshot', 'The screenshot looks right', 'check',
+  ])
 })
 
 test('archived Claude report links to its retained native tool bodies', async (t) => {

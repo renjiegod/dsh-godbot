@@ -21,6 +21,7 @@ import { failureLabel } from './diagnostics.js'
 import { previousPart, withoutEmptyParts } from './part-dividers.js'
 import { turnReasoning, thinkingStep, opensReply, stepActivity } from './turn-reasoning.js'
 import { parseReplies, relayRange, stackReplies } from '../../host/team-runtime/shared/group-replies.js'
+import { bindToolSlots, toolSlots } from '../../host/team-runtime/shared/tool-timeline.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
 import { ReplyGuide } from './reading.js'
 import { noHover, useViewport, viewBottom } from './motion.js'
@@ -40,7 +41,7 @@ export { clockLabel }
 // `fold`: past what a bubble folds (fold.js); `whole`: the last text is only the start
 // of its message (see useFold). `time` marks the bubbles' message below them; a caller
 // whose own head already shows one (the flat speaker line, the group name row) leaves it unset.
-export function Bubbles({ nativeReport, texts, roster, selfId, actions, streaming, sessionId, msgKey, useUi, lead, mentions, fold = FOLD_AT, whole, time, textInteractionSource }) {
+export function Bubbles({ nativeReport, texts, roster, selfId, actions, streaming, sessionId, msgKey, useUi, lead, mentions, fold = FOLD_AT, whole, time, textInteractionSource, toolsBefore }) {
   const onClick = (event) => {
     const target = mentionTarget(event)
     if (target === null) return
@@ -48,20 +49,21 @@ export function Bubbles({ nativeReport, texts, roster, selfId, actions, streamin
     event.stopPropagation()
     actions.openSession(target)
   }
-  const cleaned = nativeReport ? [texts.join('\n\n')] : texts.map(stripToolCallTags).filter(text => text.trim() !== '')
+  const cleaned = nativeReport ? (toolsBefore?.size ? texts : [texts.join('\n\n')]) : texts.map(stripToolCallTags).filter(text => text.trim() !== '')
   const reactions = useUi ? useUi(state => (msgKey ? state.reactions?.[msgKey] ?? null : null)) : null
   return h('div', { className: 'bt-astack', 'data-lead': lead ? '' : undefined, onClickCapture: onClick },
-    cleaned.map((text, index) => {
+    cleaned.flatMap((text, index) => {
       const last = index === cleaned.length - 1
-      return h(Bubble, {
+      return [...(toolsBefore?.get(index) ?? []), h(Bubble, {
         key: index, text, index, roster, selfId, actions, sessionId, msgKey, mentions, nativeReport,
         fold: nativeReport ? { chars: Infinity, lines: Infinity } : fold, textInteractionSource,
         picked: msgKey ? reactions?.[index] ?? [] : [],
         live: streaming && last,
         lead: lead && last ? lead : null,
         whole: last ? whole : undefined,
-      })
+      })]
     }),
+    toolsBefore?.get(cleaned.length),
     Number.isFinite(time) ? h('div', { className: 'bt-utime', title: clockLabel(time) }, messageClock(time)) : null)
 }
 
@@ -265,7 +267,7 @@ function useFileMentions({ node, openFile, fileMentions, useTurnData }) {
   }, [fileMentions, openFile, seq, tail, turn])
 }
 
-export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, useTurnData, useRoster, useUi, useTurnSteps, useTurnContext, useTurnTriggers, useTurnUsers, useTurnSteering, actions }) {
+export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, useTurnData, useRoster, useUi, useTurnSteps, useTurnContext, useTurnTools, useTurnTriggers, useTurnUsers, useTurnSteering, actions }) {
   const roster = useRoster(value => value)
   const data = node.data
   const steps = useTurnSteps(String(data.turn))
@@ -273,11 +275,13 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
   const triggers = useTurnTriggers(String(data.turn))
   const users = useTurnUsers(String(data.turn))
   const steering = useTurnSteering(String(data.turn))
+  const hostTools = useTurnTools(String(data.turn))
   const nativeReport = actions.godbot.turnReport(roster.byId[sessionId], data, users, steering, contexts)
   const mentions = useFileMentions({ node, openFile, fileMentions, useTurnData })
   const exchange = isHiddenTurn(roster, sessionId, data.turn)
   const delegated = exchange && delegatedInOwnChat(roster, sessionId, triggers, contexts)
   const hidden = Boolean(roster.roomsById[sessionId]) || (exchange && !delegated)
+  const visibleText = text => (nativeReport ? text : stripToolCallTags(text)).trim() !== ''
   const texts = groupPart === 'reasoning' ? [] : data.blocks
     .filter(block => block.kind === 'text')
     .map(block => nativeReport ? block.text : stripToolCallTags(block.text))
@@ -285,6 +289,29 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
   const running = data.status === 'running'
   const textInteractionSource = data.status === 'settled' && data.finalNode?.messageId !== undefined
   const members = steps.length ? steps : [data]
+  const activity = stepActivity(data, visibleText)
+  const botId = roster.byId[sessionId]?.id
+  const trace = !hidden && ownExecutionChat(roster, sessionId) && activity.length > 0
+  const receipts = actions.godbot.useExecutionTools(botId, sessionId, data.turn, trace)
+  const toolsBefore = new Map()
+  if (!hidden && activity.length > 0) {
+    const hostIds = new Set(hostTools.flatMap(({ root }) => callTree(root).map(call => call.callId)))
+    const ordered = members.some(step => step.step === data.step) ? members : [...members, data].sort((a, b) => a.step - b.step)
+    const entries = ordered.flatMap(step => step.step === data.step ? activity : stepActivity(step, visibleText))
+    const slots = bindToolSlots(toolSlots(entries.map(entry => [entry.key, entry.activity])), receipts, hostIds)
+    const chatRunning = node.location?.turn?.status === 'open'
+    for (const { key, beforeText } of activity) {
+      // DSH has separate reasoning and response seats. Keep leading calls in
+      // the first seat even while the response seat appears during streaming.
+      const event = slots.get(key)
+      if (!event || (groupPart === 'reasoning' && beforeText > 0) || (groupPart === 'response' && beforeText === 0)) continue
+      const rows = toolsBefore.get(beforeText) ?? []
+      rows.push(actions.godbot.inlineExecution(key, botId, sessionId, data.turn, chatRunning, [
+        trace ? { ...event, seq: key } : { ...event, seq: key, id: undefined },
+      ]))
+      toolsBefore.set(beforeText, rows)
+    }
+  }
   const shown = !delegated && thinkingShown(roster.prefs)
   const reasoning = groupPart === 'response' || !shown ? '' : turnReasoning(steps, data)
   // A live step of the same Turn keeps the row ticking even when it sits on an
@@ -298,8 +325,7 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
   // DSH 0.2; the step that answers it shows the event line where it was read,
   // once, in the step's first cell.
   const relays = !delegated && relayPart(data, groupPart) ? relaysBefore(contexts, steps, data) : []
-  const activity = groupPart === 'response' || ownExecutionChat(roster, sessionId) ? [] : stepActivity(data)
-  if (texts.length === 0 && !reasoning && relays.length === 0 && activity.length === 0) return h(CellEmpty)
+  if (texts.length === 0 && !reasoning && relays.length === 0 && toolsBefore.size === 0) return h(CellEmpty)
   const selfId = roster.byId[sessionId]?.id ?? sessionId
   // The flat layout heads a reply with who speaks, once per Turn: in the step that opens
   // it, in that step's reasoning part when the reasoning shows there.
@@ -319,18 +345,14 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
       })
     }),
     head ? h(SpeakerHead, { bot: speaker, time: data.time }) : null,
-    activity.length ? h('div', { className: 'bt-agent-activity' }, activity.map((line, index) => h('div', { key: index, className: 'bt-agent-act', title: line }, h('span', { className: 'bt-agent-act-mark', 'aria-hidden': true }), h('span', { className: 'bt-agent-act-text' }, activityParts(line))))) : null,
     reasoning ? h(ThinkingRow, {
       text: reasoning, live: thinking !== undefined, viewKey: `${sessionId}:${data.turn}`, textInteractionSource,
       // The live clock counts the settled steps too: backing `at` by the settled
       // time makes one Elapsed show settled + running.
       ...(thinking !== undefined ? { at: typeof thinking.time === 'number' ? thinking.time - (ms ?? 0) : undefined } : { ms }),
     }) : null,
-    texts.length ? h(Bubbles, { nativeReport, texts, roster, selfId, actions, streaming: running, sessionId, msgKey: `${sessionId}:${data.turn}:${node.key ?? data.seq ?? ''}`, useUi, mentions, fold: FOLD_HUGE, time: speaker === undefined ? data.time : undefined, textInteractionSource }) : null)
+    texts.length ? h(Bubbles, { nativeReport, texts, roster, selfId, actions, streaming: running, sessionId, msgKey: `${sessionId}:${data.turn}:${node.key ?? data.seq ?? ''}`, useUi, mentions, fold: FOLD_HUGE, time: speaker === undefined ? data.time : undefined, textInteractionSource, toolsBefore }) : toolsBefore.get(0))
 }
-
-// `code` in an activity line is the command or path the agent works on.
-const activityParts = line => line.split('`').map((part, index) => (index % 2 === 1 ? h('code', { key: index }, part) : part))
 
 function ownExecutionChat(roster, sessionId) {
   return !roster.readOnly && Boolean(roster.byId[sessionId]) && !roster.roomsById[sessionId]
@@ -860,7 +882,7 @@ function NewDivider() {
   return h('div', { className: 'bt-new-sep', role: 'separator', 'aria-label': t('New messages') }, h('span', null, t('New')))
 }
 
-export function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useTurnContext, useTurnTriggers, useTurnTools, useTurnSteps, useUi, useTurnClock, actions }) {
+export function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useUi, useTurnClock, actions }) {
   const open = turnProcess === undefined || !turnProcess.foldable || turnProcess.open
   useEffect(() => {
     if (!open) turnProcess.setOpen(true)
@@ -869,13 +891,6 @@ export function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useTu
   const start = node?.location?.turn?.start?.time
   const roster = useRoster(value => value)
   const hidden = isHiddenTurn(roster, sessionId, turn)
-  const steps = useTurnSteps(String(turn))
-  const tools = useTurnTools(String(turn))
-  const triggers = useTurnTriggers(String(turn))
-  const contexts = useTurnContext(String(turn))
-  const running = node?.location?.turn?.status === 'open'
-  const trace = ownExecutionChat(roster, sessionId) && Number.isInteger(turn)
-    && (!hidden || delegatedInOwnChat(roster, sessionId, triggers, contexts))
   // Exchange turns hide their replies but still show their trigger chip, so their start
   // counts for separators too.
   useEffect(() => {
@@ -888,15 +903,7 @@ export function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useTu
     return !hidden && typeof visit?.seen === 'number' && own?.first !== undefined && own.first <= visit.seen
       && own.end !== undefined && own.end > visit.seen && own.end <= visit.entered
   })
-  if (!trace) return fresh ? h(NewDivider) : h(CellEmpty)
-  const legacy = [...steps.flatMap(stepActivity), ...tools.flatMap(({ root }) =>
-    callTree(root).flatMap(call => {
-      const name = toolName(call)
-      const status = call.kind === 'tool-result' ? (call.isError ? 'Failed' : 'Done') : 'Running'
-      return name ? [name + ' · ' + t(status)] : []
-    }))]
-  return h(Fragment, null, fresh ? h(NewDivider) : null,
-    actions.godbot.executionTurn(roster.byId[sessionId], sessionId, turn, running, legacy))
+  return fresh ? h(NewDivider) : h(CellEmpty)
 }
 
 export function Nothing() { return null }
@@ -1353,13 +1360,24 @@ export function ToolCell({ node, sessionId, useRoster, useTurnTriggers, useTurnC
     ? tree.filter(call => (toolName(call) === 'ask_user' || toolName(call) === 'show_view') && call.callId && closed?.[call.callId] !== undefined)
     : tree
   const drawn = calls.filter(call => DRAWN.has(toolName(call)) || isComputerCall(toolName(call)))
+  const trace = ownExecutionChat(roster, sessionId) && Number.isInteger(turn) && (!hidden || delegated)
+  const botId = roster.byId[sessionId]?.id
+  const receipts = actions.godbot.useExecutionTools(botId, sessionId, turn, trace)
+  const byId = new Map(receipts.map(receipt => [receipt.id, receipt]))
+  const inline = trace ? tree.map(call => ({
+    type: 'tool', id: call.callId, name: toolName(call), parentId: call === root ? undefined : root.callId,
+    status: call.kind === 'tool-result' ? (call.isError ? 'failed' : 'completed') : 'running',
+    ...byId.get(call.callId),
+  })) : []
   // The newest call still running names the work, so a program reads as the tool it is in.
   const running = root.kind === 'tool-result' ? undefined : (delegated ? tree : calls).findLast(call => call.kind !== 'tool-result')
   const note = running ? toolActivity(toolName(running), toolArgs(running).text, findBot, roster.byId[sessionId]) : null
-  // A running tool shows only as the activity row's phrase.
+  // Keep the activity row's live phrase alongside the inline receipt.
   useLiveNote(actions, sessionId, `tool:${root.callId ?? node.key}`, note)
   useShownCards(actions, sessionId, drawn.filter(call => (CARDS.has(toolName(call)) || isComputerCall(toolName(call))) && call.callId).map(call => call.callId))
-  if (drawn.length === 0) return h(CellEmpty)
+  if (drawn.length === 0 && inline.length === 0) return h(CellEmpty)
   const env = { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks: { useBrowserHolds, useBrowserTabs, useBrowserPages, useComputer } }
-  return h(Fragment, null, drawn.map((call, index) => h(Fragment, { key: call.callId ?? index }, renderCall(call, env))))
+  return h(Fragment, null,
+    inline.length > 0 && actions.godbot.inlineExecution('tools', botId, sessionId, turn, node.location?.turn?.status === 'open', inline),
+    drawn.map((call, index) => h(Fragment, { key: call.callId ?? index }, renderCall(call, env))))
 }

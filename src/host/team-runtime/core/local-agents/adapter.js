@@ -688,6 +688,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     let index = 0
     let textBuf = ''
     let textIndex = -1
+    let textKey
     let thinkBuf = ''
     let thinkIndex = -1
     // DSH keeps the last usage chunk of a request, and a CLI may report each of its
@@ -698,8 +699,11 @@ export class LocalAgentAdapter extends LlmAdapter {
       return { type: 'usage', usage }
     }
     // Open text and reasoning stay open in parallel; each closes when it has to.
-    const closeBlocks = function* () {
+    const closeText = function* () {
       if (textIndex !== -1) { yield { type: 'block-end', index: textIndex, block: { type: 'text', text: textBuf } }; textIndex = -1; textBuf = '' }
+    }
+    const closeBlocks = function* () {
+      yield* closeText()
       if (thinkIndex !== -1) { yield { type: 'block-end', index: thinkIndex, block: { type: 'reasoning', text: thinkBuf } }; thinkIndex = -1; thinkBuf = '' }
     }
     const emitCalls = (calls) => {
@@ -734,6 +738,9 @@ export class LocalAgentAdapter extends LlmAdapter {
       if (event.type !== 'permission' && event.type !== 'call' && event.turnId !== undefined && live.turnTag !== undefined && event.turnId !== live.turnTag) continue
       switch (event.type) {
         case 'text': {
+          if (!event.text) break
+          if (textKey !== event.textKey) yield* closeText()
+          textKey = event.textKey
           if (textIndex === -1) {
             if (thinkIndex !== -1) { yield { type: 'block-end', index: thinkIndex, block: { type: 'reasoning', text: thinkBuf } }; thinkIndex = -1; thinkBuf = '' }
             yield { type: 'block-start', index: index++, blockType: 'text' }
@@ -749,7 +756,7 @@ export class LocalAgentAdapter extends LlmAdapter {
           // how the chat tells it from the thought around it.
           const text = event.type === 'activity' ? `${thinkBuf === '' || thinkBuf.endsWith('\n') ? '' : '\n'}${event.text}\n` : event.text
           if (thinkIndex === -1) {
-            if (textIndex !== -1) { yield { type: 'block-end', index: textIndex, block: { type: 'text', text: textBuf } }; textIndex = -1; textBuf = '' }
+            yield* closeText()
             yield { type: 'block-start', index: index++, blockType: 'reasoning' }
             thinkIndex = index - 1
           }

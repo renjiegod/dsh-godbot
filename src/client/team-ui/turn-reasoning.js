@@ -1,3 +1,5 @@
+import { readToolActivity } from '../../host/team-runtime/shared/tool-timeline.js'
+
 // Settled and live reasoning of every loaded step in a Turn, shown once on the last
 // step that has reasoning: only steps with reasoning get a reasoning part to render
 // it. Sitting under the Turn's tool lines keeps the row directly above the reply.
@@ -41,4 +43,17 @@ const ACTIVITY = '▸ '
 const isActivity = line => line.startsWith(ACTIVITY)
 const reasoningText = step => step.blocks.filter(block => block.kind === 'reasoning').map(block => visibleReasoning(block.text)).join('\n')
 const stepReasoning = step => reasoningText(step).split('\n').filter(line => !isActivity(line)).join('\n').trim()
-export const stepActivity = step => reasoningText(step).split('\n').filter(isActivity).map(line => line.slice(ACTIVITY.length).trim()).filter(Boolean)
+
+export function stepActivity(step, visibleText) {
+  const entries = []
+  let beforeText = 0
+  for (const [index, block] of step.blocks.entries()) {
+    if (block.kind === 'text' && visibleText(block.text)) beforeText++
+    if (block.kind !== 'reasoning') continue
+    for (const [lineNumber, line] of visibleReasoning(block.text).split('\n').entries()) {
+      const activity = readToolActivity(line)
+      if (activity) entries.push({ key: `${step.step}:${index}:${lineNumber}`, beforeText, activity })
+    }
+  }
+  return entries
+}

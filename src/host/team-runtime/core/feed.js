@@ -61,6 +61,18 @@ export function install(rt) {
     if (listening()) publish(event, data)
   }
 
+  // The phone re-reads the ordered chat snapshot. Batch token bursts and the
+  // start/receipt/finish of fast tools into one notification per open chat.
+  const chatTimers = new Map()
+  rt.chatTimelineChanged = (sessionId, turn) => {
+    if (!listening() || chatTimers.has(sessionId) || !rt.chatOwners.has(sessionId) ||
+        (state.exchangeTurns[sessionId] ?? []).includes(turn)) return
+    chatTimers.set(sessionId, setTimeout(() => {
+      chatTimers.delete(sessionId)
+      if (listening()) publish('chat-timeline', { sessionId })
+    }, 300))
+  }
+
   let liveTimer
   const live = () => {
     if (!listening() || liveTimer !== undefined) return
@@ -77,6 +89,8 @@ export function install(rt) {
     if (!listening()) return
     const botId = rt.chatOwners.get(session.id)
     if (botId === undefined) return
+    if (['assistant/message', 'assistant/attempt', 'turn/end', 'tool/call', 'tool/result'].includes(event.type))
+      rt.chatTimelineChanged(session.id, event.data?.turn)
     for (const item of rt.displayItems(session.id, [event])) publish('message', { botId, sessionId: session.id, item })
     if (event.type === 'tool/call') live()
   })
@@ -85,6 +99,8 @@ export function install(rt) {
   // chat (turns.js marks it before the model is called), so its text is not streamed.
   const writing = new Map()
   ctx.on('agent/assistant-stream', ({ agent, frame }) => {
+    if (frame.type !== 'chunk' || ['text-delta', 'reasoning-delta', 'block-end'].includes(frame.chunk?.type))
+      rt.chatTimelineChanged(agent.id, frame.turn ?? rt.live?.get(agent.id)?.turn)
     if (frame.type === 'start') {
       const botId = rt.chatOwners.get(agent.id)
       if (!listening() || botId === undefined || (state.exchangeTurns[agent.id] ?? []).includes(frame.turn)) return
@@ -140,6 +156,8 @@ export function install(rt) {
     return () => {
       clearInterval(keepalive)
       clearTimeout(liveTimer)
+      for (const timer of chatTimers.values()) clearTimeout(timer)
+      chatTimers.clear()
       offSaved()
       for (const controller of clients) leave(controller)
     }

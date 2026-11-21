@@ -11,6 +11,7 @@ import { ActivityIndicator } from './activity-row.js'
 import { clockLabel, openingTurn, unseenSince } from './cells.js'
 import { GoalIsland, goalView } from './goal.js'
 import { NewSessionButton } from './new-session.js'
+import { nativeTabs } from '../native-agent-target.js'
 import { viewBottom } from './motion.js'
 import { t } from './i18n.js'
 
@@ -97,6 +98,7 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
   const doing = useActivity(map => map[owner])
   const bot = roster.byId[sessionId]
   const room = roster.roomsById[sessionId]
+  const terminalActive = actions.godbot.useNativeTerminalActive(bot, sessionId, roster, running)
   const goal = room?.goal
   // Goal panels are keyed by the group, never by its current Session: `composeGoal` and
   // `toggleGoal` store `room.id`, and a group's Session moves to a fresh part when its
@@ -182,10 +184,11 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
           search,
           actions.godbot.browserButton(bot, sessionId, roster),
           actions.godbot.executionButton(bot, sessionId, roster, actions),
-          actions.godbot.nativeButton(bot, sessionId, roster, actions))),
+          actions.godbot.nativeButton(bot, sessionId, roster, actions, terminalActive))),
     h('span', { className: 'bt-sr', role: 'status' }, memoryNotice ? t('Memory updated') : ''),
     h(NewMessagePills, { key: sessionId, sessionId, useSessions, useUi, useTurnClock }),
-    h(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions }))
+    h(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions,
+      terminalActive, openTerminal: () => actions.showDetails(sessionId, nativeTabs.terminal) }))
 }
 
 // New-message pills. "N new messages ↓" takes Back to bottom's place when

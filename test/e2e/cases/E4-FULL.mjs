@@ -30,6 +30,7 @@ async function journey(host, tickets, note) {
   const a = await ciClient(host, botGrant), g = await ciClient(host, roomGrant)
   const id = randomUUID(), title = 'delegate-' + randomUUID(), child = 'read-' + randomUUID()
   const childResult = 'worker-result-' + randomUUID(), roomResult = 'room-result-' + randomUUID(), revision = 'revised-' + randomUUID()
+  const progress = '正在提交工单'
   const gate = Promise.withResolvers()
   let called = false, wrote = false, workerEntered = false, leadReturned = false, waitForCrash
   host.model.reply = async (body, call) => {
@@ -45,7 +46,7 @@ async function journey(host, tickets, note) {
       workerEntered = true
       await gate.promise
       wrote = true
-      return [{ type: 'tool_use', name: 'mcp__tickets__write', input: { query: { id: 'full-run' } } }]
+      return [{ type: 'text', text: progress }, { type: 'tool_use', name: 'mcp__tickets__write', input: { query: { id: 'full-run' } } }]
     }
     if (wrote && latest.includes(tickets.value)) return childResult
     if (has(title) && !called) {
@@ -88,14 +89,14 @@ async function journey(host, tickets, note) {
     await botPage.locator('.bt-row-title').filter({ hasText: /^Full Worker$/u }).click()
     await botPage.locator('.bt-head .bt-pill-name').filter({ hasText: /^Full Worker$/u }).waitFor()
     const flow = botPage.locator('[data-chat-flow]')
-    const activity = flow.locator('[data-gb-delegated-activity]').last()
-    const expand = activity.getByRole('button', { name: /^执行记录(?: · \d+)?$/u })
-    await expand.waitFor()
-    if (await expand.getAttribute('aria-expanded') === 'false') await expand.click()
-    const tool = activity.locator('details[data-gb-execution-tool]')
+    const tool = flow.locator('details[data-gb-execution-tool]')
       .filter({ has: botPage.getByText('mcp__tickets__write', { exact: true }) })
     const running = tool.and(botPage.locator('[data-status="running"], [data-status="pending"]'))
     await running.waitFor()
+    const previous = flow.getByText(progress, { exact: true })
+    const runningRow = await running.elementHandle()
+    assert.equal(await previous.evaluate((node, next) => Boolean(node.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING), runningRow), true)
+    await runningRow.dispose()
     await running.locator('summary').click()
     await running.locator('pre').filter({ hasText: 'full-run' }).waitFor()
     assert.equal(await running.locator('pre').filter({ hasText: tickets.value }).count(), 0,

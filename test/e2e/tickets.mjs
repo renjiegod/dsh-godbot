@@ -13,7 +13,7 @@ const inputSchema = { type: 'object', required: ['query'], additionalProperties:
   } },
 }, properties: { query: { $ref: '#/$defs/query' } } }
 
-export async function startTickets() {
+export async function startTickets(beforeCall) {
   const calls = []
   const value = randomUUID()
   const server = createServer(async (req, res) => {
@@ -32,6 +32,7 @@ export async function startTickets() {
           inputSchema, annotations: { readOnlyHint: name === 'read' } })) }
         break
       case 'tools/call':
+        await beforeCall?.(msg.params)
         calls.push({ name: msg.params.name, input: msg.params.arguments })
         result = { content: [{ type: 'text', text: value }] }
         break
@@ -55,7 +56,7 @@ export async function installTicketPolicy(host) {
   host.patch.push({ insert: [{ id: 'ticket-policy', name: policy }] })
 }
 
-export async function ticketEnvironment(context, { approval = false, antigravity = false } = {}) {
+export async function ticketEnvironment(context, { approval = false, antigravity = false, beforeCall } = {}) {
   const host = await context.makeHost()
   if (approval) await installTicketPolicy(host)
   const fixtures = { claude: 'claude', codex: 'codex', ...(antigravity ? { agy: 'acp' } : {}) }
@@ -78,7 +79,7 @@ else if (${JSON.stringify(binary)} === 'claude' && !process.argv.includes('--pri
   await host.install(context.candidate)
   await host.start()
   await openFullTeam(host)
-  const tickets = await startTickets()
+  const tickets = await startTickets(beforeCall)
   try {
     const configured = await host.bot('connector-add', { name: 'tickets', url: tickets.url })
     assert.equal(configured.connectors.find(row => row.id === 'tickets')?.state, 'ready')

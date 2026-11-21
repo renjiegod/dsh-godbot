@@ -17833,6 +17833,7 @@ body[data-bt-goal] [class*="_scroll"]:has(> [class*="_column"]){padding-top:calc
 [data-chat-running]{display:block!important;width:100%;min-height:0!important;margin:0!important;padding:0!important}
 [data-chat-running]>span:not([role=status]){display:none!important}
 [data-chat-flow]>.bt-typing{margin-top:var(--dsh-chat-flow-gap,12px)!important}
+.bt-terminal-wait{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:8px;color:var(--bt-ink-2);font-size:13px}
 .bt-typing{display:flex;align-items:center;gap:12px;height:36px;min-width:0;padding-inline-start:8px;transform-origin:0 50%;animation:bt-typing-in ${SPRING_TAP.duration}ms ${SPRING_TAP.easing} backwards}
 .bt-typing[data-exiting]{animation:bt-typing-out .14s cubic-bezier(.22,1,.36,1) forwards}
 .bt-typing>.bt-mark,.bt-typing>.bt-cluster{flex-shrink:0}
@@ -18063,11 +18064,6 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-agent-session.is-current{background:var(--bt-hover);cursor:default;font-weight:600}
 .bt-agent-session-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .bt-agent-session-meta{flex:0 0 auto;font-size:12px;font-weight:400;color:var(--bt-ink-3,var(--bt-ink-2))}
-.bt-agent-activity{display:flex;flex-direction:column;gap:2px;margin:4px 0 6px;max-width:100%}
-.bt-agent-act{display:flex;align-items:center;gap:8px;min-height:22px;font-size:12.5px;line-height:18px;color:var(--bt-ink-2);min-width:0}
-.bt-agent-act-mark{flex:0 0 6px;width:6px;height:6px;border-radius:50%;background:var(--bt-ink-3,currentColor);opacity:.55}
-.bt-agent-act-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.bt-agent-act code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bt-hover);border-radius:4px;padding:1px 5px;color:var(--bt-ink-1,inherit)}
 .bt-part-line{display:flex;align-items:center;gap:10px;margin:14px 0 8px;font-size:11.5px;line-height:14px;font-weight:500;color:var(--bt-ink-2)}
 .bt-part-line::before,.bt-part-line::after{content:"";flex:1;height:1px;background:var(--bt-line)}
 .bt-part-line[data-fresh]{color:var(--bt-accent)}
@@ -27392,6 +27388,93 @@ function previousPart(bot, sessionId, source) {
   return openable ? from : void 0;
 }
 
+// src/host/team-runtime/shared/tool-timeline.js
+var activityPrefix = "▸ ";
+var referencePrefix = "	tool=";
+var activityStatuses = /* @__PURE__ */ new Map([
+  ["调用", "running"],
+  ["完成", "completed"],
+  ["失败", "failed"],
+  ["已拒绝", "declined"],
+  ["已中断", "interrupted"]
+]);
+function readToolActivity(line) {
+  if (!line.startsWith(activityPrefix)) return;
+  const [label, reference] = line.slice(activityPrefix.length).split(referencePrefix, 2);
+  const parts = label.trim().split(" · ");
+  const status = activityStatuses.get(parts.at(-1));
+  if (status) parts.pop();
+  const [name, ...target] = parts;
+  if (!name) return;
+  let id;
+  if (reference) {
+    try {
+      const value = JSON.parse(reference);
+      if (typeof value === "string" && value.length > 0 && value.length <= 400) id = value;
+    } catch {
+    }
+  }
+  return { name, text: target.join(" · ") || void 0, status, id };
+}
+function toolSlots(entries2) {
+  const slots = /* @__PURE__ */ new Map();
+  const seen = /* @__PURE__ */ new Set();
+  const pending = /* @__PURE__ */ new Map();
+  for (const [key, activity2] of entries2) {
+    const { id, name, text, status } = activity2;
+    if (id) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+    } else {
+      const label = JSON.stringify([name, text]);
+      if (status === "running") {
+        const open = pending.get(label) ?? { starts: [], ambiguous: false };
+        if (open.starts.length) open.ambiguous = true;
+        open.starts.push(key);
+        pending.set(label, open);
+      } else if (status && pending.has(label)) {
+        const open = pending.get(label);
+        const start = open.starts.shift();
+        if (!open.ambiguous) slots.get(start).status = status;
+        if (!open.starts.length) pending.delete(label);
+        continue;
+      }
+    }
+    slots.set(key, { ...activity2 });
+  }
+  return slots;
+}
+var bridgeAlias = /^mcp(?:__godbot__|_godbot_)/u;
+function mirroredTools(tools, hostIds) {
+  const host = Map.groupBy(tools.filter((tool) => hostIds.has(tool.id) && tool.id.startsWith("godbot-")), (tool) => tool.name);
+  const aliases2 = tools.filter((tool) => !hostIds.has(tool.id) && bridgeAlias.test(tool.name));
+  const native = Map.groupBy(aliases2, (tool) => tool.name.replace(bridgeAlias, ""));
+  const mirrors = /* @__PURE__ */ new Set();
+  for (const [name, calls] of native) {
+    const hostCalls = host.get(name);
+    if (hostCalls?.length === calls.length && calls.every((call3, index) => call3.status === hostCalls[index].status))
+      for (const call3 of calls) mirrors.add(call3.id);
+  }
+  return mirrors;
+}
+function bindToolSlots(slots, tools, hostIds = /* @__PURE__ */ new Set(), mirrors = mirroredTools(tools, hostIds)) {
+  const referenced = new Set(Array.from(slots.values(), ({ id }) => id).filter(Boolean));
+  const byId = new Map(tools.map((tool) => [tool.id, tool]));
+  const names = Map.groupBy(Array.from(slots.values()).filter((slot) => !slot.id), (slot) => slot.name);
+  const candidates = Map.groupBy(tools.filter((tool) => !hostIds.has(tool.id) && !referenced.has(tool.id)), (tool) => tool.name);
+  const matched = /* @__PURE__ */ new Map();
+  for (const [name, sameName] of names) {
+    const matches2 = candidates.get(name);
+    if (matches2?.length === sameName.length) sameName.forEach((slot, index) => matched.set(slot, matches2[index].id));
+  }
+  const bound2 = /* @__PURE__ */ new Map();
+  for (const [key, slot] of slots) {
+    const id = slot.id ?? matched.get(slot);
+    if (!mirrors.has(id)) bound2.set(key, { ...slot, ...byId.get(id), type: "tool" });
+  }
+  return bound2;
+}
+
 // src/client/team-ui/turn-reasoning.js
 function turnReasoning(steps, current2) {
   const members = steps.length ? steps : [current2];
@@ -27417,7 +27500,19 @@ var ACTIVITY = "▸ ";
 var isActivity = (line) => line.startsWith(ACTIVITY);
 var reasoningText = (step) => step.blocks.filter((block) => block.kind === "reasoning").map((block) => visibleReasoning(block.text)).join("\n");
 var stepReasoning = (step) => reasoningText(step).split("\n").filter((line) => !isActivity(line)).join("\n").trim();
-var stepActivity = (step) => reasoningText(step).split("\n").filter(isActivity).map((line) => line.slice(ACTIVITY.length).trim()).filter(Boolean);
+function stepActivity(step, visibleText) {
+  const entries2 = [];
+  let beforeText = 0;
+  for (const [index, block] of step.blocks.entries()) {
+    if (block.kind === "text" && visibleText(block.text)) beforeText++;
+    if (block.kind !== "reasoning") continue;
+    for (const [lineNumber, line] of visibleReasoning(block.text).split("\n").entries()) {
+      const activity2 = readToolActivity(line);
+      if (activity2) entries2.push({ key: `${step.step}:${index}:${lineNumber}`, beforeText, activity: activity2 });
+    }
+  }
+  return entries2;
+}
 
 // src/host/team-runtime/shared/group-replies.js
 function relayRange(text) {
@@ -28436,7 +28531,7 @@ var USER_MESSAGE_CSS = `
 `;
 
 // src/client/team-ui/cells.js
-function Bubbles({ nativeReport, texts: texts2, roster, selfId, actions, streaming, sessionId, msgKey, useUi, lead, mentions, fold = FOLD_AT, whole, time, textInteractionSource }) {
+function Bubbles({ nativeReport, texts: texts2, roster, selfId, actions, streaming, sessionId, msgKey, useUi, lead, mentions, fold = FOLD_AT, whole, time, textInteractionSource, toolsBefore }) {
   const onClick = (event) => {
     const target = mentionTarget(event);
     if (target === null) return;
@@ -28444,14 +28539,14 @@ function Bubbles({ nativeReport, texts: texts2, roster, selfId, actions, streami
     event.stopPropagation();
     actions.openSession(target);
   };
-  const cleaned = nativeReport ? [texts2.join("\n\n")] : texts2.map(stripToolCallTags).filter((text) => text.trim() !== "");
+  const cleaned = nativeReport ? toolsBefore?.size ? texts2 : [texts2.join("\n\n")] : texts2.map(stripToolCallTags).filter((text) => text.trim() !== "");
   const reactions = useUi ? useUi((state) => msgKey ? state.reactions?.[msgKey] ?? null : null) : null;
   return (0, import_react35.createElement)(
     "div",
     { className: "bt-astack", "data-lead": lead ? "" : void 0, onClickCapture: onClick },
-    cleaned.map((text, index) => {
+    cleaned.flatMap((text, index) => {
       const last = index === cleaned.length - 1;
-      return (0, import_react35.createElement)(Bubble, {
+      return [...toolsBefore?.get(index) ?? [], (0, import_react35.createElement)(Bubble, {
         key: index,
         text,
         index,
@@ -28468,8 +28563,9 @@ function Bubbles({ nativeReport, texts: texts2, roster, selfId, actions, streami
         live: streaming && last,
         lead: lead && last ? lead : null,
         whole: last ? whole : void 0
-      });
+      })];
     }),
+    toolsBefore?.get(cleaned.length),
     Number.isFinite(time) ? (0, import_react35.createElement)("div", { className: "bt-utime", title: clockLabel(time) }, messageClock(time)) : null
   );
 }
@@ -28696,7 +28792,7 @@ function useFileMentions({ node, openFile, fileMentions, useTurnData }) {
     return tail?.closing?.finalNode.seq === seq ? fileMentions({ turn, seq, openFile }) : void 0;
   }, [fileMentions, openFile, seq, tail, turn]);
 }
-function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, useTurnData, useRoster, useUi, useTurnSteps, useTurnContext, useTurnTriggers, useTurnUsers, useTurnSteering, actions }) {
+function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, useTurnData, useRoster, useUi, useTurnSteps, useTurnContext, useTurnTools, useTurnTriggers, useTurnUsers, useTurnSteering, actions }) {
   const roster = useRoster((value) => value);
   const data = node.data;
   const steps = useTurnSteps(String(data.turn));
@@ -28704,15 +28800,38 @@ function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, use
   const triggers = useTurnTriggers(String(data.turn));
   const users = useTurnUsers(String(data.turn));
   const steering = useTurnSteering(String(data.turn));
+  const hostTools = useTurnTools(String(data.turn));
   const nativeReport = actions.godbot.turnReport(roster.byId[sessionId], data, users, steering, contexts);
   const mentions = useFileMentions({ node, openFile, fileMentions, useTurnData });
   const exchange = isHiddenTurn(roster, sessionId, data.turn);
   const delegated = exchange && delegatedInOwnChat(roster, sessionId, triggers, contexts);
   const hidden = Boolean(roster.roomsById[sessionId]) || exchange && !delegated;
+  const visibleText = (text) => (nativeReport ? text : stripToolCallTags(text)).trim() !== "";
   const texts2 = groupPart === "reasoning" ? [] : data.blocks.filter((block) => block.kind === "text").map((block) => nativeReport ? block.text : stripToolCallTags(block.text)).filter((text) => text.trim() !== "");
   const running = data.status === "running";
   const textInteractionSource = data.status === "settled" && data.finalNode?.messageId !== void 0;
   const members = steps.length ? steps : [data];
+  const activity2 = stepActivity(data, visibleText);
+  const botId = roster.byId[sessionId]?.id;
+  const trace = !hidden && ownExecutionChat(roster, sessionId) && activity2.length > 0;
+  const receipts = actions.godbot.useExecutionTools(botId, sessionId, data.turn, trace);
+  const toolsBefore = /* @__PURE__ */ new Map();
+  if (!hidden && activity2.length > 0) {
+    const hostIds = new Set(hostTools.flatMap(({ root }) => callTree(root).map((call3) => call3.callId)));
+    const ordered = members.some((step) => step.step === data.step) ? members : [...members, data].sort((a, b2) => a.step - b2.step);
+    const entries2 = ordered.flatMap((step) => step.step === data.step ? activity2 : stepActivity(step, visibleText));
+    const slots = bindToolSlots(toolSlots(entries2.map((entry) => [entry.key, entry.activity])), receipts, hostIds);
+    const chatRunning = node.location?.turn?.status === "open";
+    for (const { key, beforeText } of activity2) {
+      const event = slots.get(key);
+      if (!event || groupPart === "reasoning" && beforeText > 0 || groupPart === "response" && beforeText === 0) continue;
+      const rows2 = toolsBefore.get(beforeText) ?? [];
+      rows2.push(actions.godbot.inlineExecution(key, botId, sessionId, data.turn, chatRunning, [
+        trace ? { ...event, seq: key } : { ...event, seq: key, id: void 0 }
+      ]));
+      toolsBefore.set(beforeText, rows2);
+    }
+  }
   const shown = !delegated && thinkingShown(roster.prefs);
   const reasoning = groupPart === "response" || !shown ? "" : turnReasoning(steps, data);
   const thinking = groupPart === "response" || !shown ? void 0 : thinkingStep(members);
@@ -28720,8 +28839,7 @@ function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, use
   useLiveNote(actions, sessionId, `text:${node.key ?? data.seq}`, !hidden && running && texts2.length > 0 ? { text: true } : null);
   if (hidden) return (0, import_react35.createElement)(CellEmpty);
   const relays = !delegated && relayPart(data, groupPart) ? relaysBefore(contexts, steps, data) : [];
-  const activity2 = groupPart === "response" || ownExecutionChat(roster, sessionId) ? [] : stepActivity(data);
-  if (texts2.length === 0 && !reasoning && relays.length === 0 && activity2.length === 0) return (0, import_react35.createElement)(CellEmpty);
+  if (texts2.length === 0 && !reasoning && relays.length === 0 && toolsBefore.size === 0) return (0, import_react35.createElement)(CellEmpty);
   const selfId = roster.byId[sessionId]?.id ?? sessionId;
   const speaker = layoutOf(roster.prefs) === "flat" ? roster.byId[sessionId] : void 0;
   const head = speaker !== void 0 && opensReply(steps, data, shown) && (reasoning !== "" || texts2.length > 0 && !(groupPart === "response" && shown && turnReasoning(steps, data) !== ""));
@@ -28742,7 +28860,6 @@ function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, use
       });
     }),
     head ? (0, import_react35.createElement)(SpeakerHead, { bot: speaker, time: data.time }) : null,
-    activity2.length ? (0, import_react35.createElement)("div", { className: "bt-agent-activity" }, activity2.map((line, index) => (0, import_react35.createElement)("div", { key: index, className: "bt-agent-act", title: line }, (0, import_react35.createElement)("span", { className: "bt-agent-act-mark", "aria-hidden": true }), (0, import_react35.createElement)("span", { className: "bt-agent-act-text" }, activityParts(line))))) : null,
     reasoning ? (0, import_react35.createElement)(ThinkingRow, {
       text: reasoning,
       live: thinking !== void 0,
@@ -28752,10 +28869,9 @@ function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, use
       // time makes one Elapsed show settled + running.
       ...thinking !== void 0 ? { at: typeof thinking.time === "number" ? thinking.time - (ms2 ?? 0) : void 0 } : { ms: ms2 }
     }) : null,
-    texts2.length ? (0, import_react35.createElement)(Bubbles, { nativeReport, texts: texts2, roster, selfId, actions, streaming: running, sessionId, msgKey: `${sessionId}:${data.turn}:${node.key ?? data.seq ?? ""}`, useUi, mentions, fold: FOLD_HUGE, time: speaker === void 0 ? data.time : void 0, textInteractionSource }) : null
+    texts2.length ? (0, import_react35.createElement)(Bubbles, { nativeReport, texts: texts2, roster, selfId, actions, streaming: running, sessionId, msgKey: `${sessionId}:${data.turn}:${node.key ?? data.seq ?? ""}`, useUi, mentions, fold: FOLD_HUGE, time: speaker === void 0 ? data.time : void 0, textInteractionSource, toolsBefore }) : toolsBefore.get(0)
   );
 }
-var activityParts = (line) => line.split("`").map((part, index) => index % 2 === 1 ? (0, import_react35.createElement)("code", { key: index }, part) : part);
 function ownExecutionChat(roster, sessionId) {
   return !roster.readOnly && Boolean(roster.byId[sessionId]) && !roster.roomsById[sessionId];
 }
@@ -29270,7 +29386,7 @@ function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnClock, us
 function NewDivider() {
   return (0, import_react35.createElement)("div", { className: "bt-new-sep", role: "separator", "aria-label": t("New messages") }, (0, import_react35.createElement)("span", null, t("New")));
 }
-function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useTurnContext, useTurnTriggers, useTurnTools, useTurnSteps, useUi, useTurnClock, actions }) {
+function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useUi, useTurnClock, actions }) {
   const open = turnProcess === void 0 || !turnProcess.foldable || turnProcess.open;
   (0, import_react35.useEffect)(() => {
     if (!open) turnProcess.setOpen(true);
@@ -29279,12 +29395,6 @@ function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useTurnConte
   const start = node?.location?.turn?.start?.time;
   const roster = useRoster((value) => value);
   const hidden = isHiddenTurn(roster, sessionId, turn);
-  const steps = useTurnSteps(String(turn));
-  const tools = useTurnTools(String(turn));
-  const triggers = useTurnTriggers(String(turn));
-  const contexts = useTurnContext(String(turn));
-  const running = node?.location?.turn?.status === "open";
-  const trace = ownExecutionChat(roster, sessionId) && Number.isInteger(turn) && (!hidden || delegatedInOwnChat(roster, sessionId, triggers, contexts));
   (0, import_react35.useEffect)(() => {
     actions.noteTurnTime(sessionId, turn, "first", start);
   }, [sessionId, turn, start]);
@@ -29293,18 +29403,7 @@ function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useTurnConte
     const own = state[sessionId]?.[turn];
     return !hidden && typeof visit?.seen === "number" && own?.first !== void 0 && own.first <= visit.seen && own.end !== void 0 && own.end > visit.seen && own.end <= visit.entered;
   });
-  if (!trace) return fresh ? (0, import_react35.createElement)(NewDivider) : (0, import_react35.createElement)(CellEmpty);
-  const legacy = [...steps.flatMap(stepActivity), ...tools.flatMap(({ root }) => callTree(root).flatMap((call3) => {
-    const name = toolName(call3);
-    const status = call3.kind === "tool-result" ? call3.isError ? "Failed" : "Done" : "Running";
-    return name ? [name + " · " + t(status)] : [];
-  }))];
-  return (0, import_react35.createElement)(
-    import_react35.Fragment,
-    null,
-    fresh ? (0, import_react35.createElement)(NewDivider) : null,
-    actions.godbot.executionTurn(roster.byId[sessionId], sessionId, turn, running, legacy)
-  );
+  return fresh ? (0, import_react35.createElement)(NewDivider) : (0, import_react35.createElement)(CellEmpty);
 }
 function Nothing() {
   return null;
@@ -29779,13 +29878,30 @@ function ToolCell({ node, sessionId, useRoster, useTurnTriggers, useTurnContext,
   const tree = callTree(root);
   const calls = hidden ? tree.filter((call3) => (toolName(call3) === "ask_user" || toolName(call3) === "show_view") && call3.callId && closed?.[call3.callId] !== void 0) : tree;
   const drawn = calls.filter((call3) => DRAWN.has(toolName(call3)) || isComputerCall(toolName(call3)));
+  const trace = ownExecutionChat(roster, sessionId) && Number.isInteger(turn) && (!hidden || delegated);
+  const botId = roster.byId[sessionId]?.id;
+  const receipts = actions.godbot.useExecutionTools(botId, sessionId, turn, trace);
+  const byId = new Map(receipts.map((receipt) => [receipt.id, receipt]));
+  const inline = trace ? tree.map((call3) => ({
+    type: "tool",
+    id: call3.callId,
+    name: toolName(call3),
+    parentId: call3 === root ? void 0 : root.callId,
+    status: call3.kind === "tool-result" ? call3.isError ? "failed" : "completed" : "running",
+    ...byId.get(call3.callId)
+  })) : [];
   const running = root.kind === "tool-result" ? void 0 : (delegated ? tree : calls).findLast((call3) => call3.kind !== "tool-result");
   const note = running ? toolActivity(toolName(running), toolArgs(running).text, findBot, roster.byId[sessionId]) : null;
   useLiveNote(actions, sessionId, `tool:${root.callId ?? node.key}`, note);
   useShownCards(actions, sessionId, drawn.filter((call3) => (CARDS.has(toolName(call3)) || isComputerCall(toolName(call3))) && call3.callId).map((call3) => call3.callId));
-  if (drawn.length === 0) return (0, import_react35.createElement)(CellEmpty);
+  if (drawn.length === 0 && inline.length === 0) return (0, import_react35.createElement)(CellEmpty);
   const env = { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks: { useBrowserHolds, useBrowserTabs, useBrowserPages, useComputer } };
-  return (0, import_react35.createElement)(import_react35.Fragment, null, drawn.map((call3, index) => (0, import_react35.createElement)(import_react35.Fragment, { key: call3.callId ?? index }, renderCall(call3, env))));
+  return (0, import_react35.createElement)(
+    import_react35.Fragment,
+    null,
+    inline.length > 0 && actions.godbot.inlineExecution("tools", botId, sessionId, turn, node.location?.turn?.status === "open", inline),
+    drawn.map((call3, index) => (0, import_react35.createElement)(import_react35.Fragment, { key: call3.callId ?? index }, renderCall(call3, env)))
+  );
 }
 
 // src/client/team-ui/activity-row.js
@@ -29881,7 +29997,7 @@ function useRowEntrances(replacing) {
     };
   }, []);
 }
-function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, useSession, useWork, actions }) {
+function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, useSession, useWork, actions, terminalActive, openTerminal }) {
   const roster = useRoster((value) => value);
   const running = useSessionStatus((map) => map.get(sessionId)?.running === true);
   const turnAt = useWork?.((work) => work.turns?.[sessionId]);
@@ -29901,7 +30017,8 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
   const streaming = entries2.some((entry) => entry.text);
   const tools = entries2.filter((entry) => !entry.text).sort((a, b2) => a.at - b2.at);
   const relaying = tools.some((entry) => entry.relay);
-  const visible = moveAt !== 0 || rowVisible({ running, streaming, tools, relaying, bot, room: room2 });
+  const waitingForTerminal = running && terminalActive;
+  const visible = !waitingForTerminal && (moveAt !== 0 || rowVisible({ running, streaming, tools, relaying, bot, room: room2 }));
   const tool = tools.at(-1);
   const inputRef = (0, import_react36.useRef)(0);
   const inputAt = Math.max(inputRef.current, pendingInput);
@@ -29955,6 +30072,12 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
   }, [running, sessionId]);
   useRowEntrances(() => leaving.current || Date.now() - endedAt.current < 300);
   const host = useRunningHost(running || moveAt !== 0);
+  if (host && waitingForTerminal) return (0, import_react_dom5.createPortal)((0, import_react36.createElement)(
+    "div",
+    { className: "bt-terminal-wait" },
+    (0, import_react36.createElement)("span", { role: "status" }, "消息正在等待。将原生终端交还聊天后继续执行。"),
+    (0, import_react36.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: openTerminal }, "打开终端并交还")
+  ), host);
   if (!host || phase === null || !shown) return null;
   return (0, import_react_dom5.createPortal)((0, import_react36.createElement)(
     "div",
@@ -29980,7 +30103,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.11";
+var version = "0.2.0-rc.12";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -38641,6 +38764,24 @@ function NewSessionButton({ bot, roster, actions, sessionId, variant = "bar" }) 
   );
 }
 
+// src/client/native-agent-target.js
+var agents = {
+  claude: "local-claude-code",
+  codex: "local-codex-cli",
+  antigravity: "local-antigravity"
+};
+function botNativeTarget(bot, sessionId, roster) {
+  if (!bot || roster.readOnly || (bot.sessionId ?? bot.id) !== sessionId) return null;
+  const agent = bot.accountProfileId ? agents[bot.sandboxKind] : (bot.model ?? bot.appliedModel)?.split("/")[0];
+  if (!Object.values(agents).includes(agent)) return null;
+  return { botId: bot.id, sessionId, agent, label: bot.name };
+}
+var nativeTabs = { terminal: "godbot-terminal", conversation: "godbot-native-chat" };
+function nativeMode(tab) {
+  if (tab === nativeTabs.terminal) return "terminal";
+  if (tab === nativeTabs.conversation) return "conversation";
+}
+
 // src/client/team-ui/header.js
 var GoArrow = () => (0, import_react58.createElement)("svg", { width: 14, height: 14, viewBox: "-12 -12 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2.2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true }, (0, import_react58.createElement)("path", { d: "M-7 0H7M2 -5L7 0L2 5" }));
 var MEMORY_NOTICE_MS = 3200;
@@ -38722,6 +38863,7 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
   const doing = useActivity((map) => map[owner]);
   const bot = roster.byId[sessionId];
   const room2 = roster.roomsById[sessionId];
+  const terminalActive = actions.godbot.useNativeTerminalActive(bot, sessionId, roster, running);
   const goal = room2?.goal;
   const goalCompose = useUi((state) => room2 !== void 0 && state.goalCompose === room2.id);
   const goalOpen = useUi((state) => room2 !== void 0 && state.goalOpen === room2.id);
@@ -38810,12 +38952,23 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
         search,
         actions.godbot.browserButton(bot, sessionId, roster),
         actions.godbot.executionButton(bot, sessionId, roster, actions),
-        actions.godbot.nativeButton(bot, sessionId, roster, actions)
+        actions.godbot.nativeButton(bot, sessionId, roster, actions, terminalActive)
       )
     ),
     (0, import_react58.createElement)("span", { className: "bt-sr", role: "status" }, memoryNotice ? t("Memory updated") : ""),
     (0, import_react58.createElement)(NewMessagePills, { key: sessionId, sessionId, useSessions, useUi, useTurnClock }),
-    (0, import_react58.createElement)(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions })
+    (0, import_react58.createElement)(ActivityIndicator, {
+      key: `activity:${sessionId}`,
+      sessionId,
+      useRoster,
+      useSessionStatus,
+      useSession,
+      useLive,
+      useWork,
+      actions,
+      terminalActive,
+      openTerminal: () => actions.showDetails(sessionId, nativeTabs.terminal)
+    })
   );
 }
 function useTranscriptView() {
@@ -42270,24 +42423,6 @@ var TASK_CSS = `
 .bt-task-write>.bt-send{flex:none;margin:0}
 .bt-task-history .bt-task{opacity:.85}
 `;
-
-// src/client/native-agent-target.js
-var agents = {
-  claude: "local-claude-code",
-  codex: "local-codex-cli",
-  antigravity: "local-antigravity"
-};
-function botNativeTarget(bot, sessionId, roster) {
-  if (!bot || roster.readOnly || (bot.sessionId ?? bot.id) !== sessionId) return null;
-  const agent = bot.accountProfileId ? agents[bot.sandboxKind] : (bot.model ?? bot.appliedModel)?.split("/")[0];
-  if (!Object.values(agents).includes(agent)) return null;
-  return { botId: bot.id, sessionId, agent, label: bot.name };
-}
-var nativeTabs = { terminal: "godbot-terminal", conversation: "godbot-native-chat" };
-function nativeMode(tab) {
-  if (tab === nativeTabs.terminal) return "terminal";
-  if (tab === nativeTabs.conversation) return "conversation";
-}
 
 // src/client/team-ui/details-drawer.js
 function transcriptOf(list, id, name, hiddenTurns = []) {
@@ -60035,7 +60170,7 @@ var labels3 = {
 };
 var markdownLabels2 = { code: { copyLabel: "复制", copiedLabel: "已复制" }, footnotes: "脚注" };
 var executionStyle = `
-.gb-execution-turn { max-width: 100%; margin: 6px 0; color: var(--bt-ink); font-size: 13px; line-height: 1.45; }
+.gb-execution-inline { align-self: stretch; min-width: 0; margin: 4px 0; color: var(--bt-ink); font-size: 13px; line-height: 1.45; }
 .gb-execution-list { display: grid; gap: 5px; min-width: 0; }
 .gb-execution-header, .gb-execution-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .gb-execution-header { justify-content: space-between; }
@@ -60045,9 +60180,10 @@ var executionStyle = `
 .gb-execution-button:focus-visible, .gb-execution-tool > summary:focus-visible, .gb-execution-select:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }
 .gb-execution-tool { min-width: 0; border: 1px solid var(--bt-line); border-radius: 8px; }
 .gb-execution-tool[data-child] { margin-inline-start: 12px; }
-.gb-execution-tool > summary { padding: 5px 8px; cursor: pointer; }
-.gb-execution-tool > summary > span { margin-inline-end: 8px; overflow-wrap: anywhere; }
-.gb-execution-tool > summary > span:last-child { margin-inline-end: 0; }
+.gb-execution-tool > summary, .gb-execution-legacy { padding: 5px 8px; }
+.gb-execution-tool > summary { cursor: pointer; }
+:is(.gb-execution-tool > summary, .gb-execution-legacy) > span { margin-inline-end: 8px; overflow-wrap: anywhere; }
+:is(.gb-execution-tool > summary, .gb-execution-legacy) > span:last-child { margin-inline-end: 0; }
 .gb-execution-state, .gb-execution-meta, .gb-execution-note { color: var(--bt-ink-2); font-size: 12px; }
 .gb-execution-tool[data-status=failed] .gb-execution-state, .gb-execution-error { color: var(--bt-danger); }
 .gb-execution-body { display: grid; gap: 8px; padding: 6px 8px 9px; border-top: 1px solid var(--bt-line); min-width: 0; }
@@ -60106,6 +60242,53 @@ function useExecution(client, botId, sessionId, { turn, toolId, expanded = true,
     };
   }, [client, botId, sessionId, turn, toolId, expanded, running, live, refresh]);
   return { ...snapshot, loading, reload: () => setRefresh((count) => count + 1) };
+}
+var emptyTools = [];
+var emptyToolStore = { read: () => emptyTools, subscribe: () => () => {
+} };
+var toolStores = /* @__PURE__ */ new WeakMap();
+function useExecutionTools(client, botId, sessionId, turn, enabled) {
+  const key = JSON.stringify([botId, sessionId, turn]);
+  const store = (0, import_react91.useMemo)(() => {
+    if (!enabled) return emptyToolStore;
+    let turns = toolStores.get(client);
+    if (!turns) toolStores.set(client, turns = /* @__PURE__ */ new Map());
+    if (turns.has(key)) return turns.get(key);
+    let events = emptyTools, timer, loading = false, failures = 0;
+    const listeners3 = /* @__PURE__ */ new Set();
+    const load = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        const data = await client.dispatch({ action: "execution.history", botId, sessionId, turn, onlyTools: true });
+        failures = 0;
+        events = data.events ?? emptyTools;
+        for (const notify of listeners3) notify();
+        if (data.running && listeners3.size) timer = setTimeout(load, 700);
+      } catch {
+        if (++failures < 3 && listeners3.size) timer = setTimeout(load, 1400);
+      } finally {
+        loading = false;
+      }
+    };
+    const view = {
+      read: () => events,
+      subscribe(notify) {
+        listeners3.add(notify);
+        turns.set(key, view);
+        if (listeners3.size === 1) void load();
+        return () => {
+          listeners3.delete(notify);
+          if (listeners3.size) return;
+          clearTimeout(timer);
+          if (turns.get(key) === view) turns.delete(key);
+        };
+      }
+    };
+    turns.set(key, view);
+    return view;
+  }, [client, key, enabled]);
+  return (0, import_react91.useSyncExternalStore)(store.subscribe, store.read);
 }
 function press(text, onClick, props) {
   return (0, import_react91.createElement)("button", { type: "button", className: "gb-execution-button", onClick, ...props }, text);
@@ -60183,7 +60366,7 @@ function ToolRow({ event, target, running }) {
   const [expanded, setExpanded] = (0, import_react91.useState)(false);
   const { client, botId, sessionId, turn } = target;
   const live = running && (event.status === "running" || event.status === "pending");
-  const fetchable = event.detailAvailable !== false && typeof event.id === "string" && event.id !== "";
+  const fetchable = typeof event.id === "string" && event.id !== "";
   const info = useExecution(client, botId, sessionId, {
     turn,
     toolId: event.id,
@@ -60202,6 +60385,13 @@ function ToolRow({ event, target, running }) {
   ].filter(Boolean);
   const output = detail.output ?? detail.outputDelta;
   const changes = detail.changes != null || /^(?:Edit|MultiEdit|Write|WriteFile|ApplyPatch|apply_patch|FileChange)$/iu.test(detail.name ?? "");
+  const heading2 = [
+    (0, import_react91.createElement)("span", { key: "name" }, detail.name || event.id || "工具"),
+    typeof toolTarget === "string" && (0, import_react91.createElement)("span", { key: "target", className: "gb-execution-meta" }, toolTarget),
+    (0, import_react91.createElement)("span", { key: "status", className: "gb-execution-state" }, statusLabel),
+    outcome.length > 0 && (0, import_react91.createElement)("span", { key: "outcome", className: "gb-execution-meta" }, outcome.join(" · "))
+  ];
+  if (!fetchable) return (0, import_react91.createElement)("div", { className: "gb-execution-tool gb-execution-legacy", "data-status": status }, heading2);
   return (0, import_react91.createElement)(
     "details",
     {
@@ -60212,14 +60402,7 @@ function ToolRow({ event, target, running }) {
       "data-child": detail.parentId != null ? "" : void 0,
       onToggle: (e) => setExpanded(e.currentTarget.open)
     },
-    (0, import_react91.createElement)(
-      "summary",
-      null,
-      (0, import_react91.createElement)("span", null, detail.name || event.id || "工具"),
-      typeof toolTarget === "string" && (0, import_react91.createElement)("span", { className: "gb-execution-meta" }, toolTarget),
-      (0, import_react91.createElement)("span", { className: "gb-execution-state" }, statusLabel),
-      outcome.length > 0 && (0, import_react91.createElement)("span", { className: "gb-execution-meta" }, outcome.join(" · "))
-    ),
+    (0, import_react91.createElement)("summary", null, heading2),
     expanded && (0, import_react91.createElement)(
       "div",
       { className: "gb-execution-body" },
@@ -60259,45 +60442,8 @@ function Rows({ events, target, running, transcript = false }) {
     return null;
   }));
 }
-function TurnExecution({ client, botId, sessionId, turn, running, legacy }) {
-  const [choice, setExpanded] = (0, import_react91.useState)(null);
-  const expanded = choice ?? running;
-  (0, import_react91.useEffect)(() => {
-    if (running) setExpanded((was) => was ?? true);
-  }, [running]);
-  const viewId = (0, import_react91.useId)();
-  const view = useExecution(client, botId, sessionId, { turn, expanded, running, live: true });
-  const events = view.data?.events ?? [];
-  const tools = events.filter((event) => event.type === "tool");
-  if (!running && !legacy.length && !tools.length && !expanded) return null;
-  if (!running && !legacy.length && !tools.length && view.data) return null;
-  const legacyOnly = tools.length === 0 && legacy.length > 0;
-  return (0, import_react91.createElement)(
-    "section",
-    { className: "gb-execution-turn", "data-gb-delegated-activity": "", "aria-label": "执行记录" },
-    (0, import_react91.createElement)(
-      "div",
-      { className: "gb-execution-controls" },
-      press(
-        "执行记录" + (tools.length ? " · " + tools.length : ""),
-        () => setExpanded(!expanded),
-        { "aria-expanded": expanded, "aria-controls": viewId }
-      ),
-      expanded && (view.error || !running) && press(view.error ? "重试" : "刷新", view.reload, { disabled: view.loading }),
-      running && !tools.length && !legacy.length && (0, import_react91.createElement)("span", { className: "gb-execution-state" }, "运行中")
-    ),
-    (0, import_react91.createElement)(
-      "div",
-      { id: viewId, hidden: !expanded && !legacyOnly },
-      expanded && view.error && (0, import_react91.createElement)("p", { className: "gb-execution-error", role: "alert" }, "暂时无法读取执行详情。"),
-      expanded && view.loading && !view.data && !legacyOnly && (0, import_react91.createElement)("p", { className: "gb-execution-note", role: "status" }, "正在读取…"),
-      expanded && tools.length > 0 && (0, import_react91.createElement)(Rows, { events: tools, target: { client, botId, sessionId, turn }, running: running || view.data?.running }),
-      legacyOnly && (0, import_react91.createElement)("div", { className: "bt-agent-activity" }, legacy.map((step, index) => (0, import_react91.createElement)("div", {
-        key: index,
-        className: "bt-agent-act"
-      }, (0, import_react91.createElement)("span", { className: "bt-agent-act-text" }, step))))
-    )
-  );
+function InlineExecution({ client, botId, sessionId, turn, running, events }) {
+  return (0, import_react91.createElement)("div", { className: "gb-execution-inline" }, (0, import_react91.createElement)(Rows, { events, target: { client, botId, sessionId, turn }, running }));
 }
 function TurnHistory({ client, botId, sessionId, turn, running }) {
   const view = useExecution(client, botId, sessionId, { turn, running, live: true });
@@ -63781,25 +63927,30 @@ button.gb-bot-model:focus-visible,
   box-shadow: 0 0 0 1.5px var(--bt-card);
 }
 `;
-function NativeAgentButton({ client, target, actions }) {
-  const { botId, sessionId, agent } = target;
-  const [active, setActive] = (0, import_react107.useState)(false);
+function useNativeTerminalActive(client, target, running) {
+  const { botId, sessionId } = target ?? {};
+  const [activePart, setActivePart] = (0, import_react107.useState)();
   (0, import_react107.useEffect)(() => {
+    if (!botId || !sessionId) return;
     let timer, mounted = true;
     async function update() {
       try {
         const value = await client.terminalStatus({ botId, sessionId });
-        if (mounted) setActive(value.active);
+        if (mounted) setActivePart(value.active ? sessionId : void 0);
       } catch {
       }
-      if (mounted) timer = setTimeout(update, 4e3);
+      if (mounted) timer = setTimeout(update, running ? 1e3 : 4e3);
     }
     void update();
     return () => {
       mounted = false;
       clearTimeout(timer);
     };
-  }, [client, botId, sessionId]);
+  }, [client, botId, sessionId, running]);
+  return target != null && activePart === sessionId;
+}
+function NativeAgentButton({ target, active, actions }) {
+  const { sessionId, agent } = target;
   const title2 = agent === "local-claude-code" ? "打开原生会话并信任此 Bot 的工作目录" : void 0;
   return (0, import_react107.createElement)(PanelMenu, {
     className: "gb-native-button",
@@ -63859,9 +64010,10 @@ function mountProduct(ctx, client, navigation, target, ready) {
     browserButton(bot, id, state) {
       return bot && !state.readOnly && !state.browser && (bot.sessionId ?? bot.id) === id ? (0, import_react107.createElement)(WebBrowserButton, { key: "web-browser-" + bot.id, client, bot, sessionId: id }) : null;
     },
-    nativeButton(bot, id, state, actions) {
+    useNativeTerminalActive: (bot, id, state, running) => useNativeTerminalActive(client, botNativeTarget(bot, id, state), running),
+    nativeButton(bot, id, state, actions, terminalActive) {
       const target2 = botNativeTarget(bot, id, state);
-      return target2 && (0, import_react107.createElement)(NativeAgentButton, { key: "native:" + id, client, target: target2, actions });
+      return target2 && (0, import_react107.createElement)(NativeAgentButton, { key: "native:" + id, target: target2, active: terminalActive, actions });
     },
     nativePane(bot, id, state, close, mode, actions) {
       const target2 = botNativeTarget(bot, id, state);
@@ -63886,14 +64038,15 @@ function mountProduct(ctx, client, navigation, target, ready) {
     executionPane(bot, id, state, close) {
       return canViewExecution(bot, id, state) ? (0, import_react107.createElement)(ExecutionHistory, { key: id, client, bot, sessionId: id, close }) : null;
     },
-    executionTurn: (bot, sessionId, turn, running, legacy) => (0, import_react107.createElement)(TurnExecution, {
-      key: JSON.stringify([sessionId, turn]),
+    useExecutionTools: (botId, sessionId, turn, enabled) => useExecutionTools(client, botId, sessionId, turn, enabled),
+    inlineExecution: (key, botId, sessionId, turn, running, events) => (0, import_react107.createElement)(InlineExecution, {
+      key,
       client,
-      botId: bot.id,
+      botId,
       sessionId,
       turn,
       running,
-      legacy
+      events
     }),
     providerAgents: (props) => (0, import_react107.createElement)(ProviderAgentsPage, { client, ...props }),
     taskSettings: (page, focus, actions, readOnly) => (0, import_react107.createElement)(TaskSettings, { client, actions, page, focus, readOnly }),

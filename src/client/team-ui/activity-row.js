@@ -108,7 +108,7 @@ function useRowEntrances(replacing) {
   }, [])
 }
 
-export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, useSession, useWork, actions }) {
+export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, useSession, useWork, actions, terminalActive, openTerminal }) {
   const roster = useRoster(value => value)
   const running = useSessionStatus(map => map.get(sessionId)?.running === true)
   const turnAt = useWork?.(work => work.turns?.[sessionId])
@@ -134,7 +134,8 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   const tools = entries.filter(entry => !entry.text).sort((a, b) => a.at - b.at)
   // Group chats show who is typing on their own while members speak.
   const relaying = tools.some(entry => entry.relay)
-  const visible = moveAt !== 0 || rowVisible({ running, streaming, tools, relaying, bot, room })
+  const waitingForTerminal = running && terminalActive
+  const visible = !waitingForTerminal && (moveAt !== 0 || rowVisible({ running, streaming, tools, relaying, bot, room }))
   const tool = tools.at(-1)
   const inputRef = useRef(0)
   // A steer keeps the run going, so nothing else resets the row: fresh input is
@@ -191,6 +192,9 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   // Only rows that take the activity row's place grow out of it.
   useRowEntrances(() => leaving.current || Date.now() - endedAt.current < 300)
   const host = useRunningHost(running || moveAt !== 0)
+  if (host && waitingForTerminal) return createPortal(h('div', { className: 'bt-terminal-wait' },
+    h('span', { role: 'status' }, '消息正在等待。将原生终端交还聊天后继续执行。'),
+    h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: openTerminal }, '打开终端并交还')), host)
   if (!host || phase === null || !shown) return null
   return createPortal(h('div', { className: 'bt-typing', 'data-exiting': phase === 'out' ? '' : undefined, 'aria-hidden': true },
     bot ? h(BotMark, { bot, size: 28, state: markState.current, live: true, pokeable: true }) : h(RoomAvatar, { room, roster, size: 28 }),
