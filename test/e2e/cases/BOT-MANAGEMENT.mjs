@@ -9,7 +9,7 @@ export default async function botManagement({ makeHost, candidate, note }) {
   const host = await makeHost()
   await host.install(candidate)
   await host.start()
-  const chief = await openFullTeam(host)
+  const godbot = await openFullTeam(host)
   const { page } = host
   const enterManagement = () => page.getByRole('navigation', { name: 'Godbot 工作区' })
     .getByRole('button', { name: '团队管理', exact: true }).click()
@@ -21,7 +21,7 @@ export default async function botManagement({ makeHost, candidate, note }) {
   await management.getByText('分配任务', { exact: true }).click()
   const form = management.locator('form').filter({ has: page.locator('[name=criteria]') })
   const owner = form.getByLabel('负责人')
-  assert.deepEqual(await owner.locator('option').evaluateAll(options => options.map(option => option.value)), [chief])
+  assert.deepEqual(await owner.locator('option').evaluateAll(options => options.map(option => option.value)), [godbot])
 
   const worker = await host.bot('create-bot', { name: 'Board Worker', model: 'deepseek-official/deepseek-flash' })
   await owner.selectOption(worker.id)

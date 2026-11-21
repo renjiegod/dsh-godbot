@@ -13,11 +13,11 @@ export async function ciTeam(host, candidate) {
     await host.install(candidate)
     await host.start()
   }
-  const chief = await openFullTeam(host)
+  const godbot = await openFullTeam(host)
   const model = 'deepseek-official/deepseek-flash'
-  await host.bot('update-bot', { id: chief, model })
+  await host.bot('update-bot', { id: godbot, model })
   const team = { id: 'godbot-workspace' }
-  const member = (await host.bot('state')).bots.find(bot => bot.id === chief)
+  const member = (await host.bot('state')).bots.find(bot => bot.id === godbot)
   const owner = (action, args = {}) =>
     host.rpc('godbot/dispatch', { request: { action, teamId: team.id, ...args } })
   const extra = async name => host.bot('create-bot', { name, model, workDir: await mkdtemp(join(host.root, 'bot-')) })

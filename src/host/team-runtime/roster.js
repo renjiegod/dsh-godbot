@@ -11,6 +11,7 @@ import { currentColor, isColor, normalize, splitRef, unquote } from './core/text
 import { nameProblem } from './shared/mentions.js'
 
 const BROWSER_GRANT_KINDS = new Set(['post', 'upload', 'download', 'delete', '*'])
+const LEGACY_MAIN = { name: 'Chief', role: 'Chief of Staff' }
 const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*$/
 
 const OWN_RULES = 'Where your instructions say otherwise, follow them.'
@@ -53,6 +54,7 @@ export function install(rt) {
   const { ctx, defaults, state } = rt
 
   let bootstrapping = null
+  let renamingMain = null
   // Only the host-side import can associate a workspace row with a legacy identity.
   const importOptions = Symbol('Godbot import')
 
@@ -1066,10 +1068,39 @@ export function install(rt) {
     }
   }
 
+  // LEGACY: until 0.2.0-rc.3 the team's first Main Bot defaulted to "Chief", the
+  // "Chief of Staff". Each untouched default is updated once; a name or role
+  // chosen afterwards, the old ones included, stays.
+  async function renameLegacyMain() {
+    if (state.mainRenamed === true && state.mainRoleRenamed === true) return
+    const bot = liveBot(state.mainBotIds[0])
+    if (state.mainRenamed !== true) {
+      if (bot?.name === LEGACY_MAIN.name && !botNameTaken(defaults.mainName)) {
+        try {
+          await updateBot(bot.id, { name: defaults.mainName })
+        } catch (error) {
+          rt.warn('godbot: could not rename %s to %s: %s', LEGACY_MAIN.name, defaults.mainName, error?.message ?? error)
+        }
+      }
+      state.mainRenamed = true
+    }
+    if (state.mainRoleRenamed !== true) {
+      // Only the label changes. Each turn's system prompt reads the live role, so
+      // unlike a user's edit this sends the Bot no notice and starts no turn.
+      if (bot?.role === LEGACY_MAIN.role) bot.role = defaults.mainRole
+      state.mainRoleRenamed = true
+    }
+    await rt.save()
+  }
+
   async function bootstrap() {
     await rt.load()
     void rt.syncModels()
-    if (state.mainBotIds.some(id => rt.botOf(id))) return
+    if (state.mainBotIds.some(id => rt.botOf(id))) {
+      renamingMain ??= renameLegacyMain().finally(() => { renamingMain = null })
+      await renamingMain
+      return
+    }
     // Only the team's first Main Bot is given the Godbot mark; other Bots get a
     // look from their id, and a Bot made Main Bot later keeps its own.
     bootstrapping ??= createBot({ name: defaults.mainName, role: defaults.mainRole, main: true, color: 'cyan', avatar: { shape: 'godbot' }, pickModel: true })

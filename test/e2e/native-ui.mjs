@@ -8,7 +8,7 @@ export async function openFullTeam(host) {
   if (await settings.count()) await settings.click()
   assert.equal((await host.snapshot()).workspaceRuntime.mode, 'embedded')
   const state = await host.bot('state')
-  assert.ok(state.mainBotId && state.bots.some(bot => bot.id === state.mainBotId), 'full team loaded its Chief')
+  assert.ok(state.mainBotId && state.bots.some(bot => bot.id === state.mainBotId), 'full team loaded its GodBot')
   return state.mainBotId
 }
 
