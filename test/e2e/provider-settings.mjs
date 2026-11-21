@@ -17,6 +17,12 @@ export async function openProviderSettingsFromManagement(host) {
 }
 
 export async function openProviderSettingsFromTeam(host) {
+  await openSettingsPage(host, /^(本地 Agent|Local agents)$/u)
+  return providerPage(host)
+}
+
+// Open the workbench Settings dialog from the full team and select one of its pages.
+export async function openSettingsPage(host, name) {
   await openFullTeam(host)
   const { page } = host
   await page.locator('.bt-head .bt-pill').click({ trial: true })
@@ -31,8 +37,7 @@ export async function openProviderSettingsFromTeam(host) {
   }), 'active workbench settings launcher')
   await launchers.nth(index).click()
   if (menu) await page.getByRole('menuitem', { name: /^(设置|Settings)$/u }).click()
-  await page.locator('.bt-settings-nav').getByRole('button', { name: /^(本地 Agent|Local agents)$/u }).click()
-  return providerPage(host)
+  await page.locator('.bt-settings-nav').getByRole('button', { name }).click()
 }
 
 export async function openSandboxToggle(host) {

@@ -15,6 +15,7 @@ import { SPRING_GLIDE, SPRING_POP, SPRING_SHAPE, SPRING_TAP, stepMenuFocus, useL
 import { hostText, t } from './i18n.js'
 import { clientErrors } from './diagnostics.js'
 import { showsDshRow } from './dsh-offer.js'
+import { downloadText, readyText, sentences } from './about.js'
 import { quietly } from './diagnostics.js'
 import { frameLayout, dragColumn, RAIL_WIDTH, FALLBACK_SIDEBAR_WIDTH, userSidebarToggle } from './frame-layout.js'
 import { chatRoom, dshCollapsed } from './frame-watch.js'
@@ -891,6 +892,8 @@ function UpdateButton({ useUpdate, actions }) {
   }, [open, tick])
   if (!update?.available && !dshRow && phase === 'idle' && dshPhase === 'idle') return null
   const cloudPhase = phase === 'installing' || dshPhase === 'installing' ? 'installing' : phase !== 'idle' ? phase : dshPhase
+  // A release fetched ahead: the cloud's text says what happens next.
+  const pending = phase === 'downloading' ? downloadText(update) : phase === 'ready' ? readyText(update) : null
   const toggle = () => setOpen(value => !value)
   const start = () => {
     setError('')
@@ -905,8 +908,8 @@ function UpdateButton({ useUpdate, actions }) {
       : phase === 'installed' ? t('Godbot {version} is installed. Restart DSH to use it.', { version: update.installed ?? update.latest })
         : phase === 'updated' ? t('Godbot {version} is installed.', { version: update.installed ?? update.latest })
         : dshPhase === 'installed' ? t('Restart DSH to start using DSH {version}.', { version: dsh.installed ?? dsh.verified })
-          : update?.available ? t('Godbot {version} is available', { version: update.latest })
-            : t('DSH {version} is available', { version: dsh?.verified })
+          : pending ?? (update?.available ? t('Godbot {version} is available', { version: update.latest })
+            : t('DSH {version} is available', { version: dsh?.verified }))
   const message = error || (phase === 'failed' ? update.error : '')
   const dshMessage = dshError || (dshPhase === 'failed' ? dsh?.error : '')
   const dshText = dshPhase === 'installed'
@@ -925,13 +928,14 @@ function UpdateButton({ useUpdate, actions }) {
         h('div', { className: 'bt-update-text' }, phase === 'installed'
           ? t('Restart DSH to start using Godbot {version}.', { version: update.installed ?? update.latest })
           : phase === 'updated' ? t('Godbot {version} is installed.', { version: update.installed ?? update.latest })
-            : t('You have {version}.', { version: update.current })),
+            : pending ? sentences(pending, t('You have {version}.', { version: update.current }))
+              : t('You have {version}.', { version: update.current })),
         message ? h('div', { className: 'bt-update-error', role: 'alert' }, t('The update did not finish: {reason}', { reason: message })) : null,
         h('div', { className: 'bt-update-actions' },
           update.notesUrl ? h('a', { className: 'bt-update-notes', href: update.notesUrl, target: '_blank', rel: 'noopener noreferrer' }, t("What's new")) : null,
           phase === 'installed' || phase === 'updated' ? null : h('button', {
             type: 'button', className: 'bt-update-go', disabled: phase === 'installing', onClick: start,
-          }, phase === 'installing' ? t('Updating…') : phase === 'failed' ? t('Try again') : t('Update')))) : null,
+          }, phase === 'installing' ? t('Updating…') : phase === 'failed' ? t('Try again') : phase === 'downloading' ? t('Install when downloaded') : t('Update')))) : null,
       dshRow ? h('div', { className: 'bt-update-dsh' },
         h('div', { className: 'bt-update-title' }, t('DSH {version}', { version: dsh.verified })),
         h('div', { className: 'bt-update-text' }, dshText),
@@ -1206,12 +1210,12 @@ export const SIDEBAR_CSS = `
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"] button[class*="_trigger"] [class*="_label"]{display:none!important}
 
 /* The update cloud springs in when a newer Godbot shows up; its arrow drops in a
-   loop while the install runs. */
+   loop while the release downloads and while the install runs. */
 .bt-round.bt-update{position:relative;color:var(--bt-accent,#4D6BFE);animation:bt-update-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-round.bt-update svg{width:17px;height:17px}
 .bt-round.bt-update[data-phase=installed]{color:var(--bt-ink-2)}
 @keyframes bt-update-in{from{opacity:0;transform:scale(.6);filter:var(--bt-fx-blur-4,blur(4px))}}
-.bt-update[data-phase=installing] .bt-cloud-arrow{animation:bt-cloud-drop 1.1s cubic-bezier(.45,0,.55,1) infinite}
+.bt-update[data-phase=installing] .bt-cloud-arrow,.bt-update[data-phase=downloading] .bt-cloud-arrow{animation:bt-cloud-drop 1.1s cubic-bezier(.45,0,.55,1) infinite}
 @keyframes bt-cloud-drop{0%{transform:translateY(-3px);opacity:0}35%{opacity:1}70%{transform:translateY(1px);opacity:1}100%{transform:translateY(2px);opacity:0}}
 .bt-update-dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#E5484D;box-shadow:0 0 0 1.5px var(--bt-sidebar)}
 .bt-update-pop{position:fixed;z-index:60;width:280px;padding:14px 14px 12px;border-radius:16px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);color:var(--bt-ink);box-sizing:border-box;transform-origin:top left;font-family:var(--bt-font);animation:bt-update-pop ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}

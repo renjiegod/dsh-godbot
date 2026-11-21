@@ -74,9 +74,35 @@ dsh web
 
 ### 更新
 
-1. 让活跃任务收尾，然后重新运行 `node scripts/install-local.mjs web`。
-2. 在 **插件管理** 中停用并重新启用 `dsh-godbot`，随后刷新浏览器。
-3. 若 rc.1 返回 `restart-required / package-moved`，等该 profile 的会话空闲后重启 dsh，让宿主载入新的依赖位置。
+Godbot 会自己检查新版本。Host 启动后以及之后每 6 小时，它查询本仓库的 [GitHub Releases](https://github.com/renjiegod/dsh-godbot/releases)；发现更新的版本后，把安装包下载到 `~/.local/share/dsh-godbot/packages/`，并按 GitHub 为该文件记录的 SHA-256 校验。安装包内的 `package.json` 还要满足两点才会安装：
+
+- `engines.dsh` 与当前运行的 DSH 版本一致；
+- 新版本声明的 DSH 依赖已链接在当前 profile 中。
+
+不满足时，**设置 → 关于 Godbot** 只显示原因（例如需要的 DSH 版本），不会安装。在同一页面的 **自动更新** 中选择行为：
+
+| 模式 | 行为 |
+| --- | --- |
+| **自动安装**（默认） | 下载并校验后，等 Godbot 连续空闲 2 分钟（没有 Bot 正在运行回合，也没有被接管的原生终端），通过 DSH 插件管理器安装。 |
+| **下载后询问** | 下载并校验后，侧栏顶部的云朵按钮和关于页提供 **更新**，由你决定何时安装。 |
+| **手动检查** | 只在点击 **检查更新** 时查询；点 **更新** 时再下载并安装。 |
+
+安装后，DSH 能就地重载插件时新版本立即生效；否则（包括 rc.1 返回 `restart-required / package-moved`）页面提示「重启 DSH 后开始使用」，等该 profile 的会话空闲后重启 dsh 即可。只读 Host 不会自动安装，由持有团队写锁的 Host 负责。
+
+- 自动更新只针对 `.tgz` 安装包（`scripts/install-local.mjs` 的安装结果，以及之后的每次更新）。以 `link:` 或文件夹方式安装的开发副本，请在源码目录中更新。
+- 预发布版（版本号带 `-`）跟随更新的预发布版，正式版只跟随正式版。
+- 管理员可以在该 profile 的 `cordis.patch.yml` 中调整（`updateMode` 只决定尚未选择过模式的 profile）：
+
+```yaml
+- id: godbot
+  config:
+    teamWorkspace:
+      updateCheck: false        # 关闭全部检查；也可设置环境变量 GODBOT_UPDATE_CHECK=0
+      updateMode: notify        # auto | notify | off
+      updateChannel: stable     # stable | prerelease
+```
+
+**手动更新。** 让活跃任务收尾，重新运行 `node scripts/install-local.mjs web`，然后在 **插件管理** 中停用并重新启用 `dsh-godbot`，随后刷新浏览器。
 
 ## 使用指南
 
@@ -401,6 +427,8 @@ godbot workspace restore --home /new/dsh --profile web --file team.godbot --pass
 | `GODBOT_URL` | CI 访问的 Godbot 地址 |
 | `GODBOT_TOKEN_FILE` | 保存 CI 凭据的 secret 文件路径 |
 | `GODBOT_SANDBOX_ACCOUNTS_DIR` | 自定义沙箱账号清单目录 |
+| `GODBOT_UPDATE_CHECK` | 设为 `0` 时 Host 不检查、不下载、不安装更新 |
+| `GODBOT_UPDATE_API` | 从另一个与 GitHub API 同形的服务读取发布列表（测试用）；安装包仍按其声明的 SHA-256 校验 |
 | `GODBOT_E2E_CLAUDE_CONFIG_DIR` / `GODBOT_E2E_CODEX_HOME` | 真实 E2E 测试使用的账号目录 |
 
 ## 故障排查
@@ -413,6 +441,7 @@ godbot workspace restore --home /new/dsh --profile web --file team.godbot --pass
 | **DSH 模型报错** | 查看成员实际使用的 provider、model、HTTP 状态和错误信息，也可在普通 dsh 会话中用同一路由对照。确认另一条路由可用后，可在空闲成员面板显式切换。 |
 | **侧栏缺失或连接失败** | 核对当前 profile 的插件状态、DSH 版本与 owner 登录。默认状态目录为 `$DSH_HOME/godbot/<profile>`，使用默认 home 时位于 `~/.dsh/godbot/<profile>`。 |
 | **`GODBOT_STATE_IN_USE`** | 每个状态目录只允许一个 Host 持有。核对已有 Host；两个独立实例应使用不同的状态目录。 |
+| **自动更新失败** | 原因显示在「设置 → 关于 Godbot」，Host 诊断日志也有记录。下载失败会在 30 分钟后自动重试；安装由 DSH 插件管理器执行，`spawn pnpm ENOENT` 表示运行 dsh 的环境里找不到 pnpm，需把 pnpm 加入该环境的 `PATH`（或为插件管理器配置 `pnpmCommand`）后点「重试」。自动安装失败的版本不会再自动重试。 |
 
 ## 开发与验证
 
@@ -430,6 +459,7 @@ npm pack --dry-run
 | `npm test` | 单元与集成测试 |
 | `npm run test:e2e` | 浏览器端到端测试，默认 `release` 套件；可加 `--artifact <tgz>` 测试指定安装包 |
 | `npm run test:e2e -- --case E12 --previous <tgz>` | 升级测试：从指定的旧版安装包升级到当前构建。未传 `--previous` 且仓库中没有 0.1.0 基线提交时，E12 记为 `skipped` |
+| `npm run test:e2e -- --case UPDATE` | 自动更新：从本机模拟的发布列表下载、校验新版本，经 DSH 插件管理器安装，重启后运行新版本 |
 | `npm run test:e2e -- --case E1` | 验证跨后端读取连接器工具 |
 | `npm run test:e2e -- --case E2` | 验证写入审批、撤权、重启和终端交还 |
 | `npm run test:e2e -- --suite live-connectors` | 通过本机已登录的 Claude Code、Codex 调用测试工单服务 |
@@ -440,6 +470,14 @@ npm pack --dry-run
 > `live-*` 套件和 `test/external/live-control.mjs` 使用本机已登录的账号，会消耗对应订阅或模型额度。测试用的 DSH profile 和工单数据均为临时创建。`L-BOT-WORKFLOW` 可通过 `GODBOT_E2E_CLAUDE_CONFIG_DIR` 和 `GODBOT_E2E_CODEX_HOME` 指定测试账号目录。
 
 仓库的 GitHub Actions（`.github/workflows/verification.yml`）在每次 push 和 Pull Request 时于 macOS 上运行单元测试、构建和 `npm pack --dry-run`。对打包产物执行 `release` E2E 套件耗时较长，需在 Actions 页面选择 **Verify Godbot package → Run workflow** 手动触发。
+
+### 发布新版本
+
+1. 修改 `package.json` 的 `version`，运行 `npm run build` 并提交。
+2. 推送同名 tag，例如 `git tag v0.2.0 && git push origin v0.2.0`。
+3. `.github/workflows/release.yml` 核对 tag 与 `package.json` 版本一致，运行测试和构建，再创建 GitHub Release 并上传 `dsh-godbot-<version>.tgz` 及其 `.sha256`。版本号带 `-`（如 `0.2.0-rc.4`）时标记为预发布。
+
+已安装的 Godbot 会在下一次检查时发现这个版本（见 [更新](#更新)）。
 
 ## 相关文档与第三方声明
 

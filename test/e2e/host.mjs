@@ -138,7 +138,9 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
       const env = {
         HOME: account, PATH: [bin, '/usr/bin', '/bin', '/usr/sbin', '/sbin'].join(delimiter), SHELL: '/bin/false',
         LANG: 'en_US.UTF-8', TMPDIR: root, DSH_HOME: home, DEEPSEEK_BASE_URL: model.url,
-        DEEPSEEK_API_KEY: 'local-fixture-key', ...host.env,
+        DEEPSEEK_API_KEY: 'local-fixture-key',
+        // The release under test must stay installed: no update check reaches GitHub.
+        GODBOT_UPDATE_CHECK: '0', ...host.env,
       }
       const args = ['--profile', 'web', '--patch', overlay, '--no-open', '--port', String(port)]
       output = ''

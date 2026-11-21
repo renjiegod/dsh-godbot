@@ -1,10 +1,24 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 // Updates: compare this package's version with the newest release where it was
-// installed from (the npm registry, or a GitHub tag for a versioned git install)
-// and, when the user asks, reinstall it through DSH's plugin manager. A new version
-// runs from the next DSH start. A linked or local checkout is never offered one.
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+// installed from — the npm registry, a GitHub tag for a versioned git install, or
+// the repository's GitHub releases for a packed archive (what
+// scripts/install-local.mjs installs, and every update after it) — and reinstall
+// it through DSH's plugin manager. A linked or local checkout is never offered one.
+//
+// The host also looks by itself, on a clock, the way magpie's updater does:
+// at start and every six hours. A release archive is fetched and verified as soon
+// as it is found, so installing is local. With automatic updates on, the archive
+// is installed once Godbot has been idle for a while (no turn running, no native
+// terminal open); otherwise the sidebar and About offer it. A new version runs
+// from the next DSH start, or at once where DSH reloads plugins in place.
+import { randomUUID } from 'node:crypto'
+import { existsSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import {
+  archiveManifest, compatibility, createNet, defaultArchiveDir, downloadArchive, dropPartials, newer, newestRelease, releasesApi,
+} from './update-release.js'
+
+export { newer }
 
 const PKG = JSON.parse(readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'))
 export const OFFICIAL_REGISTRY = 'https://registry.npmjs.org/'
@@ -14,36 +28,33 @@ export const CHECK_TTL_MS = 10 * 60_000
 export const FETCH_TIMEOUT_MS = 8000
 // The first check waits until the host has settled its own start.
 const STARTUP_DELAY_MS = 15_000
+// The clock: how often the host asks by itself, how long a failed download waits
+// before it is tried again, and how long Godbot stays idle before an automatic install.
+export const AUTO_CHECK_MS = 6 * 60 * 60_000
+export const RETRY_MS = 30 * 60_000
+export const IDLE_MS = 2 * 60_000
+const TICK_MS = 60_000
+// auto: check, download and install when idle; notify: check and download, install
+// on a click; off: only a click on Check for updates asks.
+export const UPDATE_MODES = ['auto', 'notify', 'off']
 const VERSION = /^v?(\d+\.\d+\.\d+(?:-[\w.]+)?)(?:\+[\w.]+)?$/
+const APP_BOOT = '@deepseek-ai/dsh-app-boot'
 
 /** A release version without its `v` and build metadata, or null. */
 export const cleanVersion = value => VERSION.exec(String(value ?? '').trim())?.[1] ?? null
 
-/** Whether version `a` is newer than `b` (semver order, prereleases before their release). */
-export function newer(a, b) {
-  const parse = (value) => {
-    const [core, pre] = (cleanVersion(value) ?? '0.0.0').split(/-(.*)/s)
-    return { nums: core.split('.').map(Number), pre: pre ?? null }
-  }
-  const x = parse(a)
-  const y = parse(b)
-  for (let index = 0; index < 3; index++) if (x.nums[index] !== y.nums[index]) return x.nums[index] > y.nums[index]
-  if (x.pre === y.pre) return false
-  if (x.pre === null) return true
-  if (y.pre === null) return false
-  return x.pre.localeCompare(y.pre, 'en', { numeric: true }) > 0
-}
-
 /**
  * How the profile installed this package, from the plugin manager's `source` spec:
  * `registry` (name@range), `git` (with `owner`, `repo`, the version `ref` and the
- * other fragment parts when it pins a GitHub tag), `path` (link:, file: or a folder),
- * `tarball`, or `unknown`.
+ * other fragment parts when it pins a GitHub tag), `archive` (a packed .tgz on
+ * disk), `path` (link:, file: or a folder), `tarball` (over HTTP), or `unknown`.
  */
 export function sourceOf(spec) {
   const text = typeof spec === 'string' ? spec.trim() : ''
   if (text === '') return { kind: 'unknown' }
-  if (/^(link|file):/i.test(text) || /^([a-z]:[\\/]|[\\/]|~|\.)/i.test(text)) return { kind: 'path' }
+  const local = /^(link|file):/i.test(text) || /^([a-z]:[\\/]|[\\/]|~|\.)/i.test(text)
+  if (local && !/^link:/i.test(text) && /\.(?:tgz|tar\.gz)$/i.test(text)) return { kind: 'archive' }
+  if (local) return { kind: 'path' }
   const github = /^(?:github:|git\+https:\/\/github\.com\/|https:\/\/github\.com\/|git@github\.com:)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:#(.*))?$/i.exec(text)
   const gitLike = /^(git\+|git:|git@|github:|gitlab:|bitbucket:)/i.test(text) || /\.git(#|$)/i.test(text)
   if (github && (gitLike || !text.startsWith('@'))) {
@@ -89,11 +100,45 @@ export async function installSpecOf(ctx) {
   const bundles = await Promise.resolve(manager?.listBundles?.()).catch(() => null)
   const own = Array.isArray(bundles) ? bundles.find(bundle => bundle.name === PKG.name) : undefined
   if (typeof own?.source === 'string') return own.source
+  const dependencies = profileDependencies(ctx)
+  return dependencies?.[PKG.name]
+}
+
+/** The profile's own dependencies (package.json), or null where it cannot be read. */
+export function profileDependencies(ctx) {
   const dir = ctx.get?.('profileContext')?.dir
-  if (typeof dir !== 'string') return undefined
+  if (typeof dir !== 'string') return null
   try {
-    return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).dependencies?.[PKG.name]
-  } catch { return undefined }
+    return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).dependencies ?? {}
+  } catch { return null }
+}
+
+/**
+ * The version of the DSH that is running us: the app-boot export, or — where that
+ * import cannot see it — the nearest @deepseek-ai package.json above the entry script.
+ */
+export async function runningDsh(ctx) {
+  try {
+    const loader = ctx.get?.('loader')
+    const loaded = await loader?.import?.(APP_BOOT)
+    const appBoot = loader?.unwrapExports?.(loaded) ?? loaded?.default ?? loaded
+    const version = cleanVersion(appBoot?.getDshRuntimeVersion?.())
+    if (version) return version
+  } catch { /* the export is not visible here: read the install instead */ }
+  let dir = dirname(String(process.argv[1] ?? ''))
+  for (let depth = 0; depth < 12; depth += 1) {
+    try {
+      const manifest = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'))
+      if (manifest?.name?.startsWith?.('@deepseek-ai/')) {
+        const version = cleanVersion(manifest.version)
+        if (version) return version
+      }
+    } catch { /* not a package directory */ }
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
 }
 
 // The public repository the releases live in, for tags and the "what's new" link.
@@ -109,23 +154,77 @@ const releasesUrl = () => {
   return repo ? `${repo}/releases` : (PKG.homepage ?? null)
 }
 
+/**
+ * Whether prereleases are offered: a prerelease follows newer prereleases, a
+ * release only newer releases, unless the profile config names `updateChannel`.
+ */
+export const followsPrereleases = config => config.updateChannel === 'prerelease'
+  || (config.updateChannel !== 'stable' && PKG.version.includes('-'))
+
+/** Whether update checks run at all: the profile config and GODBOT_UPDATE_CHECK=0 turn them off. */
+export const updatesEnabled = config => config.updateCheck !== false && process.env.GODBOT_UPDATE_CHECK !== '0'
+
+/** The user's update mode, kept beside the update note in the data folder. */
+export function readUpdateSettings(path, fallback = 'auto') {
+  const mode = UPDATE_MODES.includes(fallback) ? fallback : 'auto'
+  if (path === null) return { mode }
+  try {
+    const value = JSON.parse(readFileSync(path, 'utf8'))
+    return { mode: UPDATE_MODES.includes(value?.mode) ? value.mode : mode }
+  } catch { return { mode } }
+}
+
+function writeUpdateSettings(path, settings) {
+  const tmp = `${path}.${randomUUID()}`
+  try {
+    writeFileSync(tmp, `${JSON.stringify(settings)}\n`, { flag: 'wx', mode: 0o600 })
+    renameSync(tmp, path)
+  } finally {
+    rmSync(tmp, { force: true })
+  }
+}
+
 export const STARS_TTL_MS = 60 * 60_000
 
 export function install(rt) {
   const { ctx, config } = rt
-  const enabled = config.updateCheck !== false
+  const enabled = updatesEnabled(config)
   const manager = () => ctx.get?.('pluginManager')
+  const userAgent = `${PKG.name}/${PKG.version}`
+  const net = rt.updateNet ?? createNet({ userAgent, timeoutMs: FETCH_TIMEOUT_MS })
+  const archiveDir = typeof config.updateArchiveDir === 'string' && config.updateArchiveDir !== '' ? config.updateArchiveDir : defaultArchiveDir()
+  const now = () => (typeof rt.updateClock === 'function' ? rt.updateClock() : Date.now())
 
   const status = {
     name: PKG.name, current: PKG.version, latest: null, source: 'unknown', notesUrl: releasesUrl(),
-    checkedAt: 0, phase: 'idle', installed: null, error: null,
+    checkedAt: 0, checkFailed: false, phase: 'idle', installed: null, error: null,
   }
-  // Where the newest version was found, and the spec that installs it.
+  // Where the newest version was found and how it installs: a registry or git
+  // `spec`, or a release `asset` that becomes a local `archive` once verified.
   let target = null
   let checking = null
+  // The release archive being fetched, and what stops it.
+  let preparing = null
+  let preparingFor = null
+  let preparingAbort = null
+  let progress = null
+  // Why the downloaded release cannot install into this profile.
+  let blocked = null
+  // The clock: when it last asked by itself, when a download last failed, since
+  // when Godbot has been idle, and the version an automatic install failed on
+  // (not tried again by itself; a click still can).
+  let autoAskedAt = Number.NEGATIVE_INFINITY
+  let failedAt = 0
+  let downloadFailed = false
+  let idleSince = 0
+  let autoSkip = null
+  let waiting = null
 
-  // A remove-and-install update under hot reload drops this host with its bundle;
-  // a note in the data folder carries the result to the start that follows it.
+  const settingsPath = typeof rt.home === 'string' ? join(rt.home, 'update-settings.json') : null
+  let settings = readUpdateSettings(settingsPath, config.updateMode)
+
+  // An update under hot reload drops this host with its bundle; a note in the data
+  // folder carries the result to the start that follows it.
   const markerPath = typeof rt.home === 'string' ? join(rt.home, 'update.json') : null
   if (markerPath !== null && existsSync(markerPath)) {
     let marker = null
@@ -142,17 +241,50 @@ export function install(rt) {
     } else if (typeof marker.error === 'string' || marker.from !== PKG.version) {
       rt.warn('godbot: the update to %s did not finish: %s', marker.to ?? 'a newer version', typeof marker.error === 'string' ? marker.error.slice(0, 600) : 'the install did not complete')
       try { unlinkSync(markerPath) } catch { /* gone is what we want */ }
+    } else if (cleanVersion(marker.to)) {
+      // A clean note on the version that wrote it stays: the new version is on disk
+      // and waits for DSH to restart (or a reload is still running the old modules).
+      // The next start that runs the new code reports the update then; until then
+      // nothing installs it a second time.
+      Object.assign(status, { phase: 'installed', installed: cleanVersion(marker.to) })
     }
-    // A clean note on the version that wrote it stays: a reload can still be
-    // running the old modules (the hoisted profile layout keeps one path), and
-    // the next start that runs the new code reports the update then.
   }
+
+  const busy = new Set()
+  /** Register a check that names work an automatic install must wait for; returns its removal. */
+  rt.addUpdateBlocker = (check) => {
+    busy.add(check)
+    return () => busy.delete(check)
+  }
+  // What an install would cut short now: running turns, and whatever the blockers name.
+  function busyReasons() {
+    const reasons = []
+    let turns = 0
+    for (const entry of rt.live?.values?.() ?? []) if (entry?.turn !== undefined) turns += 1
+    if (turns > 0) reasons.push({ kind: 'turns', count: turns })
+    for (const check of busy) {
+      try {
+        const reason = check()
+        if (reason) reasons.push(reason)
+      } catch (error) {
+        rt.warn('godbot: an update blocker failed: %s', error?.message ?? error)
+      }
+    }
+    return reasons
+  }
+
+  const installedOrNewer = () => (status.phase === 'installed' || status.phase === 'updated')
+    && status.installed !== null && target !== null && !newer(target.version, status.installed)
 
   const view = () => ({
     name: status.name, current: status.current, latest: status.latest, source: status.source, notesUrl: status.notesUrl,
-    repoUrl: repoUrl(), enabled,
-    checkedAt: status.checkedAt, phase: status.phase, installed: status.installed, error: status.error,
-    available: status.phase !== 'installed' && status.phase !== 'updated' && target !== null && status.latest !== null && newer(status.latest, status.current),
+    repoUrl: repoUrl(), enabled, mode: settings.mode,
+    checkedAt: status.checkedAt, checkFailed: status.checkFailed, phase: status.phase, installed: status.installed, error: status.error,
+    ...(status.phase === 'downloading' && progress !== null ? { progress: { ...progress } } : {}),
+    ...(blocked !== null ? { blocked: { ...blocked } } : {}),
+    ...(waiting !== null && (status.phase === 'ready' || status.phase === 'idle') ? { waiting } : {}),
+    available: !installedOrNewer() && status.phase !== 'installing' && blocked === null
+      && target !== null && status.latest !== null && newer(status.latest, status.current),
   })
 
   // Asked only while the About page is open, so a closed page never calls GitHub.
@@ -163,7 +295,7 @@ export function install(rt) {
     const repo = repoSlug()
     if (repo === null) return null
     if (Date.now() - stars.at < STARS_TTL_MS) return stars.count
-    starring ??= fetchJson(`https://api.github.com/repos/${repo}`, { 'user-agent': `${PKG.name}/${PKG.version}` })
+    starring ??= fetchJson(`https://api.github.com/repos/${repo}`, { 'user-agent': userAgent })
       .then((info) => { if (Number.isInteger(info?.stargazers_count)) stars = { count: info.stargazers_count, at: Date.now() } })
       .catch(error => rt.warn('godbot: star count failed: %s', error?.message ?? error))
       .finally(() => { starring = null })
@@ -183,7 +315,7 @@ export function install(rt) {
 
   async function newestFromGitHub(source) {
     if (!source.ref) return null
-    const release = await fetchJson(`https://api.github.com/repos/${source.owner}/${source.repo}/releases/latest`, { 'user-agent': `${PKG.name}/${PKG.version}` })
+    const release = await fetchJson(`https://api.github.com/repos/${source.owner}/${source.repo}/releases/latest`, { 'user-agent': userAgent })
     const version = cleanVersion(release?.tag_name)
     if (!version) return null
     // The API answers through redirects, so the release's html_url names the
@@ -194,67 +326,196 @@ export function install(rt) {
     return { version, spec: `github:${owner}/${repo}#${fragment}` }
   }
 
+  async function newestFromReleases() {
+    const repo = repoSlug()
+    if (repo === null) return null
+    const found = await newestRelease({ repo, name: PKG.name, prerelease: followsPrereleases(config), net, api: releasesApi() })
+    return found === null ? null : { version: found.version, asset: found.asset, notesUrl: found.notesUrl }
+  }
+
   async function runCheck() {
     // The desktop app updates as a whole, with this package inside it.
     const source = process.env.GODBOT_APP === '1' ? { kind: 'app' } : sourceOf(await installSpecOf(ctx))
     status.source = source.kind
     let found = null
+    let failed = false
     try {
       if (source.kind === 'registry') found = await newestFromRegistry()
       else if (source.kind === 'git') found = await newestFromGitHub(source)
+      else if (source.kind === 'archive') found = await newestFromReleases()
     } catch (error) {
+      failed = true
       rt.warn('godbot: update check failed: %s', error?.message ?? error)
     }
-    status.checkedAt = Date.now()
+    status.checkedAt = now()
+    status.checkFailed = failed
+    // A release list that could not be read keeps what the last check found: the
+    // archive already fetched for it stays ready.
+    if (failed && source.kind === 'archive' && target !== null) return
     // Nothing found now (a linked checkout, a moved tag, an unreachable registry)
     // retires the version a check before it found; offering it would install over
     // a source that never updates.
     if (found === null) {
       status.latest = null
-      target = null
+      retire()
       return
     }
     status.latest = found.version
-    target = newer(found.version, status.current) ? found : null
+    const next = newer(found.version, status.current) ? found : null
+    if (next === null) { retire(); return }
+    // The same release keeps what was already fetched for it.
+    if (target !== null && target.version === next.version && target.asset?.sha256 === next.asset?.sha256) {
+      if (next.notesUrl) status.notesUrl = next.notesUrl
+      return
+    }
+    retire()
+    target = next
+    if (next.notesUrl) status.notesUrl = next.notesUrl
     // The note that reported the last update is a one-time message; a newer
     // release found later in the same run still offers itself.
-    if (target !== null && status.phase === 'updated') status.phase = 'idle'
+    if (status.phase === 'updated' || (status.phase === 'installed' && newer(next.version, status.installed ?? status.current))) {
+      status.phase = 'idle'
+    }
+  }
+
+  // Forget the release a check found before: a download under way for it stops.
+  function retire() {
+    preparingAbort?.abort(new Error('A newer check replaced this download'))
+    target = null
+    blocked = null
+    progress = null
+    downloadFailed = false
+    waiting = null
+    idleSince = 0
+    if (status.phase === 'ready' || status.phase === 'downloading' || status.phase === 'failed') Object.assign(status, { phase: 'idle', error: null })
   }
 
   /** Ask where the package came from for its newest version; a fresh check ignores the last answer. */
   async function check({ fresh = false } = {}) {
     if (!enabled) return view()
-    if (checking) return checking
-    if (!fresh && Date.now() - status.checkedAt < CHECK_TTL_MS) return view()
+    if (checking) {
+      await checking
+      return view()
+    }
+    if (!fresh && now() - status.checkedAt < CHECK_TTL_MS) return view()
     checking = runCheck().finally(() => { checking = null })
     await checking
+    // A release found by any check is fetched ahead, unless updates are off.
+    if (settings.mode !== 'off') void prepare().catch(() => {})
     return view()
   }
 
-  /** Start reinstalling the newest version; the answer comes back through `check`. */
-  function start() {
+  /**
+   * Fetch and verify the release archive the last check found, then read its own
+   * package.json: it becomes `ready`, or `blocked` when it cannot install here.
+   * A failed download is fetched again by itself only RETRY_MS later; `force`
+   * (a click on Update) fetches it now.
+   */
+  function prepare({ force = false } = {}) {
+    // A download for a release a newer check replaced is still stopping: this one follows it.
+    if (preparing) return preparingFor === target ? preparing : preparing.then(() => prepare({ force }))
+    const chosen = target
+    if (chosen?.asset === undefined || chosen.archive !== undefined || blocked !== null) return Promise.resolve(view())
+    if (status.phase === 'installing' || installedOrNewer()) return Promise.resolve(view())
+    if (!force && downloadFailed && now() - failedAt < RETRY_MS) return Promise.resolve(view())
+    const abort = new AbortController()
+    preparingAbort = abort
+    preparingFor = chosen
+    progress = { done: 0, total: chosen.asset.size }
+    Object.assign(status, { phase: 'downloading', error: null })
+    preparing = (async () => {
+      dropPartials(archiveDir)
+      const archive = await downloadArchive({
+        dir: archiveDir, name: PKG.name, version: chosen.version, asset: chosen.asset, net, signal: abort.signal,
+        onProgress: (done, total) => { progress = { done, total: total ?? null } },
+      })
+      if (target !== chosen) return
+      const dependencies = Object.keys(profileDependencies(ctx) ?? {})
+      const problem = compatibility(archiveManifest(archive), {
+        name: PKG.name, version: chosen.version, dsh: await runningDsh(ctx),
+        // A profile whose manifest cannot be read leaves the peers to the plugin manager.
+        linked: dependencies.length ? dependencies : null,
+      })
+      if (target !== chosen) return
+      progress = null
+      downloadFailed = false
+      if (problem !== null) {
+        blocked = problem
+        Object.assign(status, { phase: 'idle', error: null })
+        rt.warn('godbot: Godbot %s cannot install into this profile: %s', chosen.version, JSON.stringify(problem))
+        return
+      }
+      chosen.archive = archive
+      chosen.spec = archive
+      Object.assign(status, { phase: 'ready', error: null })
+    })()
+      .catch((error) => {
+        if (target !== chosen) return
+        progress = null
+        // Stopped on purpose (updates turned off, Godbot stopping): nothing failed.
+        if (abort.signal.aborted) {
+          if (status.phase === 'downloading') Object.assign(status, { phase: 'idle', error: null })
+          return
+        }
+        downloadFailed = true
+        failedAt = now()
+        rt.warn('godbot: downloading Godbot %s failed: %s', chosen.version, error?.message ?? error)
+        Object.assign(status, { phase: 'failed', error: String(error?.message ?? error).slice(0, 600) })
+      })
+      .then(() => view())
+      .finally(() => {
+        if (preparingAbort === abort) preparingAbort = null
+        preparing = null
+        preparingFor = null
+      })
+    return preparing
+  }
+
+  /** Start installing the newest version; the answer comes back through `check`. */
+  function start({ auto = false } = {}) {
     if (status.phase === 'installing') return view()
     if (target === null) throw new Error('No Godbot update is available')
+    if (blocked !== null) throw new Error(blockedText(blocked))
     const service = manager()
     if (typeof service?.installBundle !== 'function') throw new Error('The DSH plugin manager is not available in this profile')
-    const chosen = target
+    if (target.asset !== undefined && target.archive === undefined) {
+      // A click before the download finished (or after it failed) fetches it first
+      // and installs it once it is verified.
+      const chosen = target
+      if (status.phase === 'failed') Object.assign(status, { phase: 'idle', error: null })
+      void prepare({ force: true }).then(() => {
+        if (target === chosen && chosen.archive !== undefined && status.phase === 'ready') begin(chosen, auto, service)
+      })
+      return view()
+    }
+    begin(target, auto, service)
+    return view()
+  }
+
+  function begin(chosen, auto, service) {
     Object.assign(status, { phase: 'installing', error: null })
+    waiting = null
+    idleSince = 0
     const options = chosen.registry ? { registry: chosen.registry } : {}
-    // Removing this bundle disposes our context before the promise answers, so the
-    // continuation uses plain fs for the note and a guarded logger.
+    // Removing or replacing this bundle disposes our context before the promise
+    // answers, so the continuation uses plain fs for the note and a guarded logger.
     const note = (template, ...args) => { try { rt.warn(template, ...args) } catch { /* our context is disposed */ } }
     const mark = (error) => {
       if (markerPath === null) return
       try {
         writeFileSync(markerPath, JSON.stringify({
-          from: PKG.version, to: chosen.version, spec: chosen.spec, startedAt: new Date().toISOString(),
+          from: PKG.version, to: chosen.version, spec: chosen.spec, startedAt: new Date().toISOString(), ...(auto ? { auto: true } : {}),
           ...(error === undefined ? {} : { error: String(error).slice(0, 600) }),
         }))
       } catch { /* a note that cannot be written just is not there */ }
     }
-    // A refused removal leaves this version running, with nothing for a later start to report.
+    // A refused install leaves this version running, with nothing for a later start to report.
     const unmark = () => { if (markerPath !== null) try { unlinkSync(markerPath) } catch { /* already gone */ } }
-    void Promise.resolve(service.installBundle(chosen.spec, options))
+    // Written before the plugin manager can reload this plugin in place: the new
+    // version's first start reads it.
+    mark()
+    void Promise.resolve()
+      .then(() => service.installBundle(chosen.spec, options))
       .then(async (result) => {
         if (result?.error?.code !== 'already-installed') return result
         // With HMR the plugin manager refuses to install a package the profile already
@@ -284,46 +545,126 @@ export function install(rt) {
           if (on && !on.error && ['applied', 'restart-required'].includes(on.application)) return `${failed}; ${PKG.name} was enabled again`
           return restore(failed)
         }
-        mark()
         const removed = await Promise.resolve(service.removeBundle(PKG.name)).catch((error) => { unmark(); throw error })
         if (removed?.error) {
           if (removed.changed) mark(await recover(removed.error.diagnostic ?? removed.error.code))
           else unmark()
-          return { error: removed.error }
+          return { error: removed.error, reported: true }
         }
         try {
           const again = await service.installBundle(chosen.spec, options)
           // A failure also arrives as an application state with no error; the
           // result check below rejects every one of those, so restore sees the
           // same failures it does.
-          if (again?.error || !['applied', 'restart-required'].includes(again?.application)) mark(await restore(again?.error?.diagnostic ?? again?.error?.code ?? `install ${again?.application ?? 'failed'}`))
+          if (again?.error || !['applied', 'restart-required'].includes(again?.application)) {
+            mark(await restore(again?.error?.diagnostic ?? again?.error?.code ?? `install ${again?.application ?? 'failed'}`))
+            return { ...again, reported: true }
+          }
           return again
         } catch (error) {
           mark(await restore(error?.message ?? String(error)))
-          throw error
+          throw Object.assign(error instanceof Error ? error : new Error(String(error)), { reported: true })
         }
       })
       .then((result) => {
         if (result?.error || !['applied', 'restart-required'].includes(result?.application)) {
-          throw new Error(result?.error?.diagnostic ?? result?.error?.code ?? `install ${result?.application ?? 'failed'}`)
+          // A direct install that failed restored the profile: the running version
+          // stays, and nothing is left for a later start to report. A removal that
+          // went wrong already wrote what happened into the note.
+          if (!result?.reported) unmark()
+          throw Object.assign(new Error(result?.error?.diagnostic ?? result?.error?.code ?? `install ${result?.application ?? 'failed'}`), { reported: true })
         }
+        // The note stays: the start that runs the new version reports it.
         Object.assign(status, { phase: 'installed', installed: cleanVersion(result.version) ?? chosen.version })
       })
       .catch((error) => {
-        note('godbot: update to %s failed: %s', chosen.spec, error?.message ?? error)
+        if (!error?.reported) unmark()
+        if (auto) autoSkip = chosen.version
+        note('godbot: update to %s failed: %s', chosen.version, error?.message ?? error)
         Object.assign(status, { phase: 'failed', error: String(error?.message ?? error).slice(0, 600) })
       })
+  }
+
+  function blockedText(problem) {
+    if (problem.reason === 'dsh') return `Godbot ${target?.version ?? ''} needs DSH ${problem.dsh}`
+    if (problem.reason === 'peers') return `Godbot ${target?.version ?? ''} needs ${problem.peers.join(', ')}; run scripts/install-local.mjs again`
+    return `The release archive holds ${problem.found}`
+  }
+
+  /** Change the update mode; `off` stops the clock and any automatic download. */
+  function setSettings(patch = {}) {
+    if (!UPDATE_MODES.includes(patch.mode)) throw new Error('Choose auto, notify or off')
+    if (settingsPath === null) throw new Error('This host keeps no update settings')
+    writeUpdateSettings(settingsPath, { mode: patch.mode })
+    settings = { mode: patch.mode }
+    waiting = null
+    idleSince = 0
+    if (settings.mode === 'off') {
+      if (status.phase === 'downloading') {
+        preparingAbort?.abort(new Error('Automatic updates were turned off'))
+        progress = null
+        Object.assign(status, { phase: 'idle', error: null })
+      }
+    } else if (target !== null) void prepare().catch(() => {})
     return view()
+  }
+
+  // One minute of the clock: ask when due, fetch again after a failed download,
+  // and in auto mode install the ready version once Godbot has been idle a while.
+  // A host that only reads the team never installs by itself: the writing host does.
+  async function tick() {
+    if (!enabled || settings.mode === 'off') { waiting = null; return }
+    const at = now()
+    if (at - autoAskedAt >= AUTO_CHECK_MS) {
+      autoAskedAt = at
+      await check({ fresh: true })
+    } else if (status.phase === 'failed' && downloadFailed && at - failedAt >= RETRY_MS) {
+      Object.assign(status, { phase: 'idle', error: null })
+      await prepare()
+    }
+    if (settings.mode !== 'auto' || target === null || autoSkip === target.version || rt.readOnly?.()) { waiting = null; return }
+    const ready = target.asset === undefined ? view().available && status.phase === 'idle' : status.phase === 'ready'
+    if (!ready) { waiting = null; return }
+    const reasons = busyReasons()
+    if (reasons.length > 0) {
+      waiting = reasons
+      idleSince = 0
+      return
+    }
+    waiting = [{ kind: 'idle' }]
+    if (idleSince === 0) { idleSince = at; return }
+    if (at - idleSince < IDLE_MS) return
+    rt.warn('godbot: installing Godbot %s now that the workspace is idle', target.version)
+    try { start({ auto: true }) } catch (error) {
+      autoSkip = target.version
+      rt.warn('godbot: automatic update to %s did not start: %s', target.version, error?.message ?? error)
+    }
   }
 
   if (enabled) {
     ctx.effect(() => {
-      const timer = setTimeout(() => { void check() }, STARTUP_DELAY_MS)
-      // A pending first check never keeps the process alive.
+      let stopped = false
+      let timer
+      const loop = async () => {
+        if (stopped) return
+        try { await tick() } catch (error) { rt.warn('godbot: update clock failed: %s', error?.message ?? error) }
+        if (stopped) return
+        timer = setTimeout(loop, TICK_MS)
+        // A pending check never keeps the process alive.
+        timer.unref?.()
+      }
+      timer = setTimeout(loop, STARTUP_DELAY_MS)
       timer.unref?.()
-      return () => clearTimeout(timer)
-    }, 'godbot: update check')
+      return () => {
+        stopped = true
+        clearTimeout(timer)
+        preparingAbort?.abort(new Error('Godbot stopped'))
+      }
+    }, 'godbot: update clock')
   }
 
-  Object.assign(rt, { updateCheck: check, updateStart: start, updateView: view, repoStars })
+  Object.assign(rt, {
+    updateCheck: check, updateStart: () => start(), updateView: view, updateSettings: setSettings,
+    updateTick: tick, updatePrepare: prepare, updateBusy: busyReasons, repoStars,
+  })
 }
