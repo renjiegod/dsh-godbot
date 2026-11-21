@@ -1414,7 +1414,12 @@ var JA = {
   "This is already a new session. Send a message to begin.": "すでに新しいセッションです。メッセージを送って始めましょう。",
   "Start a new session with {name}": "{name} と新しいセッションを開始",
   "New session · {time}": "新しいセッション · {time}",
-  "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "これまでのメッセージは上に残っています。{name} は引き継ぎの要約だけを持ってこのセッションを始めます。メッセージを送って始めましょう。",
+  "{name} starts afresh here, with nothing carried over from the last session — send a message to begin.": "{name} はここで前のセッションの内容を持たずに新しく始めます。メッセージを送って始めましょう。",
+  "Previous session: “{title}”": "前のセッション：「{title}」",
+  "Open the previous session": "前のセッションを開く",
+  "Context handed over · {time}": "コンテキストを引き継ぎ · {time}",
+  "Context handed over": "コンテキストを引き継ぎ",
+  "The conversation goes on in a fresh session with a handoff note. The messages above stay here.": "会話は引き継ぎメモを持って新しいセッションで続きます。上のメッセージはここに残ります。",
   "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "これまでの会話はセッション一覧で続いています。{name} はここから新しく始めます。メッセージを送って始めましょう。",
   "Archive": "アーカイブ",
   "Session actions": "セッションの操作",
@@ -3880,7 +3885,12 @@ var KO = {
   "This is already a new session. Send a message to begin.": "이미 새 세션입니다. 메시지를 보내 시작하세요.",
   "Start a new session with {name}": "{name}와(과) 새 세션 시작",
   "New session · {time}": "새 세션 · {time}",
-  "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "이전 메시지는 위에 남아 있습니다. {name}은(는) 인수인계 요약만 가지고 이 세션을 시작합니다. 메시지를 보내 시작하세요.",
+  "{name} starts afresh here, with nothing carried over from the last session — send a message to begin.": "{name}은(는) 이전 세션의 내용 없이 여기서 새로 시작합니다. 메시지를 보내 시작하세요.",
+  "Previous session: “{title}”": "이전 세션: “{title}”",
+  "Open the previous session": "이전 세션 열기",
+  "Context handed over · {time}": "컨텍스트 인계됨 · {time}",
+  "Context handed over": "컨텍스트 인계됨",
+  "The conversation goes on in a fresh session with a handoff note. The messages above stay here.": "대화는 인계 메모와 함께 새 세션에서 이어집니다. 위의 메시지는 그대로 남아 있습니다.",
   "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "이전 대화는 세션 목록에서 이어집니다. {name}은(는) 여기서 새로 시작합니다. 메시지를 보내 시작하세요.",
   Archive: "보관",
   "Session actions": "세션 작업",
@@ -6367,7 +6377,12 @@ var ES = {
   "This is already a new session. Send a message to begin.": "Ya es una sesión nueva. Envía un mensaje para empezar.",
   "Start a new session with {name}": "Iniciar una nueva sesión con {name}",
   "New session · {time}": "Nueva sesión · {time}",
-  "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "Los mensajes anteriores siguen arriba. {name} empieza esta sesión solo con un resumen de traspaso; envía un mensaje para empezar.",
+  "{name} starts afresh here, with nothing carried over from the last session — send a message to begin.": "{name} empieza de cero aquí, sin nada de la sesión anterior; envía un mensaje para empezar.",
+  "Previous session: “{title}”": "Sesión anterior: «{title}»",
+  "Open the previous session": "Abrir la sesión anterior",
+  "Context handed over · {time}": "Contexto traspasado · {time}",
+  "Context handed over": "Contexto traspasado",
+  "The conversation goes on in a fresh session with a handoff note. The messages above stay here.": "La conversación sigue en una sesión nueva con una nota de traspaso. Los mensajes de arriba se quedan aquí.",
   "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "La conversación anterior sigue en la lista de sesiones. {name} empieza de cero aquí; envía un mensaje para empezar.",
   Archive: "Archivar",
   "Session actions": "Acciones de sesión",
@@ -8830,7 +8845,12 @@ var FR = {
   "This is already a new session. Send a message to begin.": "C’est déjà une nouvelle session. Envoyez un message pour commencer.",
   "Start a new session with {name}": "Démarrer une nouvelle session avec {name}",
   "New session · {time}": "Nouvelle session · {time}",
-  "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "Les messages précédents restent au-dessus. {name} commence cette session avec seulement un résumé de passation ; envoyez un message pour commencer.",
+  "{name} starts afresh here, with nothing carried over from the last session — send a message to begin.": "{name} repart de zéro ici, sans rien de la session précédente ; envoyez un message pour commencer.",
+  "Previous session: “{title}”": "Session précédente : « {title} »",
+  "Open the previous session": "Ouvrir la session précédente",
+  "Context handed over · {time}": "Contexte transmis · {time}",
+  "Context handed over": "Contexte transmis",
+  "The conversation goes on in a fresh session with a handoff note. The messages above stay here.": "La conversation continue dans une nouvelle session avec une note de passation. Les messages au-dessus restent ici.",
   "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "La conversation précédente se poursuit dans la liste des sessions. {name} repart de zéro ici ; envoyez un message pour commencer.",
   "Archive": "Archiver",
   "Session actions": "Actions de session",
@@ -11296,7 +11316,12 @@ var DE = {
   "This is already a new session. Send a message to begin.": "Das ist schon eine neue Sitzung. Schick eine Nachricht, um loszulegen.",
   "Start a new session with {name}": "Neue Sitzung mit {name} starten",
   "New session · {time}": "Neue Sitzung · {time}",
-  "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "Frühere Nachrichten bleiben oben. {name} beginnt diese Sitzung nur mit einer Übergabe-Zusammenfassung – schick eine Nachricht, um loszulegen.",
+  "{name} starts afresh here, with nothing carried over from the last session — send a message to begin.": "{name} beginnt hier neu, ohne etwas aus der letzten Sitzung – schick eine Nachricht, um loszulegen.",
+  "Previous session: “{title}”": "Vorherige Sitzung: „{title}“",
+  "Open the previous session": "Vorherige Sitzung öffnen",
+  "Context handed over · {time}": "Kontext übergeben · {time}",
+  "Context handed over": "Kontext übergeben",
+  "The conversation goes on in a fresh session with a handoff note. The messages above stay here.": "Das Gespräch geht in einer neuen Sitzung mit einer Übergabenotiz weiter. Die Nachrichten oben bleiben hier.",
   "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "Das frühere Gespräch läuft in der Sitzungsliste weiter. {name} beginnt hier neu – schick eine Nachricht, um loszulegen.",
   Archive: "Archivieren",
   "Session actions": "Sitzungsaktionen",
@@ -13789,7 +13814,12 @@ var ZH = {
   "This is already a new session. Send a message to begin.": "已经是新会话了，发条消息开始吧。",
   "Start a new session with {name}": "和 {name} 开启新会话",
   "New session · {time}": "新会话 · {time}",
-  "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "之前的对话留在上方。{name} 只带着一份交接摘要进入这个新会话，发条消息开始吧。",
+  "{name} starts afresh here, with nothing carried over from the last session — send a message to begin.": "{name} 在这里从零开始，不带上一个会话的任何内容，发条消息开始吧。",
+  "Previous session: “{title}”": "上一个会话：「{title}」",
+  "Open the previous session": "打开上一个会话",
+  "Context handed over · {time}": "上下文已交接 · {time}",
+  "Context handed over": "上下文已交接",
+  "The conversation goes on in a fresh session with a handoff note. The messages above stay here.": "对话在新的会话里带着交接摘要继续，上面的消息都还在。",
   "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "之前的对话在会话列表里继续。{name} 在这里重新开始，发条消息开始吧。",
   Archive: "归档",
   "Session actions": "会话操作",
@@ -17739,9 +17769,10 @@ body[data-bt-layout=flat] .bt-think{max-width:calc(var(--bt-flat-w) * 100%)}
 .bt-event-whole>.bt-event-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-time-sep{display:flex;justify-content:center;align-items:center;height:28px;margin:14px 0 8px;font-size:12px;line-height:16px;color:var(--bt-ink-2);white-space:nowrap}
 [class*="_scroll"]>[class*="_column"]::before{content:var(--bt-first-sep,none);display:block;flex:none;height:28px;margin:17px 0 12px;font-size:12px;line-height:28px;text-align:center;color:var(--bt-ink-2);white-space:nowrap}
-/* A part that opens with its handoff shows the earlier parts first: its own opening time
-   is on the line under them (cells.js EarlierParts), not above messages from before it. */
-[class*="_scroll"]>[class*="_column"]:has(.bt-earlier)::before{content:none}
+/* A part that opens with its handoff has its opening time on its own line: under a
+   group's earlier parts (cells.js EarlierParts), or where a Bot's session begins
+   (cells.js PartStart). */
+[class*="_scroll"]>[class*="_column"]:has(.bt-earlier,.bt-part-start)::before{content:none}
 .bt-activity{display:flex;align-items:center;gap:10px;margin:8px 0 4px 2px;font-size:14px;color:var(--bt-ink-2)}
 .bt-group-replies{display:contents}
 /* A Bot chat is flat in every work-details mode, without changing the user's mode
@@ -18042,6 +18073,10 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-part-line[data-fresh]{color:var(--bt-accent)}
 .bt-part-line[data-fresh]::before,.bt-part-line[data-fresh]::after{background:color-mix(in srgb,var(--bt-accent) 45%,transparent)}
 .bt-part-fresh{max-width:28rem;margin:0 auto 12px;font-size:12.5px;line-height:18px;text-align:center;color:var(--bt-ink-2)}
+.bt-part-start>.bt-part-line:first-child{margin-top:17px}
+.bt-part-from{display:flex;flex-direction:column;align-items:center;gap:4px;margin:0 auto 12px;max-width:28rem}
+.bt-part-from>.bt-soft{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-part-from-error{font-size:12px;line-height:16px;text-align:center;color:var(--bt-danger,#d33)}
 /* The dock wrapper also holds the context meter, so it stays hidden until a side question is in it. */
 [data-composer-dock]:has(.bt-btw){display:flex!important;flex-direction:column;align-items:center;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
 [data-composer-dock]:has(.bt-btw)>:not([data-slot="conversation.composer.dock"]){display:none!important}
@@ -27349,6 +27384,12 @@ function withoutEmptyParts(items, { complete = false } = {}) {
   const kept = items.filter((item, index) => item?.kind !== "divider" || index + 1 < items.length && items[index + 1]?.kind !== "divider");
   return complete && kept[0]?.kind === "divider" ? kept.slice(1) : kept;
 }
+function previousPart(bot, sessionId, source) {
+  const from = source?.fromPart;
+  if (bot === void 0 || typeof from !== "string" || from === sessionId) return void 0;
+  const openable = (bot.parts ?? []).includes(from) || (bot.openParts ?? []).some((part) => part.sessionId === from);
+  return openable ? from : void 0;
+}
 
 // src/client/team-ui/turn-reasoning.js
 function turnReasoning(steps, current2) {
@@ -28902,11 +28943,12 @@ function MemoryEvent({ sessionId, scope, tool, result, failed, code, roster, act
     panel === void 0 ? null : (0, import_react35.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => actions.openMemory(panel) }, t("Manage"))
   );
 }
-function PartLine({ time, fresh = false }) {
+function PartLine({ time, start = false, fresh = false }) {
+  const when3 = Number.isFinite(time) ? dayLabel(time) : void 0;
   return (0, import_react35.createElement)(
     "div",
-    { className: "bt-part-line", role: "separator", "data-fresh": fresh || void 0 },
-    (0, import_react35.createElement)("span", null, Number.isFinite(time) ? t("New session · {time}", { time: dayLabel(time) }) : t("New session"))
+    { className: "bt-part-line", role: "separator", "data-fresh": fresh || void 0, title: start ? void 0 : t("The conversation goes on in a fresh session with a handoff note. The messages above stay here.") },
+    (0, import_react35.createElement)("span", null, start ? when3 ? t("New session · {time}", { time: when3 }) : t("New session") : when3 ? t("Context handed over · {time}", { time: when3 }) : t("Context handed over"))
   );
 }
 var scrollParent = (node) => {
@@ -28932,7 +28974,7 @@ function EarlierUser({ row: row2, actions }) {
     row2.via ? (0, import_react35.createElement)("div", { className: "bt-utime" }, (0, import_react35.createElement)(ViaTag, { via: row2.via }), Number.isFinite(row2.time) ? messageClock(row2.time) : null) : null
   );
 }
-function EarlierParts({ sessionId, roster, actions, opening = false }) {
+function EarlierParts({ sessionId, roster, actions }) {
   const [view, setView] = (0, import_react35.useState)({ pages: [], cursor: void 0, loading: true, failed: false, startedAt: null });
   const top = (0, import_react35.useRef)(null);
   const busy = (0, import_react35.useRef)(false);
@@ -29000,8 +29042,6 @@ function EarlierParts({ sessionId, roster, actions, opening = false }) {
   const complete = !view.loading && !view.failed && !view.cursor;
   const items = withoutEmptyParts(loaded, { complete });
   const first = complete && items[0]?.kind !== "divider" ? items[0]?.time : void 0;
-  const bot = roster.byId[sessionId];
-  const fresh = bot !== void 0 && currentPart(bot) === sessionId && roster.newSessions?.[bot.id] === "empty";
   return (0, import_react35.createElement)(
     "div",
     { className: "bt-earlier", role: "feed", "aria-label": t("Earlier messages"), "aria-busy": view.loading },
@@ -29012,12 +29052,42 @@ function EarlierParts({ sessionId, roster, actions, opening = false }) {
     ),
     Number.isFinite(first) ? (0, import_react35.createElement)("div", { className: "bt-time-sep", role: "separator" }, clockLabel(first)) : null,
     (0, import_react35.createElement)(ChatRows, { items, sessionId, roster, actions, onBtwDelete: removeBtw }),
-    (0, import_react35.createElement)(PartLine, { time: view.startedAt, fresh }),
+    (0, import_react35.createElement)(PartLine, { time: view.startedAt })
+  );
+}
+function PartStart({ sessionId, source, time, roster, useSessions, actions }) {
+  const bot = roster.byId[sessionId];
+  const from = previousPart(bot, sessionId, source);
+  const named = useSessions((list) => from === void 0 ? "" : (list.byId?.[from]?.title ?? "").trim());
+  const title2 = named === bot.name ? "" : named;
+  const [state, setState] = (0, import_react35.useState)({ busy: false, error: "" });
+  const opening = source.opening === true;
+  const fresh = currentPart(bot) === sessionId && roster.newSessions?.[bot.id] === "empty";
+  const open = () => {
+    if (state.busy || from === void 0) return;
+    setState({ busy: true, error: "" });
+    const running = roster.partsRunning?.[from] === true;
+    Promise.resolve(actions.openPart !== void 0 ? actions.openPart(bot.id, from, running) : call("bot-open-part", { botId: bot.id, sessionId: from })).then(() => setState({ busy: false, error: "" }), (failure) => setState({ busy: false, error: failure?.message ?? String(failure) }));
+  };
+  return (0, import_react35.createElement)(
+    "div",
+    { className: "bt-part-start" },
+    (0, import_react35.createElement)(PartLine, { time, start: true, fresh }),
     fresh ? (0, import_react35.createElement)(
       "p",
       { className: "bt-part-fresh", role: "note", "data-opening": opening || void 0 },
-      opening ? t("The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.", { name: bot.name }) : t("Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.", { name: bot.name })
-    ) : null
+      opening ? t("The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.", { name: bot.name }) : t("{name} starts afresh here, with nothing carried over from the last session — send a message to begin.", { name: bot.name })
+    ) : null,
+    from === void 0 ? null : (0, import_react35.createElement)(
+      "div",
+      { className: "bt-part-from" },
+      (0, import_react35.createElement)(
+        "button",
+        { type: "button", className: "bt-soft bt-soft-sm", disabled: state.busy, onClick: open, title: t("Open this earlier session") },
+        title2 !== "" ? t("Previous session: “{title}”", { title: title2 }) : t("Open the previous session")
+      ),
+      state.error !== "" ? (0, import_react35.createElement)("span", { className: "bt-part-from-error", role: "alert" }, state.error) : null
+    )
   );
 }
 function ChatRows({ items, sessionId, roster, actions, useUi, clock: clock4 = false, onBtwDelete }) {
@@ -29131,7 +29201,12 @@ function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnClock, us
   return unreadOpening ? (0, import_react35.createElement)(import_react35.Fragment, null, (0, import_react35.createElement)("div", { className: "bt-open-new" }, (0, import_react35.createElement)(NewDivider), (0, import_react35.createElement)("div", { className: "bt-time-sep", role: "separator" }, unreadOpening)), body) : body ?? (0, import_react35.createElement)(CellEmpty);
   function triggerBody() {
     if (source.kind === "bot") {
-      if (source.handoff === true) return (0, import_react35.createElement)(EarlierParts, { sessionId, roster, actions, opening: source.opening === true });
+      if (source.handoff === true) {
+        if ((source.manual === true || source.opening === true) && roster.roomsById[sessionId] === void 0 && roster.byId[sessionId] !== void 0) {
+          return (0, import_react35.createElement)(PartStart, { sessionId, source, time: data.time, roster, useSessions, actions });
+        }
+        return (0, import_react35.createElement)(EarlierParts, { sessionId, roster, actions });
+      }
       if (source.role === "kickoff" || source.role === "room" || source.role === "goal") return null;
       if (source.role === "secret" || deferred) return null;
       if (source.role === "update") return (0, import_react35.createElement)("div", { className: "bt-event" }, t("Profile updated"));

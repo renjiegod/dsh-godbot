@@ -170,6 +170,17 @@ export function canonicalHeadings(note, names) {
   return lines.join('\n')
 }
 
+// The first part of the session `at` is in: a New session the user started begins one
+// (the segment before it is marked `manual`; older ones say so as their note's
+// fallback), and so does a seam an opened session left (`cut`, switchPart). Pages of
+// earlier parts go no further back, so sessions show apart.
+export function sessionFloor(parts, at) {
+  for (let index = at - 1; index >= 0; index -= 1) {
+    if (parts[index]?.manual === true || parts[index]?.cut === true || parts[index]?.fallback === 'manual') return index + 1
+  }
+  return 0
+}
+
 export function install(rt) {
   const { ctx, config, state } = rt
 
@@ -910,9 +921,22 @@ export function install(rt) {
     '',
     'Nothing needs an answer now; wait for the next message.',
   ].join('\n')
+  // What opens a New session the user started while the Bot was idle: the part before
+  // it is archived, and nothing of it is carried over.
+  const NEW_SESSION_PACKAGE = [
+    '[Handoff · new conversation]',
+    'The user started a fresh conversation with you. The earlier one is not carried into this one. This message is not from the user.',
+    'Everything earlier stays saved, and read_own_chat finds it.',
+    '',
+    '## Handoff note',
+    '(none: this conversation starts fresh)',
+    '',
+    'Nothing needs an answer now; wait for the next message.',
+  ].join('\n')
   // A handoff in every other way (hidden, not talk, acknowledged without the model);
-  // `opening` tells the chat that nothing came over with it.
-  const openingSource = () => ({ kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'Godbot', exchangeId: randomUUID(), handoff: true, opening: true })
+  // `opening` tells the chat that nothing came over with it, and `fromPart` names the
+  // part the user left, still live in the background.
+  const openingSource = fromPart => ({ kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'Godbot', exchangeId: randomUUID(), handoff: true, opening: true, fromPart })
 
   // Carries any active IM turn origin onto a synthetic switch/resume source without
   // replaying a stale request rpcId that the earlier part already consumed.
@@ -925,11 +949,15 @@ export function install(rt) {
   }
 
   // A turn stopped for a switch goes on with its own source, so its reply still
-  // reaches whoever asked.
-  const handoffSource = (job, resume) => carryOriginSource(job, {
+  // reaches whoever asked. `fromPart` names the part the package came from: the chat
+  // shows each part as a session of its own and links back to that one, and `manual`
+  // tells it the user asked for the fresh part.
+  const handoffSource = (job, resume, fromPart) => carryOriginSource(job, {
     ...(resume && job.info ? job.info : { kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'Godbot' }),
     exchangeId: job.info?.exchangeId ?? randomUUID(),
     handoff: true,
+    fromPart,
+    ...(job.manual === true ? { manual: true } : {}),
     ...(resume ? { resume: true } : {}),
     ...(resume && job.joined?.length ? { joined: job.joined } : {}),
   })
@@ -1256,7 +1284,9 @@ export function install(rt) {
     const parts = bot === undefined ? partsOf(undefined, room.id) : partsOf(bot.id, room?.id, thread?.segments, thread === undefined ? undefined : agent.id)
     const number = parts.length
     const budget = Math.min(RECENT_TOKENS, Math.floor((lines?.check ?? 4 * RECENT_TOKENS) / 4))
-    const readLines = () => (job.bare ? { recent: [], earlier: [], unlisted: 0, complete: true } : handoffLines(agent.id, { budget, group: room !== undefined, number }))
+    // A New session the user asked for starts from nothing, as a new chat does: no
+    // messages and no note go over, and read_own_chat still finds the earlier ones.
+    const readLines = () => (job.bare || job.manual ? { recent: [], earlier: [], unlisted: 0, complete: true } : handoffLines(agent.id, { budget, group: room !== undefined, number }))
     let carried = job.folder ? await readLines() : undefined
     // A short part with no tool work goes over word for word, so it needs no note.
     const whole = carried?.whole === true && !session.deriveMessages().some(message => message.role === 'tool')
@@ -1265,8 +1295,7 @@ export function install(rt) {
     const local = localPart(session)
     // The group's own Session only relays; it has no route a note could be written with.
     // A New session the user asked for opens at once: the model is not asked for a note
-    // (on a local CLI that is a whole turn), and the earlier note goes with the latest
-    // messages instead.
+    // (on a local CLI that is a whole turn), and nothing goes over.
     if (!job.engine && !job.overflow && job.cutoff !== true && job.failed === undefined && !job.manual && !whole && bot !== undefined) {
       try {
         const noteSignal = AbortSignal.any([signal, AbortSignal.timeout(NOTE_TIMEOUT_MS)])
@@ -1289,7 +1318,7 @@ export function install(rt) {
     }
     if (failure !== undefined) rt.warn('godbot: handoff note for %s failed past the hard line; moving on with the earlier note: %s', name, failure)
     const previous = parts.at(-2)
-    const earlierNote = previous?.note ? { note: previous.note, noteFrom: previous.noteFrom ?? previous.number } : {}
+    const earlierNote = previous?.note && !job.manual ? { note: previous.note, noteFrom: previous.noteFrom ?? previous.number } : {}
     const noted = written !== undefined ? { note: written.note }
       : job.engine ? { fallback: 'engine', ...earlierNote }
       : { fallback: whole ? 'whole' : job.failed !== undefined ? 'failure' : job.overflow ? 'overflow' : job.cutoff === true ? 'cutoff' : job.manual ? 'manual' : 'failed', ...earlierNote }
@@ -1318,7 +1347,9 @@ export function install(rt) {
         .catch(error => rt.warn('godbot: unused fresh part of %s not archived: %s', name, error))
       return
     }
-    const segment = { sessionId: agent.id, endedAt: Date.now(), ...(tokens !== undefined ? { tokens } : {}), ...noted }
+    // `manual`: the part after this one is a New session the user started. The chat shows
+    // it as a session of its own, and pages of earlier parts stop there (sessionFloor).
+    const segment = { sessionId: agent.id, endedAt: Date.now(), ...(tokens !== undefined ? { tokens } : {}), ...noted, ...(job.manual ? { manual: true } : {}) }
     if (bot === undefined) {
       ;(room.parts ??= []).push(segment)
       room.sessionId = freshId
@@ -1374,9 +1405,10 @@ export function install(rt) {
         rt.warn('godbot: the fresh part of %s did not start in %s; it works in %s', name, intended, cwd)
       }
       const engine = job.engine ? rt.engineNameOf?.(bot.model ?? bot.appliedModel) : undefined
-      const text = handoffPackage({ room, self: bot === undefined, segment, lines: carried, number: number + 1, resume, overflow: job.overflow, cutoff: job.cutoff === true, failed: job.failed, bare: job.bare, folder, manual: job.manual, engine })
+      const text = job.manual && !resume ? NEW_SESSION_PACKAGE
+        : handoffPackage({ room, self: bot === undefined, segment, lines: carried, number: number + 1, resume, overflow: job.overflow, cutoff: job.cutoff === true, failed: job.failed, bare: job.bare, folder, manual: job.manual, engine })
       freshParts.set(freshId, estimateTokens(text))
-      fresh.followup(createUserMessage({ content: [{ type: 'text', text }], source: handoffSource(job, resume) }))
+      fresh.followup(createUserMessage({ content: [{ type: 'text', text }], source: handoffSource(job, resume, agent.id) }))
       await ctx.sessions.flush(fresh.session)
       carry.push(...job.carry.splice(0))
       await forward(job, [...carry, ...held], freshId)
@@ -1866,7 +1898,7 @@ export function install(rt) {
     return items
   }
 
-  async function partPage(parts, index, cursor, steps = false) {
+  async function partPage(parts, index, cursor, steps = false, floor = 0) {
     const part = parts[index]
     const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
     // An archived earlier part may have no live agent left; its stored events
@@ -1907,10 +1939,11 @@ export function install(rt) {
       }
     }
     const more = page.hasMore && events.length > 0
-    // The line above a part's first message marks where it began.
-    if (!more && index > 0) items.unshift({ kind: 'divider', time: part.startedAt })
+    // The line above a part's first message marks where it began. The first part of a
+    // session needs none: the session starts there.
+    if (!more && index > floor) items.unshift({ kind: 'divider', time: part.startedAt })
     if (steps === true) await applySteps(items, events, part.sessionId)
-    return { items, cursor: more ? { part: index, beforeSeq: events[0].seq } : index > 0 ? { part: index - 1 } : null }
+    return { items, cursor: more ? { part: index, beforeSeq: events[0].seq } : index > floor ? { part: index - 1 } : null }
   }
 
   async function earlierPage(sessionId, cursor) {
@@ -1921,12 +1954,13 @@ export function install(rt) {
     const botId = roomId === undefined ? rt.chatOwners.get(sessionId) ?? (past?.roomId === undefined ? past?.botId : undefined) : undefined
     const parts = roomId === undefined ? (botId === undefined ? [] : partsOfThread(botId, sessionId)) : partsOf(undefined, roomId)
     const at = parts.findIndex(part => part.sessionId === sessionId)
+    const floor = sessionFloor(parts, at)
     const index = Number.isInteger(cursor?.part) ? cursor.part : at - 1
-    if (at <= 0 || index < 0 || index >= at) return { items: [], cursor: null, startedAt: parts[at]?.startedAt ?? null }
+    if (at <= 0 || index < floor || index >= at) return { items: [], cursor: null, startedAt: parts[at]?.startedAt ?? null }
     // Aside cards belong to the part that was current when they were asked, so
     // they ride along with that part's history instead of the team view.
     const btw = botId === undefined ? [] : (await rt.btwPartCards?.(botId, parts[index].sessionId)) ?? []
-    return { ...(await partPage(parts, index, cursor)), btw, startedAt: parts[at].startedAt }
+    return { ...(await partPage(parts, index, cursor, false, floor)), btw, startedAt: parts[at].startedAt }
   }
 
   // A Bot's whole own chat, newest page first: the current part, then the earlier
@@ -2038,8 +2072,9 @@ export function install(rt) {
     const parts = partsOf(botId)
     if (parts.length === 0) throw Object.assign(new Error('Unknown Bot'), { code: 'bot/not-found' })
     const index = Number.isInteger(cursor?.part) ? cursor.part : parts.length - 1
-    if (index < 0 || index >= parts.length) return { sessionId: parts.at(-1).sessionId, items: [], cursor: null }
-    return { sessionId: parts.at(-1).sessionId, ...(await partPage(parts, index, cursor, steps)) }
+    const floor = sessionFloor(parts, parts.length - 1)
+    if (index < floor || index >= parts.length) return { sessionId: parts.at(-1).sessionId, items: [], cursor: null }
+    return { sessionId: parts.at(-1).sessionId, ...(await partPage(parts, index, cursor, steps, floor)) }
   }
 
   // Whether anyone has talked in a part yet: the user, another Bot, or an answer to a
@@ -2173,7 +2208,7 @@ export function install(rt) {
       await rt.ensureCapabilities(freshId)
       const fresh = await rt.resolveAgent(freshId)
       freshParts.set(freshId, estimateTokens(OPENING_PACKAGE))
-      fresh.followup(createUserMessage({ content: [{ type: 'text', text: OPENING_PACKAGE }], source: openingSource() }))
+      fresh.followup(createUserMessage({ content: [{ type: 'text', text: OPENING_PACKAGE }], source: openingSource(agent.id) }))
       await ctx.sessions.flush(fresh.session)
     } catch (error) {
       rt.warn('godbot: the new part of %s did not open with its first turn: %s', bot.name, error)
@@ -2206,7 +2241,11 @@ export function install(rt) {
     // the part leaves the archive before it becomes current.
     await ctx.workspaceRegistry.unarchiveSession(partId)
     segments.splice(at, 1)
-    segments.splice(at, 0, { sessionId: current, endedAt: Date.now() })
+    // The swap leaves the thread out of order: the part that left takes the opened one's
+    // place, and the opened one follows the last earlier part. `cut` keeps pages of
+    // earlier parts (sessionFloor) from reading across either seam.
+    segments.splice(at, 0, { sessionId: current, endedAt: Date.now(), cut: true })
+    segments[segments.length - 1] = { ...segments.at(-1), cut: true }
     bot.sessionId = partId
     rt.chatOwners.delete(current)
     rt.chatOwners.set(partId, botId)

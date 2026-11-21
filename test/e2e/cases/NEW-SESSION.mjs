@@ -61,9 +61,16 @@ export default async function newSession({ makeHost, candidate, note }) {
   await waitState('empty', 'the fresh part reads as a new session')
   const line = page.locator('.bt-part-line[data-fresh]')
   await line.waitFor()
-  // The line gets its time once the earlier parts have loaded.
   await until(async () => /^新会话 · /u.test(await line.innerText()), 'the fresh part\'s line says when it began')
   await page.locator('.bt-part-fresh').waitFor()
+  // Sessions show apart, as in DSH: nothing of the session it left is drawn above the
+  // line, only a way back to it.
+  const scroller = page.locator('[data-conversation-scroll]')
+  assert.equal(await scroller.locator('.bt-earlier').count(), 0, 'no earlier session is stacked above the new one')
+  assert.equal(await scroller.getByText('First question ' + tag).count(), 0, 'the earlier session\'s messages stay in it')
+  const back = page.locator('.bt-part-from button')
+  await back.waitFor()
+  assert.match(await back.innerText(), /上一个会话/u, 'the new session links to the one the user left')
   await host.capture('new-session-fresh-part')
 
   // Nothing in it yet: the button (quiet, but still clickable) and the host both leave
@@ -72,13 +79,14 @@ export default async function newSession({ makeHost, candidate, note }) {
   assert.equal(await host.bot('bot-new-part', { botId: bot.id }), false, 'the host turns a New session on an empty part away')
   await staysAt(second, 'an empty part got no second New session')
 
-  // The first message goes out with one handoff package, not a stack of them.
+  // The first message goes out with one opening, and nothing of the session it left:
+  // a New session starts from zero, as a new chat does.
   const calls = host.model.calls.length
   await talk('Second question ' + tag)
-  const sent = host.model.calls.slice(calls).map(call => JSON.stringify(call.body.messages))
-  const handoffs = sent.map(text => (text.match(/\[Handoff · part \d+\]/gu) ?? []).length)
-  assert.ok(handoffs.length > 0 && handoffs.every(count => count === 1), 'each request of the fresh part carries one handoff: ' + JSON.stringify(handoffs))
-  assert.ok(sent.some(text => text.includes('because the user started a new session')), 'the handoff says Godbot put it together for a New session')
+  const sent = host.model.calls.slice(calls).filter(call => (call.body.tools ?? []).length > 0).map(call => JSON.stringify(call.body.messages))
+  const handoffs = sent.map(text => (text.match(/\[Handoff · new conversation\]/gu) ?? []).length)
+  assert.ok(handoffs.length > 0 && handoffs.every(count => count === 1), 'each request of the fresh part opens with one opening: ' + JSON.stringify(handoffs))
+  assert.ok(sent.every(text => !text.includes('First question ' + tag) && !/\[Handoff · part \d+\]/u.test(text)), 'nothing of the session it left came over')
   await page.locator('.bt-part-fresh').waitFor({ state: 'detached' })
 
   // The details panel starts the next one from the row above its session list.

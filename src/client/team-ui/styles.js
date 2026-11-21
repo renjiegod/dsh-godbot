@@ -1197,9 +1197,10 @@ body[data-bt-layout=flat] .bt-think{max-width:calc(var(--bt-flat-w) * 100%)}
 .bt-event-whole>.bt-event-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-time-sep{display:flex;justify-content:center;align-items:center;height:28px;margin:14px 0 8px;font-size:12px;line-height:16px;color:var(--bt-ink-2);white-space:nowrap}
 [class*="_scroll"]>[class*="_column"]::before{content:var(--bt-first-sep,none);display:block;flex:none;height:28px;margin:17px 0 12px;font-size:12px;line-height:28px;text-align:center;color:var(--bt-ink-2);white-space:nowrap}
-/* A part that opens with its handoff shows the earlier parts first: its own opening time
-   is on the line under them (cells.js EarlierParts), not above messages from before it. */
-[class*="_scroll"]>[class*="_column"]:has(.bt-earlier)::before{content:none}
+/* A part that opens with its handoff has its opening time on its own line: under a
+   group's earlier parts (cells.js EarlierParts), or where a Bot's session begins
+   (cells.js PartStart). */
+[class*="_scroll"]>[class*="_column"]:has(.bt-earlier,.bt-part-start)::before{content:none}
 .bt-activity{display:flex;align-items:center;gap:10px;margin:8px 0 4px 2px;font-size:14px;color:var(--bt-ink-2)}
 .bt-group-replies{display:contents}
 /* A Bot chat is flat in every work-details mode, without changing the user's mode
@@ -1500,6 +1501,10 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-part-line[data-fresh]{color:var(--bt-accent)}
 .bt-part-line[data-fresh]::before,.bt-part-line[data-fresh]::after{background:color-mix(in srgb,var(--bt-accent) 45%,transparent)}
 .bt-part-fresh{max-width:28rem;margin:0 auto 12px;font-size:12.5px;line-height:18px;text-align:center;color:var(--bt-ink-2)}
+.bt-part-start>.bt-part-line:first-child{margin-top:17px}
+.bt-part-from{display:flex;flex-direction:column;align-items:center;gap:4px;margin:0 auto 12px;max-width:28rem}
+.bt-part-from>.bt-soft{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-part-from-error{font-size:12px;line-height:16px;text-align:center;color:var(--bt-danger,#d33)}
 /* The dock wrapper also holds the context meter, so it stays hidden until a side question is in it. */
 [data-composer-dock]:has(.bt-btw){display:flex!important;flex-direction:column;align-items:center;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
 [data-composer-dock]:has(.bt-btw)>:not([data-slot="conversation.composer.dock"]){display:none!important}
