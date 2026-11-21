@@ -768,6 +768,7 @@ export const FR = {
   "Start a new session with {name}": "Démarrer une nouvelle session avec {name}",
   "New session · {time}": "Nouvelle session · {time}",
   "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "Les messages précédents restent au-dessus. {name} commence cette session avec seulement un résumé de passation ; envoyez un message pour commencer.",
+  "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "La conversation précédente se poursuit dans la liste des sessions. {name} repart de zéro ici ; envoyez un message pour commencer.",
   "Archive": "Archiver",
   "Session actions": "Actions de session",
   "Plugins": "Plugins",

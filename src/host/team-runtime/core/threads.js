@@ -61,14 +61,29 @@ export function pushThreadPart(bot, sessionId, freshId, segment) {
   return true
 }
 
+// When a thread began: the Bot's chat began with the Bot, and a thread a New session
+// opened while the Bot was busy began when its first part was made. That time sits on
+// the Bot for its current thread and on each open part for its own (`threadStartedAt`),
+// and travels with the thread when the two swap. A thread saved before this was kept
+// has none and reads as begun with the Bot.
+const threadBegun = at => (Number.isFinite(at) ? { threadStartedAt: at } : {})
+
+export function threadStart(bot, sessionId) {
+  const thread = threadOfPart(bot, sessionId)
+  if (thread === undefined) return undefined
+  const at = thread.thread === 'current' ? bot.threadStartedAt : bot.openParts[thread.index].threadStartedAt
+  return Number.isFinite(at) ? at : undefined
+}
+
 // A fresh part starts in the foreground while the part it replaces stays live in the
 // background with its own chain, so its running turn is not interrupted. It starts with
 // no earlier parts and no handoff note: the user asked for a new conversation.
 export function startOpenPart(bot, freshId, startedAt = Date.now()) {
   bot.openParts ??= []
-  bot.openParts.push({ sessionId: currentSession(bot), segments: bot.segments ?? [], startedAt })
+  bot.openParts.push({ sessionId: currentSession(bot), segments: bot.segments ?? [], startedAt, ...threadBegun(bot.threadStartedAt) })
   bot.sessionId = freshId
   bot.segments = []
+  bot.threadStartedAt = startedAt
 }
 
 // Makes a live background part current. Each chain travels with its parts.
@@ -76,9 +91,11 @@ export function focusOpenPart(bot, sessionId) {
   const at = (bot.openParts ?? []).findIndex(part => part?.sessionId === sessionId)
   if (at === -1) return false
   const [target] = bot.openParts.splice(at, 1)
-  bot.openParts.push({ sessionId: currentSession(bot), segments: bot.segments ?? [] })
+  bot.openParts.push({ sessionId: currentSession(bot), segments: bot.segments ?? [], ...threadBegun(bot.threadStartedAt) })
   bot.sessionId = target.sessionId
   bot.segments = target.segments ?? []
+  if (Number.isFinite(target.threadStartedAt)) bot.threadStartedAt = target.threadStartedAt
+  else delete bot.threadStartedAt
   return true
 }
 
