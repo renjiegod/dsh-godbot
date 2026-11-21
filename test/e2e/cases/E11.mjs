@@ -51,6 +51,11 @@ export default async function E11(context) {
       return { page,request }
     }
     const a = await person(aliceUrl,'Alice'), b = await person(bob.url,'Bob')
+    const brand = a.page.locator('header .brand img')
+    assert.ok(await brand.evaluate(async img => {
+      await img.decode()
+      return img.naturalWidth > 0
+    }))
     const privatePath = 'resources/' + encodeURIComponent(privateId)
     const commonPath = 'resources/' + encodeURIComponent(publicId)
     const fullPath = 'resources/' + encodeURIComponent(fullId)

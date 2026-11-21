@@ -4,6 +4,7 @@ import { open, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, sep } from 'node:path'
 import { AutomationError } from './automation-runs.js'
 import { record, required } from './team.js'
+import { webIconFile } from './web-icon.js'
 
 const roles = ['view', 'chat', 'manage']
 const digest = value => createHash('sha256').update(value).digest('hex')
@@ -17,6 +18,7 @@ const presentedLimit = 16 * 1024 * 1024
 const html = readFileSync(new URL('./shared-web/index.html', import.meta.url))
 const script = readFileSync(new URL('./shared-web/app.js', import.meta.url))
 const css = readFileSync(new URL('./shared-web/app.css', import.meta.url))
+const icon = readFileSync(new URL('./assets/' + webIconFile, import.meta.url))
 
 async function bodyOf(req, max = 64000) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw new AutomationError(415, '仅接受 JSON')
@@ -35,7 +37,7 @@ async function bodyOf(req, max = 64000) {
 function send(res, status, type, body) {
   res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store',
     'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY',
-    'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" })
+    'content-security-policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" })
   res.end(body)
 }
 const json = (res, status, body) => send(res, status, 'application/json; charset=utf-8', JSON.stringify(body))
@@ -370,6 +372,7 @@ export class SharedWorkspace {
       if (route === '/share' || route === '/share/') return send(res,200,'text/html; charset=utf-8',html)
       if (route === '/share/app.js') return send(res,200,'text/javascript; charset=utf-8',script)
       if (route === '/share/app.css') return send(res,200,'text/css; charset=utf-8',css)
+      if (route === '/share/icon.png') return send(res,200,'image/png',icon)
     }
     if (req.method === 'POST' && route === '/share/api/join') return this.redeem(await bodyOf(req),res)
     const person = this.user(req)

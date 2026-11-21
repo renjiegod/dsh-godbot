@@ -36,7 +36,8 @@ header {
   padding-block: 1.15rem;
   border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: baseline; gap: .85rem; }
+.brand { display: flex; align-items: center; gap: .85rem; }
+.brand img { flex: none; border-radius: .35rem; }
 .brand strong { color: var(--accent); font-size: 1.35rem; letter-spacing: -.045em; }
 .brand span, #person { color: var(--muted); font-size: .9rem; }
 #person { overflow-wrap: anywhere; }
