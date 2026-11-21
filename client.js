@@ -18250,7 +18250,8 @@ body{--bt-return-fill:rgba(127,127,127,.08);--bt-return-fill-hover:rgba(127,127,
 var import_react2 = require("react");
 
 // src/host/web-icon.js
-var webIconUrl = "./plugins/dsh-godbot/assets/godbot-icon-f6555c02601e.png";
+var webIconFile = "godbot-icon-a4e5427b7eeb.png";
+var webIconUrl = "./plugins/dsh-godbot/assets/" + webIconFile;
 
 // src/client/team-ui/mark.js
 var STATES = ["idle", "thinking", "searching", "working", "sending", "orbit", "waiting", "alert", "done"];
@@ -29979,7 +29980,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.10";
+var version = "0.2.0-rc.11";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
