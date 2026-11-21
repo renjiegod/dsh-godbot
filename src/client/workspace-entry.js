@@ -38,7 +38,6 @@ function RuntimeStatus({ source, retry, navigation }) {
           'div',
           { className: 'gb-modal-actions' },
           h('button', { type: 'button', onClick: navigation.back }, '返回 dsh'),
-          h('button', { type: 'button', onClick: () => navigation.openManagement() }, '团队管理'),
           !waiting && h('button', { type: 'button', className: 'gb-modal-primary', onClick: retry }, '重新连接'),
         ),
       ),

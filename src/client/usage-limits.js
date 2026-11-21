@@ -1,4 +1,4 @@
-import { createElement as h, useState } from 'react'
+import { createElement as h, useEffect, useState } from 'react'
 import { field } from './controls.js'
 
 const limits = {
@@ -30,16 +30,11 @@ export function UsageLimits({ client, bots, models }) {
       setBusy(false)
     }
   }
+  useEffect(() => { void load('profile') }, [client])
   const s = state?.settings
   return h(
-    'details',
-    {
-      className: 'gb-card',
-      onToggle: (e) => {
-        if (e.currentTarget.open) void load(subject)
-      },
-    },
-    h('summary', null, '用量上限与备用模型'),
+    'div',
+    { className: 'gb-card' },
     h(
       'form',
       {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { until } from '../host.mjs'
-import { openBotChat, openFullTeam, openManagement } from '../native-ui.mjs'
+import { openBotChat, openFullTeam, openTaskBoard } from '../native-ui.mjs'
 import { verifySidebarPaint } from '../sidebar-paint.mjs'
 import { openProviderSettingsFromTeam } from '../provider-settings.mjs'
 
@@ -71,7 +71,7 @@ export default async function E0({ makeHost, candidate, note }) {
   await b.install(candidate)
   await b.start()
   assert.notEqual(await openFullTeam(b), godbot)
-  await openManagement(b)
+  await openTaskBoard(b)
   const other = await b.snapshot()
   assert.equal(other.tasks.length, 0)
   assert.ok(!other.bots.some(item => item.id === bot.id))

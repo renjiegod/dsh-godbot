@@ -4,7 +4,7 @@ import { once } from 'node:events'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { openFullTeam, openManagement } from './native-ui.mjs'
+import { openFullTeam, openTaskBoard } from './native-ui.mjs'
 import { until } from './host.mjs'
 
 const execute = promisify(execFile)
@@ -22,7 +22,7 @@ export async function ciTeam(host, candidate) {
     host.rpc('godbot/dispatch', { request: { action, teamId: team.id, ...args } })
   const extra = async name => host.bot('create-bot', { name, model, workDir: await mkdtemp(join(host.root, 'bot-')) })
   const { page } = host
-  await openManagement(host)
+  await openTaskBoard(host)
   const summary = page.locator('summary').filter({ hasText: 'CI 与 Webhook' })
   await summary.click().catch(async (error) => {
     throw new Error(

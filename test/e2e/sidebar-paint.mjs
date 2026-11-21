@@ -45,7 +45,7 @@ function observeSidebar(selector) {
       if (hash.startsWith('#/godbot') && !stats.firstLeak)
         stats.firstLeak = { hash, timeMs: Math.round(performance.now()), control: native.getAttribute('aria-label') || native.tagName }
     }
-    const active = document.querySelector('[aria-label="Godbot 工作区"] button[aria-current="page"]')
+    const active = document.querySelector('[aria-label="Godbot 工作区"] .gb-workspace-action[aria-label="返回 dsh"]')
     if (active && onScreen(active)) row.workspace++
     frame = requestAnimationFrame(() => samples.port2.postMessage(null))
   }
@@ -106,8 +106,7 @@ async function openPreviousDocument(host) {
   await page.goto(url, { waitUntil: 'domcontentloaded' })
 }
 
-// A complete document load catches flashes before plugin initialization. The
-// second handoff exercises unmounting the management seat on the same document.
+// A complete document load catches flashes before plugin initialization.
 export async function verifySidebarPaint(host, note) {
   const { page } = host
   const script = await page.addInitScript(observeSidebar, nativeControls)
@@ -122,26 +121,22 @@ export async function verifySidebarPaint(host, note) {
     await page.goto('about:blank')
     await holdInitialSnapshot(page, () => page.goto(host.url + '/#/godbot', { waitUntil: 'domcontentloaded' }), note, 'cold deep link')
     const navigation = page.getByRole('navigation', { name: 'Godbot 工作区' })
-    const active = kind => navigation.locator(`button[data-workspace="${kind}"][aria-current="page"]`)
-    await active('bot').click({ trial: true })
+    const back = navigation.getByRole('button', { name: '返回 dsh' })
+    await back.click({ trial: true })
     await until(() => page.evaluate(() => window.__godbotSidebarPaint.stats.routes['#/godbot']?.workspace >= 3), 'team sidebar painted')
-    await navigation.getByRole('button', { name: '团队管理' }).click()
-    await active('management').click({ trial: true })
-    await until(() => page.evaluate(() => window.__godbotSidebarPaint.stats.routes['#/godbot/teams']?.workspace >= 3), 'management sidebar painted')
-    await page.evaluate(() => window.__godbotSidebarPaint.arm())
-    await holdInitialSnapshot(page, () => navigation.getByRole('button', { name: 'Bot 团队' }).click(), note, 'management to team')
-    await active('bot').click({ trial: true })
-    await navigation.getByRole('button', { name: '返回 dsh' }).click()
+    await back.click()
     await until(async () => (await nativeFrames()) >= 3, 'native sidebar restored after leaving Godbot')
     note('sidebar-native-control', { frames: controlFrames })
     await checkObservations(page, note, 'workspace handoffs')
 
     await page.goto(host.url + '/#/godbot/teams')
-    await active('management').click({ trial: true })
-    await page.reload({ waitUntil: 'domcontentloaded' })
-    await active('management').click({ trial: true })
-    await until(() => page.evaluate(() => window.__godbotSidebarPaint.stats.routes['#/godbot/teams']?.workspace >= 3), 'management sidebar after reload')
-    await checkObservations(page, note, 'management reload')
+    const settings = page.locator('.bt-settings')
+    await settings.getByRole('heading', { name: /^(任务板|Task board)$/u }).waitFor()
+    assert.equal(new URL(page.url()).hash, '#/godbot')
+    await holdInitialSnapshot(page, () => page.reload({ waitUntil: 'domcontentloaded' }), note, 'workspace reload')
+    await back.click({ trial: true })
+    await until(() => page.evaluate(() => window.__godbotSidebarPaint.stats.routes['#/godbot']?.workspace >= 3), 'workspace sidebar after reload')
+    await checkObservations(page, note, 'legacy task board link and reload')
 
     await openPreviousDocument(host)
     await native.click({ trial: true })

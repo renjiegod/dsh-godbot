@@ -14,12 +14,12 @@ export async function fullTeamRoutines(host, note) {
   host.model.reply = (body, call) => JSON.stringify(body.messages).includes(revised) ? reply : oldReply(body, call)
   try {
     const bot = await host.bot('create-bot', { name: '自动化验收 Bot', model: 'deepseek-official/deepseek-flash' })
-    const shortcut = page.locator('.bt-side').getByRole('button', { name: '自动化任务', exact: true })
+    const shortcut = page.locator('.bt-side').getByRole('button', { name: /^(会话定时消息|Scheduled messages)$/u })
     const open = async () => {
       await openFullTeam(host)
       await shortcut.click()
     }
-    const view = page.getByRole('region', { name: '自动化任务', exact: true })
+    const view = page.getByRole('region', { name: /^(会话定时消息|Scheduled messages)$/u })
     const card = view.getByRole('article', { name: title, exact: true })
     const stored = async () => (await host.bot('schedules')).tasks.find(t => t.title === title)
     await openFullTeam(host)
@@ -34,10 +34,10 @@ export async function fullTeamRoutines(host, note) {
       await page.mouse.up()
     }
     await shortcut.waitFor()
-    assert.equal(await shortcut.innerText(), '自动化任务')
+    assert.match(await shortcut.innerText(), /^(会话定时消息|Scheduled messages)$/u)
     await host.capture('full-team-automation-sidebar')
     await resize(80)
-    const rail = page.locator('.bt-side.bt-rail').getByRole('button', { name: '自动化任务', exact: true })
+    const rail = page.locator('.bt-side.bt-rail').getByRole('button', { name: /^(会话定时消息|Scheduled messages)$/u })
     await rail.locator('svg').waitFor()
     assert.equal((await rail.innerText()).trim(), '')
     await rail.click()
@@ -45,7 +45,7 @@ export async function fullTeamRoutines(host, note) {
     await page.keyboard.press('Escape')
     await view.waitFor({ state: 'detached' })
     await resize(300)
-    await page.locator('.bt-side:not(.bt-rail)').getByRole('button', { name: '自动化任务', exact: true }).click()
+    await page.locator('.bt-side:not(.bt-rail)').getByRole('button', { name: /^(会话定时消息|Scheduled messages)$/u }).click()
     await view.getByRole('button', { name: '新建任务' }).click()
     let form = view.getByRole('form', { name: '新建自动化任务' })
     await form.getByLabel('执行会话').selectOption(bot.id)
