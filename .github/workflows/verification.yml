@@ -17,7 +17,7 @@ jobs:
         with:
           node-version: 24.14.0
           cache: npm
-      - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@0.2.2-rc.1
+      - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@$(node -p "require('./package.json').engines.dsh")
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
@@ -38,7 +38,7 @@ jobs:
         with:
           node-version: 24.14.0
           cache: npm
-      - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@0.2.2-rc.1
+      - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@$(node -p "require('./package.json').engines.dsh")
       - run: npm ci
       - name: Install Chromium matched to the locked Playwright version
         run: npx --no-install playwright-core install --no-shell chromium

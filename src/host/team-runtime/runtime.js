@@ -9,6 +9,7 @@ import * as store from './core/store.js'
 import * as models from './core/models.js'
 import * as providers from './core/providers.js'
 import * as permissions from './core/permissions.js'
+import * as governance from './core/governance.js'
 import * as turns from './core/turns.js'
 import * as steer from './core/steer.js'
 import * as handoffs from './core/handoffs.js'
@@ -40,6 +41,7 @@ import * as computer from './core/computer/index.js'
 import * as secrets from './core/secrets.js'
 import * as connectors from './connector-tools.js'
 import * as capabilities from './core/capabilities.js'
+import * as components from './core/components.js'
 import * as learningObserver from './core/learning.js'
 import * as schedules from './core/schedules.js'
 import * as usage from './core/usage.js'
@@ -55,6 +57,7 @@ import * as im from './core/im/index.js'
 import * as officeSkills from './core/office-skills.js'
 import * as goalSkills from './core/goal-skills.js'
 import * as localAgents from './local-agents.js'
+import * as remoteAgents from './core/remote-agents.js'
 import * as roomRouting from './room-routing.js'
 import * as executionHistory from './execution-history.js'
 
@@ -69,7 +72,7 @@ export { name, inject } from './core/entry.js'
 // call before the hooks of tools do, so a closed call never reaches a card they show.
 const memory = sandboxPrivacy.sandboxAwareObserver(memoryObserver)
 const learning = sandboxPrivacy.sandboxAwareObserver(learningObserver)
-const MODULES = [diagnostics, store, ledger, models, sandboxPrivacy, providers, permissions, turns, steer, handoffs, requests, delivery, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, goals, agentCommands, tasks, approvals, resume, memory, parts, changes, images, avatarLibrary, secrets, connectors, capabilities, learning, schedules, browser, browserPlugins, computer, usage, update, dshUpdate, thinking, mobile, feed, phone, im, channel, remote, officeSkills, goalSkills, executionHistory, localAgents, roomRouting]
+const MODULES = [diagnostics, store, ledger, models, sandboxPrivacy, providers, permissions, governance, turns, steer, handoffs, requests, delivery, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, goals, agentCommands, tasks, approvals, resume, memory, parts, changes, images, avatarLibrary, secrets, connectors, capabilities, components, learning, schedules, browser, browserPlugins, computer, usage, update, dshUpdate, thinking, mobile, feed, phone, im, channel, remote, officeSkills, goalSkills, executionHistory, localAgents, remoteAgents, roomRouting]
 
 export function apply(ctx, config = {}) {
   createRuntime(ctx, config)

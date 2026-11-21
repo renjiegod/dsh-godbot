@@ -38,6 +38,26 @@ async function freePort() {
 }
 
 export class EnvironmentError extends Error {}
+
+export async function dshForPreviousArchive(archive, scratch) {
+  const version = archive.pkg.engines?.dsh
+  if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version ?? '')) throw new EnvironmentError('The upgrade baseline must declare an exact DSH version')
+  if (execFileSync(dsh, ['--version'], { encoding: 'utf8' }).trim() === version) return dsh
+  if (process.env.GODBOT_E2E_PREVIOUS_DSH) return process.env.GODBOT_E2E_PREVIOUS_DSH
+  const npm = findExecutable('npm')
+  if (!npm) throw new EnvironmentError('npm is needed to install DSH ' + version + ' for the upgrade baseline')
+  const prefix = join(scratch, 'previous-dsh')
+  try {
+    await run(npm, ['install', '--prefix', prefix, '--no-audit', '--no-fund', '@deepseek-ai/dsh@' + version],
+      { timeout: 180_000, env: { ...process.env, CI: '1' } })
+  } catch (error) {
+    throw new EnvironmentError('Could not install baseline DSH ' + version + ': ' + redact(error.stderr || error.message))
+  }
+  const executable = join(prefix, 'node_modules', '.bin', process.platform === 'win32' ? 'dsh.cmd' : 'dsh')
+  if (!existsSync(executable)) throw new EnvironmentError('The baseline DSH installation has no executable')
+  return executable
+}
+
 export async function openBrowser() {
   try {
     const override = process.env.GODBOT_E2E_CHROMIUM
@@ -111,20 +131,21 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
   const url = 'http://127.0.0.1:' + port
   const host = {
     root, home, bin, page, model, workspace, url, reportDir,
-    patch: options.patch ?? [], env: options.env ?? {}, artifact: undefined,
-    async install(artifact) {
+    patch: options.patch ?? [], env: options.env ?? {}, artifact: undefined, executable: dsh,
+    async install(artifact, executable = dsh) {
       if (child) throw new Error('Stop Host before replacing its package')
-      const key = JSON.stringify(artifact.pkg.peerDependencies)
-      if (!peerCache.has(key)) peerCache.set(key, hostPeerSpecs(artifact.pkg, dsh))
+      const key = JSON.stringify([executable, artifact.pkg.engines?.dsh, artifact.pkg.peerDependencies])
+      if (!peerCache.has(key)) peerCache.set(key, hostPeerSpecs(artifact.pkg, executable))
       const packaged = join(root, 'godbot-' + artifact.sha256 + '.tgz')
       if (!existsSync(packaged)) await symlink(artifact.path, packaged)
       try {
-        await run(dsh, ['plugin', '--profile', 'web', 'add', '--save-exact', packaged, ...peerCache.get(key)], {
+        await run(executable, ['plugin', '--profile', 'web', 'add', '--save-exact', packaged, ...peerCache.get(key)], {
           cwd: root, env: { ...process.env, DSH_HOME: home, CI: '1' }, timeout: 180_000, maxBuffer: 8_000_000,
         })
       } catch (error) { throw new EnvironmentError('Installing the test artifact failed: ' + redact(error.stderr || error.message)) }
       host.artifact = artifact
-      note('installed', { archive: artifact.sha256, expectedBuild: artifact.buildId, profile: 'web' })
+      host.executable = executable
+      note('installed', { archive: artifact.sha256, expectedBuild: artifact.buildId, profile: 'web', dshVersion: artifact.pkg.engines?.dsh })
     },
     async start({ expectedPluginFailure } = {}) {
       if (child || !host.artifact) throw new Error('Install an artifact into a stopped Host first')
@@ -146,7 +167,7 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
       output = ''
       secretUrl = undefined
       startupMarker = undefined
-      child = spawn(dsh, args, { env, cwd: workspace, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
+      child = spawn(host.executable, args, { env, cwd: workspace, detached: true, stdio: ['ignore', 'pipe', 'pipe'] })
       const collect = chunk => {
         output = (output + chunk).slice(-192_000)
         secretUrl ??= output.match(new RegExp('http://127\\.0\\.0\\.1:' + port + '/\\?token=[^\\s\\x1b]+'))?.[0]

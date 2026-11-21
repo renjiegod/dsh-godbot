@@ -1,6 +1,7 @@
 import { Fragment, createElement as h, useCallback, useEffect, useRef, useState } from 'react'
 import { Icon } from './chat-ui.js'
 import { GodbotModal } from './modal.js'
+import { BrowserTeachingPanel } from './browser-teaching.js'
 import style from './browser-viewer.css'
 
 const surfaceNames = { local: '服务器浏览器', container: '独立容器', cloud: '云端容器' }
@@ -150,7 +151,8 @@ function BrowserPanel({ client, bot, sessionId, close }) {
         h('input', {
           type: 'password', autoComplete: 'off', 'aria-label': '输入到当前网页的内容', value: input, onChange: e => setInput(e.target.value),
         }),
-        button('输入到网页', () => send({ kind: 'text', text: input }, () => setInput('')), !controllable || !input))))
+        button('输入到网页', () => send({ kind: 'text', text: input }, () => setInput('')), !controllable || !input))),
+    h(BrowserTeachingPanel, { call, lease: lease.current, canRecord: Boolean(controllable && frame.surface === 'browser'), recording: frame?.recording }))
 }
 
 export function WebBrowserButton({ client, bot, sessionId }) {

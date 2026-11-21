@@ -1236,11 +1236,10 @@ export function install(rt) {
 
   async function modelFor(bot) {
     const desired = await rt.desiredModel(bot)
-    // A local agent CLI answers through its own subscription, not a model API:
-    // its memory reads the team's default model when one is set, and the profile
-    // default when it is not, like any other Bot with no model of its own.
-    const team = rt.isLocalAgentRef?.(state.prefs.defaultBotModel) === true ? undefined : state.prefs.defaultBotModel
-    const ref = rt.isLocalAgentRef?.(desired) === true ? (team ?? await rt.defaultModel()) : desired ?? await rt.defaultModel()
+    // Background memory work uses a model provider. Agent routes own the conversation.
+    const external = ref => rt.isLocalAgentRef?.(ref) === true || rt.isRemoteAgentRef?.(ref) === true
+    const team = external(state.prefs.defaultBotModel) ? undefined : state.prefs.defaultBotModel
+    const ref = external(desired) ? (team ?? await rt.defaultModel()) : desired ?? await rt.defaultModel()
     const route = splitRef(ref)
     if (route === undefined) throw new Error('No model is available. Add one in Settings > Models.')
     return route

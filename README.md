@@ -44,7 +44,7 @@
 | --- | --- |
 | 操作系统 | macOS（首版支持范围） |
 | Node.js | 24.9 或以上，并准备好 npm 和 pnpm |
-| DSH | DSH Web `0.2.2-rc.1` |
+| DSH | DSH Web `0.2.2-rc.5` |
 | Agent CLI | 需要使用的 Claude Code、Codex 或 Antigravity，并已在**同一系统用户**的终端中完成正常登录 |
 | 原生 dsh 成员 | 目标 profile 中至少配置一条可用的模型路由 |
 
@@ -52,7 +52,7 @@
 
 ```sh
 # 首次使用 DSH 时安装
-npm install -g @deepseek-ai/dsh@0.2.2-rc.1
+npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 
 git clone https://github.com/renjiegod/dsh-godbot.git
 cd dsh-godbot
@@ -247,6 +247,31 @@ DSH Web 0.2.2-rc.1 的网页搜索设置页提供内置 DeepSeek 选项。要选
     searchProvider: auto
     fetchProvider: http
 ```
+
+## 浏览器示范、执行策略与远程 Agent
+
+- **浏览器示范。** 在 Bot 私聊打开网页浏览器并接管网页，展开「浏览器示范」，填写目标后录制。Godbot 保存网页来源、点击、表单输入动作和按键次序。输入值、网页正文、截图及完整网址不进入示范。结束后点「整理成 Skill 提案」，回 Bot 私聊检查并批准。获批后技能分配给此 Bot，可在能力设置里授权给其他 Bot。录制使用 DSH Web 的服务端浏览器。
+- **执行策略。** 在「设置 → 执行策略」按 Bot、发起来源、工具和可选目标加规则，先用「预览规则结果」确认匹配。工具填写具体名称、前缀加 `*`，或用 `changes` 匹配可能修改状态的工具。匹配到禁止时直接拒绝，匹配到要求批准时沿用审批卡。审计保留触发来源和审批结果，可按 Bot、来源和决定筛选并导出。规则覆盖 Godbot 接管的工具调用。原生 CLI 的内部能力仍由其沙箱及审批机制约束。
+- **远程 AG-UI。** 在「设置 → 远程 Agent」注册 AG-UI 的运行地址，按需保存 Bearer 凭据，再在 Bot 的模型设置选取该 Agent。远端接收该 Bot 的文字对话，工作台流式显示回复，工具状态可在「查看会话执行记录」里续读。Host 不会将本机工具或文件提供给远端。停止会关闭本端的流，远端的内部审批、执行及取消由其服务负责。执行地址默认使用公网 HTTPS。可在 `config.teamWorkspace.remoteAgents.allowPrivateOrigins` 中为已知的内网服务加精确的协议、域名和端口。
+- **统一创建自动化。** 「设置 → 自动化」可创建会话日程、需验收的派工或固定版本的工作流。其中派工与工作流也能从签名 Webhook 或 GitHub 公开仓库事件触发。选「只检查并反馈」会限制经过 Host 工具网关的修改类工具，自动派工的发起来源也会保留到后续转派。
+- **业务组件。** 「设置 → 业务组件」编辑 JSON 蓝图、预览、保存草稿并发布。通过同一页单独授权 Bot 和数据函数。Bot 可用 `list_components` 查看获准版本，用 `show_component` 提交参数或显示表单。组件用 Deep View 的声明式控件。发布新版与修改草稿分开，撤销授权对后续调用立即生效。
+
+### 组织账号登录共享工作区
+
+如果已有 OIDC 身份提供商，可在工作区 Host 的 Godbot 配置增加以下设置。可使用实体组织已有的应用注册。
+
+```yaml
+- id: godbot
+  config:
+    automation:
+      publicUrl: https://godbot.example.com
+      oidc:
+        issuer: https://id.example.com/organization
+        clientId: godbot-sharing
+        clientSecretEnv: GODBOT_SHARING_OIDC_SECRET
+```
+
+提供商的回调地址设为共享站点的 `/share/oidc/callback`，并在 ID Token 提供已核验的邮箱。配置 `clientSecretEnv` 时，由 Host 的环境提供密钥。将 `/share/` 反代到共享监听端口，并保留公网 Host。管理员在「多人共享与审计」为已有共享用户保存组织账号邮箱。该用户可从共享主页使用组织账号登录，权限沿用已分配的范围。已有的一次性邀请同样可用。
 
 ## 本地 Agent 与沙箱多账号
 

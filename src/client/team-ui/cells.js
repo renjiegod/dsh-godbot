@@ -1,3 +1,4 @@
+import { readComponentReceipt } from '../../host/team-runtime/shared/component-receipt.js'
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -1224,9 +1225,9 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
 // The calls ToolCell draws. A PTC program (`run_code`) dispatches the real tools as
 // its sub-calls, so a call draws by its own name wherever it sits in the tree.
 const isComputerCall = name => name === 'cua' || name?.startsWith('cua_driver_native__') === true
-const DRAWN = new Set(['message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
+const DRAWN = new Set(['message_bot', 'stop_bot', 'create_bot', 'update_bot', 'group_relay', 'create_group', 'update_group', 'delete_group', 'post_to_group', 'ask_user', 'request_secret', 'request_connector', 'mail_send', 'ask_user_question', 'show_view', 'show_component', 'browser_handoff', 'read_group_chat', 'remember', 'forget'])
 // Calls whose card a dock above the composer carries when the call is not drawn.
-const CARDS = new Set(['ask_user', 'request_secret', 'request_connector', 'mail_send', 'show_view', 'browser_handoff', 'computer_handoff'])
+const CARDS = new Set(['ask_user', 'request_secret', 'request_connector', 'mail_send', 'show_view', 'show_component', 'browser_handoff', 'computer_handoff'])
 
 // The root and its sub-calls in dispatch order, each call once.
 export function callTree(root) {
@@ -1305,6 +1306,10 @@ function renderCall(call, { sessionId, roster, actions, useUi, useWork, findBot,
       return h(AskUserCell, { sessionId, callId: call.callId, arg, argValue, roster, actions, heldCards })
     case 'show_view':
       return h(WidgetCell, { sessionId, callId: call.callId, args: { text: arg, value: argValue }, done, isError: call.isError, roster, actions, heldCards })
+    case 'show_component': {
+      const receipt = done && !call.isError ? readComponentReceipt(contentText(call.content)) : undefined
+      return h(WidgetCell, { sessionId, callId: call.callId, args: { text: name => receipt?.[name], value: name => receipt?.[name] }, done, isError: call.isError, roster, actions, heldCards })
+    }
     case 'request_secret':
       return h(SecretToolCell, { sessionId, callId: call.callId, name: arg('name'), done, content: call.content, roster, actions, heldCards })
     case 'request_connector':
@@ -1357,7 +1362,7 @@ export function ToolCell({ node, sessionId, useRoster, useTurnTriggers, useTurnC
   const delegated = hidden && delegatedInOwnChat(roster, sessionId, triggers, contexts)
   const tree = callTree(root)
   const calls = hidden
-    ? tree.filter(call => (toolName(call) === 'ask_user' || toolName(call) === 'show_view') && call.callId && closed?.[call.callId] !== undefined)
+    ? tree.filter(call => (toolName(call) === 'ask_user' || ['show_view', 'show_component'].includes(toolName(call))) && call.callId && closed?.[call.callId] !== undefined)
     : tree
   const drawn = calls.filter(call => DRAWN.has(toolName(call)) || isComputerCall(toolName(call)))
   const trace = ownExecutionChat(roster, sessionId) && Number.isInteger(turn) && (!hidden || delegated)

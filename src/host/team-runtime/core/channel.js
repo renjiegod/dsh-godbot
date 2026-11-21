@@ -925,13 +925,14 @@ export function install(rt) {
     return undefined
   }
 
-  async function sendUser({ sessionId: ref, content, requestId = randomUUID() }) {
+  async function sendUser({ sessionId: ref, content, requestId = randomUUID(), initiator }) {
     const past = rt.pastOwners.get(ref)
     const room = rt.roomOf(ref)
     const sessionId = ownThreadTarget(ref, past)
       ?? (room !== undefined ? rt.sessionOfRoom(room)
         : past !== undefined ? rt.sessionOfRoom(rt.roomOf(past.roomId)) : ref)
     await rt.ensureCapabilities(sessionId)
+    if (initiator) await rt.governance?.registerPrompt(sessionId, requestId, initiator)
     await ctx.sessionController.prompt({
       requestId,
       sessionId,

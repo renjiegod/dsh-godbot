@@ -1,5 +1,6 @@
 import { assignRun, inspectRun } from './automation-runs.js'
 import { nextRoutineTime, normalizeRoutineTiming } from './routine-timing.js'
+import { runOrigin } from './run-origin.js'
 import { record, required, teamMember } from './team.js'
 import { startWorkflowSnapshot } from './workflows.js'
 
@@ -12,6 +13,7 @@ function settings(req, store, prior) {
   const title = required(req.title, '任务说明')
   const schedule = normalizeRoutineTiming(req.schedule)
   if (title.length > 32000) throw new Error('任务说明最多 32000 字。')
+  const checkOnly = req.checkOnly === undefined ? prior?.checkOnly === true : req.checkOnly === true
   const target = req.target ?? prior?.target ?? 'member'
   if (target === 'workflow') {
     const pinned = prior?.workflowSnapshot
@@ -21,12 +23,12 @@ function settings(req, store, prior) {
     if (workflow.revision !== req.workflowRevision) throw new Error('工作流版本已更新，请重新选择固定版本。')
     for (const node of workflow.nodes) teamMember(store, req.teamId, node.ownerId)
     const { id, teamId, name, revision, nodes, edges } = workflow
-    return { title, schedule, target, ownerId: null, criteria: null, workflowSnapshot: { id, teamId, name, revision, nodes, edges } }
+    return { title, schedule, target, checkOnly, ownerId: null, criteria: null, workflowSnapshot: { id, teamId, name, revision, nodes, edges } }
   }
   if (target !== 'member') throw new Error('无法识别自动化任务的执行类型。')
   const criteria = required(req.criteria, '验收条件')
   if (criteria.length > 32000) throw new Error('验收条件最多 32000 字。')
-  return { title, schedule, target, criteria, ownerId: teamMember(store, req.teamId, req.ownerId).id, workflowSnapshot: null }
+  return { title, schedule, target, checkOnly, criteria, ownerId: teamMember(store, req.teamId, req.ownerId).id, workflowSnapshot: null }
 }
 
 function publicRoutine({ history, seq, workflowSnapshot, ...routine }) {
@@ -36,8 +38,9 @@ function publicRoutine({ history, seq, workflowSnapshot, ...routine }) {
 
 function dispatchOccurrence(service, row) {
   if (service.runtime?.readOnly()) throw new Error('当前 Bot 工作区为只读。')
-  if (row.target !== 'workflow') return assignRun(service, row, row)
-  const run = startWorkflowSnapshot(service, row.workflowSnapshot, row.id)
+  const initiator = runOrigin('schedule', row.id, 'owner', row.checkOnly === true)
+  if (row.target !== 'workflow') return assignRun(service, row, row, undefined, initiator)
+  const run = startWorkflowSnapshot(service, row.workflowSnapshot, row.id, initiator)
   return { runId: run.id, teamId: run.teamId, workflowId: run.workflowId, workflowRevision: run.workflowRevision }
 }
 

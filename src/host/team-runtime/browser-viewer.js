@@ -6,6 +6,7 @@ import { openEnvironment, recoverContainers, removeVolume, viewport } from './br
 
 import * as upstream from './core/browser-plugins.js'
 import { createSession } from './core/browser/session.js'
+import { BrowserTeaching, teachingTarget } from './browser-teaching.js'
 const validKeys = new Set(['Enter', 'Tab', 'Shift+Tab', 'Escape', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'])
 const enableBrowser = '请在该 Bot 私聊打开「网页浏览器」，点击「打开执行环境」。'
 const browserLogin = '该 Bot 使用独立浏览器登录状态。如果网站要求登录，请接管网页完成登录，然后交还给 Bot。'
@@ -30,6 +31,7 @@ class BrowserViews {
   constructor(rt, config) {
     this.rt = rt
     this.config = config
+    this.teaching = new BrowserTeaching(rt)
     this.leaseMs = Math.max(1500, Math.min(Number(config.leaseMs) || 20_000, 120_000))
   }
   targets() {
@@ -46,8 +48,11 @@ class BrowserViews {
   }
   lease(entry) {
     if (entry.lease?.expires <= Date.now()) {
+      const { token } = entry.lease
       entry.lease = undefined
       entry.expired = true
+      void ordered(entry, () => this.teaching.stop(entry.botId, token))
+        .catch(error => this.rt.warn('godbot: browser demonstration could not be saved: %s', error.message))
     }
     return entry.lease
   }
@@ -132,7 +137,10 @@ class BrowserViews {
       context.on('close', () => {
         resource.closed = true
         if (entry.resource !== resource) return
+        const token = entry.lease?.token
         entry.lease = undefined
+        if (token) void ordered(entry, () => this.teaching.stop(entry.botId, token))
+          .catch(error => this.rt.warn('godbot: browser demonstration could not be saved: %s', error.message))
         entry.epoch = randomUUID()
         entry.expired = true
         entry.resource = undefined
@@ -178,8 +186,10 @@ class BrowserViews {
   }
   async stop(entry, forget = false) {
     entry.closed = true
+    const token = entry.lease?.token
     entry.lease = undefined
     await entry.tail
+    if (token) await this.teaching.stop(entry.botId, token)
     const resource = await entry.opening?.catch(() => undefined)
     if (resource) {
       entry.resource = undefined
@@ -189,6 +199,11 @@ class BrowserViews {
     if (forget && entry.target !== 'local') await removeVolume(this.rt.home, entry.botId, entry.target, this.config)
     if (this.entries.get(entry.botId) === entry) this.entries.delete(entry.botId)
   }
+  executionOrigin(botId) {
+    const resource = this.entries.get(botId)?.resource
+    if (!resource) return undefined
+    try { return new URL(this.page(resource).url()).origin } catch { return undefined }
+  }
   async invoke(req) {
     await this.rt.load()
     const bot = this.rt.botOf(req.botId)
@@ -196,6 +211,9 @@ class BrowserViews {
     const entry = this.entry(bot)
     const lease = this.lease(entry)
     if (req.action === 'browser.status') return { targets: this.targets(), target: entry.target, open: !!entry.resource }
+    if (req.action === 'browser.teaching.list') return { version: 1, records: this.teaching.saved(bot.id) }
+    if (req.action === 'browser.teaching.remove') return ordered(entry, () => this.teaching.remove(bot.id, req.id))
+    if (req.action === 'browser.teaching.draft') return this.teaching.draft(bot.id, req.id)
     if (req.action === 'browser.open') {
       const target = req.target ?? entry.target
       if (!this.targets().includes(target)) throw new Error('该执行环境未配置')
@@ -226,7 +244,9 @@ class BrowserViews {
       if (mine) lease.expires = Date.now() + this.leaseMs
       const resource = entry.resource
       const page = this.page(resource)
+      const recording = mine && this.teaching.active(bot.id, req.lease)
       const ownership = { epoch: entry.epoch, target: entry.target,
+        recording: recording ? { id: recording.id, count: recording.steps.length } : null,
         control: mine ? entry.agentBusy ? 'pending' : 'mine' : lease ? 'other' : entry.handoff ? 'handoff' : 'agent', expired: !!entry.expired }
       if (req.surface === 'desktop') {
         if (!resource.env.desktop) throw new Error('所选环境只提供浏览器视图')
@@ -247,9 +267,15 @@ class BrowserViews {
     if (!mine) throw new Error('此页面的接管权已失效')
     if (req.action === 'browser.release') return ordered(entry, async () => {
       if (this.lease(entry)?.token !== req.lease) throw new Error('此页面的接管权已失效')
+      await this.teaching.stop(bot.id, req.lease)
       entry.lease = undefined
       entry.handoff = undefined
       return { released: true }
+    })
+    if (req.action === 'browser.teaching.start' || req.action === 'browser.teaching.stop') return ordered(entry, async () => {
+      if (this.lease(entry)?.token !== req.lease || entry.closed || entry.agentBusy) throw new Error('请先接管 Bot 网页')
+      if (req.action === 'browser.teaching.start') return this.teaching.start(bot.id, req.lease, req.goal)
+      return this.teaching.stop(bot.id, req.lease)
     })
     if (req.action !== 'browser.input') throw new Error('未知浏览器操作')
     return ordered(entry, async () => {
@@ -264,14 +290,24 @@ class BrowserViews {
       const page = this.page(resource)
       if (resource.ids.get(page) !== req.frameId) throw new Error('页面已改变，请在最新画面上重试')
       entry.lease.expires = Date.now() + this.leaseMs
+      const recording = this.teaching.active(bot.id, req.lease)
+      const before = recording ? page.url() : undefined
+      let element
       if (req.kind === 'navigate') await page.goto(pageUrl(req.url), { waitUntil: 'domcontentloaded', timeout: 15_000 })
       else if (req.kind === 'click' && Number.isFinite(req.x) && Number.isFinite(req.y) && req.x >= 0 && req.y >= 0 && req.x < 1 && req.y < 1) {
         const size = page.viewportSize() ?? viewport
-        await page.mouse.click(Math.floor(req.x * size.width), Math.floor(req.y * size.height))
+        const x = Math.floor(req.x * size.width)
+        const y = Math.floor(req.y * size.height)
+        if (recording) element = await teachingTarget(page, x, y)
+        await page.mouse.click(x, y)
       } else if (req.kind === 'text' && typeof req.text === 'string' && req.text.length <= 8192) await page.keyboard.insertText(req.text)
       else if (req.kind === 'key' && validKeys.has(req.key)) await page.keyboard.press(req.key)
       else if (req.kind === 'scroll' && Number.isFinite(req.delta) && Math.abs(req.delta) <= 2000) await page.mouse.wheel(0, req.delta)
       else throw new Error('未知的浏览器输入')
+      if (recording) {
+        const after = page.isClosed() ? resource.context.pages().at(-1)?.url() : page.url()
+        this.teaching.note(bot.id, req.lease, req, before, after, element)
+      }
       return { delivered: true }
     })
   }
@@ -355,6 +391,10 @@ export function install(rt) {
     const result = await originalDelete(id, ...args)
     const entry = views.entries.get(id)
     if (entry) await views.stop(entry)
+    if (rt.state.browserDemonstrations?.[id]) {
+      delete rt.state.browserDemonstrations[id]
+      await rt.save()
+    }
     for (const target of bot?.godbotBrowserVolumes ?? []) await removeVolume(rt.home, id, target, config)
     await rm(join(rt.home, 'browser-profiles', id), { recursive: true, force: true })
     return result

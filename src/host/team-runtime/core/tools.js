@@ -13,6 +13,7 @@ import { unquote } from './text.js'
 import { isOpenPart, ownChatSessions } from './threads.js'
 import { mentionSpans } from '../shared/mentions.js'
 import { plainToolSchema } from './tool-schema.js'
+import { COMPONENT_RECEIPT } from '../shared/component-receipt.js'
 import { checkShownView, showViewDescription, showViewParameters } from 'deep-view/core'
 
 export const output = { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: String(value) }] }
@@ -820,7 +821,7 @@ export function install(rt) {
       try {
         // A post that wants the replies names the conversation it was written
         // from, so the report comes back there instead of the own chat.
-        await rt.postToRoom(room, sender, long.text, { mentions, ...(claims ? { claims } : {}), ...(reportBack ? { reportBack: true, ...callerRoom(exec) } : {}), ...(member ? { member: true } : {}), ...(sub ? { sub } : {}), ...(long.length ? { length: long.length } : {}) }, long.files)
+        await rt.postToRoom(room, sender, long.text, { mentions, ...(rt.governance ? { godbotInitiator: rt.governance.delegate(exec.agent.id, sender.id) } : {}), ...(claims ? { claims } : {}), ...(reportBack ? { reportBack: true, ...callerRoom(exec) } : {}), ...(member ? { member: true } : {}), ...(sub ? { sub } : {}), ...(long.length ? { length: long.length } : {}) }, long.files)
       } catch (failure) {
         if (sub !== undefined) rt.dropWork(sub)
         return `Could not post in "${room.name}": ${failure.message}`
@@ -893,6 +894,47 @@ export function install(rt) {
     },
   }))
 
+  async function queueView(current, exec) {
+    const { title, view } = current
+    const id = exec.agent.id
+    state.views[id] = {
+      id: randomUUID(),
+      ...(exec.callId ? { callId: exec.callId } : {}),
+      title,
+      view,
+      askedAt: Date.now(),
+    }
+    await rt.save()
+    rt.cardShown?.(id, 'view', title)
+    exec.concludeTurn?.()
+  }
+
+  rt.teamTools.push(defineTool({
+    name: 'list_components',
+    description: 'List the published interactive cards made available to this Bot and their input fields.',
+    parameters: {},
+    output,
+    async execute(_args, exec) {
+      await rt.load()
+      return JSON.stringify(rt.components.visible(callerBot(exec)?.id))
+    },
+  }), defineTool({
+    name: 'show_component',
+    description: 'Show one published card from list_components in your own chat. Cards with a form wait for the user.',
+    parameters: {
+      name: { type: 'string', required: true },
+      values: { type: 'object', additionalProperties: true, description: 'Values for the input fields listed for this card' },
+    },
+    output,
+    async execute(args, exec) {
+      await rt.load()
+      if (!rt.chatOwners.has(exec.agent?.id)) throw new Error('组件卡片只能显示在 Bot 私聊')
+      const { title, view, interactive, version } = rt.components.render(callerBot(exec), args.name, args.values)
+      if (interactive) await queueView({ title, view }, exec)
+      return JSON.stringify({ kind: COMPONENT_RECEIPT, title, view, interactive, version })
+    },
+  }))
+
   // Scoped per Bot session, not global: another plugin's global show_view serves
   // the sessions godbot does not own, while this one shadows it inside them.
   rt.teamTools.push(defineTool({
@@ -913,16 +955,7 @@ export function install(rt) {
       if (checked.interactive && args.await_reply === false) return 'This view has controls to submit, so it waits for the user\'s answer; call show_view without await_reply: false.'
       const awaitReply = args.await_reply ?? checked.interactive
       if (!awaitReply) return 'The view is on screen.'
-      state.views[id] = {
-        id: randomUUID(),
-        ...(exec.callId ? { callId: exec.callId } : {}),
-        title,
-        view,
-        askedAt: Date.now(),
-      }
-      await rt.save()
-      rt.cardShown?.(id, 'view', title)
-      exec.concludeTurn?.()
+      await queueView({ title, view }, exec)
       return 'The view is on screen; the user\'s answer arrives as their next message.'
     },
   }))

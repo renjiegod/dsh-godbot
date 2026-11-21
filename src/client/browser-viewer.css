@@ -35,3 +35,24 @@
   align-items: center;
   gap: 8px;
 }
+
+.gb-browser-teaching {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--bt-line);
+  border-radius: 8px;
+}
+
+.gb-browser-teaching summary {
+  cursor: pointer;
+}
+
+.gb-browser-demonstration {
+  margin-top: 8px;
+}
+
+.gb-browser-demonstration ol {
+  max-height: 180px;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}

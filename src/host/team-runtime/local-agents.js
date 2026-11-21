@@ -604,6 +604,8 @@ export function install(rt) {
       const room = rt.roomOf(rt.groupOwners.get(sessionId)?.roomId)
       const assigned = room?.permission ?? bot?.permission
       if (assigned === 'read-only') return assigned
+      const enforced = terminal ? undefined : rt.governance?.nativePreset(sessionId)
+      if (enforced === 'read-only') return enforced
 
       // DSH pins policy to the chat when it creates or restores the session.
       // Read that policy on launch and approval, including for inherited Bots.
@@ -618,7 +620,7 @@ export function install(rt) {
           if (sandbox === 'workspace-write' && approval === 'ask') return sandbox
           // A narrower Bot or room assignment can still be applying. Only a
           // verified full-access bundle without such an assignment can auto-approve.
-          if (effective === 'danger-full-access' && (!assigned || assigned === effective) &&
+          if (enforced === undefined && effective === 'danger-full-access' && (!assigned || assigned === effective) &&
               sandbox === effective && approval === 'never') return effective
         }
         if (session && serviceOf(ctx, 'sandboxPolicy')?.resolve({ session }).mode === 'read-only') return 'read-only'
@@ -707,7 +709,7 @@ export function install(rt) {
   // Two refs with the same answer share a conversation; two with different ones never do.
   const engineOf = (ref) => {
     if (!ref) return undefined
-    return isLocalAgentRef(ref) ? splitRef(ref).provider : 'model'
+    return isLocalAgentRef(ref) || rt.isRemoteAgentRef?.(ref) ? splitRef(ref).provider : 'model'
   }
   // The model the Bot asked for decides, not the one last applied, which lags behind it.
   const engineOfBot = bot => engineOf(bot?.model ?? bot?.appliedModel)

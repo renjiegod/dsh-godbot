@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { until } from '../host.mjs'
+import { dshForPreviousArchive, until } from '../host.mjs'
 
 // Upgrade an actual two-roster profile. Only the independent team's data
 // should disappear; the Bot must keep its own DSH conversation and settings.
-export default async function E12({ makeHost, previous, candidate, note }) {
+export default async function E12({ makeHost, previous, candidate, scratch, note }) {
   const host = await makeHost()
-  await host.install(previous)
+  await host.install(previous, await dshForPreviousArchive(previous, scratch))
   await host.start()
   const req = (action, fields = {}) => host.rpc('godbot/dispatch', { request: { action, requestId: randomUUID(), ...fields } })
   const team = await req('team.create', { name: 'Retired team', cwd: host.workspace })

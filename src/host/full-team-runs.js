@@ -1,3 +1,4 @@
+import { runOrigin } from './run-origin.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { AutomationError } from './automation-runs.js'
 import { activeTeam, record, required } from './team.js'
@@ -80,14 +81,15 @@ export class FullTeamRuns {
     const rt = this.service.runtime
     const work = this.store.require(tasks, run.rootTaskId).workId
     const [kind, id] = run.targetId.split('/')
+    const initiator = runOrigin('ci', run.principalId)
     const text = [marker(work), run.title, 'Acceptance criteria: ' + run.criteria, feedback && 'Owner requested a revision: ' + feedback].filter(Boolean).join('\n')
     const send = async () => {
       if (kind === 'room') {
         rt.openWork(work, { room: id })
-        await rt.sendUser({ sessionId: id, requestId: work, content: [{ type: 'text', text }] })
+        await rt.sendUser({ sessionId: id, requestId: work, initiator, content: [{ type: 'text', text }] })
       } else {
         rt.openWork(work, { to: id })
-        await rt.deliver({ role: 'request', fromName: 'Godbot CI', toId: id, exchangeId: work, text })
+        await rt.deliver({ role: 'request', fromName: 'Godbot CI', toId: id, exchangeId: work, text, initiator })
       }
     }
     void send().catch(() => this.end(work, 'unknown', 'Delivery could not be confirmed'))

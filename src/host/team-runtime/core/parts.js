@@ -1,3 +1,4 @@
+import { readComponentReceipt } from '../shared/component-receipt.js'
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 // Parts: making room in a long conversation (a checkpoint in place, or a switch to a
 // fresh Session), the handoff note and package, and earlier pages for the chat view.
@@ -1774,6 +1775,7 @@ export function install(rt) {
     // round's replies. A result without its call on the page (the page cut between
     // them) draws nothing rather than guessing.
     const relayCalls = new Set()
+    const componentCalls = new Set()
     const items = []
     // The turn/start still in effect. A steered or queued user message stays in
     // it; only another turn/start moves on. A later page does not repeat the
@@ -1816,6 +1818,7 @@ export function install(rt) {
         // A group_relay call's result is paired back to it by call id — the tool
         // name is on the call, never on the result.
         if (event.data?.name === 'group_relay') relayCalls.add(event.data?.callId)
+        if (event.data?.name === 'show_component') componentCalls.add(event.data?.callId)
         // Hidden turns and refused calls never showed a display card. Closed cards
         // stay at the call that asked them, including in a hidden Bot-to-Bot turn.
         const named = event.data?.name
@@ -1843,8 +1846,19 @@ export function install(rt) {
         // calls whose results hold the round's replies — the group's conversation,
         // read the way the live chat reads a settled call (shared/group-replies.js).
         const message = event.data?.message
-        if (!relayCalls.has(message?.toolCallId)) continue
+        const component = componentCalls.has(message?.toolCallId)
+        if (!component && !relayCalls.has(message?.toolCallId)) continue
         const text = textOf(message?.content)
+        const published = component ? readComponentReceipt(text) : undefined
+        if (published) {
+          const callId = message.toolCallId ?? null
+          const closed = callId === null ? undefined : rt.own(rt.own(state.closedCards, partId), callId)
+          if (closed) items.push({ kind: 'closed', closed, title: published.title, view: published.view, callId, time: event.time })
+          else if (!published.interactive && !hidden.has(event.data?.turn ?? turn)) {
+            items.push({ kind: 'view', title: published.title, view: published.view, callId, time: event.time })
+          }
+        }
+        if (!relayCalls.has(message?.toolCallId)) continue
         const range = relayRange(text)
         const room = range === undefined ? undefined : rt.roomOf(partId) ?? rt.roomOf(rt.pastOwners.get(partId)?.roomId)
         const replies = range === undefined ? parseReplies(text).replies : room === undefined ? [] : rt.groupRows(room.id, range.from, range.to, range.anchor)

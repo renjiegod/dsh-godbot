@@ -1,3 +1,4 @@
+import { runOrigin } from './run-origin.js'
 import { activeTeam, now, record, required } from './team.js'
 import { nativeRunState } from './native-run-state.js'
 import { compileWorkflow, normalizeWorkflow } from '../team/workflow-graph.js'
@@ -49,7 +50,15 @@ export function startWorkflow(service, req) {
 }
 
 // The scheduler keeps its selected revision even when an owner edits the definition for future runs.
-export function startWorkflowSnapshot(service, workflow, principalId) {
+export function pinWorkflow(store, teamId, id, revision) {
+  const workflow = store.get('workflows', id)
+  if (!workflow || workflow.teamId !== teamId) throw new Error('所选工作流不属于当前团队。')
+  if (workflow.revision !== revision) throw new Error('工作流版本已更新，请重新选择固定版本。')
+  const { name, nodes, edges } = workflow
+  return { id, teamId, name, revision, nodes, edges }
+}
+
+export function startWorkflowSnapshot(service, workflow, principalId, initiator = runOrigin('workflow', workflow.id), event) {
   const { store } = service
   activeTeam(store, workflow.teamId)
   const { nodes, edges, incoming, order } = compileWorkflow(workflow, allowedOwners(store, workflow.teamId))
@@ -61,12 +70,12 @@ export function startWorkflowSnapshot(service, workflow, principalId) {
     const node = byId.get(id)
     const inputs = incoming.get(id).map(edge => ({ taskId: taskIds.get(edge.from), when: edge.when, value: edge.value }))
     const task = service.team.assign({ teamId: run.teamId, ownerId: node.ownerId, title: node.title,
-      criteria: node.criteria, dependsOn: inputs.map(input => input.taskId) }, null, run.id, undefined,
+      criteria: node.criteria, dependsOn: inputs.map(input => input.taskId) }, null, run.id, event,
       { workflowNodeId: id, workflowJoin: node.join, workflowInputs: inputs })
     taskIds.set(id, task.id)
   }
   const rootTaskIds = order.filter(id => incoming.get(id).length === 0).map(id => taskIds.get(id))
-  store.put('automationRuns', record({ id: run.id, teamId: run.teamId, principalId,
+  store.put('automationRuns', record({ id: run.id, teamId: run.teamId, principalId, initiator,
     rootTaskId: rootTaskIds[0], rootTaskIds, workflowId: run.workflowId, workflowRevision: run.workflowRevision }))
   return viewRun(store, run)
 }

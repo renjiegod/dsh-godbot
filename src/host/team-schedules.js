@@ -1,3 +1,5 @@
+import { checkOnlyScheduleMarker } from './run-origin.js'
+
 function targetSession(rt, id) {
   const bot = rt.botOf(id)
   const room = rt.roomOf(id)
@@ -57,6 +59,32 @@ function checked(result) {
   throw new Error(errors[result.code] ?? result.code)
 }
 
+export async function createTeamSchedule(rt, req) {
+  if (rt.readOnly()) throw new Error('当前 Bot 工作区为只读。')
+  const scheduler = rt.ctx.get('schedule')
+  if (!scheduler) throw new Error('当前 DSH 宿主没有启用自动化任务。')
+  const patch = patchOf(rt, req)
+  if (!patch.title || !patch.prompt || !patch.target || !patch.timing) throw new Error('请填写任务名称、指令、执行目标和时间。')
+  // DSH can deliver a newly due schedule before its returned ID is saved in Godbot.
+  if (req.checkOnly === true) patch.prompt = checkOnlyScheduleMarker + patch.prompt
+  const entry = checked(await scheduler.create(patch))
+  if (req.checkOnly === true) {
+    rt.state.scheduleCheckIns = { ...rt.state.scheduleCheckIns, [entry.id]: true }
+    try { await rt.save({ required: true }) }
+    catch (error) {
+      let removed = false
+      try {
+        checked(await scheduler.edit({ id: entry.id, action: 'delete' }))
+        removed = true
+      } catch {}
+      if (removed) delete rt.state.scheduleCheckIns[entry.id]
+      else error.automationMayExist = true
+      throw error
+    }
+  }
+  return entry
+}
+
 export async function teamScheduleAction(rt, req) {
   const list = () => rt.scheduleEndpoint('schedules', {})
   if (req.action === 'team-workspace.scheduleList') return list()
@@ -66,11 +94,7 @@ export async function teamScheduleAction(rt, req) {
   const scheduler = rt.ctx.get('schedule')
   if (!scheduler) throw new Error('当前 DSH 宿主没有启用自动化任务。')
   if (req.action === 'team-workspace.scheduleCreate') {
-    const patch = patchOf(rt, req)
-    if (!patch.title || !patch.prompt || !patch.target || !patch.timing) {
-      throw new Error('请填写任务名称、指令、执行目标和时间。')
-    }
-    await scheduler.create(patch)
+    await createTeamSchedule(rt, req)
     return list()
   }
 
@@ -99,6 +123,10 @@ export async function teamScheduleAction(rt, req) {
         throw new Error('未知的计划任务操作。')
     }
     checked(await scheduler.edit({ id, expectedUpdatedAt, ...edit }))
+    if (edit.action === 'delete' && rt.state?.scheduleCheckIns?.[id]) {
+      delete rt.state.scheduleCheckIns[id]
+      await rt.save()
+    }
   }
   return list()
 }

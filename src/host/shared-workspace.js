@@ -3,6 +3,8 @@ import { constants, readFileSync } from 'node:fs'
 import { open, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, relative, sep } from 'node:path'
 import { AutomationError } from './automation-runs.js'
+import { runOrigin } from './run-origin.js'
+import { normalizeEmail, SharedOidc } from './shared-oidc.js'
 import { record, required } from './team.js'
 import { webIconFile } from './web-icon.js'
 
@@ -76,6 +78,7 @@ export class SharedWorkspace {
     this.service = api.service
     this.store = api.store
     this.streams = new Set()
+    this.oidc = new SharedOidc(api.config.oidc, api.config.publicUrl)
   }
   origin() {
     if (!this.api.config.publicUrl) return this.api.url
@@ -123,8 +126,8 @@ export class SharedWorkspace {
     const { teamId, action } = req
     this.store.require('teams', teamId)
     if (action === 'automation.people.list') return {
-      resources: this.choices(teamId), people: this.store.all('humanPeople').filter(p => p.teamId === teamId)
-        .map(p => pick(p, ['id', 'name', 'permissions', 'revision', 'revoked'])),
+      sso: this.oidc.enabled(), resources: this.choices(teamId), people: this.store.all('humanPeople').filter(p => p.teamId === teamId)
+        .map(p => pick(p, ['id', 'name', 'permissions', 'revision', 'revoked', 'oidcEmail'])),
       audit: this.store.all('humanAudit').filter(row => row.teamId === teamId).slice(-80).reverse(),
     }
     const existing = req.id && this.store.get('humanPeople', req.id)
@@ -135,7 +138,8 @@ export class SharedWorkspace {
       const origin = this.origin()
       const key = opaque()
       return this.store.transaction(() => {
-        const person = existing || this.store.put('humanPeople', record({ teamId, name: cleanName(req.name), permissions: {}, revision: 0 }))
+        const oidcEmail = !existing && this.oidc.enabled() ? this.validateOidcEmail(req.email) : null
+        const person = existing || this.store.put('humanPeople', record({ teamId, name: cleanName(req.name), permissions: {}, revision: 0, ...(oidcEmail ? { oidcEmail } : {}) }))
         const expires = Date.now() + 15 * 60_000
         const invite = this.store.put('humanInvites', record({ personId: person.id, hash: digest(key), expires }))
         this.audit(owner, teamId, 'invite', undefined, person.id)
@@ -153,7 +157,17 @@ export class SharedWorkspace {
       }
       this.store.transaction(() => {
         if (req.revision != null && req.revision !== (existing.revision ?? 0)) throw new AutomationError(409, '权限已更新，请重新读取')
-        this.store.update('humanPeople', existing.id, { permissions, revision: (existing.revision ?? 0) + 1 })
+        const email = this.oidc.enabled() && Object.hasOwn(req, 'oidcEmail')
+          ? this.validateOidcEmail(req.oidcEmail, existing.id) : (existing.oidcEmail ?? null)
+        const changedIdentity = (existing.oidcEmail ?? null) !== email
+        this.store.update('humanPeople', existing.id, { permissions, revision: (existing.revision ?? 0) + 1,
+          ...(changedIdentity ? { oidcEmail: email, oidcSubject: null } : {}) })
+        if (changedIdentity) {
+          for (const session of this.store.all('humanSessions')) {
+            if (session.personId === existing.id && session.method === 'oidc') this.store.remove('humanSessions', session.id)
+          }
+          this.audit(owner, teamId, 'sso-mapping', undefined, existing.id)
+        }
         const changes = [...new Set([...Object.keys(existing.permissions), ...Object.keys(permissions)])]
           .filter(id => existing.permissions[id] !== permissions[id])
           .map(id => ({ resource: id, before: existing.permissions[id] ?? null, after: permissions[id] ?? null }))
@@ -167,6 +181,34 @@ export class SharedWorkspace {
     } else throw denied()
     this.notify()
     return { ok: true }
+  }
+  validateOidcEmail(value, except) {
+    if (value == null || value === '') return null
+    const email = normalizeEmail(value)
+    if (!email) throw new AutomationError(400, '请输入有效的组织账号邮箱')
+    if (this.store.all('humanPeople').some(person => !person.revoked && person.id !== except && person.oidcEmail === email)) {
+      throw new AutomationError(409, '该组织账号已经关联')
+    }
+    return email
+  }
+  issueCookie(res, session, key) {
+    res.setHeader('Set-Cookie', this.cookie() + '=' + session.id + '.' + key + '; Path=/share/; HttpOnly; SameSite=Strict; Max-Age=604800' +
+      (this.origin().startsWith('https:') ? '; Secure' : ''))
+  }
+  async signIn(req, res) {
+    const identity = await this.oidc.identity(req)
+    const key = opaque()
+    const session = this.store.transaction(() => {
+      const matches = this.store.all('humanPeople').filter(person => !person.revoked && person.oidcEmail === identity.email)
+      const person = matches[0]
+      if (matches.length !== 1 || person.oidcSubject && person.oidcSubject !== identity.subject) throw failAuth()
+      if (!person.oidcSubject) this.store.update('humanPeople', person.id, { oidcSubject: identity.subject })
+      this.audit(person.id, person.teamId, 'sso-sign-in', undefined, person.id)
+      return this.store.put('humanSessions', record({ personId: person.id, hash: digest(key), method: 'oidc', expires: Date.now() + 7 * 86400000 }))
+    })
+    this.issueCookie(res, session, key)
+    res.writeHead(303, { location: '/share/', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer' })
+    res.end()
   }
   cookie() { return 'gb_person_' + digest(this.service.stateDir).slice(0, 12) }
   user(req) {
@@ -190,8 +232,7 @@ export class SharedWorkspace {
       this.audit(person.id, person.teamId, 'redeem', undefined, person.id)
       return this.store.put('humanSessions', record({ personId: person.id, hash: digest(key), expires: Date.now() + 7 * 86400000 }))
     })
-    res.setHeader('Set-Cookie', this.cookie() + '=' + session.id + '.' + key + '; Path=/share/; HttpOnly; SameSite=Strict; Max-Age=604800' +
-      (this.origin().startsWith('https:') ? '; Secure' : ''))
+    this.issueCookie(res, session, key)
     json(res, 200, { ok: true })
   }
   roomState(resource) {
@@ -328,7 +369,7 @@ export class SharedWorkspace {
     if (previous) throw new AutomationError(409,'上一条消息等待核对')
     const { rt, sessionId } = this.roomState(resource)
     this.store.put('humanAudit',record({ id:requestId, actor:person.id, teamId:person.teamId, action:'chat',resource:key,fingerprint,status:'sending' }))
-    await rt.sendUser({ sessionId, requestId, content:[{ type:'text',text:labeled }] })
+    await rt.sendUser({ sessionId, requestId, initiator: runOrigin('person', undefined, person.id), content:[{ type:'text',text:labeled }] })
     this.store.update('humanAudit',requestId,{status:'sent'})
     return { ok: true }
   }
@@ -373,6 +414,9 @@ export class SharedWorkspace {
       if (route === '/share/app.js') return send(res,200,'text/javascript; charset=utf-8',script)
       if (route === '/share/app.css') return send(res,200,'text/css; charset=utf-8',css)
       if (route === '/share/icon.png') return send(res,200,'image/png',icon)
+      if (route === '/share/api/sign-in') return json(res, 200, { sso: this.oidc.enabled() && req.headers.host === this.oidc.publicUrl.host })
+      if (route === '/share/oidc/start') return this.oidc.begin(req, res)
+      if (route === '/share/oidc/callback') return this.signIn(req, res)
     }
     if (req.method === 'POST' && route === '/share/api/join') return this.redeem(await bodyOf(req),res)
     const person = this.user(req)

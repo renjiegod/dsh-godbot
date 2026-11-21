@@ -1,3 +1,4 @@
+import { pinWorkflow } from './workflows.js'
 import { createHash } from 'node:crypto'
 import { record, required, teamMember } from './team.js'
 import { submitRun } from './automation-runs.js'
@@ -58,15 +59,18 @@ export class GitHubEvents {
       const eventType = req.eventType?.trim() || null
       if (eventType && !typePattern.test(eventType))
         throw new Error('Use a GitHub event type such as IssuesEvent')
+      const workflow = req.workflowId ? pinWorkflow(this.store, teamId, req.workflowId, req.workflowRevision) : undefined
       const source = this.store.put(
         'githubSources',
         record({
           teamId,
           repo,
           label: required(req.label, 'Name'),
-          ownerId: teamMember(this.store, teamId, req.ownerId).id,
+          ownerId: workflow ? null : teamMember(this.store, teamId, req.ownerId).id,
           title: required(req.title, 'Title'),
-          criteria: required(req.criteria, 'Criteria'),
+          criteria: workflow ? '' : required(req.criteria, 'Criteria'),
+          ...(workflow ? { workflowSnapshot: workflow } : {}),
+          ...(req.checkOnly === true ? { checkOnly: true } : {}),
           eventType,
           includeLatest: req.includeLatest === true,
           paused: false,
@@ -185,6 +189,7 @@ export class GitHubEvents {
           row.id,
           { ownerId: source.ownerId, title: source.title, criteria: source.criteria, event: data },
           createHash('sha256').update(JSON.stringify(data)).digest('hex'),
+          'github',
         )
         updates.lastRunId = result.runId
       }
