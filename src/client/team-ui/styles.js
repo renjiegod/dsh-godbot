@@ -1197,6 +1197,9 @@ body[data-bt-layout=flat] .bt-think{max-width:calc(var(--bt-flat-w) * 100%)}
 .bt-event-whole>.bt-event-name{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-time-sep{display:flex;justify-content:center;align-items:center;height:28px;margin:14px 0 8px;font-size:12px;line-height:16px;color:var(--bt-ink-2);white-space:nowrap}
 [class*="_scroll"]>[class*="_column"]::before{content:var(--bt-first-sep,none);display:block;flex:none;height:28px;margin:17px 0 12px;font-size:12px;line-height:28px;text-align:center;color:var(--bt-ink-2);white-space:nowrap}
+/* A part that opens with its handoff shows the earlier parts first: its own opening time
+   is on the line under them (cells.js EarlierParts), not above messages from before it. */
+[class*="_scroll"]>[class*="_column"]:has(.bt-earlier)::before{content:none}
 .bt-activity{display:flex;align-items:center;gap:10px;margin:8px 0 4px 2px;font-size:14px;color:var(--bt-ink-2)}
 .bt-group-replies{display:contents}
 /* A Bot chat is flat in every work-details mode, without changing the user's mode
@@ -1459,10 +1462,25 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-uimages{display:block;font-size:12px;opacity:.7}
 .bt-utime{margin-top:-4px;font-size:11px;line-height:14px;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;white-space:nowrap}
 .bt-earlier .bt-event{margin:4px 0}
-.bt-agent-sessions-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.bt-agent-sessions-new{display:inline-flex;align-items:center;gap:4px;border:0;background:none;padding:2px 6px;border-radius:6px;font-size:12px;color:var(--bt-ink-2);cursor:pointer}
-.bt-agent-sessions-new:hover{background:var(--bt-hover);color:var(--bt-ink-1,inherit)}
-.bt-agent-sessions-new svg{width:12px;height:12px}
+/* New session (new-session.js). In the chat's top bar it is the one tool with a label,
+   tinted with the accent; on the session list it is a full row above the sessions. A
+   session nobody has talked in yet, or one on its way, leaves it quiet. */
+.bt-new-session{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;box-sizing:border-box;margin:0;border:0;font:inherit;white-space:nowrap;cursor:pointer;pointer-events:auto}
+.bt-new-session svg{flex:none}
+.bt-new-session[aria-disabled=true]{cursor:default}
+.bt-new-session:focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}
+.bt-new-session-bar{height:32px;padding:0 11px 0 9px;border-radius:9px;background:color-mix(in srgb,var(--bt-accent) 13%,transparent);color:var(--bt-accent);font-size:12.5px;font-weight:600;line-height:16px}
+.bt-new-session-bar svg{width:16px;height:16px}
+.bt-new-session-bar:hover:not([aria-disabled=true]){background:color-mix(in srgb,var(--bt-accent) 22%,transparent)}
+.bt-new-session-bar[data-state=empty]{background:transparent;color:var(--bt-ink-3)}
+.bt-new-session-bar[data-state=opening]{background:var(--bt-hover);color:var(--bt-ink-2)}
+@container (max-width: 560px){.bt-new-session-bar{width:32px;padding:0}.bt-new-session-bar .bt-new-session-label{display:none}}
+.bt-new-session-panel{width:100%;height:36px;margin:0 0 8px;border:1px dashed var(--bt-line-2);border-radius:10px;background:transparent;color:var(--bt-ink);font-size:13px;font-weight:500}
+.bt-new-session-panel svg{width:15px;height:15px}
+.bt-new-session-panel:hover:not([aria-disabled=true]){border-style:solid;border-color:var(--bt-accent);background:color-mix(in srgb,var(--bt-accent) 7%,transparent);color:var(--bt-accent)}
+.bt-new-session-panel[aria-disabled=true]{color:var(--bt-ink-3)}
+.bt-new-session-spin{flex:none;box-sizing:border-box;width:13px;height:13px;border:1.6px solid currentColor;border-right-color:transparent;border-radius:50%;animation:bt-new-session-spin .8s linear infinite}
+@keyframes bt-new-session-spin{to{transform:rotate(360deg)}}
 .bt-agent-sessions{display:flex;flex-direction:column;border:1px solid var(--bt-line-2);border-radius:10px;overflow:hidden}
 .bt-agent-sessions-warn{display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;padding:8px 10px;border:.5px solid color-mix(in srgb,var(--bt-warn) 40%,transparent);border-left:3px solid var(--bt-warn);border-radius:10px;background:color-mix(in srgb,var(--bt-warn) 13%,var(--bt-card));color:var(--bt-warn);font-size:13px;line-height:17px;font-weight:500}
 .bt-agent-sessions-warn svg{flex:none;width:15px;height:15px;margin-top:1px}
@@ -1477,8 +1495,11 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-agent-act-mark{flex:0 0 6px;width:6px;height:6px;border-radius:50%;background:var(--bt-ink-3,currentColor);opacity:.55}
 .bt-agent-act-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .bt-agent-act code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bt-hover);border-radius:4px;padding:1px 5px;color:var(--bt-ink-1,inherit)}
-.bt-part-line{display:flex;align-items:center;gap:10px;margin:10px 0 6px;font-size:11px;line-height:14px;color:var(--bt-ink-3)}
+.bt-part-line{display:flex;align-items:center;gap:10px;margin:14px 0 8px;font-size:11.5px;line-height:14px;font-weight:500;color:var(--bt-ink-2)}
 .bt-part-line::before,.bt-part-line::after{content:"";flex:1;height:1px;background:var(--bt-line)}
+.bt-part-line[data-fresh]{color:var(--bt-accent)}
+.bt-part-line[data-fresh]::before,.bt-part-line[data-fresh]::after{background:color-mix(in srgb,var(--bt-accent) 45%,transparent)}
+.bt-part-fresh{max-width:28rem;margin:0 auto 12px;font-size:12.5px;line-height:18px;text-align:center;color:var(--bt-ink-2)}
 /* The dock wrapper also holds the context meter, so it stays hidden until a side question is in it. */
 [data-composer-dock]:has(.bt-btw){display:flex!important;flex-direction:column;align-items:center;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
 [data-composer-dock]:has(.bt-btw)>:not([data-slot="conversation.composer.dock"]){display:none!important}
