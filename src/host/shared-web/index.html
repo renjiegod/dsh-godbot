@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Godbot 共享工作区</title>
+    <link href="/share/app.css" rel="stylesheet">
+    <script type="module" src="/share/app.js"></script>
+  </head>
+  <body>
+    <header>
+      <div class="brand"><strong>Godbot</strong><span>共享工作区</span></div>
+      <span id="person"></span>
+    </header>
+    <div class="layout">
+      <nav aria-label="授权资源">
+        <form id="search">
+          <label for="query">搜索已授权的资源</label>
+          <div class="search-row">
+            <input id="query" name="q" type="search">
+            <button type="submit">查找</button>
+          </div>
+        </form>
+        <div id="results"></div>
+        <ul id="resources"></ul>
+      </nav>
+      <main id="work"><h1>共享工作区</h1></main>
+    </div>
+    <p role="status" id="status"></p>
+  </body>
+</html>

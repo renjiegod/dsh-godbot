@@ -1,0 +1,37 @@
+.gb-browser-viewer {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.gb-browser-title {
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--bt-ink-2);
+  font-size: 13px;
+}
+.gb-browser-status {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: var(--bt-tag-bg);
+  color: var(--bt-ink-2);
+  font-size: 12px;
+}
+.gb-browser-frame {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  background: var(--bt-main);
+}
+.gb-browser-frame[data-controllable] { cursor: crosshair; }
+.gb-browser-frame:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 2px; }
+.gb-browser-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}

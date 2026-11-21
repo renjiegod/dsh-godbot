@@ -1,0 +1,93 @@
+.gb-modal {
+  --gb-modal-gutter: clamp(12px, 4vw, 24px);
+  --gb-modal-top: var(--dsh-frame-chrome-top, 0px);
+  --gb-modal-width: 36rem;
+  box-sizing: border-box;
+  inset-block: var(--gb-modal-top) 0;
+  inline-size: min(var(--gb-modal-width), calc(100% - 2 * var(--gb-modal-gutter)));
+  max-inline-size: none;
+  max-block-size: calc(100dvh - var(--gb-modal-top) - 2 * var(--gb-modal-gutter));
+  margin: auto;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--bt-line-2);
+  border-radius: 16px;
+  background: var(--bt-card);
+  color: var(--bt-ink);
+  color-scheme: light;
+  box-shadow: var(--bt-dialog-shadow, 0 20px 64px -16px rgb(0 0 0 / 35%));
+  font: 14px/1.5 var(--bt-font);
+  text-align: start;
+  overflow-wrap: anywhere;
+  pointer-events: auto;
+}
+.gb-modal[open] {
+  display: flex;
+  flex-direction: column;
+}
+.gb-modal[data-wide] { --gb-modal-width: 65rem; }
+.gb-modal *, .gb-modal *::before, .gb-modal *::after { box-sizing: border-box; }
+body[data-ds-dark-theme] .gb-modal { color-scheme: dark; }
+.gb-modal::backdrop {
+  background: rgb(0 0 0 / 32%);
+  backdrop-filter: blur(6px);
+}
+body[data-ds-dark-theme] .gb-modal::backdrop { background: rgb(0 0 0 / 50%); }
+.gb-modal-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  padding: 12px var(--gb-modal-gutter);
+  border-bottom: 1px solid var(--bt-line);
+}
+.gb-modal .gb-modal-head h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+.gb-modal .gb-modal-close {
+  flex: none;
+  width: 32px;
+  padding: 0;
+  background: transparent;
+  color: var(--bt-ink-2);
+}
+.gb-modal .gb-modal-close:hover {
+  background: var(--bt-hover);
+  color: var(--bt-ink);
+}
+.gb-modal-body {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  padding: 16px var(--gb-modal-gutter) 20px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.gb-modal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.gb-modal p { margin: 0; }
+.gb-modal input:is([type='checkbox'], [type='radio']) { accent-color: var(--bt-accent); }
+.gb-modal .gb-modal-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--bt-line);
+  border-radius: 8px;
+  background: var(--bt-hover);
+  color: var(--bt-ink-2);
+}
+.gb-modal [role='alert'] { color: var(--bt-danger); }
+.gb-modal .gb-modal-note[role='alert'] {
+  background: var(--bt-danger-soft);
+  color: var(--bt-danger);
+}

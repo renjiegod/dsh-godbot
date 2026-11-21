@@ -1,0 +1,52 @@
+.gb-workflows { margin-block-end: 14px; }
+.gb-workflows, .gb-workflows .gb-stack { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.gb-workflows .gb-flow-scroll {
+  max-width: 100%; min-width: 0; max-height: 420px; overflow: auto;
+  border: 1px solid var(--bt-line-2); border-radius: 10px;
+  background-color: var(--bt-main);
+  background-image: radial-gradient(var(--bt-line-2) 1px, transparent 1px);
+  background-size: 14px 14px; overscroll-behavior: contain;
+}
+.gb-flow-canvas { position: relative; }
+.gb-flow-wires { position: absolute; inset: 0; pointer-events: none; }
+.gb-flow-hit { pointer-events: stroke; cursor: pointer; }
+.gb-workflows .gb-flow-node {
+  position: absolute; justify-content: start; text-align: start; padding: 6px 12px;
+  border: 1px solid var(--bt-line-2); border-radius: 9px; background: var(--bt-card);
+  box-shadow: 0 2px 4px var(--bt-line); white-space: normal;
+}
+.gb-workflows .gb-flow-node[aria-pressed=true] { border: 2px solid var(--bt-accent); background: var(--bt-card); }
+.gb-workflows .gb-flow-node[data-run-status=skipped] {
+  border-style: dashed; color: var(--bt-ink-2); background: var(--bt-sidebar);
+}
+.gb-flow-run-graph > summary { cursor: pointer; }
+.gb-flow-run-graph > small { display: block; margin: 4px 0 8px; }
+.gb-flow-node > span { display: grid; width: 100%; gap: 2px; }
+.gb-flow-node :is(strong,small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-flow-panel { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 12px; align-items: start; }
+.gb-flow-panel > .gb-row { grid-column: 1/-1; }
+.gb-flow-links, .gb-flow-history { border-top: 1px solid var(--bt-line); padding-top: 12px; }
+.gb-flow-edge-list, .gb-flow-run-nodes { margin: 0; padding: 0; list-style: none; }
+.gb-flow-edge-list { display: flex; gap: 5px; flex-wrap: wrap; }
+.gb-flow-edge-list li, .gb-flow-run-nodes li { min-width: 0; max-width: 100%; }
+.gb-workflows .gb-flow-edge-list button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; text-align: start; }
+.gb-flow-edge-list [aria-pressed=true] { outline: 1px solid var(--bt-accent); }
+.gb-flow-run-nodes li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-block: 4px; }
+.gb-flow-run-nodes li > span:first-child { overflow-wrap: anywhere; }
+.gb-workflows .gb-flow-scroll:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 2px; }
+@media(max-width: 600px) {
+  .gb-flow-panel { grid-template-columns: minmax(0,1fr); }
+  .gb-flow-scroll { max-height: 300px; }
+  .gb-workflows .gb-row button { min-height: 40px; }
+}
+.gb-flow-files { border: 0; min-width: 0; margin: 0; padding: 0; }
+.gb-workflow-file {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  min-height: 32px; padding: 0 14px; border-radius: 999px;
+  background: var(--bt-hover); color: var(--bt-ink); font-size: 13px; cursor: pointer;
+}
+.gb-workflow-file input {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+}
+.gb-workflow-file:focus-within { outline: 2px solid var(--bt-accent); outline-offset: 2px; }
+.gb-flow-command { display: block; padding: 8px 0; overflow-wrap: anywhere; user-select: all; }

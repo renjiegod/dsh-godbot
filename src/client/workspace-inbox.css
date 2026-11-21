@@ -1,0 +1,62 @@
+.gb-inbox-section {
+  border: 1px solid var(--bt-line);
+  border-radius: 10px;
+}
+.gb-inbox-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: inherit;
+  list-style: none;
+  font-weight: 600;
+}
+.gb-inbox-section > summary::-webkit-details-marker { display: none; }
+.gb-inbox-section > summary::after {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-inline-end: 4px;
+  border-right: 1.5px solid var(--bt-ink-2);
+  border-bottom: 1.5px solid var(--bt-ink-2);
+  transform: rotate(45deg);
+}
+.gb-inbox-section[open] > summary::after { transform: rotate(225deg); }
+.gb-inbox-section > summary:hover { background: var(--bt-hover); }
+.gb-inbox-section-body {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid var(--bt-line);
+}
+.gb-inbox-routing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.gb-inbox-routing input { margin: 0; }
+.gb-template-export { align-items: end; }
+.gb-template-export > label { flex: 1 1 13rem; }
+.gb-template-export button { min-height: 36px; }
+.gb-inbox-section input[type='file']::file-selector-button {
+  padding: 4px 9px;
+  margin-inline-end: 8px;
+  border: 0;
+  border-radius: 5px;
+  background: var(--bt-hover);
+  color: var(--bt-ink);
+  font: inherit;
+}
+.gb-inbox-section input[type='file']:enabled::file-selector-button { cursor: pointer; }
+.gb-inbox-section input[type='file']:enabled::file-selector-button:hover { background: var(--bt-active); }
+.gb-template-preview {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bt-hover);
+}
+.gb-template-plan { justify-content: space-between; }

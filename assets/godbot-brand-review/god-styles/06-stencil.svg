@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Godbot · 斜切模板">
+  <title>Godbot · 斜切模板</title>
+  <rect x="4" y="4" width="248" height="248" rx="52" fill="#21204A"/>
+  <g transform="translate(16.64 16.64) scale(.87)">
+  <g transform="translate(24 0) skewX(-10)">
+    <path fill="#EEFE78" d="M28 75h60l15 17-18 14-9-10H40l-9 10v45l9 10h33l9-9v-11H58v-19h45v43l-21 19H29L10 163v-65Z"/>
+    <path fill="#EEFE78" fill-rule="evenodd" d="M113 109h46l15 14v41l-15 16h-46l-15-16v-41Zm8 18-5 5v23l5 5h29l5-5v-23l-5-5Z"/>
+    <path fill="#EEFE78" fill-rule="evenodd" d="M217 73h23v107h-23v-5l-11 5h-21l-15-16v-40l15-15h22l10 5Zm-24 54-5 5v22l5 5h24v-32Z"/>
+    <path fill="#21204A" d="m27 152 73-34v10l-73 34Zm145-19 68-32v10l-68 32Z"/>
+  </g>
+  </g>
+</svg>

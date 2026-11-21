@@ -1,0 +1,89 @@
+{
+  "date": "2026-11-19",
+  "platform": "macOS",
+  "runner": "node test/external/live-control.mjs <kind> [--interrupt]",
+  "method": "Block a read-only loopback MCP tool. Generate the replacement code after gate arrival. Observe the next tool's arguments before the original native turn ends. Run a separate interrupt scenario at the same boundary, reopen the same native conversation ID, and run another real model turn.",
+  "codex": {
+    "version": "0.170.0",
+    "ordinaryReplyMarker": true,
+    "correctedToolInputBeforeOriginalTurnEnd": true,
+    "approvalResponded": true,
+    "nativeStop": "interrupted",
+    "sameIdResumeAndNextTurnAfterInterrupt": true,
+    "sharedReadOnly": {
+      "nativeStartAndResumeReturned": "readOnly/never",
+      "requestedFileAppeared": false,
+      "separateNativeSeatbeltTouchExitCode": 1,
+      "separateNativeSeatbeltError": "Operation not permitted"
+    },
+    "settingsProbe": {
+      "modelCount": 10,
+      "modes": [
+        "plan",
+        "default"
+      ],
+      "confirmedModel": "gpt-6.2-sol",
+      "confirmedMode": "plan",
+      "confirmation": "thread/settings/updated",
+      "modelTurns": 0
+    }
+  },
+  "claude": {
+    "version": "2.1.328",
+    "ordinaryReplyMarker": true,
+    "correctedToolInputBeforeOriginalTurnEnd": true,
+    "qualifiedPublicDriverVerified": true,
+    "approvalResponded": true,
+    "nativeStop": "interrupted",
+    "sameIdResumeAndNextTurnAfterInterrupt": true,
+    "settingsProbe": {
+      "modelCount": 14,
+      "commandCount": 101,
+      "currentPermissionMode": "default",
+      "permissionModeSelectable": false,
+      "requestedModel": "sonnet",
+      "confirmedModel": "claude-sonnet-5-5",
+      "confirmation": "set_model control_response",
+      "modelTurns": 0
+    }
+  },
+  "antigravity": {
+    "version": "1.5.12",
+    "ordinaryReplyMarker": true,
+    "correctedToolInputBeforeOriginalTurnEnd": false,
+    "doublePromptObservation": "Gate arrived. A second native session/prompt was submitted during the first. The first prompt ended without a recorded corrected tool call, and the double-prompt experiment timed out.",
+    "approvalResponded": true,
+    "nativeStop": "interrupted",
+    "sameIdResumeAndNextTurnAfterInterrupt": true,
+    "settingsProbe": {
+      "modelCount": 4,
+      "modes": [
+        "default",
+        "accept-edits",
+        "auto",
+        "plan"
+      ],
+      "selectableModes": [
+        "default",
+        "plan"
+      ],
+      "confirmedModel": "claude-sonnet-4-6",
+      "confirmedMode": "plan",
+      "confirmation": "session/set_config_option",
+      "modelTurns": 0
+    },
+    "concurrentWorkingDirectories": {
+      "runner": "node test/external/live-antigravity-workspaces.mjs",
+      "sessionsStartedInParallel": 2,
+      "distinctNativeIds": true,
+      "nativeCommand": "/bin/cp godbot-source.txt godbot-result.txt",
+      "separateRandomInputMarkers": true,
+      "approvalsAllowed": 2,
+      "nativeTurnsCompleted": 2,
+      "resultsMatchedRespectiveMarker": [
+        true,
+        true
+      ]
+    }
+  }
+}

@@ -1,0 +1,208 @@
+/* Base controls. Every selector sits wholly inside :where(), so it has zero
+   specificity and a component rule wins in every state (:hover, :focus,
+   :disabled). :is() would take its most specific argument instead. The native
+   terminal panel keeps its own controls, the same in both workspaces. */
+:where(:is(.gb-root, .gb-modal) :is(button, input, textarea, select, summary):not(.gb-terminal-panel *)) {
+  font: inherit;
+  color: inherit;
+}
+:where(:is(.gb-root, .gb-modal) button:not(.gb-terminal-panel *)) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--bt-hover);
+  color: var(--bt-ink);
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 18px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, color 0.12s ease, transform 0.12s ease;
+}
+:where(:is(.gb-root, .gb-modal) button:not(.gb-terminal-panel *):enabled:hover) {
+  background: var(--bt-active);
+}
+:where(:is(.gb-root, .gb-modal) :is(button, select, input[type='file']):not(.gb-terminal-panel *):disabled) {
+  cursor: default;
+  opacity: 0.4;
+}
+:where(:is(.gb-root, .gb-modal) :is(button, select, input, textarea, summary):not(.gb-terminal-panel *):focus-visible) {
+  outline: 2px solid var(--bt-accent);
+  outline-offset: 2px;
+}
+:where(:is(.gb-root, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *)) {
+  min-width: 0;
+  min-height: 36px;
+  border: 0.5px solid var(--bt-line-2);
+  border-radius: 8px;
+  padding: 7px 11px;
+  background: var(--bt-card);
+  color: var(--bt-ink);
+  font-size: 13px;
+  line-height: 20px;
+  outline: none;
+  accent-color: var(--bt-accent);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+:where(:is(.gb-root, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *):hover:not(:disabled, :focus)) {
+  border-color: color-mix(in srgb, var(--bt-ink) 24%, transparent);
+}
+:where(:is(.gb-root, .gb-modal) :is(input:not([type='checkbox'], [type='radio']), textarea, select):not(.gb-terminal-panel *):focus) {
+  border-color: var(--bt-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bt-accent) 22%, transparent);
+}
+:where(:is(.gb-root, .gb-modal) select:not(.gb-terminal-panel *)) {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-inline-end: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23888' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
+}
+:is(.gb-root, .gb-modal) input::placeholder,
+:is(.gb-root, .gb-modal) textarea::placeholder {
+  color: var(--bt-ink-3);
+}
+:is(.gb-root, .gb-modal) small,
+:is(.gb-root, .gb-modal) time,
+.gb-muted {
+  color: var(--bt-ink-2);
+  font-size: 12px;
+}
+:is(.gb-root, .gb-modal) :is(h1, h2, h3, p, pre, dl, dd) {
+  margin: 0;
+}
+:is(.gb-root, .gb-modal) h1 {
+  font-size: 15px;
+  font-weight: 500;
+}
+:is(.gb-root, .gb-modal) h2 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+:is(.gb-root, .gb-modal) h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+:is(.gb-root, .gb-modal) pre {
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+:is(.gb-root, .gb-modal) summary {
+  cursor: pointer;
+}
+:is(.gb-root, .gb-modal) code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.gb-icon {
+  display: block;
+  flex: none;
+}
+
+.gb-stack,
+.gb-form,
+.gb-queue,
+.gb-card,
+.gb-interaction {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.gb-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.gb-field > span {
+  color: var(--bt-ink-2);
+  font-size: 12px;
+  font-weight: 500;
+}
+.gb-field > input,
+.gb-field > textarea,
+.gb-field > select {
+  width: 100%;
+}
+:is(.gb-root, .gb-modal) :is(.gb-primary, .gb-modal-primary) {
+  background: var(--bt-accent);
+  color: var(--bt-accent-ink);
+  font-weight: 500;
+}
+:is(.gb-root, .gb-modal) :is(.gb-primary, .gb-modal-primary):enabled:hover {
+  background: color-mix(in srgb, var(--bt-accent) 88%, #000);
+}
+.gb-row,
+.gb-checks,
+.gb-answer,
+.gb-sectionhead {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.gb-sectionhead {
+  justify-content: space-between;
+}
+.gb-section,
+.gb-card,
+.gb-interaction {
+  min-width: 0;
+  padding: 12px 16px;
+  border: 0.5px solid var(--bt-glass-rim);
+  border-radius: 12px;
+  background: var(--bt-card);
+  box-shadow: var(--bt-card-shadow);
+}
+.gb-section > summary {
+  font-size: 13px;
+  font-weight: 500;
+}
+.gb-section[open] > summary {
+  margin-bottom: 10px;
+}
+.gb-card + .gb-card {
+  margin-top: 2px;
+}
+.gb-status {
+  display: inline-flex;
+  white-space: nowrap;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 0.5px solid var(--bt-line);
+  background: var(--bt-tag-bg);
+  color: var(--bt-tag-ink);
+  font-size: 11px;
+  line-height: 16px;
+}
+.gb-status:is([data-status='running'], [data-status='completed']) {
+  color: color-mix(in srgb, var(--bt-green) 72%, var(--bt-ink));
+}
+.gb-status:is([data-status='failed'], [data-status='error']) {
+  color: var(--bt-danger);
+}
+.gb-checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+.gb-question {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.gb-question legend {
+  font-weight: 500;
+}

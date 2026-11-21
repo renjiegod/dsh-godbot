@@ -1,0 +1,381 @@
+import { Fragment, createElement as h, useEffect, useState } from 'react'
+import { apply as applyBot, inject as botServices } from './team-ui/index.js'
+import { earlierReports, reportSessionUsage, turnReport } from './team-report.js'
+import { NativeCommandReport } from './native-command-report.js'
+import { TerminalPanel } from './terminal-panel.js'
+import { botNativeTarget, nativeTabs } from './native-agent-target.js'
+import { PanelMenu } from './team-ui/browser-pane.js'
+import { ChatsIcon, TerminalIcon } from './team-ui/icons.js'
+import { SandboxBinding } from './sandbox-settings.js'
+import { ProviderAgentsPage } from './provider-agents.js'
+import { useProviderChoices } from './provider-agents-hook.js'
+import { sandboxSettingsStyle } from './bot-settings-style.js'
+import { AgentSetup } from './agent-setup.js'
+import { ConnectorToolsPanel } from './connector-tools.js'
+import { ExecutionHistory, executionStyle, TurnExecution } from './execution-history.js'
+import { openWorkspace } from './workspace-entry.js'
+import { botHome } from './session-links.js'
+import { Icon } from './chat-ui.js'
+import { WorkspaceSwitch } from './workspace-switch.js'
+import { BotSchedulesPage } from './bot-schedules.js'
+import { WebBrowserButton } from './browser-viewer.js'
+import { mainSession, sessionSelection } from './navigation.js'
+import { bindTeamSlashSource, teamSlashSource } from './team-slash.js'
+
+const lastSessionKey = 'dsh.godbot.bot-session.v1'
+const controlsStyle = `
+.bt-side .bt-side-top { flex-wrap: wrap; gap: 2px; padding: 3px 0; }
+.bt-side-top > .bt-round {
+  width: 30px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+}
+.bt-side .bt-tile-wrap { padding: 6px 0 9px; }
+.bt-side .bt-tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 1px;
+  align-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--bt-line);
+  border-radius: 10px;
+  background: var(--bt-card);
+  text-align: start;
+}
+.bt-side .bt-tile:has(.bt-chip) > .bt-mark { grid-row: span 2; }
+.bt-side .bt-tile-name { max-width: none; font-size: 14px; font-weight: 650; }
+.bt-side .bt-tile .bt-chip {
+  justify-self: start;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--bt-ink-2);
+}
+.bt-side .bt-tile[aria-current=page] { border-color: var(--bt-accent); }
+.bt-side .bt-row[aria-current=page] { box-shadow: inset 3px 0 var(--bt-accent); }
+.bt-side:not(.bt-rail) .bt-row { border-radius: 8px; }
+
+.bt-side .gb-schedule-shortcut{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:34px;margin:0 8px 4px;padding:0 10px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--bt-ink-2);font:inherit;font-size:13px;cursor:pointer}
+.bt-side .gb-schedule-shortcut:hover{background:var(--bt-hover);color:var(--bt-ink)}
+.bt-rail .gb-schedule-shortcut{justify-content:center;align-self:center;width:34px;margin:0 0 4px;padding:0}
+.bt-msg[data-gb-command-report]{width:min(42rem,100%)}
+.bt-msg[data-gb-command-report]>.bt-msg-line{width:100%}
+.bt-msg[data-gb-command-report]>.bt-msg-line>.bt-bubble{width:100%;background:transparent;padding:0}
+.bt-head:has(>.gb-chat-heading) {
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding-inline: 8px;
+  box-sizing: border-box;
+}
+.gb-chat-heading {
+  display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: min(100%, 32rem);
+  height: 40px;
+  box-sizing: border-box;
+  border: 1px solid var(--bt-line);
+  border-radius: 8px;
+  background: var(--bt-card);
+  margin-inline-end: auto;
+}
+.gb-chat-heading > .bt-pill {
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  padding-inline: 7.5px 12px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.gb-chat-heading:has(>.gb-bot-model) > .bt-pill {
+  flex: 0 1 auto;
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+}
+.gb-chat-heading:has(>.gb-bot-model) > .bt-pill > .bt-pill-go { display: none; }
+.gb-chat-heading > .bt-pill:active { transform: none; }
+.gb-bot-model {
+  /* Give short names their intrinsic width on desktop. In a narrow header the
+     conversation name yields first, leaving its avatar and the model control. */
+  flex: 0 0 auto;
+  max-width: calc(100% - 48px);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 0;
+  border-start-end-radius: 7px;
+  border-end-end-radius: 7px;
+  background: transparent;
+  color: var(--bt-ink);
+  font: inherit;
+  text-align: start;
+  pointer-events: auto;
+}
+.gb-bot-model::before {
+  content: '';
+  position: absolute;
+  inset-block: 10px;
+  inset-inline-start: 0;
+  width: 1px;
+  background: var(--bt-line-2);
+}
+.gb-chat-heading > .bt-pill:hover,
+button.gb-bot-model:hover { background: var(--bt-hover); }
+button.gb-bot-model { cursor: pointer; }
+.gb-chat-heading > .bt-pill:focus-visible,
+button.gb-bot-model:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: -2px; }
+.gb-bot-model-copy { display: grid; min-width: 0; }
+.gb-bot-model-name, .gb-bot-model-effort { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gb-bot-model-name { font-size: 12px; font-weight: 500; line-height: 16px; }
+.gb-bot-model-effort { color: var(--bt-ink-2); font-size: 11px; line-height: 13px; }
+.gb-chat-tools { display: inline-flex; align-items: center; flex: none; gap: 4px; }
+.gb-chat-tools:empty { display: none; }
+.gb-chat-tools > .bt-icon-btn, .gb-chat-tools .gb-native-button {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  border: 1px solid var(--bt-line);
+  border-radius: 8px;
+  background: var(--bt-card);
+  pointer-events: auto;
+}
+.gb-chat-tools .gb-native-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  padding: 0 8px;
+  color: var(--bt-ink);
+  font: 500 12px/1 var(--bt-font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.gb-chat-tools .bt-pmenu-pop { pointer-events: auto; }
+.gb-chat-tools > .bt-icon-btn:hover, .gb-chat-tools .gb-native-button:hover { background: var(--bt-hover); }
+.gb-chat-tools .gb-native-button[data-active] { color: var(--bt-accent); }
+.gb-chat-tools .gb-native-button[data-active]::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 6px;
+  inset-inline-end: 6px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+@media (max-width: 600px) {
+  .gb-chat-tools .gb-native-button > span { display: none; }
+}
+`
+
+function NativeAgentButton({ client, target, actions }) {
+  const { botId, sessionId, agent } = target
+  const [active, setActive] = useState(false)
+  useEffect(() => {
+    let timer, mounted = true
+    async function update() {
+      try {
+        const value = await client.terminalStatus({ botId, sessionId })
+        if (mounted) setActive(value.active)
+      } catch { /* The opener can show a connection error on demand. */ }
+      if (mounted) timer = setTimeout(update, 4000)
+    }
+    void update()
+    return () => { mounted = false; clearTimeout(timer) }
+  }, [client, botId, sessionId])
+  const title = agent === 'local-claude-code' ? '打开原生会话并信任此 Bot 的工作目录' : undefined
+  return h(PanelMenu, { className: 'gb-native-button', 'aria-label': '原生 Agent', active,
+    title: active ? '原生 Agent 控制中，聊天消息等待交还' : '原生 Agent',
+    items: [
+      { key: 'terminal', icon: TerminalIcon, label: '原生终端', title, onPick: () => actions.showDetails(sessionId, nativeTabs.terminal) },
+      { key: 'conversation', icon: ChatsIcon, label: '原生对话', title, onPick: () => actions.showDetails(sessionId, nativeTabs.conversation) },
+    ] }, h(TerminalIcon), h('span', null, '原生 Agent'))
+}
+
+function readLast() {
+  try {
+    return sessionStorage.getItem(lastSessionKey)
+  } catch {
+    return null
+  }
+}
+function remember(id) {
+  if (id)
+    try {
+      sessionStorage.setItem(lastSessionKey, id)
+    } catch {
+      /* Storage is optional. */
+    }
+}
+
+function TeamCommandReport({ ctx, client, report, text, bot, sessionId }) {
+  const part = report.partId ?? sessionId
+  const { seq, messageId } = report
+  const entries = part && ctx.sessions.binding(part)?.eventSource?.getSnapshot().entries
+  const current = reportSessionUsage(entries, seq, messageId)
+  const botId = bot?.id
+  const receiptKey = JSON.stringify([botId, part, seq, messageId])
+  const loadSession = botId && part && Number.isInteger(seq)
+    ? () => client.claudeReportSession({ botId, sessionId: part, seq, messageId }) : undefined
+  const isCurrentClaude = bot && (bot.sessionId ?? bot.id) === sessionId &&
+    (bot.model ?? bot.appliedModel)?.split('/')[0] === 'local-claude-code'
+  const loadStats = isCurrentClaude ? () => client.claudeStats({ botId, sessionId }) : undefined
+  return h(NativeCommandReport, { ...report, text, loadStats, sessionUsage: current, loadSession, receiptKey })
+}
+
+/** Mount the team UI in its own Cordis lifetime. Outside this route its
+ * slots, styles, keyboard handlers, dialogs, and background polls are withdrawn. */
+export function mountTeamSurface(ctx, client, navigation, target) {
+  return openWorkspace(ctx, client, navigation, (ready) => mountProduct(ctx, client, navigation, target, ready))
+}
+function mountProduct(ctx, client, navigation, target, ready) {
+  const landing = botHome(typeof target === 'string' ? target : undefined, readLast())
+  let initialSettings = target?.settings
+  let active = true,
+    roster
+  const idOf = (session) => roster?.byId[session]?.id ?? roster?.roomsById[session]?.id
+  const priorSidebar = document.querySelector('[class*="_sidebarCol"]')?.parentElement
+  const wasCollapsed = priorSidebar?.hasAttribute('data-sidebar-collapsed')
+  const canViewExecution = (bot, id, state) => bot && !state.readOnly && !state.roomsById[id]
+  const teamControls = {
+    active: () => active,
+    sessionSelection,
+    back: navigation.back,
+    turnReport, earlierReports,
+    renderReport: (report, text, bot, sessionId) => h(TeamCommandReport, { ctx, client, report, text, bot, sessionId }),
+    browserButton(bot, id, state) {
+      return bot && !state.readOnly && !state.browser && (bot.sessionId ?? bot.id) === id
+        ? h(WebBrowserButton, { key: 'web-browser-' + bot.id, client, bot, sessionId: id }) : null
+    },
+    nativeButton(bot, id, state, actions) {
+      const target = botNativeTarget(bot, id, state)
+      return target && h(NativeAgentButton, { key: 'native:' + id, client, target, actions })
+    },
+    nativePane(bot, id, state, close, mode, actions) {
+      const target = botNativeTarget(bot, id, state)
+      return target ? h(TerminalPanel, { client, target, close, mode,
+        onModeChange: next => actions.showDetails(id, nativeTabs[next]) }) : h('p', { role: 'status' }, '请选择当前 Bot 的 CLI 会话。')
+    },
+    executionButton(bot, id, state, actions) {
+      return canViewExecution(bot, id, state) && h('button', { key: 'execution:' + id, type: 'button',
+        className: 'bt-icon-btn bt-head-search', 'aria-label': '查看会话执行记录', title: '查看会话执行记录',
+        onClick: () => actions.showDetails(id, 'godbot-execution') }, h(Icon, { name: 'clock', size: 17 }))
+    },
+    executionPane(bot, id, state, close) {
+      return canViewExecution(bot, id, state) ? h(ExecutionHistory, { key: id, client, bot, sessionId: id, close }) : null
+    },
+    executionTurn: (bot, sessionId, turn, running, legacy) => h(TurnExecution, {
+      key: JSON.stringify([sessionId, turn]), client, botId: bot.id, sessionId, turn, running, legacy,
+    }),
+    providerAgents: props => h(ProviderAgentsPage, { client, ...props }),
+    schedulesPage(state, actions, start, publish) {
+      const session = mainSession(ctx)
+      return h(BotSchedulesPage, { key: start ?? 'all', client, roster: state, actions, start,
+        initialTarget: state.byId[session]?.id ?? state.roomsById[session]?.id ?? state.mainBotId, publish })
+    },
+    useProviderChoices: (wanted, call) => useProviderChoices(wanted, call, client),
+    async changeProvider(bot, agent, target, actions, avatarAfter) {
+      if (agent?.disabled || (!agent && target.startsWith('local-')))
+        throw new Error('运行账号已变化，请重新选择提供商。')
+      const hostKind = { 'local-antigravity':'antigravity', 'local-claude-code':'claude', 'local-codex-cli':'codex' }[agent?.route]
+      if (agent?.accountId || (bot.accountProfileId && hostKind)) {
+        return actions.afterSandboxBinding(client.dispatch({
+          action:'sandbox-bot-bind', botId:bot.id, kind:agent.kind ?? hostKind,
+          accountProfileId:agent.accountId ?? null, ...(agent.cwd ? { cwd:agent.cwd } : {}),
+        }))
+      }
+      return actions.updateBot(bot.id, { model:target,changeEngine:true,...avatarAfter(bot,target) })
+    },
+    openInitialSettings(actions) {
+      if (!initialSettings) return
+      const page = initialSettings
+      initialSettings = null
+      actions.openSettings(page)
+    },
+    sandboxBinding(bot, roster, actions) {
+      if (roster.readOnly) return null
+      const route = (bot.appliedModel ?? bot.model ?? '').split('/')[0]
+      const kind = bot.sandboxKind ?? ({ 'local-antigravity': 'antigravity', 'local-claude-code': 'claude', 'local-codex-cli': 'codex' })[route]
+      return h(SandboxBinding, { key: 'sandbox-'+bot.id, client, subject: bot, kind, fullTeam: true,
+        onSave: patch => actions.afterSandboxBinding(client.dispatch({ action: 'sandbox-bot-bind', botId: bot.id, ...patch })) })
+    },
+    connectorTools: bot => h(ConnectorToolsPanel, { key: 'connector-tools-' + bot.id, client, bot, sessionId: bot.sessionId ?? bot.id }),
+    startCli: (props) => h(AgentSetup, { ...props, key: props.bot.id }),
+    installSlash(triggers, roster, actions, controllerOf) {
+      const source = teamSlashSource(roster, actions, client)
+      const unregister = triggers.registerSource(source)
+      actions.bindGodbotSlash = (sessionId) => bindTeamSlashSource(controllerOf(sessionId), source, sessionId)
+      return () => {
+        delete actions.bindGodbotSlash
+        unregister()
+      }
+    },
+    home(snapshot, main) {
+      roster = snapshot
+      return landing(snapshot, main)
+    },
+    navigation(wide, latest, actions) {
+      roster = latest
+      return h(
+        Fragment,
+        null,
+        h('style', null, controlsStyle + executionStyle + sandboxSettingsStyle),
+        h(WorkspaceSwitch, {
+          current: 'bot',
+          client,
+          wide,
+          onBack: navigation.back,
+          onManagement: () => navigation.openManagement(),
+        }),
+        h('button', { type: 'button', className: 'gb-schedule-shortcut', title: '自动化任务', 'aria-label': '自动化任务',
+          onClick: () => actions.openSettings('schedules') }, h(Icon, { name: 'clock', size: 17 }), wide ? '自动化任务' : null),
+      )
+    },
+  }
+  const fiber = ctx.plugin({
+    inject: botServices,
+    apply(child) {
+      if (!active) return
+      try {
+        applyBot(child, teamControls)
+        ready()
+      } catch (error) {
+        ready(error)
+        throw error
+      }
+    },
+  })
+  const off = ctx.sessions.list.subscribe(() => {
+    const id = mainSession(ctx)
+    if (idOf(id) || roster?.agentOf[id]) remember(id)
+  })
+  return () => {
+    active = false
+    off()
+    const selected = mainSession(ctx)
+    if (idOf(selected) || roster?.agentOf[selected]) remember(selected)
+    void fiber.dispose()
+    const frame = document.querySelector('[class*="_sidebarCol"]')?.parentElement
+    if (
+      frame &&
+      wasCollapsed != null &&
+      !frame.hasAttribute('data-sidebar-drawer') &&
+      frame.hasAttribute('data-sidebar-collapsed') !== wasCollapsed
+    )
+      ctx.layout.toggleSidebar()
+  }
+}
