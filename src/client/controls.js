@@ -135,7 +135,7 @@ export function Interaction({ item, name, run, pending }) {
     row(h('strong', null, question ? 'Agent 提问' : '工具审批'), h('small', null, name)),
     !question && h('div', { className: 'gb-text' }, textOf(item.text)),
     (item.details ?? item.detail) && h('pre', null, textOf(item.details ?? item.detail)),
-    item.error && h('div', { role: 'alert' }, textOf(item.error)),
+    item.error && h('div', { role: 'alert', className: 'gb-error' }, textOf(item.error)),
     isPendingInteraction(item)
       ? question
         ? h(QuestionForm, { item, run, pending })

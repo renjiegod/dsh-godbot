@@ -81,5 +81,5 @@ export function WorkflowFiles({ teamId, bots, workflow, client, onImported }) {
         } }, option('', '选择负责 Bot'), bots.map(member => option(member.id, member.name))))),
       row(button('保存导入的工作流', save, { className: 'gb-primary', disabled: busy || required.some(bot => !mapping.get(bot.ref)) }),
         button('取消导入', () => { setPreview(null); setError('') }, { disabled: busy }))),
-    error && h('p', { role: 'alert' }, error))
+    error && h('p', { role: 'alert', className: 'gb-error' }, error))
 }

@@ -298,7 +298,7 @@ function Interaction({ item, name, run: run2, pending }) {
     row((0, import_react.createElement)("strong", null, question ? "Agent 提问" : "工具审批"), (0, import_react.createElement)("small", null, name)),
     !question && (0, import_react.createElement)("div", { className: "gb-text" }, textOf(item.text)),
     (item.details ?? item.detail) && (0, import_react.createElement)("pre", null, textOf(item.details ?? item.detail)),
-    item.error && (0, import_react.createElement)("div", { role: "alert" }, textOf(item.error)),
+    item.error && (0, import_react.createElement)("div", { role: "alert", className: "gb-error" }, textOf(item.error)),
     isPendingInteraction(item) ? question ? (0, import_react.createElement)(QuestionForm, { item, run: run2, pending }) : row(
       ...choices.map(
         (choice) => button(choice.label, () => respond(choice.value), { key: choice.value, disabled: pending })
@@ -1060,7 +1060,7 @@ function UsageLimits({ client, bots, models }) {
       ),
       (0, import_react8.createElement)("button", { disabled: busy }, "查看用量与设置")
     ),
-    error && (0, import_react8.createElement)("p", { role: "alert" }, error),
+    error && (0, import_react8.createElement)("p", { role: "alert", className: "gb-error" }, error),
     s15 && (0, import_react8.createElement)(
       "form",
       {
@@ -1191,7 +1191,7 @@ function AutomationAccess({ client, team, members }) {
       }
     },
     (0, import_react9.createElement)("summary", null, "CI 与 Webhook"),
-    (error || list?.listenError) && (0, import_react9.createElement)("p", { role: "alert" }, error || list.listenError),
+    (error || list?.listenError) && (0, import_react9.createElement)("p", { role: "alert", className: "gb-error" }, error || list.listenError),
     list?.url && (0, import_react9.createElement)("p", null, "GODBOT_URL ", (0, import_react9.createElement)("code", null, list.url)),
     (0, import_react9.createElement)("h3", null, "CI 凭据"),
     form(
@@ -1325,7 +1325,7 @@ function AutomationAccess({ client, team, members }) {
         "div",
         { key: source.id, className: "gb-row" },
         (0, import_react9.createElement)("span", null, source.label + " · " + source.repo),
-        source.issue && (0, import_react9.createElement)("span", { role: "alert" }, source.issue),
+        source.issue && (0, import_react9.createElement)("span", { role: "alert", className: "gb-error" }, source.issue),
         source.lastRunId && (0, import_react9.createElement)("code", null, source.lastRunId),
         button("检查事件", () => void act("githubPoll", { id: source.id }), {
           disabled: pending || source.paused
@@ -1485,7 +1485,7 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
     ),
     calendar && field("每天的执行时间", (0, import_react10.createElement)("input", { type: "time", name: "time", defaultValue: original.time ?? "09:00", required: true })),
     calendar && field("时区", (0, import_react10.createElement)("input", { name: "timeZone", defaultValue: original.timeZone ?? localZone3, placeholder: "Asia/Taipei", required: true })),
-    error && (0, import_react10.createElement)("p", { role: "alert" }, error),
+    error && (0, import_react10.createElement)("p", { role: "alert", className: "gb-error" }, error),
     row((0, import_react10.createElement)("button", { type: "submit", className: "gb-primary", disabled: busy }, "保存任务"), button("取消", onCancel, { disabled: busy }))
   );
 }
@@ -1565,7 +1565,7 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
       (0, import_react10.createElement)("h2", null, team.name),
       button("新建自动化任务", () => setEditor({}), { className: "gb-primary", disabled: readOnly || !members.length })
     ),
-    error && (0, import_react10.createElement)("p", { role: "alert" }, error, " ", button("刷新", () => refresh((v2) => v2 + 1))),
+    error && (0, import_react10.createElement)("p", { role: "alert", className: "gb-error" }, error, " ", button("刷新", () => refresh((v2) => v2 + 1))),
     !routines && !error && empty("正在读取自动化任务…"),
     routines?.length === 0 && empty(members.length ? "还没有定时派工的任务。" : "在 Bot 设置中创建 Bot 后即可安排自动化任务。"),
     routines?.map((routine) => {
@@ -1585,7 +1585,7 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
           routine.nextAt != null && " · 下次派工 " + stamp(routine.nextAt)
         ),
         routine.criteria && (0, import_react10.createElement)("p", { className: "gb-text" }, routine.criteria),
-        routine.lastError && (0, import_react10.createElement)("p", { role: "alert" }, routine.lastError),
+        routine.lastError && (0, import_react10.createElement)("p", { role: "alert", className: "gb-error" }, routine.lastError),
         row(
           button("立即运行", () => change("run", { id }, () => setHistoryId(id)), { disabled: busy || readOnly }),
           button("编辑", () => setEditor(routine), { disabled: busy || !members.length || readOnly }),
@@ -1844,7 +1844,7 @@ function WorkflowFiles({ teamId, bots, workflow, client, onImported }) {
         }, { disabled: busy })
       )
     ),
-    error && (0, import_react11.createElement)("p", { role: "alert" }, error)
+    error && (0, import_react11.createElement)("p", { role: "alert", className: "gb-error" }, error)
   );
 }
 
@@ -2414,7 +2414,7 @@ function PeopleAccess({ team, client }) {
     } },
     (0, import_react13.createElement)("summary", null, "多人共享与审计"),
     (0, import_react13.createElement)("p", null, "按人选择可见会话。共享后，该会话已有的消息、任务证据和附件也可读取。"),
-    error && (0, import_react13.createElement)("p", { role: "alert" }, error),
+    error && (0, import_react13.createElement)("p", { role: "alert", className: "gb-error" }, error),
     (0, import_react13.createElement)(
       "form",
       { className: "gb-form", onSubmit: (e) => {
@@ -2447,110 +2447,8 @@ var sandboxSettingsStyle = `
 .gb-sandbox-binding>button{justify-self:start}
 `;
 
-// src/client/theme.js
-var workspaceTheme = {
-  label: "Godbot",
-  light: {
-    bg: "#fbfcfd",
-    sidebar: "#edf2f5",
-    bubble: "#ecf1f5",
-    card: "#ffffff",
-    text: "#17293d",
-    user: "#203e58",
-    userText: "#ffffff",
-    accent: "#126975"
-  },
-  dark: {
-    bg: "#101923",
-    sidebar: "#141f2c",
-    bubble: "#223345",
-    card: "#1b2938",
-    text: "#e6f0f5",
-    user: "#24485b",
-    userText: "#edfaff",
-    accent: "#82d7df"
-  }
-};
-function surfaceTokens(palette) {
-  return {
-    ink: palette.text,
-    bubble: palette.bubble,
-    sidebar: palette.sidebar,
-    main: palette.bg,
-    card: palette.card,
-    accent: palette.accent,
-    user: palette.user,
-    "user-ink": palette.userText
-  };
-}
-var lightTokens = {
-  ...surfaceTokens(workspaceTheme.light),
-  "ink-2": "#506377",
-  "ink-3": "#607287",
-  "accent-ink": "#ffffff",
-  danger: "#ad3348",
-  warn: "#875808",
-  green: "#13816b",
-  star: "#ae720e",
-  line: "rgba(35,62,84,.12)",
-  "line-2": "rgba(35,62,84,.22)",
-  "line-weak": "rgba(35,62,84,.08)",
-  hover: "rgba(26,78,101,.065)",
-  active: "#dbe8ed",
-  "tag-bg": "#e3ebef",
-  "tag-ink": "#4c6374",
-  "glass-bg": "var(--bt-card)",
-  "glass-rim": "var(--bt-line)",
-  "glass-shadow": "0 6px 20px -10px rgba(23,43,60,.24)",
-  "card-shadow": "0 2px 5px -3px rgba(23,43,60,.18)",
-  "nav-thumb-bg": "var(--bt-card)",
-  "nav-thumb-shadow": "var(--bt-card-shadow)",
-  "accent-soft": "color-mix(in srgb,var(--bt-accent) 12%,var(--bt-card))",
-  "danger-soft": "color-mix(in srgb,var(--bt-danger) 10%,var(--bt-card))",
-  font: 'var(--dsw-font-family,"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)'
-};
-var darkTokens = {
-  ...surfaceTokens(workspaceTheme.dark),
-  "ink-2": "#b0c2d1",
-  "ink-3": "#96aabb",
-  "accent-ink": "#102832",
-  danger: "#ff9fa5",
-  warn: "#edbd75",
-  green: "#67c5ae",
-  star: "#f0bd6d",
-  line: "rgba(182,209,228,.14)",
-  "line-2": "rgba(182,209,228,.25)",
-  "line-weak": "rgba(182,209,228,.08)",
-  hover: "rgba(160,208,222,.08)",
-  active: "#253e4d",
-  "tag-bg": "#253949",
-  "tag-ink": "#c2d5df",
-  "glass-shadow": "0 8px 20px -8px rgba(0,7,18,.50)",
-  "card-shadow": "0 2px 5px -3px rgba(0,7,18,.40)"
-};
-var declare = (tokens2) => Object.entries(tokens2).map(([name, value]) => `--bt-${name}:${value};`).join("");
-var aliases = `
-  --gb-bg:var(--bt-main);
-  --gb-surface:var(--bt-card);
-  --gb-raised:var(--bt-hover);
-  --gb-input:var(--bt-card);
-  --gb-line:var(--bt-line-2);
-  --gb-border:var(--bt-line);
-  --gb-ink:var(--bt-ink);
-  --gb-muted:var(--bt-ink-2);
-  --gb-subtle:var(--bt-ink-3);
-  --gb-accent:var(--bt-accent);
-  --gb-faint:var(--bt-tag-bg);
-  --gb-hover:var(--bt-hover);
-  --gb-panel:var(--bt-card);
-`;
-var themeStyle = `
-.gb-root{${declare(lightTokens)}${aliases}}
-body[data-ds-dark-theme] .gb-root{${declare(darkTokens)}}
-`;
-
 // src/client/styles.js
-var styles = themeStyle + sandboxSettingsStyle + `
+var styles = sandboxSettingsStyle + `
 /* Our own header has navigation controls in dsh's web drawer. The desktop window
    still reserves its native titlebar and traffic-light area. */
 html:not([data-platform]):not([data-windows-titlebar]) [data-sidebar-drawer] [data-global-panel]:has(.gb-workspace) {
@@ -4011,6 +3909,31 @@ var workspace_controls_default = `/* Base controls. Every selector sits wholly i
 .gb-question legend {
   font-weight: 500;
 }
+
+/* A failure note inside a Godbot panel: the same note the Godbot dialogs show
+   (.gb-modal-note[role=alert]). It also renders in the Bot workspace, outside
+   .gb-root and .gb-modal, so it carries its own class. */
+.gb-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--bt-line);
+  border-radius: 8px;
+  background: var(--bt-danger-soft);
+  color: var(--bt-danger);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+span.gb-error {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+}
 `;
 
 // src/client/modal.css
@@ -4018,6 +3941,111 @@ var modal_default = ".gb-modal {\n  --gb-modal-gutter: clamp(12px, 4vw, 24px);\n
 
 // src/client/workspace-inbox.css
 var workspace_inbox_default = ".gb-inbox-section {\n  border: 1px solid var(--bt-line);\n  border-radius: 10px;\n}\n.gb-inbox-section > summary {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  padding: 10px 12px;\n  border-radius: inherit;\n  list-style: none;\n  font-weight: 600;\n}\n.gb-inbox-section > summary::-webkit-details-marker { display: none; }\n.gb-inbox-section > summary::after {\n  content: '';\n  flex: none;\n  width: 7px;\n  height: 7px;\n  margin-inline-end: 4px;\n  border-right: 1.5px solid var(--bt-ink-2);\n  border-bottom: 1.5px solid var(--bt-ink-2);\n  transform: rotate(45deg);\n}\n.gb-inbox-section[open] > summary::after { transform: rotate(225deg); }\n.gb-inbox-section > summary:hover { background: var(--bt-hover); }\n.gb-inbox-section-body {\n  display: grid;\n  gap: 12px;\n  padding: 12px;\n  border-top: 1px solid var(--bt-line);\n}\n.gb-inbox-routing {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n.gb-inbox-routing input { margin: 0; }\n.gb-template-export { align-items: end; }\n.gb-template-export > label { flex: 1 1 13rem; }\n.gb-template-export button { min-height: 36px; }\n.gb-inbox-section input[type='file']::file-selector-button {\n  padding: 4px 9px;\n  margin-inline-end: 8px;\n  border: 0;\n  border-radius: 5px;\n  background: var(--bt-hover);\n  color: var(--bt-ink);\n  font: inherit;\n}\n.gb-inbox-section input[type='file']:enabled::file-selector-button { cursor: pointer; }\n.gb-inbox-section input[type='file']:enabled::file-selector-button:hover { background: var(--bt-active); }\n.gb-template-preview {\n  display: grid;\n  justify-items: start;\n  gap: 8px;\n  padding: 12px;\n  border-radius: 8px;\n  background: var(--bt-hover);\n}\n.gb-template-plan { justify-content: space-between; }\n";
+
+// src/client/workspace-runtime.css
+var workspace_runtime_default = "/* DSH mounts this overlay while a team workspace starts or cannot start. Its\n   card is a non-modal <dialog open> with the Godbot dialog classes (.gb-modal),\n   so it matches the workspace dialogs without blocking the shell while starting. */\n.gb-runtime {\n  position: fixed;\n  inset: 0;\n  z-index: 40;\n  pointer-events: none;\n}\n.gb-runtime:not([data-godbot-runtime='starting']) {\n  background: rgb(0 0 0 / 32%);\n  -webkit-backdrop-filter: blur(6px);\n  backdrop-filter: blur(6px);\n  pointer-events: auto;\n}\nbody[data-ds-dark-theme] .gb-runtime:not([data-godbot-runtime='starting']) {\n  background: rgb(0 0 0 / 50%);\n}\n.gb-runtime > .gb-modal {\n  --gb-modal-width: 26rem;\n  position: absolute;\n}\n.gb-runtime-mark {\n  display: block;\n  flex: none;\n  width: 22px;\n  height: 22px;\n  border-radius: 24%;\n}\n.gb-runtime .gb-runtime-lead {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  font-weight: 500;\n}\n.gb-runtime-spin {\n  flex: none;\n  width: 16px;\n  height: 16px;\n  border: 2px solid var(--bt-line-2);\n  border-top-color: var(--bt-accent);\n  border-radius: 50%;\n  animation: gb-runtime-spin 0.8s linear infinite;\n}\n@keyframes gb-runtime-spin {\n  to { transform: rotate(360deg); }\n}\n@media (prefers-reduced-motion: reduce) {\n  .gb-runtime-spin { animation-duration: 2.4s; }\n}\n.gb-runtime .gb-modal-actions {\n  justify-content: flex-end;\n  margin-top: 4px;\n}\n";
+
+// src/client/theme.js
+var workspaceTheme = {
+  label: "Godbot",
+  light: {
+    bg: "#fbfcfd",
+    sidebar: "#edf2f5",
+    bubble: "#ecf1f5",
+    card: "#ffffff",
+    text: "#17293d",
+    user: "#203e58",
+    userText: "#ffffff",
+    accent: "#126975"
+  },
+  dark: {
+    bg: "#101923",
+    sidebar: "#141f2c",
+    bubble: "#223345",
+    card: "#1b2938",
+    text: "#e6f0f5",
+    user: "#24485b",
+    userText: "#edfaff",
+    accent: "#82d7df"
+  }
+};
+function surfaceTokens(palette) {
+  return {
+    ink: palette.text,
+    bubble: palette.bubble,
+    sidebar: palette.sidebar,
+    main: palette.bg,
+    card: palette.card,
+    accent: palette.accent,
+    user: palette.user,
+    "user-ink": palette.userText
+  };
+}
+var lightTokens = {
+  ...surfaceTokens(workspaceTheme.light),
+  "ink-2": "#506377",
+  "ink-3": "#607287",
+  "accent-ink": "#ffffff",
+  danger: "#ad3348",
+  warn: "#875808",
+  green: "#13816b",
+  star: "#ae720e",
+  line: "rgba(35,62,84,.12)",
+  "line-2": "rgba(35,62,84,.22)",
+  "line-weak": "rgba(35,62,84,.08)",
+  hover: "rgba(26,78,101,.065)",
+  active: "#dbe8ed",
+  "tag-bg": "#e3ebef",
+  "tag-ink": "#4c6374",
+  "glass-bg": "var(--bt-card)",
+  "glass-rim": "var(--bt-line)",
+  "glass-shadow": "0 6px 20px -10px rgba(23,43,60,.24)",
+  "card-shadow": "0 2px 5px -3px rgba(23,43,60,.18)",
+  "nav-thumb-bg": "var(--bt-card)",
+  "nav-thumb-shadow": "var(--bt-card-shadow)",
+  "accent-soft": "color-mix(in srgb,var(--bt-accent) 12%,var(--bt-card))",
+  "danger-soft": "color-mix(in srgb,var(--bt-danger) 10%,var(--bt-card))",
+  font: 'var(--dsw-font-family,"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif)'
+};
+var darkTokens = {
+  ...surfaceTokens(workspaceTheme.dark),
+  "ink-2": "#b0c2d1",
+  "ink-3": "#96aabb",
+  "accent-ink": "#102832",
+  danger: "#ff9fa5",
+  warn: "#edbd75",
+  green: "#67c5ae",
+  star: "#f0bd6d",
+  line: "rgba(182,209,228,.14)",
+  "line-2": "rgba(182,209,228,.25)",
+  "line-weak": "rgba(182,209,228,.08)",
+  hover: "rgba(160,208,222,.08)",
+  active: "#253e4d",
+  "tag-bg": "#253949",
+  "tag-ink": "#c2d5df",
+  "glass-shadow": "0 8px 20px -8px rgba(0,7,18,.50)",
+  "card-shadow": "0 2px 5px -3px rgba(0,7,18,.40)"
+};
+var declare = (tokens2) => Object.entries(tokens2).map(([name, value]) => `--bt-${name}:${value};`).join("");
+var aliases = `
+  --gb-bg:var(--bt-main);
+  --gb-surface:var(--bt-card);
+  --gb-raised:var(--bt-hover);
+  --gb-input:var(--bt-card);
+  --gb-line:var(--bt-line-2);
+  --gb-border:var(--bt-line);
+  --gb-ink:var(--bt-ink);
+  --gb-muted:var(--bt-ink-2);
+  --gb-subtle:var(--bt-ink-3);
+  --gb-accent:var(--bt-accent);
+  --gb-faint:var(--bt-tag-bg);
+  --gb-hover:var(--bt-hover);
+  --gb-panel:var(--bt-card);
+`;
+var themeStyle = `
+:is(.gb-root,.gb-theme){${declare(lightTokens)}${aliases}}
+body[data-ds-dark-theme] :is(.gb-root,.gb-theme){${declare(darkTokens)}}
+`;
 
 // src/client/team-surface.js
 var import_react107 = require("react");
@@ -61699,7 +61727,7 @@ function SandboxBinding({ client, subject, kind, fullTeam = false, disabled, onS
     setNeedsAccount(false);
     setFailure("");
   }, [subject.id, current2, currentCwd, kind]);
-  if (!catalog?.enabled && !current2) return error ? (0, import_react96.createElement)("p", { role: "alert" }, error) : null;
+  if (!catalog?.enabled && !current2) return error ? (0, import_react96.createElement)("p", { role: "alert", className: "gb-error" }, error) : null;
   const changed = accountId !== current2 || Boolean(accountId && cwd !== currentCwd) || Boolean(chosenKind && chosenKind !== kind);
   function selectProvider(event) {
     const nextKind = event.target.value;
@@ -61744,7 +61772,7 @@ function SandboxBinding({ client, subject, kind, fullTeam = false, disabled, onS
       setAccount(id);
       setNeedsAccount(false);
     }, cwd, onCwd: setCwd, disabled: disabled || busy }),
-    (error || failure) && (0, import_react96.createElement)("p", { role: "alert" }, error || failure),
+    (error || failure) && (0, import_react96.createElement)("p", { role: "alert", className: "gb-error" }, error || failure),
     changed && (0, import_react96.createElement)(
       "button",
       { type: "button", className: "bt-soft gb-setting-save", onClick: apply3, disabled: disabled || busy || needsAccount || !!accountId && (!catalog?.enabled || !cwd) },
@@ -62776,7 +62804,7 @@ function ConnectorToolsPanel({ client, bot, sessionId }) {
     "details",
     { className: "bt-drawer-model", onToggle: (event) => setOpen(event.currentTarget.open) },
     (0, import_react101.createElement)("summary", { className: "bt-section-title" }, "连接器工具"),
-    error && (0, import_react101.createElement)("p", { role: "alert" }, error),
+    error && (0, import_react101.createElement)("p", { role: "alert", className: "gb-error" }, error),
     open && !view && !error && (0, import_react101.createElement)("p", { role: "status" }, "正在读取工具目录…"),
     view && (0, import_react101.createElement)(
       "div",
@@ -62835,12 +62863,12 @@ var executionStyle = `
 .gb-execution-tool > summary > span { margin-inline-end: 8px; overflow-wrap: anywhere; }
 .gb-execution-tool > summary > span:last-child { margin-inline-end: 0; }
 .gb-execution-state, .gb-execution-meta, .gb-execution-note { color: var(--bt-ink-2); font-size: 12px; }
-.gb-execution-tool[data-status=failed] .gb-execution-state, .gb-execution-error { color: var(--bt-red, #b82b36); }
+.gb-execution-tool[data-status=failed] .gb-execution-state, .gb-execution-error { color: var(--bt-danger); }
 .gb-execution-body { display: grid; gap: 8px; padding: 6px 8px 9px; border-top: 1px solid var(--bt-line); min-width: 0; }
 .gb-execution-body h4 { margin: 0 0 3px; font-size: 12px; }
 .gb-execution-code { max-height: 14rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; box-sizing: border-box; margin: 0; padding: 6px 8px; border-radius: 6px; background: var(--bt-hover); font: 12px/1.5 ui-monospace, monospace; }
 .gb-execution-code [data-diff=add] { color: var(--bt-green, #177246); }
-.gb-execution-code [data-diff=remove] { color: var(--bt-red, #b82b36); }
+.gb-execution-code [data-diff=remove] { color: var(--bt-danger); }
 .gb-execution-note, .gb-execution-error { margin: 3px 0; overflow-wrap: anywhere; }
 .gb-execution-pane.bt-drawer-body { gap: 10px; padding: 12px; }
 .gb-execution-select { max-width: 100%; font: inherit; color: inherit; background: var(--bt-card); border: 1px solid var(--bt-line); border-radius: 6px; padding: 4px; }
@@ -63180,36 +63208,39 @@ function ExecutionHistory({ client, bot, sessionId, close }) {
 var import_react103 = require("react");
 function RuntimeStatus({ source, retry, navigation }) {
   const state = (0, import_react103.useSyncExternalStore)(source.subscribe, source.read, source.read);
+  const titleId = (0, import_react103.useId)();
   if (!state) return null;
   const waiting2 = state.mode === "starting";
   return (0, import_react103.createElement)(
-    "section",
-    {
-      "aria-label": "Godbot 团队",
-      "data-godbot-runtime": state.mode,
-      style: {
-        position: "fixed",
-        zIndex: 40,
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%,-50%)",
-        width: "min(420px,90vw)",
-        padding: "20px",
-        borderRadius: 16,
-        background: "var(--dsw-alias-bg-base,#fff)",
-        color: "var(--dsw-alias-label-primary,#222)",
-        boxShadow: "0 6px 40px #0003",
-        pointerEvents: "auto"
-      }
-    },
-    (0, import_react103.createElement)("strong", null, "Godbot 团队"),
-    (0, import_react103.createElement)("p", { role: waiting2 ? "status" : "alert" }, state.message || "正在连接团队工作台…"),
+    "div",
+    { className: "gb-theme gb-runtime", "data-godbot-runtime": state.mode },
     (0, import_react103.createElement)(
-      "div",
-      { style: { display: "flex", flexWrap: "wrap", gap: 10 } },
-      !waiting2 && (0, import_react103.createElement)("button", { type: "button", onClick: retry }, "重新连接"),
-      (0, import_react103.createElement)("button", { type: "button", onClick: () => navigation.openManagement() }, "团队管理"),
-      (0, import_react103.createElement)("button", { type: "button", onClick: navigation.back }, "返回 dsh")
+      "dialog",
+      { open: true, className: "gb-modal", "aria-labelledby": titleId, "aria-busy": waiting2 || void 0 },
+      (0, import_react103.createElement)(
+        "header",
+        { className: "gb-modal-head" },
+        (0, import_react103.createElement)("img", { className: "gb-runtime-mark", src: webIconUrl, alt: "" }),
+        (0, import_react103.createElement)("h2", { id: titleId }, "Godbot 团队")
+      ),
+      (0, import_react103.createElement)(
+        "div",
+        { className: "gb-modal-body" },
+        waiting2 ? (0, import_react103.createElement)(
+          "p",
+          { className: "gb-runtime-lead", role: "status" },
+          (0, import_react103.createElement)("span", { className: "gb-runtime-spin", "aria-hidden": true }),
+          "正在连接团队工作台…"
+        ) : (0, import_react103.createElement)("p", { className: "gb-runtime-lead" }, "团队工作台暂时无法打开"),
+        waiting2 ? state.message && (0, import_react103.createElement)("small", null, state.message) : (0, import_react103.createElement)("p", { className: "gb-modal-note", role: "alert" }, state.message || "没有收到 Godbot Host 的运行状态。"),
+        (0, import_react103.createElement)(
+          "div",
+          { className: "gb-modal-actions" },
+          (0, import_react103.createElement)("button", { type: "button", onClick: navigation.back }, "返回 dsh"),
+          (0, import_react103.createElement)("button", { type: "button", onClick: () => navigation.openManagement() }, "团队管理"),
+          !waiting2 && (0, import_react103.createElement)("button", { type: "button", className: "gb-modal-primary", onClick: retry }, "重新连接")
+        )
+      )
     )
   );
 }
@@ -63477,7 +63508,7 @@ function ScheduleHistory({ client, task, openChat }) {
     { className: "gb-schedule-history", "aria-label": "投递记录" },
     (0, import_react105.createElement)("div", { className: "gb-schedule-heading" }, (0, import_react105.createElement)("h4", null, "投递记录"), click("刷新记录", () => load(), loading)),
     !page && loading && (0, import_react105.createElement)("p", { role: "status" }, "正在读取记录…"),
-    error && (0, import_react105.createElement)("p", { role: "alert" }, error),
+    error && (0, import_react105.createElement)("p", { role: "alert", className: "gb-error" }, error),
     page?.records.length === 0 && (0, import_react105.createElement)("p", { className: "bt-set-hint" }, "暂无投递记录。"),
     page?.records.length > 0 && (0, import_react105.createElement)("ol", null, page.records.map((record) => (0, import_react105.createElement)(
       "li",
@@ -63611,7 +63642,7 @@ function BotSchedulesPage({ client, roster, actions, start, initialTarget, publi
     "section",
     { className: "gb-bot-schedules", "aria-label": "自动化任务" },
     (0, import_react105.createElement)("style", null, bot_schedules_default),
-    loadError && (0, import_react105.createElement)("div", { role: "alert" }, loadError, " ", click("重新读取", reload, busy)),
+    loadError && (0, import_react105.createElement)("div", { role: "alert", className: "gb-error" }, loadError, " ", click("重新读取", reload, busy)),
     !view && !loadError && (0, import_react105.createElement)("p", { role: "status" }, "正在读取自动化任务…"),
     view && !view.available && (0, import_react105.createElement)(
       "div",
@@ -64674,7 +64705,7 @@ var waiting = "html:is([data-godbot-boot],[data-godbot-workspace]) body:not(:has
 var column = `${waiting} [class*="_sidebarCol"]`;
 var styleId = "godbot-sidebar-loading";
 var sidebarStyle = `
-${column} > *, ${waiting} [data-shell-leading] {
+${column} > *, ${column} > * *, ${waiting} [data-shell-leading], ${waiting} [data-shell-leading] * {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
@@ -64710,7 +64741,7 @@ function icon2({ size = 18 }) {
 function apply2(ctx) {
   ctx.effect(() => installSidebarLoadingStyle(document), "Godbot sidebar loading style");
   ctx.effect(() => {
-    const style = installStyles(workspace_controls_default + modal_default + workspace_inbox_default, "workspace-controls");
+    const style = installStyles(themeStyle + workspace_controls_default + modal_default + workspace_inbox_default + workspace_runtime_default, "workspace-controls");
     return () => style.remove();
   }, "Godbot controls and dialogs");
   const client = createClient(ctx.connection);

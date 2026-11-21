@@ -1,37 +1,47 @@
-import { createElement as h, useSyncExternalStore } from 'react'
+import { createElement as h, useId, useSyncExternalStore } from 'react'
+import { webIconUrl } from '../host/web-icon.js'
 
+// DSH mounts this outside every Godbot workspace: .gb-theme brings the Godbot
+// palette and the card reuses the Godbot dialog (see workspace-runtime.css).
 function RuntimeStatus({ source, retry, navigation }) {
   const state = useSyncExternalStore(source.subscribe, source.read, source.read)
+  const titleId = useId()
   if (!state) return null
   const waiting = state.mode === 'starting'
   return h(
-    'section',
-    {
-      'aria-label': 'Godbot 团队',
-      'data-godbot-runtime': state.mode,
-      style: {
-        position: 'fixed',
-        zIndex: 40,
-        top: '50%',
-        left: '50%',
-        transform: 'translate(-50%,-50%)',
-        width: 'min(420px,90vw)',
-        padding: '20px',
-        borderRadius: 16,
-        background: 'var(--dsw-alias-bg-base,#fff)',
-        color: 'var(--dsw-alias-label-primary,#222)',
-        boxShadow: '0 6px 40px #0003',
-        pointerEvents: 'auto',
-      },
-    },
-    h('strong', null, 'Godbot 团队'),
-    h('p', { role: waiting ? 'status' : 'alert' }, state.message || '正在连接团队工作台…'),
+    'div',
+    { className: 'gb-theme gb-runtime', 'data-godbot-runtime': state.mode },
     h(
-      'div',
-      { style: { display: 'flex', flexWrap: 'wrap', gap: 10 } },
-      !waiting && h('button', { type: 'button', onClick: retry }, '重新连接'),
-      h('button', { type: 'button', onClick: () => navigation.openManagement() }, '团队管理'),
-      h('button', { type: 'button', onClick: navigation.back }, '返回 dsh'),
+      'dialog',
+      { open: true, className: 'gb-modal', 'aria-labelledby': titleId, 'aria-busy': waiting || undefined },
+      h(
+        'header',
+        { className: 'gb-modal-head' },
+        h('img', { className: 'gb-runtime-mark', src: webIconUrl, alt: '' }),
+        h('h2', { id: titleId }, 'Godbot 团队'),
+      ),
+      h(
+        'div',
+        { className: 'gb-modal-body' },
+        waiting
+          ? h(
+              'p',
+              { className: 'gb-runtime-lead', role: 'status' },
+              h('span', { className: 'gb-runtime-spin', 'aria-hidden': true }),
+              '正在连接团队工作台…',
+            )
+          : h('p', { className: 'gb-runtime-lead' }, '团队工作台暂时无法打开'),
+        waiting
+          ? state.message && h('small', null, state.message)
+          : h('p', { className: 'gb-modal-note', role: 'alert' }, state.message || '没有收到 Godbot Host 的运行状态。'),
+        h(
+          'div',
+          { className: 'gb-modal-actions' },
+          h('button', { type: 'button', onClick: navigation.back }, '返回 dsh'),
+          h('button', { type: 'button', onClick: () => navigation.openManagement() }, '团队管理'),
+          !waiting && h('button', { type: 'button', className: 'gb-modal-primary', onClick: retry }, '重新连接'),
+        ),
+      ),
     ),
   )
 }

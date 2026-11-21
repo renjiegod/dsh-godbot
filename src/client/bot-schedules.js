@@ -34,7 +34,7 @@ function ScheduleHistory({ client, task, openChat }) {
   return h('section', { className: 'gb-schedule-history', 'aria-label': '投递记录' },
     h('div', { className: 'gb-schedule-heading' }, h('h4', null, '投递记录'), click('刷新记录', () => load(), loading)),
     !page && loading && h('p', { role: 'status' }, '正在读取记录…'),
-    error && h('p', { role: 'alert' }, error),
+    error && h('p', { role: 'alert', className: 'gb-error' }, error),
     page?.records.length === 0 && h('p', { className: 'bt-set-hint' }, '暂无投递记录。'),
     page?.records.length > 0 && h('ol', null, page.records.map(record =>
       h('li', { key: record.messageId }, h('span', null, stamp(record.deliveredAt) + ' · 已投递'),
@@ -143,7 +143,7 @@ export function BotSchedulesPage({ client, roster, actions, start, initialTarget
   const newTarget = filter || (targets.some(t => t.id === initialTarget) ? initialTarget : targets[0]?.id)
   return h('section', { className: 'gb-bot-schedules', 'aria-label': '自动化任务' },
     h('style', null, scheduleStyle),
-    loadError && h('div', { role: 'alert' }, loadError, ' ', click('重新读取', reload, busy)),
+    loadError && h('div', { role: 'alert', className: 'gb-error' }, loadError, ' ', click('重新读取', reload, busy)),
     !view && !loadError && h('p', { role: 'status' }, '正在读取自动化任务…'),
     view && !view.available && h('div', { className: 'bt-set-card gb-schedule-card' },
       h('p', null, '在 DSH 插件设置中启用「自动化任务」即可调度 Bot 和群聊。'),

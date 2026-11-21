@@ -93,7 +93,7 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
       }), '周' + label))),
     calendar && field('每天的执行时间', h('input', { type: 'time', name: 'time', defaultValue: original.time ?? '09:00', required: true })),
     calendar && field('时区', h('input', { name: 'timeZone', defaultValue: original.timeZone ?? localZone, placeholder: 'Asia/Taipei', required: true })),
-    error && h('p', { role: 'alert' }, error),
+    error && h('p', { role: 'alert', className: 'gb-error' }, error),
     row(h('button', { type: 'submit', className: 'gb-primary', disabled: busy }, '保存任务'), button('取消', onCancel, { disabled: busy })),
   )
 }
@@ -158,7 +158,7 @@ export function NativeRoutines({ team, members, client, run, onTask, onWorkflowR
   return h('section', { className: 'gb-page gb-stack', 'aria-label': '团队自动化任务' },
     h('div', { className: 'gb-sectionhead' }, h('h2', null, team.name),
       button('新建自动化任务', () => setEditor({}), { className: 'gb-primary', disabled: readOnly || !members.length })),
-    error && h('p', { role: 'alert' }, error, ' ', button('刷新', () => refresh(v => v + 1))),
+    error && h('p', { role: 'alert', className: 'gb-error' }, error, ' ', button('刷新', () => refresh(v => v + 1))),
     !routines && !error && empty('正在读取自动化任务…'),
     routines?.length === 0 && empty(members.length ? '还没有定时派工的任务。' : '在 Bot 设置中创建 Bot 后即可安排自动化任务。'),
     routines?.map(routine => {
@@ -173,7 +173,7 @@ export function NativeRoutines({ team, members, client, run, onTask, onWorkflowR
           : members.find(m => m.id === routine.ownerId)?.name ?? routine.ownerId,
           routine.nextAt != null && ' · 下次派工 ' + stamp(routine.nextAt)),
         routine.criteria && h('p', { className: 'gb-text' }, routine.criteria),
-        routine.lastError && h('p', { role: 'alert' }, routine.lastError),
+        routine.lastError && h('p', { role: 'alert', className: 'gb-error' }, routine.lastError),
         row(button('立即运行', () => change('run', { id }, () => setHistoryId(id)), { disabled: busy || readOnly }),
           button('编辑', () => setEditor(routine), { disabled: busy || !members.length || readOnly }),
           status !== 'finished' && button(status === 'paused' ? '恢复' : '暂停',

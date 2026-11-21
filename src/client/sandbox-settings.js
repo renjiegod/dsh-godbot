@@ -72,7 +72,7 @@ export function SandboxBinding({ client, subject, kind, fullTeam = false, disabl
   const [needsAccount, setNeedsAccount] = useState(false)
   const [failure, setFailure] = useState('')
   useEffect(() => { setAccount(current); setCwd(currentCwd); setKind(kind ?? ''); setNeedsAccount(false); setFailure('') }, [subject.id, current, currentCwd, kind])
-  if (!catalog?.enabled && !current) return error ? h('p', { role: 'alert' }, error) : null
+  if (!catalog?.enabled && !current) return error ? h('p', { role: 'alert', className: 'gb-error' }, error) : null
   const changed = accountId !== current || Boolean(accountId && cwd !== currentCwd) || Boolean(chosenKind && chosenKind !== kind)
   function selectProvider(event) {
     const nextKind = event.target.value
@@ -98,7 +98,7 @@ export function SandboxBinding({ client, subject, kind, fullTeam = false, disabl
         !kind && h('option', { value: '' }, '选择提供商'),
         sandboxKinds.map(k => h('option', { key: k, value: k }, agentKinds[k] || k)))),
     h(AccountFields, { catalog, kind: chosenKind, accountId, requireChoice: needsAccount, onAccount: id => { setAccount(id); setNeedsAccount(false) }, cwd, onCwd: setCwd, disabled: disabled || busy }),
-    (error || failure) && h('p', { role: 'alert' }, error || failure),
+    (error || failure) && h('p', { role: 'alert', className: 'gb-error' }, error || failure),
     changed && h('button', { type: 'button', className: 'bt-soft gb-setting-save', onClick: apply, disabled: disabled || busy || needsAccount || (!!accountId && (!catalog?.enabled || !cwd)) },
       busy ? '正在切换…' : subject.nativeId || fullTeam ? '切换运行环境并开始新会话' : '应用运行环境'))
 }

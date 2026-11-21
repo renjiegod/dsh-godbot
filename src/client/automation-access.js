@@ -45,7 +45,7 @@ export function AutomationAccess({ client, team, members }) {
       },
     },
     h('summary', null, 'CI 与 Webhook'),
-    (error || list?.listenError) && h('p', { role: 'alert' }, error || list.listenError),
+    (error || list?.listenError) && h('p', { role: 'alert', className: 'gb-error' }, error || list.listenError),
     list?.url && h('p', null, 'GODBOT_URL ', h('code', null, list.url)),
     h('h3', null, 'CI 凭据'),
     form(
@@ -181,7 +181,7 @@ export function AutomationAccess({ client, team, members }) {
         'div',
         { key: source.id, className: 'gb-row' },
         h('span', null, source.label + ' · ' + source.repo),
-        source.issue && h('span', { role: 'alert' }, source.issue),
+        source.issue && h('span', { role: 'alert', className: 'gb-error' }, source.issue),
         source.lastRunId && h('code', null, source.lastRunId),
         button('检查事件', () => void act('githubPoll', { id: source.id }), {
           disabled: pending || source.paused,

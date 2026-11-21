@@ -27,12 +27,12 @@ export const executionStyle = `
 .gb-execution-tool > summary > span { margin-inline-end: 8px; overflow-wrap: anywhere; }
 .gb-execution-tool > summary > span:last-child { margin-inline-end: 0; }
 .gb-execution-state, .gb-execution-meta, .gb-execution-note { color: var(--bt-ink-2); font-size: 12px; }
-.gb-execution-tool[data-status=failed] .gb-execution-state, .gb-execution-error { color: var(--bt-red, #b82b36); }
+.gb-execution-tool[data-status=failed] .gb-execution-state, .gb-execution-error { color: var(--bt-danger); }
 .gb-execution-body { display: grid; gap: 8px; padding: 6px 8px 9px; border-top: 1px solid var(--bt-line); min-width: 0; }
 .gb-execution-body h4 { margin: 0 0 3px; font-size: 12px; }
 .gb-execution-code { max-height: 14rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; box-sizing: border-box; margin: 0; padding: 6px 8px; border-radius: 6px; background: var(--bt-hover); font: 12px/1.5 ui-monospace, monospace; }
 .gb-execution-code [data-diff=add] { color: var(--bt-green, #177246); }
-.gb-execution-code [data-diff=remove] { color: var(--bt-red, #b82b36); }
+.gb-execution-code [data-diff=remove] { color: var(--bt-danger); }
 .gb-execution-note, .gb-execution-error { margin: 3px 0; overflow-wrap: anywhere; }
 .gb-execution-pane.bt-drawer-body { gap: 10px; padding: 12px; }
 .gb-execution-select { max-width: 100%; font: inherit; color: inherit; background: var(--bt-card); border: 1px solid var(--bt-line); border-radius: 6px; padding: 4px; }

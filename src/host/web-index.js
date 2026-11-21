@@ -22,8 +22,10 @@ const bootScript = `{
 const waiting = 'html:is([data-godbot-boot],[data-godbot-workspace]) body:not(:has(.bt-leftcol,.bt-title-toggle,[data-godbot-sidebar]))'
 const column = `${waiting} [class*="_sidebarCol"]`
 const styleId = 'godbot-sidebar-loading'
+// DSH's own section headers set visibility: visible, which a hidden parent
+// cannot override, so hide every descendant as well.
 const sidebarStyle = `
-${column} > *, ${waiting} [data-shell-leading] {
+${column} > *, ${column} > * *, ${waiting} [data-shell-leading], ${waiting} [data-shell-leading] * {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
