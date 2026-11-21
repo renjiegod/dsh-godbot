@@ -10,6 +10,7 @@ import { isLocalRoute } from './agent-routes.js'
 import { ActivityIndicator } from './activity-row.js'
 import { clockLabel, openingTurn, unseenSince } from './cells.js'
 import { GoalIsland, goalView } from './goal.js'
+import { NewSessionButton } from './new-session.js'
 import { viewBottom } from './motion.js'
 import { t } from './i18n.js'
 
@@ -174,6 +175,10 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
             ? h(BotHeaderModel, { key: bot.appliedModel ?? bot.model, bot, roster, actions, sessionId })
             : null),
         !away && h('div', { className: 'gb-chat-tools' },
+          // A fresh conversation with this Bot: the first tool, and the one with a label.
+          bot && currentPart(bot) === sessionId
+            ? h(NewSessionButton, { key: 'new-session', bot, roster, actions, sessionId, variant: 'bar' })
+            : null,
           search,
           actions.godbot.browserButton(bot, sessionId, roster),
           actions.godbot.executionButton(bot, sessionId, roster, actions),

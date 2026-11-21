@@ -218,6 +218,8 @@ export function apply(ctx, godbot) {
     // Connector, capability and phone states change without a new revision.
     const live = {}
     if (value.partsRunning !== undefined && JSON.stringify(value.partsRunning) !== JSON.stringify(current.partsRunning ?? {})) live.partsRunning = value.partsRunning
+    if (value.newSessions !== undefined && JSON.stringify(value.newSessions) !== JSON.stringify(current.newSessions ?? {})) live.newSessions = value.newSessions
+    if (value.emptyParts !== undefined && JSON.stringify(value.emptyParts) !== JSON.stringify(current.emptyParts ?? {})) live.emptyParts = value.emptyParts
     if (value.secretStore !== undefined && JSON.stringify(value.secretStore) !== JSON.stringify(current.secretStore ?? {})) live.secretStore = value.secretStore
     if (value.secrets !== undefined && JSON.stringify(value.secrets) !== JSON.stringify(current.secrets ?? [])) live.secrets = value.secrets
     if (value.connectors !== undefined && JSON.stringify(value.connectors) !== JSON.stringify(current.connectors ?? [])) live.connectors = value.connectors
@@ -575,6 +577,67 @@ export function apply(ctx, godbot) {
     },
   })
   ctx.effect(() => () => sessionSelection.dispose(), 'Godbot session selection')
+  // A New session moves the Bot's chat on to a fresh part and archives the part on
+  // screen, and DSH can clear the view while the move runs (a model may be writing the
+  // handoff note meanwhile). From the click until the roster has the fresh part, the
+  // conversation area says a new session is on its way and nothing else lands the view,
+  // not even the Main Bot fallback; then the view goes on in the fresh part, unless the
+  // user opened another conversation meanwhile. A move that ends without a fresh part
+  // (the host turned it away, or it failed) gives the view back as it was.
+  const FOLLOW_PULL_MS = 700
+  const FOLLOW_GRACE_MS = 3000
+  const FOLLOW_MAX_MS = 15 * 60_000
+  const following = new Map()
+  const followFreshPart = (botId, before) => {
+    following.get(botId)?.stop()
+    const started = Date.now()
+    const target = `new-session:${botId}`
+    openingWait.begin({ target, id: botId, name: roster.getSnapshot().byId[botId]?.name ?? '', note: 'new-session' })
+    let done = false
+    let timer
+    let off = () => {}
+    const stop = () => {
+      if (done) return
+      done = true
+      off()
+      clearTimeout(timer)
+      if (following.get(botId)?.stop === stop) following.delete(botId)
+      if (ui.getSnapshot().pendingOpen?.target === target) openingWait.end()
+    }
+    const check = () => {
+      if (done) return
+      const snapshot = roster.getSnapshot()
+      const bot = snapshot.byId[botId]
+      const main = mainView()
+      // A Session the roster does not know yet may be the fresh part itself.
+      const elsewhere = main !== undefined && (snapshot.byId[main] !== undefined
+        ? snapshot.byId[main].id !== botId
+        : snapshot.roomsById[main] !== undefined || snapshot.agentOf[main] !== undefined)
+      if (bot === undefined || elsewhere) return stop()
+      const now = currentPart(bot)
+      if (now !== before) {
+        stop()
+        if (main !== now) actions.openSession(botId)
+        return
+      }
+      const waited = Date.now() - started
+      if ((snapshot.newSessions?.[botId] !== 'opening' && waited > FOLLOW_GRACE_MS) || waited > FOLLOW_MAX_MS) {
+        stop()
+        if (mainView() === undefined) void actions.landOn(botId).catch(quietly('recover Bot view'))
+      }
+    }
+    const tick = () => {
+      if (done) return
+      void pull().catch(() => {}).finally(() => {
+        check()
+        if (!done) timer = setTimeout(tick, FOLLOW_PULL_MS)
+      })
+    }
+    following.set(botId, { stop })
+    off = roster.subscribe(check)
+    timer = setTimeout(tick, FOLLOW_PULL_MS)
+    return { stop }
+  }
   // Whether the open Bot panel is folded away for lack of room: its opener then
   // means "show it" (the column yields), not "close it". A panel shown because
   // the column already yielded is not folded, so its opener closes it.
@@ -609,6 +672,18 @@ export function apply(ctx, godbot) {
   const actions = {
     godbot,
     ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
+    // The follow starts before the ask: DSH can clear the view before the answer lands.
+    newPart: async (botId) => {
+      const follow = followFreshPart(botId, partFor(botId))
+      try {
+        const started = await after(call('bot-new-part', { botId }))
+        if (started !== true) follow.stop()
+        return started
+      } catch (error) {
+        follow.stop()
+        throw error
+      }
+    },
     // The files a group row names open DSH's own review tab for that turn. The tab reads
     // the changes of the Session the shell shows, so that Session is opened first; the same
     // call then retries until its right column is mounted. This jump is the one place a
@@ -700,6 +775,8 @@ export function apply(ctx, godbot) {
     // `last` is the Bot conversation the view held before it cleared: when that part
     // was archived for a fresh one, the view goes on in the fresh one.
     landOn: async (id, last, observedMain) => {
+      // A New session on its way lands the view itself (followFreshPart).
+      if (following.size > 0) return
       const matchesMain = () => observedMain === undefined || observedMain === mainBotLandingView(ctx.sessions.list.getSnapshot())
       if (!matchesMain()) return
       return sessionSelection.recover(() => {
