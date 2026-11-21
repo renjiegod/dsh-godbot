@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, symlink, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { member, sendTicket, ticketEnvironment } from '../tickets.mjs'
-import { openManagement } from '../native-ui.mjs'
+import { openFullTeam, openTaskBoard } from '../native-ui.mjs'
 import { until } from '../host.mjs'
 import { names } from '../fixtures/ticket-client.mjs'
 
@@ -25,7 +25,8 @@ export default async function E11(context) {
     const fullId = 'bot:' + worker.id, roomId = 'room:' + room.id
     const presenterId = 'bot:' + presenter.id
     const all = { [publicId]:'chat',[privateId]:'manage',[fullId]:'manage',[roomId]:'view',[presenterId]:'view' }
-    await openManagement(host)
+    await openFullTeam(host)
+    await openTaskBoard(host)
     const ownerView = host.page.locator('details').filter({has:host.page.getByText('多人共享与审计',{exact:true})}).first()
     await ownerView.locator('summary').first().click()
     await ownerView.getByLabel('用户名称').fill('Alice')

@@ -1,9 +1,9 @@
-import { workspaceViews } from '../team/workspace-routes.js'
+import { workspaceHashes } from '../team/workspace-routes.js'
 import { webIconUrl } from './web-icon.js'
 
 // A hash is local to the browser. Mark a direct visit before DSH paints its
 // shell. The router takes over once it can respond to in-app panel changes.
-const deepLinks = JSON.stringify(Object.keys(workspaceViews))
+const deepLinks = JSON.stringify(workspaceHashes)
 const bootScript = `{
   const routes = ${deepLinks};
   const root = document.documentElement;
@@ -17,9 +17,8 @@ const bootScript = `{
 }`
 
 // The team sidebar is a body portal mounted by a child of the DSH sidebar.
-// Keep that child mounted and measurable while the workspace loads. The
-// management sidebar occupies the DSH column directly.
-const waiting = 'html:is([data-godbot-boot],[data-godbot-workspace]) body:not(:has(.bt-leftcol,.bt-title-toggle,[data-godbot-sidebar]))'
+// Keep that child mounted and measurable while the workspace loads.
+const waiting = 'html:is([data-godbot-boot],[data-godbot-workspace]) body:not(:has(.bt-leftcol,.bt-title-toggle))'
 const column = `${waiting} [class*="_sidebarCol"]`
 const styleId = 'godbot-sidebar-loading'
 // DSH's own section headers set visibility: visible, which a hidden parent

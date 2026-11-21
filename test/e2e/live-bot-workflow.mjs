@@ -4,7 +4,7 @@ import { readFile, realpath, stat } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { EnvironmentError, until } from './host.mjs'
 import { installLiveCli } from './live-cli.mjs'
-import { openManagement } from './native-ui.mjs'
+import { openFullTeam, openTaskBoard } from './native-ui.mjs'
 
 async function accountFolder(name) {
   const path = process.env[name]
@@ -40,7 +40,8 @@ export default async function liveBotWorkflow({ makeHost, candidate, note }) {
     edges: [{ from: 'sum', to: 'product', when: 'accepted' }],
     requestId: randomUUID(),
   })
-  await openManagement(host)
+  await openFullTeam(host)
+  await openTaskBoard(host)
   const readyAt = new Date(Date.now() + 6500).toISOString()
   const scheduled = await dispatch('automation.routine.create', { requestId: randomUUID(), target: 'workflow',
     title: flow.name, workflowId: flow.id, workflowRevision: flow.revision, schedule: { kind: 'once', at: readyAt } })

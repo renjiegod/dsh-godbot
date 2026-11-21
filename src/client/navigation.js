@@ -1,10 +1,10 @@
-import { workspaceHash, managementHash, legacyAgentsHash, providerSettingsHash, workspaceViews } from '../team/workspace-routes.js'
+import { workspaceHash, managementHash, legacyAgentsHash, providerSettingsHash, workspaceHashes } from '../team/workspace-routes.js'
 
 export { workspaceHash, managementHash }
 export const panelId = 'dsh-godbot'
 const historyKey = 'dshGodbotWorkspace'
 
-const viewAt = hash => workspaceViews[hash] ?? null
+const isWorkspaceHash = hash => workspaceHashes.includes(hash)
 
 export function mainSession(ctx) {
   return Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find((s) => s?.retainedBy?.mainView > 0)
@@ -65,31 +65,31 @@ export function sessionSelection({ current, onEmpty, waitMs, schedule = setTimeo
   }
 }
 
-/** The Bot product uses DSH's normal main Session. Team management is a keyed main panel.
- * Keep one browser history entry for both, including the precise place in DSH to return to. */
-export function connectNavigation(ctx, browser, mountManagement, mountBot) {
+/** The Bot workspace uses DSH's normal main Session and keeps the return location in history. */
+export function connectNavigation(ctx, browser, mountBot) {
   const { layout, slots } = ctx
   const selected = () => layout.panelInfo.getSnapshot().activePanelId
   const url = (hash) => browser.location.pathname + browser.location.search + hash
   let previousPanel = selected() === panelId ? null : selected()
-  let previous, unmount, view
-  let transition = false,
+  let previous, unmount
+  let active = false,
+    transition = false,
     disposed = false
 
   function place(pushed) {
     return {
       panel: previousPanel,
       session: mainSession(ctx),
-      hash: viewAt(browser.location.hash) ? '' : browser.location.hash,
+      hash: isWorkspaceHash(browser.location.hash) ? '' : browser.location.hash,
       pushed,
     }
   }
-  function saveRoute(next, push) {
+  function saveRoute(push) {
     const state = { ...browser.history.state, [historyKey]: previous }
     browser.history[push ? 'pushState' : 'replaceState'](
       state,
       '',
-      url(next === 'bot' ? workspaceHash : managementHash),
+      url(workspaceHash),
     )
   }
   function removeRoute() {
@@ -98,17 +98,14 @@ export function connectNavigation(ctx, browser, mountManagement, mountBot) {
     browser.history.replaceState(state, '', url(previous?.hash || ''))
   }
   function show(next, target) {
-    if (disposed || (view === next && !target)) return
+    if (disposed || (active === next && !target)) return
     transition = true
     try {
-      browser.document?.documentElement.toggleAttribute('data-godbot-workspace', Boolean(next))
+      browser.document?.documentElement.toggleAttribute('data-godbot-workspace', next)
       unmount?.()
       unmount = undefined
-      view = next
-      if (next === 'management') {
-        unmount = mountManagement()
-        layout.selectPanel(panelId)
-      } else if (next === 'bot') {
+      active = next
+      if (active) {
         layout.selectPanel(null)
         unmount = mountBot(target)
       }
@@ -116,16 +113,15 @@ export function connectNavigation(ctx, browser, mountManagement, mountBot) {
       transition = false
     }
   }
-  function enter(next, target) {
-    if (disposed) return
-    const push = !view && !viewAt(browser.location.hash)
-    if (!view) previous = browser.history.state?.[historyKey] ?? place(push)
-    saveRoute(next, push)
-    show(next, target)
+  function enter() {
+    const push = !isWorkspaceHash(browser.location.hash)
+    previous = browser.history.state?.[historyKey] ?? place(push)
+    saveRoute(push)
+    show(true)
   }
   function leave(panel, restoreSession) {
-    if (!view) return
-    show(null)
+    if (!active) return
+    show(false)
     transition = true
     try {
       if (
@@ -147,22 +143,22 @@ export function connectNavigation(ctx, browser, mountManagement, mountBot) {
     if (transition || disposed) return
     const panel = selected()
     if (panel === panelId) {
-      if (view === 'bot') layout.selectPanel(null)
-      else if (view !== 'management') enter('bot')
-    } else if ((view === 'bot' && panel) || view === 'management') {
-      if (viewAt(browser.location.hash)) removeRoute()
-      leave(panel, Boolean(panel))
-    } else if (!view) previousPanel = panel
+      if (active) layout.selectPanel(null)
+      else enter()
+    } else if (active && panel) {
+      if (isWorkspaceHash(browser.location.hash)) removeRoute()
+      leave(panel, true)
+    } else if (!active) previousPanel = panel
   }
   function onLocation() {
     if (disposed) return
-    const next = viewAt(browser.location.hash)
-    if (next) {
-      if (!view) previous = browser.history.state?.[historyKey] ?? place(false)
-      const settings = browser.location.hash === providerSettingsHash
-      if (settings || browser.location.hash === legacyAgentsHash || !browser.history.state?.[historyKey]) saveRoute(next, false)
-      show(next, settings ? { settings: 'local-agents' } : undefined)
-    } else if (view) leave(previous?.panel, true)
+    const { hash } = browser.location
+    if (isWorkspaceHash(hash)) {
+      if (!active) previous = browser.history.state?.[historyKey] ?? place(false)
+      const settings = hash === managementHash ? 'tasks' : hash === providerSettingsHash ? 'local-agents' : null
+      if (settings || hash === legacyAgentsHash || !browser.history.state?.[historyKey]) saveRoute(false)
+      show(true, settings ? { settings } : undefined)
+    } else if (active) leave(previous?.panel, true)
   }
   const unsubscribe = layout.panelInfo.subscribe(onPanel)
   browser.addEventListener('popstate', onLocation)
@@ -171,10 +167,8 @@ export function connectNavigation(ctx, browser, mountManagement, mountBot) {
   onPanel()
   browser.dispatchEvent?.(new Event('godbot-router-ready'))
   return {
-    openBot: (target) => enter('bot', target),
-    openManagement: () => enter('management'),
     back() {
-      if (!view) return
+      if (!active) return
       if (previous?.pushed && browser.history.length > 1) browser.history.back()
       else {
         removeRoute()
@@ -190,30 +184,7 @@ export function connectNavigation(ctx, browser, mountManagement, mountBot) {
       browser.document?.documentElement.removeAttribute('data-godbot-workspace')
       unmount?.()
       unmount = undefined
-      view = null
-    },
-  }
-}
-
-/** The workbench portals its navigation into this native DSH seat. Both columns share a single React tree. */
-export function sidebarOutlet() {
-  let current = null
-  const listeners = new Set()
-  return {
-    getSidebar: () => current,
-    subscribeSidebar(listener) {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
-    publish(value) {
-      if (
-        current?.node === value?.node &&
-        current?.collapsed === value?.collapsed &&
-        current?.drawer === value?.drawer
-      )
-        return
-      current = value
-      for (const listener of listeners) listener()
+      active = false
     },
   }
 }

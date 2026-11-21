@@ -258,10 +258,12 @@ function Evidence({ label, value }) {
   )
 }
 
-export function TaskBoard({ workspace, bots, tasks, run, pending, readOnly, focusTaskId, openBot }) {
+export function TaskBoard({ workspace, bots, tasks, run, pending, readOnly, focusTask, openBot }) {
+  const taskId = focusTask?.taskId
+  const taskPresent = Boolean(taskId && tasks.some(task => task.id === taskId))
   useEffect(() => {
-    if (focusTaskId) document.getElementById('gb-task-' + focusTaskId)?.focus()
-  }, [focusTaskId])
+    if (taskPresent) document.getElementById('gb-task-' + taskId)?.focus()
+  }, [focusTask, taskPresent, taskId])
   const counts = new Map()
   for (const task of tasks) counts.set(task.status, (counts.get(task.status) ?? 0) + 1)
   const prerequisites = tasks.filter(task => task.status !== 'skipped')
@@ -269,7 +271,7 @@ export function TaskBoard({ workspace, bots, tasks, run, pending, readOnly, focu
   return h(
     'section',
     { className: 'gb-stack' },
-    h('div', { className: 'gb-sectionhead' }, h('h2', null, '任务板'), totals && h('small', null, totals)),
+    totals && h('small', null, totals),
     h(
       'details',
       { className: 'gb-section' },

@@ -2,8 +2,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 import { darkTokens, lightTokens, themeStyle, workspaceTheme } from '../../src/client/theme.js'
-import { styles } from '../../src/client/styles.js'
-import { switchStyle } from '../../src/client/workspace-switch-style.js'
+const actionsStyle = readFileSync(new URL('../../src/client/workspace-actions.css', import.meta.url), 'utf8')
 
 const controlsStyle = readFileSync(new URL('../../src/client/workspace-controls.css', import.meta.url), 'utf8')
 const runtimeStyle = readFileSync(new URL('../../src/client/workspace-runtime.css', import.meta.url), 'utf8')
@@ -34,9 +33,9 @@ test('the workspace sheets read the shared palette instead of a fixed dark schem
   assert.match(themeStyle, /body\[data-ds-dark-theme\] :is\(\.gb-root,\.gb-theme\)\{/)
   // Installed once for the plugin, so surfaces DSH mounts outside .gb-root share it.
   assert.match(entrySource, /installStyles\(themeStyle \+/)
-  assert.doesNotMatch(styles, /--bt-ink:/)
-  assert.doesNotMatch(styles, /color-scheme:\s*dark/)
-  for (const sheet of [styles, controlsStyle, switchStyle, runtimeStyle]) {
+  for (const sheet of [controlsStyle, actionsStyle, runtimeStyle]) {
+    assert.doesNotMatch(sheet, /--bt-ink:/)
+    assert.doesNotMatch(sheet, /color-scheme:\s*dark/)
     const used = new Set([...sheet.matchAll(/var\(--bt-([a-z0-9-]+)/g)].map((m) => m[1]))
     for (const name of used) assert.ok(name in lightTokens, `--bt-${name} is declared for 原生 Agent`)
   }
@@ -44,7 +43,7 @@ test('the workspace sheets read the shared palette instead of a fixed dark schem
 
 test('base control rules have zero specificity so component rules win in every state', () => {
   const base = controlsStyle
-    .slice(0, controlsStyle.indexOf(':is(.gb-root, .gb-modal) input::placeholder'))
+    .slice(0, controlsStyle.indexOf(':is(.gb-task-settings, .gb-modal) input::placeholder'))
     .replace(/\/\*[\s\S]*?\*\//g, '')
   const selectors = base.split('}').map((rule) => rule.split('{')[0].trim()).filter(Boolean)
   assert.ok(selectors.length >= 8)

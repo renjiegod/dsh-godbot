@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { until } from '../host.mjs'
-import { openFullTeam } from '../native-ui.mjs'
+import { openFullTeam, openSettingsPage, openTaskBoard } from '../native-ui.mjs'
 
 export default async function botManagement({ makeHost, candidate, note }) {
   const host = await makeHost()
@@ -11,15 +11,17 @@ export default async function botManagement({ makeHost, candidate, note }) {
   await host.start()
   const godbot = await openFullTeam(host)
   const { page } = host
-  const enterManagement = () => page.getByRole('navigation', { name: 'Godbot 工作区' })
-    .getByRole('button', { name: '团队管理', exact: true }).click()
-  await enterManagement()
-  const management = page.getByRole('main', { name: '团队管理' })
-  await management.getByRole('heading', { name: '任务板' }).waitFor()
+  assert.equal(await page.getByRole('button', { name: '团队管理', exact: true }).count(), 0)
+  await openSettingsPage(host, /^(用量|Usage)$/u)
+  await page.getByRole('button', { name: /^(用量上限与备用模型|Usage limits and fallback models)$/u }).click()
+  await page.getByRole('button', { name: '保存用量策略', exact: true }).waitFor()
+  const board = await openTaskBoard(host)
+  await board.getByText('CI 与 Webhook', { exact: true }).waitFor()
+  await board.getByText('多人共享与审计', { exact: true }).waitFor()
   assert.equal(await page.locator('input[name=teamName], input[name=memberName]').count(), 0)
   assert.equal(await page.getByRole('button', { name: '导入 Bot 团队', exact: true }).count(), 0)
-  await management.getByText('分配任务', { exact: true }).click()
-  const form = management.locator('form').filter({ has: page.locator('[name=criteria]') })
+  await board.getByText('分配任务', { exact: true }).click()
+  const form = board.locator('form').filter({ has: page.locator('[name=criteria]') })
   const owner = form.getByLabel('负责人')
   assert.deepEqual(await owner.locator('option').evaluateAll(options => options.map(option => option.value)), [godbot])
 
@@ -43,7 +45,7 @@ export default async function botManagement({ makeHost, candidate, note }) {
   }
   const task = await reported(title)
 
-  const workflows = management.getByRole('region', { name: '工作流', exact: true })
+  const workflows = board.getByRole('region', { name: '工作流', exact: true })
   await workflows.getByRole('button', { name: '新建工作流' }).click()
   await workflows.getByLabel('工作流名称').fill('Board flow ' + tag)
   await workflows.getByRole('button', { name: '添加节点' }).click()
@@ -71,7 +73,7 @@ export default async function botManagement({ makeHost, candidate, note }) {
   } finally {
     db.close()
   }
-  await management.locator('#gb-task-' + task.id).getByRole('button', { name, exact: true }).click()
+  await board.locator('#gb-task-' + task.id).getByRole('button', { name, exact: true }).click()
   await page.locator('.bt-head .bt-pill-name').getByText(name, { exact: true }).waitFor()
   await host.capture('bot-task-owner-conversation')
   note('workspace-bot-identities', { workspace: (await host.snapshot()).workspace.id,

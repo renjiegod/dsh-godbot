@@ -146,7 +146,7 @@ export async function apply(ctx, config = {}) {
   }))
   ctx.inject(['commands'], commandCtx => commandCtx.commands.register({
     name: 'godbot', definitionId: 'dsh-godbot', description: '打开 Bot 团队工作台',
-    handler: () => ({ kind: 'success', text: '在左侧栏打开 Godbot。点击 Bot 私聊右上角的终端图标（原生 Agent）接手会话，在「团队管理」中给 Bot 分配任务。' }),
+    handler: () => ({ kind: 'success', text: '在左侧栏打开 Godbot。点击 Bot 私聊右上角的终端图标（原生 Agent）接手会话，在「设置 → 任务板」中给 Bot 分配任务。' }),
   }))
   ctx.inject(['webServer'], (webCtx) => {
     webCtx.effect(() => webCtx.webServer.tapIndex(prepareWorkspaceIndex), 'Godbot workspace document')

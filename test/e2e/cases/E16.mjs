@@ -4,7 +4,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { saveEvidence } from '../artifacts.mjs'
 import { until } from '../host.mjs'
-import { openFullTeam, openManagement } from '../native-ui.mjs'
+import { openFullTeam, openTaskBoard } from '../native-ui.mjs'
 import { checkWorkflowTeamTemplate } from '../workflow-template-transfer.mjs'
 import { reportBotAssignments } from '../workflow-model.mjs'
 
@@ -49,7 +49,7 @@ function fixtureModel(host, members, disposition) {
 
 async function createWorkflow(host, team, members) {
   const region = board(host.page)
-  await openManagement(host)
+  await openTaskBoard(host)
   await button(region, '新建工作流').click()
   await field(region, '工作流名称').fill(workflowName + ' draft')
   for (const [node, title] of entries(names)) {
@@ -82,6 +82,7 @@ async function createWorkflow(host, team, members) {
     assert.ok(saved.edges.some(e => e.from === fromId && e.to === toId && e.when === when && (!value || e.value === value)))
   }
   await host.page.reload()
+  await openTaskBoard(host)
   await field(region, '选择工作流').selectOption(saved.id)
   await button(region, '选择节点 ' + names.publish).click()
   assert.equal(await field(region, '汇合条件').inputValue(), 'any')
@@ -264,6 +265,7 @@ export default async function E16({ makeHost, candidate, note, reportDir }) {
   assert.deepEqual(new Set(persisted.workflows.map(w => w.id)), new Set([copyId, template.id]))
   assert.deepEqual(new Set(persisted.runs.filter(r => r.status === 'completed').map(r => r.id)), new Set([one.runId, two.runId]))
   await host.page.goto(host.url + '/' + route)
+  await openTaskBoard(host)
   const region = board(host.page)
   await field(region, '选择工作流').selectOption(template.id)
   await field(region, '选择运行记录').selectOption(one.runId)
