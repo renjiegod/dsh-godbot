@@ -770,6 +770,7 @@ export const DE = {
   'Start a new session with {name}': 'Neue Sitzung mit {name} starten',
   'New session · {time}': 'Neue Sitzung · {time}',
   'Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.': 'Frühere Nachrichten bleiben oben. {name} beginnt diese Sitzung nur mit einer Übergabe-Zusammenfassung – schick eine Nachricht, um loszulegen.',
+  'The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.': 'Das frühere Gespräch läuft in der Sitzungsliste weiter. {name} beginnt hier neu – schick eine Nachricht, um loszulegen.',
   Archive: 'Archivieren',
   'Session actions': 'Sitzungsaktionen',
   'Plugins': 'Plugins',

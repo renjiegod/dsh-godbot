@@ -770,6 +770,7 @@ export const KO = {
   'Start a new session with {name}': '{name}와(과) 새 세션 시작',
   'New session · {time}': '새 세션 · {time}',
   'Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.': '이전 메시지는 위에 남아 있습니다. {name}은(는) 인수인계 요약만 가지고 이 세션을 시작합니다. 메시지를 보내 시작하세요.',
+  'The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.': '이전 대화는 세션 목록에서 이어집니다. {name}은(는) 여기서 새로 시작합니다. 메시지를 보내 시작하세요.',
   Archive: '보관',
   'Session actions': '세션 작업',
   'Plugins': '플러그인',
