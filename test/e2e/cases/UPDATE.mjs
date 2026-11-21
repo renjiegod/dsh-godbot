@@ -63,21 +63,39 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     const archive = join(host.root, 'account/.local/share/dsh-godbot/packages', `dsh-godbot-${version}-${sha256(data).slice(0, 12)}.tgz`)
     assert.ok(existsSync(archive), 'the verified archive is kept where install-local keeps its own')
 
-    // About shows the chosen mode and the waiting release; the sidebar's cloud says the same.
+    // The sidebar advertises the ready release before Settings is opened.
     await openFullTeam(host)
+    const { page } = host
+    const readyLabel = new RegExp(`^Godbot ${version.replaceAll('.', '\\.')} (可以安装|is ready to install)$`, 'u')
+    const notice = page.locator('.bt-leftcol[data-left=open]').getByRole('button', { name: readyLabel })
+    await notice.getByText(readyLabel).waitFor()
+    await host.capture('update-sidebar')
+
+    const desktop = page.viewportSize()
+    await page.setViewportSize({ width: 390, height: 844 })
+    const railNotice = page.locator('.bt-leftcol[data-left=rail]').getByRole('button', { name: readyLabel })
+    await railNotice.waitFor()
+    await railNotice.click()
+    const details = page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
+    await details.waitFor()
+    await page.keyboard.press('Escape')
+    await details.waitFor({ state: 'hidden' })
+    assert.ok(await railNotice.evaluate(button => button === document.activeElement), 'closing details returns focus to the rail notice')
+    await page.setViewportSize(desktop)
+
+    // About also shows the chosen mode and the waiting release.
     await openSettingsPage(host, /^(关于 Godbot|About Godbot)$/u)
-    const mode = host.page.getByRole('combobox', { name: /^(自动更新|Automatic updates)$/u })
+    const mode = page.getByRole('combobox', { name: /^(自动更新|Automatic updates)$/u })
     await mode.waitFor()
     assert.equal(await mode.inputValue(), 'notify')
-    await host.page.getByText(new RegExp(`Godbot ${version.replaceAll('.', '\\.')} (已下载|is downloaded)`, 'u')).first().waitFor()
-    const cloud = host.page.locator('button.bt-update').first()
-    await cloud.waitFor({ state: 'attached' })
-    assert.match(await cloud.getAttribute('aria-label') ?? '', new RegExp(version.replaceAll('.', '\\.'), 'u'))
+    await page.getByText(new RegExp(`Godbot ${version.replaceAll('.', '\\.')} (已下载|is downloaded)`, 'u')).first().waitFor()
     // The settings page fades in; capture it once it has.
-    await host.page.waitForTimeout(800)
+    await page.waitForTimeout(800)
     await host.capture('update-ready')
 
-    await host.bot('update-install')
+    await page.locator('button.bt-settings-close:visible').click()
+    await notice.click()
+    await details.getByRole('button', { name: /^(更新|Update)$/u }).click()
     // A plugin reloaded in place answers again as the new version, which reports the update.
     const installed = await until(async () => {
       const view = await host.bot('update-check', { fresh: false }).catch(() => null)

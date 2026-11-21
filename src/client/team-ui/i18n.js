@@ -798,6 +798,8 @@ const ZH = {
 
   // Plugin updates
   'Godbot {version} is available': 'Godbot {version} 可以更新',
+  'Godbot {version} is ready to install': 'Godbot {version} 可以安装',
+  'Godbot update failed': 'Godbot 更新失败',
   'Updating Godbot…': '正在更新 Godbot…',
   'Godbot {version} is installed. Restart DSH to use it.': 'Godbot {version} 已安装，重启 DSH 后生效',
   'Godbot {version} is installed.': 'Godbot {version} 已安装。',
@@ -810,6 +812,7 @@ const ZH = {
   "What's new": '更新说明',
   'Updating…': '正在更新…',
   'DSH {version} is available': 'DSH {version} 可以更新',
+  'DSH update failed': 'DSH 更新失败',
   'Updating DSH…': '正在更新 DSH…',
   'DSH update': 'DSH 更新',
   'DSH {version}': 'DSH {version}',
