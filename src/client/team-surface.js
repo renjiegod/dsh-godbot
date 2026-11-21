@@ -154,14 +154,10 @@ button.gb-bot-model:focus-visible { outline: 2px solid var(--bt-accent); outline
   pointer-events: auto;
 }
 .gb-chat-tools .gb-native-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  width: auto;
-  padding: 0 8px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
   color: var(--bt-ink);
-  font: 500 12px/1 var(--bt-font);
-  white-space: nowrap;
   cursor: pointer;
 }
 .gb-chat-tools .bt-pmenu-pop { pointer-events: auto; }
@@ -176,9 +172,6 @@ button.gb-bot-model:focus-visible { outline: 2px solid var(--bt-accent); outline
   height: 4px;
   border-radius: 50%;
   background: currentColor;
-}
-@media (max-width: 600px) {
-  .gb-chat-tools .gb-native-button > span { display: none; }
 }
 `
 
@@ -203,7 +196,7 @@ function NativeAgentButton({ client, target, actions }) {
     items: [
       { key: 'terminal', icon: TerminalIcon, label: '原生终端', title, onPick: () => actions.showDetails(sessionId, nativeTabs.terminal) },
       { key: 'conversation', icon: ChatsIcon, label: '原生对话', title, onPick: () => actions.showDetails(sessionId, nativeTabs.conversation) },
-    ] }, h(TerminalIcon), h('span', null, '原生 Agent'))
+    ] }, h(TerminalIcon))
 }
 
 function readLast() {

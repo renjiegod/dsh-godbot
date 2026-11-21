@@ -5,25 +5,36 @@ import xtermStyle from '@xterm/xterm/css/xterm.css'
 import style from './terminal-panel.css'
 import { Icon } from './chat-ui.js'
 import { attachTerminal } from './terminal-connection.js'
+import { attachTerminalHighlight, attachTerminalLinks } from './terminal-highlight.js'
+import { highlightColors, terminalThemes } from './terminal-theme.js'
 import { NativeConversationView, readNativeScreen } from './native-conversation-panel.js'
 
 const agents = { claude: 'Claude Code', 'local-claude-code': 'Claude Code', codex: 'Codex', 'local-codex-cli': 'Codex',
   antigravity: 'Antigravity', 'local-antigravity': 'Antigravity', agy: 'Antigravity', dsh: 'dsh' }
 const states = { opening: '正在连接', recovering: '恢复屏幕', live: '已连接', error: '连接中断', exited: '已退出', ending: '正在交还', returned: '已交还' }
-const themes = {
-  dark: { background: '#191b20', foreground: '#e9e9ee', cursor: '#f2f1fa', cursorAccent: '#191b20',
-    selectionBackground: '#434b65', black: '#202228', brightBlack: '#89909e' },
-  light: { background: '#fcfcfc', foreground: '#24262c', cursor: '#24262c', cursorAccent: '#fcfcfc',
-    selectionBackground: '#c4d6fb', black: '#22242b', brightBlack: '#656973', white: '#b9bac0', brightWhite: '#d5d6da' },
+const highlightKey = 'godbot.terminal.highlight'
+const linkHint = (/Mac|iPhone|iPad/u.test(navigator.platform) ? '⌘' : 'Ctrl') + ' + 点击打开链接'
+
+function readHighlight() {
+  try { return localStorage.getItem(highlightKey) !== 'off' } catch { return true }
+}
+function saveHighlight(on) {
+  try { localStorage.setItem(highlightKey, on ? 'on' : 'off') } catch { /* Storage is optional. */ }
+}
+function openLink(url) {
+  if (/^https?:\/\//iu.test(url)) window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 function TerminalSession({ client, target, close, mode, onModeChange }) {
-  const view = useRef(null), wire = useRef(null), termRef = useRef(null)
+  const view = useRef(null), wire = useRef(null), termRef = useRef(null), highlighter = useRef(null)
   const [attempt, setAttempt] = useState({ number: 0 })
   const [state, setState] = useState({ phase: 'opening' })
   const [confirm, setConfirm] = useState(false)
   const [screen, setScreen] = useState('')
+  const [highlight, setHighlight] = useState(readHighlight)
   const conversation = mode === 'conversation'
+  const highlighting = useRef(highlight && !conversation)
+  highlighting.current = highlight && !conversation
   const { memberId, botId, sessionId, agent, label } = target
   useLayoutEffect(() => {
     const node = view.current
@@ -35,10 +46,19 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
     let currentTheme = scheme()
     const panel = node.closest('.gb-terminal-panel')
     panel.dataset.scheme = currentTheme
+    let viewport
+    const hint = on => { if (viewport) viewport.title = on ? linkHint : '' }
     const terminal = new Terminal({
       cursorBlink: true, cursorStyle: 'block', fontSize: 13, lineHeight: 1.14,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-      theme: themes[currentTheme], minimumContrastRatio: 4.5, scrollback: 3000, macOptionIsMeta: true,
+      theme: terminalThemes[currentTheme], minimumContrastRatio: 4.5, scrollback: 3000, macOptionIsMeta: true,
+      // Decorations tint unstyled output without rewriting the CLI's bytes.
+      allowProposedApi: true,
+      // OSC 8 hyperlinks from the CLI follow the same Cmd/Ctrl-click rule as detected URLs.
+      linkHandler: {
+        activate: (event, uri) => { if (event.metaKey || event.ctrlKey) openLink(uri) },
+        hover: () => hint(true), leave: () => hint(false),
+      },
     })
     const fit = new FitAddon()
     terminal.loadAddon(fit)
@@ -47,16 +67,20 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
     const shadow = node.shadowRoot ?? node.attachShadow({ mode: 'open' })
     const sheet = document.createElement('style')
     sheet.textContent = xtermStyle + '\n.xterm { height: 100%; width: 100%; padding: 0 }'
-    const viewport = document.createElement('div')
+    viewport = document.createElement('div')
     viewport.style.height = '100%'
     shadow.replaceChildren(sheet, viewport)
     terminal.open(viewport)
+    const highlights = attachTerminalHighlight(terminal, { colors: highlightColors[currentTheme], enabled: highlighting.current })
+    const links = attachTerminalLinks(terminal, { open: openLink, hint })
+    highlighter.current = highlights
     const updateTheme = () => {
       const next = scheme()
       if (next === currentTheme) return
       currentTheme = next
       panel.dataset.scheme = next
-      terminal.options.theme = themes[next]
+      terminal.options.theme = terminalThemes[next]
+      highlights.setColors(highlightColors[next])
     }
     const themeObserver = new MutationObserver(updateTheme)
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'style', 'data-ds-theme-source', 'data-theme'] })
@@ -90,7 +114,10 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
     return () => {
       wire.current = null
       termRef.current = null
+      highlighter.current = null
       connection.detach()
+      highlights.dispose()
+      links.dispose()
       observer.disconnect()
       themeObserver.disconnect()
       media.removeEventListener('change', updateTheme)
@@ -121,6 +148,15 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
     }
   }, [conversation, attempt])
 
+  // The hidden terminal behind the conversation view needs no highlighting.
+  useLayoutEffect(() => {
+    highlighter.current?.setEnabled(highlight && !conversation)
+  }, [highlight, conversation])
+
+  const toggleHighlight = () => {
+    saveHighlight(!highlight)
+    setHighlight(!highlight)
+  }
   const retry = restart => {
     setConfirm(false)
     setAttempt(previous => ({ number: previous.number + 1, options: restart && state.info
@@ -143,6 +179,9 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
       h('div', { className: 'gb-term-heading' }, h('strong', null, label || activeAgent),
         h('small', null, label && label !== activeAgent ? activeAgent + ' · 当前 Bot 私聊' : '当前 Bot 私聊')),
       h('div', { className: 'gb-term-actions' },
+        !conversation && h('button', { className: 'gb-term-icon-button', type: 'button', 'aria-pressed': highlight,
+          'aria-label': '输出高亮', title: highlight ? '关闭输出高亮' : '开启输出高亮：为路径、链接、数字、代码和错误着色',
+          onClick: toggleHighlight }, h(Icon, { name: 'sparkle', size: 16 })),
         canEnd && h('button', { type: 'button', title: '结束终端并将控制权交还聊天',
           onClick: () => state.phase === 'exited' ? void giveBack() : setConfirm(true) }, '交还聊天'),
         h('button', { className: 'gb-term-collapse', type: 'button', onClick: close,

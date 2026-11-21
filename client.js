@@ -119,24 +119,24 @@ var states = {
 var statusText = (status) => states[status] ?? status ?? "待就绪";
 var isPendingInteraction = (item) => !item.status || ["open", "pending", "waiting"].includes(item.status);
 function createClient(connection) {
-  async function call2(method, args, ...options) {
+  async function call3(method, args, ...options) {
     const result = await connection.rpc.call("/api", `godbot/${method}`, { args }, ...options);
     if (!result.ok) throw new Error(`${result.error.code} · ${result.error.message}`);
     return result.value;
   }
   return {
-    terminalStatus: (request) => call2("terminalStatus", { request }),
-    terminalOpen: (request) => call2("terminalOpen", { request }),
-    terminalRead: (request, signal) => call2("terminalRead", { request }, signal),
-    terminalWrite: (request) => call2("terminalWrite", { request }),
-    terminalResize: (request) => call2("terminalResize", { request }),
-    terminalClose: (request) => call2("terminalClose", { request }),
-    snapshot: (options) => call2("snapshot", options ?? {}),
-    dispatch: (request) => call2("dispatch", { request }),
-    slashCommands: (target) => call2("slashCommands", { target }),
-    claudeReportSession: (target) => call2("claudeReportSession", { target }),
-    claudeStats: (target) => call2("claudeStats", { target }),
-    runSlash: (request) => call2("dispatch", { request: { ...request, action: "slash.run" } })
+    terminalStatus: (request) => call3("terminalStatus", { request }),
+    terminalOpen: (request) => call3("terminalOpen", { request }),
+    terminalRead: (request, signal) => call3("terminalRead", { request }, signal),
+    terminalWrite: (request) => call3("terminalWrite", { request }),
+    terminalResize: (request) => call3("terminalResize", { request }),
+    terminalClose: (request) => call3("terminalClose", { request }),
+    snapshot: (options) => call3("snapshot", options ?? {}),
+    dispatch: (request) => call3("dispatch", { request }),
+    slashCommands: (target) => call3("slashCommands", { target }),
+    claudeReportSession: (target) => call3("claudeReportSession", { target }),
+    claudeStats: (target) => call3("claudeStats", { target }),
+    runSlash: (request) => call3("dispatch", { request: { ...request, action: "slash.run" } })
   };
 }
 function pendingRequests(storage) {
@@ -518,7 +518,8 @@ var glyphs = {
   terminal: ["m4 7 5 5-5 5m8 0h8"],
   monitor: ["M4 5h16v11H4zM12 16v4m-4 0h8"],
   task: ["M8 4h11v16H5V7", "m7 12 2 2 4-4"],
-  clock: ["M12 7v5l3 2", "M21 12a9 9 0 11-18 0 9 9 0 0118 0Z"]
+  clock: ["M12 7v5l3 2", "M21 12a9 9 0 11-18 0 9 9 0 0118 0Z"],
+  sparkle: ["M10 4.5l1.7 4.3 4.3 1.7-4.3 1.7L10 16.5l-1.7-4.3L4 10.5l4.3-1.7Z", "M17.5 14v6M14.5 17h6"]
 };
 function Icon({ name, size = 18 }) {
   return (0, import_react2.createElement)(
@@ -650,7 +651,7 @@ function TeamTemplates({ client, rooms }) {
   const [error, setError] = (0, import_react4.useState)("");
   const [busy, setBusy] = (0, import_react4.useState)(false);
   const [plans, setPlans] = (0, import_react4.useState)([]);
-  const call2 = (name, fields) => client.dispatch({ action: "team-workspace.template" + name, ...fields });
+  const call3 = (name, fields) => client.dispatch({ action: "team-workspace.template" + name, ...fields });
   const perform = async (fn2) => {
     setBusy(true);
     setFeedback("");
@@ -664,7 +665,7 @@ function TeamTemplates({ client, rooms }) {
     }
   };
   async function download3() {
-    const data = await call2("Export", { roomId });
+    const data = await call3("Export", { roomId });
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }));
     const link = document.createElement("a");
     link.href = url;
@@ -676,23 +677,23 @@ function TeamTemplates({ client, rooms }) {
     setDraft(null);
     if (!file) return;
     if (file.size > 4e6) throw new Error("模板文件超过 4 MB。");
-    const data = await call2("Preview", { template: await file.text() });
+    const data = await call3("Preview", { template: await file.text() });
     setDraft({ data, id: crypto.randomUUID() });
   }
   async function install() {
-    const imported = await call2("Import", { template: draft.data, requestId: draft.id });
+    const imported = await call3("Import", { template: draft.data, requestId: draft.id });
     setFeedback([
       "已创建 " + Object.keys(imported.mapping).length + " 个 Bot 或群组",
       imported.workflows?.length && "已保存 " + imported.workflows.length + " 个工作流",
       imported.plans.length && "导入的计划已暂停"
     ].filter(Boolean).join("。") + "。");
     setDraft(null);
-    setPlans(await call2("Plans"));
+    setPlans(await call3("Plans"));
   }
   return (0, import_react4.createElement)(
     "details",
     { className: "gb-inbox-section", onToggle: (e) => {
-      if (e.currentTarget.open) void perform(async () => setPlans(await call2("Plans")));
+      if (e.currentTarget.open) void perform(async () => setPlans(await call3("Plans")));
     } },
     (0, import_react4.createElement)("summary", null, "团队模板"),
     (0, import_react4.createElement)(
@@ -748,8 +749,8 @@ function TeamTemplates({ client, rooms }) {
         { key: p.id, className: "gb-modal-actions gb-template-plan" },
         (0, import_react4.createElement)("span", null, p.title + " · " + ({ paused: "已暂停", enabling: "待核对", enabled: "已启用" }[p.status] ?? p.status)),
         p.status === "paused" && (0, import_react4.createElement)("button", { type: "button", disabled: busy, onClick: () => perform(async () => {
-          await call2("Enable", { id: p.id });
-          setPlans(await call2("Plans"));
+          await call3("Enable", { id: p.id });
+          setPlans(await call3("Plans"));
         }) }, "启用计划")
       )),
       feedback && (0, import_react4.createElement)("p", { className: "gb-modal-note", role: "status" }, feedback),
@@ -1153,14 +1154,14 @@ function AutomationAccess({ client, team, members }) {
   const [issued, setIssued] = (0, import_react9.useState)(null);
   const [error, setError] = (0, import_react9.useState)("");
   const [pending, setPending] = (0, import_react9.useState)(false);
-  const call2 = (action2, args = {}) => client.dispatch({ action: "automation." + action2, teamId: team.id, ...args });
-  const refresh = async () => setList(await call2("list"));
+  const call3 = (action2, args = {}) => client.dispatch({ action: "automation." + action2, teamId: team.id, ...args });
+  const refresh = async () => setList(await call3("list"));
   const act = async (name, args) => {
     setPending(true);
     setError("");
     setIssued(null);
     try {
-      const value = await call2(name, args);
+      const value = await call3(name, args);
       if (value.token || value.secret) setIssued(value);
       await refresh();
     } catch (cause) {
@@ -2367,16 +2368,16 @@ function PeopleAccess({ team, client }) {
   const [invitation, setInvitation] = (0, import_react13.useState)("");
   const [error, setError] = (0, import_react13.useState)("");
   const [pending, setPending] = (0, import_react13.useState)(false);
-  const call2 = (verb, fields = {}) => client.dispatch({ action: "automation.people." + verb, teamId: team.id, ...fields });
+  const call3 = (verb, fields = {}) => client.dispatch({ action: "automation.people." + verb, teamId: team.id, ...fields });
   async function refresh() {
-    setView(await call2("list"));
+    setView(await call3("list"));
   }
   async function submit2(verb, body) {
     setPending(true);
     setError("");
     setInvitation("");
     try {
-      const result = await call2(verb, body);
+      const result = await call3(verb, body);
       if (result.url) setInvitation(result.url);
       await refresh();
     } catch (cause) {
@@ -18637,7 +18638,7 @@ function countCards(state, sessionId, callIds, delta) {
 }
 
 // src/client/team-ui/team-actions.js
-function teamActions({ call: call2, after, partFor, roster, ui: ui3, live, cards, heldCards, turnClock, panelFolded }) {
+function teamActions({ call: call3, after, partFor, roster, ui: ui3, live, cards, heldCards, turnClock, panelFolded }) {
   const memoryOf = (id) => roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id };
   let pastes = 0;
   const pasteState = (state, sessionId, blocks) => ({ ...state, paste: { ...state.paste, [sessionId]: blocks } });
@@ -18726,16 +18727,16 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui3, live, cards
     // The roster is pulled before the panel opens on a new chat: a view on a chat
     // the roster does not hold yet folds back into details.
     newSideChat: async (sessionId) => {
-      const value = await after(call2("side-new", { sessionId }));
+      const value = await after(call3("side-new", { sessionId }));
       openSideChat(sessionId, value?.chatId);
       return value;
     },
-    sideCall: (name, body) => after(call2(name, body)),
-    askSide: (sessionId, chatId, text) => after(call2("side-ask", { sessionId, chatId, text })),
-    cancelSide: (chatId, entryId) => after(call2("side-cancel", { chatId, entryId })),
+    sideCall: (name, body) => after(call3(name, body)),
+    askSide: (sessionId, chatId, text) => after(call3("side-ask", { sessionId, chatId, text })),
+    cancelSide: (chatId, entryId) => after(call3("side-cancel", { chatId, entryId })),
     closeSideChat: (chatId) => {
       ui3.set((state) => state.details && state.view === "side" && state.side === chatId ? { ...state, view: "details", side: null } : state);
-      return after(call2("side-close", { chatId }));
+      return after(call3("side-close", { chatId }));
     },
     closePanel: () => {
       ui3.set((state) => state.details ? { ...state, details: null, view: "details", renaming: false, tab: null, side: null } : state);
@@ -18766,13 +18767,13 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui3, live, cards
       return kept.length === blocks.length ? state : pasteState(state, sessionId, kept);
     }),
     clearQuote: (token) => ui3.set((state) => state.quote?.token === token ? { ...state, quote: null } : state),
-    setFlags: (id, flags) => after(call2("set-flags", { id, ...flags })),
-    saveSection: (payload) => after(call2("section-save", payload)),
-    reorderSections: (ids) => after(call2("section-order", { ids })),
-    deleteSection: (id) => after(call2("section-delete", { id })),
+    setFlags: (id, flags) => after(call3("set-flags", { id, ...flags })),
+    saveSection: (payload) => after(call3("section-save", payload)),
+    reorderSections: (ids) => after(call3("section-order", { ids })),
+    deleteSection: (id) => after(call3("section-delete", { id })),
     beginSectionRename: (id) => ui3.set((state) => ({ ...state, renameSection: id })),
     endSectionRename: () => ui3.set((state) => state.renameSection ? { ...state, renameSection: null } : state),
-    deleteRoom: (id) => after(call2("delete-room", { id })),
+    deleteRoom: (id) => after(call3("delete-room", { id })),
     openMenu: (menu) => {
       ui3.set((state) => ({ ...state, menu, palette: null }));
     },
@@ -18782,71 +18783,71 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui3, live, cards
     closeOverlay: () => {
       ui3.set((state) => ({ ...state, newChat: null, newChatSection: null, exchange: null, details: state.newChat || state.exchange ? state.details : null }));
     },
-    createBot: (payload) => after(call2("create-bot", payload)),
+    createBot: (payload) => after(call3("create-bot", payload)),
     // The avatar library: photos the user imported once, kept by the host.
-    avatarLibrary: (options = {}) => call2("avatar-library", options),
-    importAvatars: (items) => call2("avatar-import", { items }),
-    deleteAvatar: (id) => call2("avatar-delete", { id }),
-    createRoom: (members, options = {}) => after(call2("create-room", { members, ...options })),
+    avatarLibrary: (options = {}) => call3("avatar-library", options),
+    importAvatars: (items) => call3("avatar-import", { items }),
+    deleteAvatar: (id) => call3("avatar-delete", { id }),
+    createRoom: (members, options = {}) => after(call3("create-room", { members, ...options })),
     afterSandboxBinding: after,
-    updateBot: (id, patch) => after(call2("update-bot", { id, ...patch })),
+    updateBot: (id, patch) => after(call3("update-bot", { id, ...patch })),
     // Give up one wait the Bot has on a hand-off that will not come back.
-    abandonWork: (id) => after(call2("abandon-work", { id })),
-    refreshModels: () => after(call2("models")).catch(() => {
+    abandonWork: (id) => after(call3("abandon-work", { id })),
+    refreshModels: () => after(call3("models")).catch(() => {
     }),
     // One local agent's models: the first look starts its CLI, later ones read what it said.
-    agentModels: (route) => after(call2("local-agent-models", { route })).catch(() => {
+    agentModels: (route) => after(call3("local-agent-models", { route })).catch(() => {
     }),
-    efforts: (ref) => call2("efforts", { ref }),
+    efforts: (ref) => call3("efforts", { ref }),
     // Model providers and their API keys; DSH keeps them, and a key only travels to the host.
-    providers: () => call2("providers"),
-    setProviderKey: (provider, value) => after(call2("provider-key", { provider, value })),
-    addProvider: (body) => after(call2("provider-add", body)),
-    providerModels: (body) => call2("provider-models", body),
-    saveProviderModels: (body) => call2("provider-models-save", body),
-    removeProvider: (provider) => after(call2("provider-remove", { provider })),
+    providers: () => call3("providers"),
+    setProviderKey: (provider, value) => after(call3("provider-key", { provider, value })),
+    addProvider: (body) => after(call3("provider-add", body)),
+    providerModels: (body) => call3("provider-models", body),
+    saveProviderModels: (body) => call3("provider-models-save", body),
+    removeProvider: (provider) => after(call3("provider-remove", { provider })),
     // After a failed turn: the Bot answers the user's last unanswered message, which is never sent again.
-    resume: (botId) => after(call2("resume", { botId })),
-    folders: () => call2("folders"),
-    folderPick: () => call2("folder-pick"),
-    folderList: (path2) => call2("folder-list", { path: path2 ?? "" }),
-    setTeamWorkspace: (path2) => after(call2("team-workspace", { path: path2 })),
-    deleteBot: (id) => after(call2("delete-bot", { id })),
-    releasePrivate: (id) => after(call2("private-release", { id })),
-    duplicateBot: (id) => after(call2("duplicate-bot", { id })),
-    setPrefs: (prefs) => after(call2("set-prefs", prefs)),
-    setMain: (id, main = true, options = {}) => after(call2("set-main", { id, main, ...options })),
-    updateRoom: (id, patch) => after(call2("update-room", { id, ...patch })),
-    roomTodoCheck: (roomId, id, done) => after(call2("room-todo", { roomId, id, done })),
-    roomTodoRemove: (roomId, id) => after(call2("room-todo", { roomId, id, action: "remove" })),
-    roomTodoClear: (roomId) => after(call2("room-todo", { roomId, action: "clear" })),
-    send: (sessionId, text) => after(call2("send", { sessionId: partFor(sessionId), text })),
-    answerQuestion: (sessionId, questionId, answer) => after(call2("answer-question", { sessionId: partFor(sessionId), questionId, answer })),
-    dismissQuestion: (sessionId) => after(call2("dismiss-question", { sessionId })),
-    answerView: (sessionId, viewId, action2, values) => after(call2("view-reply", { sessionId: partFor(sessionId), viewId, action: action2, values })),
-    dismissView: (sessionId) => after(call2("dismiss-view", { sessionId: partFor(sessionId) })),
-    deleteBtw: (sessionId, cardId) => after(call2("btw-delete", { sessionId, cardId })),
-    answerApproval: (id, choice) => after(call2("approval-answer", { id, choice })),
-    computerSetEnabled: (enabled) => after(call2("computer-set-enabled", { enabled })),
-    computerSetLevel: (botId, level) => after(call2("computer-set-level", { botId, level })),
-    computerRevokeApp: (botId, appKey) => after(call2("computer-revoke-app", { botId, appKey })),
-    computerProviderRetry: () => after(call2("computer-provider-retry", {})),
-    computerSystemStatus: () => call2("computer-system-status", {}),
-    computerPermission: (permission) => call2("computer-permission", { permission }),
-    computerStop: (botId, all = false) => after(call2("computer-stop", all ? { all: true } : { botId })),
-    computerTakeover: (botId) => after(call2("computer-takeover", { botId })),
-    computerHandback: (botId) => after(call2("computer-handback", { botId })),
-    computerAllowForeground: (botId) => call2("computer-allow-foreground", { botId }),
-    computerAppAnswer: (id, answer) => call2("computer-app-answer", { id, answer }),
-    computerHoldAnswer: (botId, { callId, outcome } = {}) => after(call2("computer-hold-answer", { botId, ...callId !== void 0 ? { callId } : {}, outcome })),
-    computerShot: (attachmentId) => call2("computer-shot", { attachmentId }),
-    computerUserActive: (idleSeconds) => call2("computer-user-active", { idleSeconds }),
-    stopMemberWork: (roomId, botId) => after(call2("stop-member-work", { roomId, botId })),
+    resume: (botId) => after(call3("resume", { botId })),
+    folders: () => call3("folders"),
+    folderPick: () => call3("folder-pick"),
+    folderList: (path2) => call3("folder-list", { path: path2 ?? "" }),
+    setTeamWorkspace: (path2) => after(call3("team-workspace", { path: path2 })),
+    deleteBot: (id) => after(call3("delete-bot", { id })),
+    releasePrivate: (id) => after(call3("private-release", { id })),
+    duplicateBot: (id) => after(call3("duplicate-bot", { id })),
+    setPrefs: (prefs) => after(call3("set-prefs", prefs)),
+    setMain: (id, main = true, options = {}) => after(call3("set-main", { id, main, ...options })),
+    updateRoom: (id, patch) => after(call3("update-room", { id, ...patch })),
+    roomTodoCheck: (roomId, id, done) => after(call3("room-todo", { roomId, id, done })),
+    roomTodoRemove: (roomId, id) => after(call3("room-todo", { roomId, id, action: "remove" })),
+    roomTodoClear: (roomId) => after(call3("room-todo", { roomId, action: "clear" })),
+    send: (sessionId, text) => after(call3("send", { sessionId: partFor(sessionId), text })),
+    answerQuestion: (sessionId, questionId, answer) => after(call3("answer-question", { sessionId: partFor(sessionId), questionId, answer })),
+    dismissQuestion: (sessionId) => after(call3("dismiss-question", { sessionId })),
+    answerView: (sessionId, viewId, action2, values) => after(call3("view-reply", { sessionId: partFor(sessionId), viewId, action: action2, values })),
+    dismissView: (sessionId) => after(call3("dismiss-view", { sessionId: partFor(sessionId) })),
+    deleteBtw: (sessionId, cardId) => after(call3("btw-delete", { sessionId, cardId })),
+    answerApproval: (id, choice) => after(call3("approval-answer", { id, choice })),
+    computerSetEnabled: (enabled) => after(call3("computer-set-enabled", { enabled })),
+    computerSetLevel: (botId, level) => after(call3("computer-set-level", { botId, level })),
+    computerRevokeApp: (botId, appKey) => after(call3("computer-revoke-app", { botId, appKey })),
+    computerProviderRetry: () => after(call3("computer-provider-retry", {})),
+    computerSystemStatus: () => call3("computer-system-status", {}),
+    computerPermission: (permission) => call3("computer-permission", { permission }),
+    computerStop: (botId, all = false) => after(call3("computer-stop", all ? { all: true } : { botId })),
+    computerTakeover: (botId) => after(call3("computer-takeover", { botId })),
+    computerHandback: (botId) => after(call3("computer-handback", { botId })),
+    computerAllowForeground: (botId) => call3("computer-allow-foreground", { botId }),
+    computerAppAnswer: (id, answer) => call3("computer-app-answer", { id, answer }),
+    computerHoldAnswer: (botId, { callId, outcome } = {}) => after(call3("computer-hold-answer", { botId, ...callId !== void 0 ? { callId } : {}, outcome })),
+    computerShot: (attachmentId) => call3("computer-shot", { attachmentId }),
+    computerUserActive: (idleSeconds) => call3("computer-user-active", { idleSeconds }),
+    stopMemberWork: (roomId, botId) => after(call3("stop-member-work", { roomId, botId })),
     // A running part opened from the session list takes no input until it ends.
-    newPart: (botId) => after(call2("bot-new-part", { botId })),
+    newPart: (botId) => after(call3("bot-new-part", { botId })),
     openPart: (botId, sessionId, running = false) => {
       ui3.set((state) => ({ ...state, readOnlyPart: running ? sessionId : null }));
-      return after(call2("bot-open-part", { botId, sessionId })).catch((error) => {
+      return after(call3("bot-open-part", { botId, sessionId })).catch((error) => {
         ui3.set((state) => state.readOnlyPart === sessionId ? { ...state, readOnlyPart: null } : state);
         throw error;
       });
@@ -18854,15 +18855,15 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui3, live, cards
     clearReadOnlyPart: () => ui3.set((state) => state.readOnlyPart === null ? state : { ...state, readOnlyPart: null }),
     stopChat: (botId) => {
       ui3.set((state) => state.readOnlyPart === null ? state : { ...state, readOnlyPart: null });
-      return after(call2("stop-chat", { botId }));
+      return after(call3("stop-chat", { botId }));
     },
-    stopRoomWork: (roomId) => after(call2("stop-room-work", { roomId })),
-    goalDraft: (roomId, text) => after(call2("goal-draft", { roomId, text })),
-    goalControl: (roomId, goalId, action2, stopWork) => after(call2("goal-control", { roomId, goalId, action: action2, ...stopWork ? { stopWork: true } : {} })),
+    stopRoomWork: (roomId) => after(call3("stop-room-work", { roomId })),
+    goalDraft: (roomId, text) => after(call3("goal-draft", { roomId, text })),
+    goalControl: (roomId, goalId, action2, stopWork) => after(call3("goal-control", { roomId, goalId, action: action2, ...stopWork ? { stopWork: true } : {} })),
     // The group task board: the user's note is kept on the task and posted to the
     // group as a user message that calls its owner; cancelling is the panel's own.
-    taskNote: (roomId, id, text) => after(call2("task-note", { roomId, id, text })),
-    taskCancel: (roomId, id) => after(call2("task-cancel", { roomId, id })),
+    taskNote: (roomId, id, text) => after(call3("task-note", { roomId, id, text })),
+    taskCancel: (roomId, id) => after(call3("task-cancel", { roomId, id })),
     // The goal island: `goalCompose` holds the room whose draft form is open,
     // `goalOpen` the room whose panel is open.
     composeGoal: (roomId) => ui3.set((state) => ({ ...state, goalCompose: roomId, goalOpen: roomId })),
@@ -18870,74 +18871,74 @@ function teamActions({ call: call2, after, partFor, roster, ui: ui3, live, cards
     toggleGoal: (roomId) => ui3.set((state) => ({ ...state, goalOpen: state.goalOpen === roomId ? null : roomId })),
     closeGoal: () => ui3.set((state) => state.goalOpen ? { ...state, goalOpen: null } : state),
     // Values go out in these requests and never come back in a response.
-    secretSet: (payload) => after(call2("secret-set", payload)),
-    secretAllow: (requestId) => after(call2("secret-allow", { requestId })),
-    secretCancel: (requestId) => after(call2("secret-cancel", { requestId })),
-    secretUpdate: (name, { scope, purpose } = {}) => after(call2("secret-update", { name, scope, purpose })),
-    secretDelete: (name) => after(call2("secret-delete", { name })),
-    secretUnlock: (passphrase) => after(call2("secret-unlock", { passphrase })),
-    secretEncrypt: (passphrase) => after(call2("secret-encrypt", { passphrase })),
-    secretDecrypt: (passphrase) => after(call2("secret-decrypt", { passphrase })),
-    connectorConnect: (id, payload = {}) => after(call2("connector-connect", { id, ...payload })),
-    connectorDisconnect: (id) => after(call2("connector-disconnect", { id })),
-    connectorRetry: (id) => after(call2("connector-retry", { id })),
-    connectorSignInCode: (id, input2) => after(call2("connector-sign-in-code", { id, input: input2 })),
-    connectorCancel: (id) => after(call2("connector-cancel", { id })),
-    connectorClient: (id, clientId, clientSecret) => after(call2("connector-client", { id, clientId, clientSecret })),
-    connectorSet: (id, patch) => after(call2("connector-set", { id, ...patch })),
-    connectorAdd: (spec) => after(call2("connector-add", spec)),
-    connectorRemove: (id) => after(call2("connector-remove", { id })),
-    connectorImportScan: () => call2("connector-import-scan", {}),
-    connectorImport: (items) => after(call2("connector-import", { items })),
-    connectorRequestCancel: (requestId) => after(call2("connector-request-cancel", { requestId })),
-    mailAccountAdd: (payload) => after(call2("mail-account-add", payload)),
-    mailAccountRemove: (id) => after(call2("mail-account-remove", { id })),
-    mailRuleSet: (payload) => after(call2("mail-rule-set", payload)),
-    mailSendAnswer: (requestId, choice, extra = {}) => after(call2("mail-send-answer", { requestId, choice, ...extra })),
-    mailSignInCode: (payload) => after(call2("mail-sign-in-code", payload)),
-    phoneSet: (settings2) => after(call2("phone-set", settings2)),
-    phonePair: () => after(call2("phone-pair")),
-    phonePairCancel: () => after(call2("phone-pair-cancel")),
-    phoneRemove: (id) => after(call2("phone-remove", { id })),
-    imAdd: (payload) => after(call2("im-add", payload)),
-    imUpdate: (id, patch) => after(call2("im-update", { id, ...patch })),
-    imRemove: (id) => after(call2("im-remove", { id })),
-    imPair: (id, senderId, allow) => after(call2("im-pair", { id, senderId, allow })),
-    imUnpair: (id, senderId) => after(call2("im-unpair", { id, senderId })),
-    imChat: (id, body) => after(call2("im-chat", { id, ...body })),
-    imRetry: (id) => after(call2("im-retry", { id })),
-    imLoginStart: (payload) => call2("im-login-start", payload),
-    imLoginWait: (payload) => call2("im-login-wait", payload),
-    saveCapability: (capability) => after(call2("capability-save", capability)),
-    deleteCapability: (name) => after(call2("capability-delete", { name })),
-    approveCapability: (name) => after(call2("capability-approve", { name })),
-    setBotCapability: (botId, name, attached) => after(call2("bot-capability", { botId, name, attached })),
-    schedules: () => call2("schedules"),
-    scheduleCreate: (task) => call2("schedule-create", task),
-    scheduleDelete: (sessionId, id) => call2("schedule-delete", { sessionId, id }),
-    exchange: (a, b2) => call2("exchange", { a, b: b2 }).catch(() => []),
-    exchangeText: (id, a, b2) => call2("exchange-text", { id, ...a !== void 0 && b2 !== void 0 ? { a, b: b2 } : {} }).catch(() => void 0),
-    fileText: (file) => call2("file-text", { file }).catch(() => void 0),
-    roomProgress: (roomId) => call2("room-progress", { roomId }).catch(() => []),
-    groupRows: (roomId, from, to, anchor) => call2("group-rows", { roomId, from, ...to === void 0 ? {} : { to }, ...anchor === void 0 ? {} : { anchor } }).catch(() => null),
-    earlier: (sessionId, cursor) => call2("earlier", { sessionId, cursor: cursor ?? null }),
+    secretSet: (payload) => after(call3("secret-set", payload)),
+    secretAllow: (requestId) => after(call3("secret-allow", { requestId })),
+    secretCancel: (requestId) => after(call3("secret-cancel", { requestId })),
+    secretUpdate: (name, { scope, purpose } = {}) => after(call3("secret-update", { name, scope, purpose })),
+    secretDelete: (name) => after(call3("secret-delete", { name })),
+    secretUnlock: (passphrase) => after(call3("secret-unlock", { passphrase })),
+    secretEncrypt: (passphrase) => after(call3("secret-encrypt", { passphrase })),
+    secretDecrypt: (passphrase) => after(call3("secret-decrypt", { passphrase })),
+    connectorConnect: (id, payload = {}) => after(call3("connector-connect", { id, ...payload })),
+    connectorDisconnect: (id) => after(call3("connector-disconnect", { id })),
+    connectorRetry: (id) => after(call3("connector-retry", { id })),
+    connectorSignInCode: (id, input2) => after(call3("connector-sign-in-code", { id, input: input2 })),
+    connectorCancel: (id) => after(call3("connector-cancel", { id })),
+    connectorClient: (id, clientId, clientSecret) => after(call3("connector-client", { id, clientId, clientSecret })),
+    connectorSet: (id, patch) => after(call3("connector-set", { id, ...patch })),
+    connectorAdd: (spec) => after(call3("connector-add", spec)),
+    connectorRemove: (id) => after(call3("connector-remove", { id })),
+    connectorImportScan: () => call3("connector-import-scan", {}),
+    connectorImport: (items) => after(call3("connector-import", { items })),
+    connectorRequestCancel: (requestId) => after(call3("connector-request-cancel", { requestId })),
+    mailAccountAdd: (payload) => after(call3("mail-account-add", payload)),
+    mailAccountRemove: (id) => after(call3("mail-account-remove", { id })),
+    mailRuleSet: (payload) => after(call3("mail-rule-set", payload)),
+    mailSendAnswer: (requestId, choice, extra = {}) => after(call3("mail-send-answer", { requestId, choice, ...extra })),
+    mailSignInCode: (payload) => after(call3("mail-sign-in-code", payload)),
+    phoneSet: (settings2) => after(call3("phone-set", settings2)),
+    phonePair: () => after(call3("phone-pair")),
+    phonePairCancel: () => after(call3("phone-pair-cancel")),
+    phoneRemove: (id) => after(call3("phone-remove", { id })),
+    imAdd: (payload) => after(call3("im-add", payload)),
+    imUpdate: (id, patch) => after(call3("im-update", { id, ...patch })),
+    imRemove: (id) => after(call3("im-remove", { id })),
+    imPair: (id, senderId, allow) => after(call3("im-pair", { id, senderId, allow })),
+    imUnpair: (id, senderId) => after(call3("im-unpair", { id, senderId })),
+    imChat: (id, body) => after(call3("im-chat", { id, ...body })),
+    imRetry: (id) => after(call3("im-retry", { id })),
+    imLoginStart: (payload) => call3("im-login-start", payload),
+    imLoginWait: (payload) => call3("im-login-wait", payload),
+    saveCapability: (capability) => after(call3("capability-save", capability)),
+    deleteCapability: (name) => after(call3("capability-delete", { name })),
+    approveCapability: (name) => after(call3("capability-approve", { name })),
+    setBotCapability: (botId, name, attached) => after(call3("bot-capability", { botId, name, attached })),
+    schedules: () => call3("schedules"),
+    scheduleCreate: (task) => call3("schedule-create", task),
+    scheduleDelete: (sessionId, id) => call3("schedule-delete", { sessionId, id }),
+    exchange: (a, b2) => call3("exchange", { a, b: b2 }).catch(() => []),
+    exchangeText: (id, a, b2) => call3("exchange-text", { id, ...a !== void 0 && b2 !== void 0 ? { a, b: b2 } : {} }).catch(() => void 0),
+    fileText: (file) => call3("file-text", { file }).catch(() => void 0),
+    roomProgress: (roomId) => call3("room-progress", { roomId }).catch(() => []),
+    groupRows: (roomId, from, to, anchor) => call3("group-rows", { roomId, from, ...to === void 0 ? {} : { to }, ...anchor === void 0 ? {} : { anchor } }).catch(() => null),
+    earlier: (sessionId, cursor) => call3("earlier", { sessionId, cursor: cursor ?? null }),
     // Hours come back in this browser's time zone, so days start at local midnight.
-    usage: () => call2("usage", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
+    usage: () => call3("usage", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
     // The details panel's status line: turns, speed, cache hits and context for one Bot.
-    runStats: (botId) => call2("run-stats", { botId }),
+    runStats: (botId) => call3("run-stats", { botId }),
     // `summarize` starts a summary when the entries changed; `regenerate` always does.
-    memoryView: (id, flags = {}) => call2("memory-view", { ...memoryOf(id), ...flags }),
-    memoryAsk: (id, text) => call2("memory-ask", { ...memoryOf(id), text }),
-    memoryLayer: (id, entry, always) => call2("memory-layer", { ...memoryOf(id), topic: entry.topic, text: entry.text, always }),
-    memoryMove: (id, entry, to) => call2("memory-move", { ...memoryOf(id), scope: entry.scope, topic: entry.topic, text: entry.text, to }),
-    memoryTidyUndo: (id, scope, batch) => call2("memory-tidy-undo", { ...memoryOf(id), scope, batch }),
-    memoryPin: (id, entry, pin) => call2("memory-pin", { ...memoryOf(id), scope: entry.scope, topic: entry.topic, text: entry.text, pin }),
-    memoryForget: (id, entry) => call2("memory-forget", { ...memoryOf(id), scope: entry.scope, topic: entry.topic, text: entry.text }),
-    memoryHistory: (id, before) => call2("memory-history", { ...memoryOf(id), ...before === void 0 ? {} : { before } }),
-    memoryRestore: (id, rowId) => call2("memory-restore", { ...memoryOf(id), id: rowId }),
-    diagnostics: (payload) => call2("diagnostics", payload),
-    diagnosticsLog: () => call2("diagnostics-log"),
-    diagnosticsClear: () => call2("diagnostics-clear"),
+    memoryView: (id, flags = {}) => call3("memory-view", { ...memoryOf(id), ...flags }),
+    memoryAsk: (id, text) => call3("memory-ask", { ...memoryOf(id), text }),
+    memoryLayer: (id, entry, always) => call3("memory-layer", { ...memoryOf(id), topic: entry.topic, text: entry.text, always }),
+    memoryMove: (id, entry, to) => call3("memory-move", { ...memoryOf(id), scope: entry.scope, topic: entry.topic, text: entry.text, to }),
+    memoryTidyUndo: (id, scope, batch) => call3("memory-tidy-undo", { ...memoryOf(id), scope, batch }),
+    memoryPin: (id, entry, pin) => call3("memory-pin", { ...memoryOf(id), scope: entry.scope, topic: entry.topic, text: entry.text, pin }),
+    memoryForget: (id, entry) => call3("memory-forget", { ...memoryOf(id), scope: entry.scope, topic: entry.topic, text: entry.text }),
+    memoryHistory: (id, before) => call3("memory-history", { ...memoryOf(id), ...before === void 0 ? {} : { before } }),
+    memoryRestore: (id, rowId) => call3("memory-restore", { ...memoryOf(id), id: rowId }),
+    diagnostics: (payload) => call3("diagnostics", payload),
+    diagnosticsLog: () => call3("diagnostics-log"),
+    diagnosticsClear: () => call3("diagnostics-clear"),
     // A failed action away from any form (a menu, the palette) shows as a toast.
     reportError: (error, where = "action") => {
       noteClientError(where, error);
@@ -19196,7 +19197,7 @@ var USER_NAMES = ["user", "you"];
 var NAME_GOES_ON = /^(?:[a-z0-9_\-/\\]|\.[a-z0-9_-])/i;
 var ADDRESS_BEFORE = /[a-z0-9_./]/i;
 var LITERAL = /```[\s\S]*?(?:```|$)|`[^`\n]*`|\[[^\]\n]*\]\([^)\s]*(?:\s+(?:"[^"\n]*"|'[^'\n]*'))?\)/g;
-var fitsAt = (text, at2, word) => text.slice(at2, at2 + word.length).toLowerCase() === word.toLowerCase() && !NAME_GOES_ON.test(text.slice(at2 + word.length));
+var fitsAt = (text, at2, word2) => text.slice(at2, at2 + word2.length).toLowerCase() === word2.toLowerCase() && !NAME_GOES_ON.test(text.slice(at2 + word2.length));
 var overlaps = (spans, start, end) => spans.some((span) => start < span.end && span.start < end);
 function nameProblem(name) {
   const text = String(name ?? "").trim();
@@ -19230,7 +19231,7 @@ function mentionSpans(text, bots, { references = [] } = {}) {
   for (let at2 = value.indexOf("@"); at2 !== -1; at2 = value.indexOf("@", at2 + 1)) {
     if (at2 > 0 && ADDRESS_BEFORE.test(value[at2 - 1]) || overlaps(skip, at2, at2 + 1)) continue;
     const bot = byLength.find((candidate) => fitsAt(value, at2 + 1, candidate.name));
-    const all = bot ? void 0 : ALL_WORDS.find((word) => fitsAt(value, at2 + 1, word));
+    const all = bot ? void 0 : ALL_WORDS.find((word2) => fitsAt(value, at2 + 1, word2));
     if (!bot && !all) continue;
     const end = at2 + 1 + (bot ? bot.name.length : all.length);
     spans.push(bot ? { start: at2, end, bot } : { start: at2, end, all: true });
@@ -22169,7 +22170,7 @@ function goalView(goal, { roster = {}, roomWork = [] } = {}) {
   const at2 = goal.current;
   const current2 = RUNNING.has(goal.status) ? stages[at2] : void 0;
   const checking = current2 !== void 0 && (current2.tasks ?? []).every((task) => REPORTED.has(task.status));
-  const number = goal.status === "drafting" ? void 0 : goal.status === "stopped" ? stages.filter((stage) => stage.status === "passed").length : current2 !== void 0 ? at2 + 1 : count;
+  const number2 = goal.status === "drafting" ? void 0 : goal.status === "stopped" ? stages.filter((stage) => stage.status === "passed").length : current2 !== void 0 ? at2 + 1 : count;
   const barLabel = goal.status === "drafting" ? t("Aligning the goal with you") : goal.status === "stopped" ? t("Stopped") : goal.status === "complete" ? t("Goal reached") : goal.status === "paused" ? current2 ? t("Paused · {title}", { title: current2.title }) : t("Paused") : goal.idle === true ? current2 ? t("Waiting for you · {title}", { title: current2.title }) : t("Waiting for you") : current2 === void 0 ? t("Final check") : checking ? t("Checking · {title}", { title: current2.title }) : current2.title;
   const segments = stages.map((stage, i) => stage.status === "passed" ? "done" : i === at2 && goal.status === "paused" ? "paused" : i === at2 && goal.status === "active" ? checking ? "checking" : "current" : "todo");
   const working = new Set((roomWork ?? []).map((entry) => entry.botId));
@@ -22194,7 +22195,7 @@ function goalView(goal, { roster = {}, roomWork = [] } = {}) {
     status: goal.status,
     idle: goal.idle === true,
     title: goal.title ?? "",
-    number,
+    number: number2,
     count,
     segments,
     barLabel,
@@ -23504,13 +23505,13 @@ var actionName = (method) => {
   const words = String(method ?? "").replace(/^cua_driver_native__/, "").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/_/g, " ").trim();
   return words === "" ? "Computer" : words[0].toUpperCase() + words.slice(1);
 };
-function ComputerCallRow({ sessionId, call: call2, roster, actions, hooks }) {
-  const { value: argValue } = toolArgs(call2);
-  const method = argValue("method") ?? String(call2?.name ?? "").replace(/^cua_driver_native__/, "");
-  const stepApp = hooks?.useComputer?.((map) => (map.bots?.[roster.byId[sessionId]?.id]?.steps ?? []).find((step) => step.callId === call2?.callId)?.app);
+function ComputerCallRow({ sessionId, call: call3, roster, actions, hooks }) {
+  const { value: argValue } = toolArgs(call3);
+  const method = argValue("method") ?? String(call3?.name ?? "").replace(/^cua_driver_native__/, "");
+  const stepApp = hooks?.useComputer?.((map) => (map.bots?.[roster.byId[sessionId]?.id]?.steps ?? []).find((step) => step.callId === call3?.callId)?.app);
   const selector = argValue("params")?.selector;
   const app = stepApp ?? (method === "getApp" && typeof selector === "string" && selector !== "" ? selector : void 0);
-  const shot = (call2?.content ?? []).find((block) => (block?.type === "image" || block?.type === "file") && block.attachment !== void 0)?.attachment;
+  const shot = (call3?.content ?? []).find((block) => (block?.type === "image" || block?.type === "file") && block.attachment !== void 0)?.attachment;
   const [url, setUrl] = (0, import_react27.useState)(null);
   const [open, setOpen] = (0, import_react27.useState)(false);
   (0, import_react27.useEffect)(() => {
@@ -23867,10 +23868,10 @@ function tokenize(source) {
       at2 += 1;
       continue;
     }
-    const number = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(source.slice(at2));
-    if (number) {
-      tokens2.push({ kind: "number", value: Number(number[0]), at: at2 });
-      at2 += number[0].length;
+    const number2 = /^(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?/.exec(source.slice(at2));
+    if (number2) {
+      tokens2.push({ kind: "number", value: Number(number2[0]), at: at2 });
+      at2 += number2[0].length;
       continue;
     }
     const name = /^[A-Za-z_][A-Za-z0-9_]*/.exec(source.slice(at2));
@@ -29208,7 +29209,7 @@ function MemoryDialog({ owner, actions, leaving = false }) {
 }
 
 // src/client/team-ui/bot-settings.js
-var capitalize = (word) => word[0].toUpperCase() + word.slice(1);
+var capitalize = (word2) => word2[0].toUpperCase() + word2.slice(1);
 function InlineText({ label, value, placeholder, required: required2 = false, maxLength, multiline = false, className, autoFocus = false, onSave, onDone }) {
   const [draft, setDraft] = (0, import_react42.useState)(null);
   const reverting = (0, import_react42.useRef)(false);
@@ -32464,9 +32465,9 @@ function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useTurnConte
     return !hidden && typeof visit?.seen === "number" && own?.first !== void 0 && own.first <= visit.seen && own.end !== void 0 && own.end > visit.seen && own.end <= visit.entered;
   });
   if (!trace) return fresh ? (0, import_react49.createElement)(NewDivider) : (0, import_react49.createElement)(CellEmpty);
-  const legacy = [...steps.flatMap(stepActivity), ...tools.flatMap(({ root }) => callTree(root).flatMap((call2) => {
-    const name = toolName(call2);
-    const status = call2.kind === "tool-result" ? call2.isError ? "Failed" : "Done" : "Running";
+  const legacy = [...steps.flatMap(stepActivity), ...tools.flatMap(({ root }) => callTree(root).flatMap((call3) => {
+    const name = toolName(call3);
+    const status = call3.kind === "tool-result" ? call3.isError ? "Failed" : "Done" : "Running";
     return name ? [name + " · " + t(status)] : [];
   }))];
   return (0, import_react49.createElement)(
@@ -32824,12 +32825,12 @@ var CARDS = /* @__PURE__ */ new Set(["ask_user", "request_secret", "request_conn
 function callTree(root) {
   const calls = [];
   const seen = /* @__PURE__ */ new Set();
-  const visit = (call2) => {
-    const id = call2.callId ?? call2;
+  const visit = (call3) => {
+    const id = call3.callId ?? call3;
     if (seen.has(id)) return;
     seen.add(id);
-    calls.push(call2);
-    for (const child of call2.subCalls ?? []) visit(child);
+    calls.push(call3);
+    for (const child of call3.subCalls ?? []) visit(child);
   };
   visit(root);
   return calls;
@@ -32843,20 +32844,20 @@ function useShownCards(actions, sessionId, callIds) {
     return () => actions.noteCards(sessionId, ids, -1);
   }, [sessionId, key]);
 }
-function renderCall(call2, { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks }) {
-  const tool = toolName(call2);
-  const done = call2.kind === "tool-result";
-  const { text: arg, value: argValue } = toolArgs(call2);
+function renderCall(call3, { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks }) {
+  const tool = toolName(call3);
+  const done = call3.kind === "tool-result";
+  const { text: arg, value: argValue } = toolArgs(call3);
   const self = roster.byId[sessionId];
   switch (tool) {
     case "message_bot": {
       const target = findBot(arg("to")) ?? { name: arg("to") ?? "…", color: "gray" };
-      if (done && call2.isError) return (0, import_react49.createElement)("div", { className: "bt-event" }, t("Couldn't message {name}", { name: target.name }));
+      if (done && call3.isError) return (0, import_react49.createElement)("div", { className: "bt-event" }, t("Couldn't message {name}", { name: target.name }));
       return (0, import_react49.createElement)(EventLine, { prefix: t("Messaged"), bots: [target], onOpen: (bot) => bot.id && actions.openExchange(self?.id ?? sessionId, bot.id), whole: true });
     }
     case "stop_bot": {
       const target = findBot(arg("bot")) ?? { name: arg("bot") ?? "…", color: "gray" };
-      if (done && call2.isError) return (0, import_react49.createElement)("div", { className: "bt-event" }, t("Couldn't stop {name}", { name: target.name }));
+      if (done && call3.isError) return (0, import_react49.createElement)("div", { className: "bt-event" }, t("Couldn't stop {name}", { name: target.name }));
       return (0, import_react49.createElement)(EventLine, { prefix: t("Stopped"), bots: [target], onOpen: (bot) => bot.id && actions.openExchange(self?.id ?? sessionId, bot.id), whole: true });
     }
     case "create_bot": {
@@ -32869,7 +32870,7 @@ function renderCall(call2, { sessionId, roster, actions, useUi, useWork, findBot
       return done && target ? (0, import_react49.createElement)(EventLine, { prefix: t("Updated"), bots: [target], onOpen: (bot) => actions.openSession(bot.id) }) : (0, import_react49.createElement)(CellEmpty);
     }
     case "group_relay":
-      return (0, import_react49.createElement)(GroupReplies, { sessionId, callId: call2.callId, done, content: call2.content, roster, actions, useUi, useWork });
+      return (0, import_react49.createElement)(GroupReplies, { sessionId, callId: call3.callId, done, content: call3.content, roster, actions, useUi, useWork });
     case "create_group":
     case "update_group":
     case "delete_group":
@@ -32881,32 +32882,32 @@ function renderCall(call2, { sessionId, roster, actions, useUi, useWork, findBot
         post_to_group: ["Posted in", "Couldn't post in the group"]
       }[tool];
       if (!done) return (0, import_react49.createElement)(CellEmpty);
-      const result = contentText(call2.content);
+      const result = contentText(call3.content);
       const named = /^(Created group|Updated|Nothing changed in|Deleted|Posted in) "([^"]+)"/.exec(result);
-      if (call2.isError || !named) return (0, import_react49.createElement)("div", { className: "bt-event", title: result }, t(verbs[1]));
+      if (call3.isError || !named) return (0, import_react49.createElement)("div", { className: "bt-event", title: result }, t(verbs[1]));
       const name = named[2];
       const room2 = roster.rooms.find((entry) => entry.name === name);
       return (0, import_react49.createElement)(GroupEvent, { prefix: t(verbs[0]), room: tool === "delete_group" ? void 0 : room2, name, roster, actions });
     }
     case "ask_user":
-      return (0, import_react49.createElement)(AskUserCell, { sessionId, callId: call2.callId, arg, argValue, roster, actions, heldCards });
+      return (0, import_react49.createElement)(AskUserCell, { sessionId, callId: call3.callId, arg, argValue, roster, actions, heldCards });
     case "show_view":
-      return (0, import_react49.createElement)(WidgetCell, { sessionId, callId: call2.callId, args: { text: arg, value: argValue }, done, isError: call2.isError, roster, actions, heldCards });
+      return (0, import_react49.createElement)(WidgetCell, { sessionId, callId: call3.callId, args: { text: arg, value: argValue }, done, isError: call3.isError, roster, actions, heldCards });
     case "request_secret":
-      return (0, import_react49.createElement)(SecretToolCell, { sessionId, callId: call2.callId, name: arg("name"), done, content: call2.content, roster, actions, heldCards });
+      return (0, import_react49.createElement)(SecretToolCell, { sessionId, callId: call3.callId, name: arg("name"), done, content: call3.content, roster, actions, heldCards });
     case "request_connector":
-      return (0, import_react49.createElement)(ConnectorToolCell, { sessionId, callId: call2.callId, done, content: call2.content, roster, actions, heldCards });
+      return (0, import_react49.createElement)(ConnectorToolCell, { sessionId, callId: call3.callId, done, content: call3.content, roster, actions, heldCards });
     case "mail_send":
-      return (0, import_react49.createElement)(MailToolCell, { sessionId, callId: call2.callId, done, content: call2.content, roster, actions, heldCards });
+      return (0, import_react49.createElement)(MailToolCell, { sessionId, callId: call3.callId, done, content: call3.content, roster, actions, heldCards });
     case "browser_handoff":
-      return (0, import_react49.createElement)(HandoffCall, { sessionId, callId: call2.callId, roster, actions, heldCards, hooks });
+      return (0, import_react49.createElement)(HandoffCall, { sessionId, callId: call3.callId, roster, actions, heldCards, hooks });
     case "computer_handoff":
-      return (0, import_react49.createElement)(ComputerHandoffCall, { sessionId, callId: call2.callId, roster, actions, heldCards, hooks });
+      return (0, import_react49.createElement)(ComputerHandoffCall, { sessionId, callId: call3.callId, roster, actions, heldCards, hooks });
     case "ask_user_question": {
       if (!done) return (0, import_react49.createElement)(CellEmpty);
       let parsed = null;
       try {
-        parsed = JSON.parse(contentText(call2.content));
+        parsed = JSON.parse(contentText(call3.content));
       } catch {
         parsed = null;
       }
@@ -32922,14 +32923,14 @@ function renderCall(call2, { sessionId, roster, actions, useUi, useWork, findBot
     }
     case "remember":
     case "forget":
-      return done ? (0, import_react49.createElement)(MemoryEvent, { sessionId, scope: arg("scope"), tool, result: contentText(call2.content), failed: call2.isError === true, code: call2.error?.code, roster, actions, findBot }) : (0, import_react49.createElement)(CellEmpty);
+      return done ? (0, import_react49.createElement)(MemoryEvent, { sessionId, scope: arg("scope"), tool, result: contentText(call3.content), failed: call3.isError === true, code: call3.error?.code, roster, actions, findBot }) : (0, import_react49.createElement)(CellEmpty);
     default:
       if (isComputerCall(tool)) {
         return (0, import_react49.createElement)(
           import_react49.Fragment,
           null,
-          (0, import_react49.createElement)(ComputerCallRow, { sessionId, call: call2, roster, actions, hooks }),
-          (0, import_react49.createElement)(AppAccessCall, { sessionId, callId: call2.callId, roster, actions, heldCards, hooks })
+          (0, import_react49.createElement)(ComputerCallRow, { sessionId, call: call3, roster, actions, hooks }),
+          (0, import_react49.createElement)(AppAccessCall, { sessionId, callId: call3.callId, roster, actions, heldCards, hooks })
         );
       }
       return (0, import_react49.createElement)(CellEmpty);
@@ -32947,15 +32948,15 @@ function ToolCell({ node, sessionId, useRoster, useTurnTriggers, useTurnContext,
   const contexts = useTurnContext(String(turn));
   const delegated = hidden && delegatedInOwnChat(roster, sessionId, triggers, contexts);
   const tree = callTree(root);
-  const calls = hidden ? tree.filter((call2) => (toolName(call2) === "ask_user" || toolName(call2) === "show_view") && call2.callId && closed?.[call2.callId] !== void 0) : tree;
-  const drawn = calls.filter((call2) => DRAWN.has(toolName(call2)) || isComputerCall(toolName(call2)));
-  const running = root.kind === "tool-result" ? void 0 : (delegated ? tree : calls).findLast((call2) => call2.kind !== "tool-result");
+  const calls = hidden ? tree.filter((call3) => (toolName(call3) === "ask_user" || toolName(call3) === "show_view") && call3.callId && closed?.[call3.callId] !== void 0) : tree;
+  const drawn = calls.filter((call3) => DRAWN.has(toolName(call3)) || isComputerCall(toolName(call3)));
+  const running = root.kind === "tool-result" ? void 0 : (delegated ? tree : calls).findLast((call3) => call3.kind !== "tool-result");
   const note = running ? toolActivity(toolName(running), toolArgs(running).text, findBot, roster.byId[sessionId]) : null;
   useLiveNote(actions, sessionId, `tool:${root.callId ?? node.key}`, note);
-  useShownCards(actions, sessionId, drawn.filter((call2) => (CARDS.has(toolName(call2)) || isComputerCall(toolName(call2))) && call2.callId).map((call2) => call2.callId));
+  useShownCards(actions, sessionId, drawn.filter((call3) => (CARDS.has(toolName(call3)) || isComputerCall(toolName(call3))) && call3.callId).map((call3) => call3.callId));
   if (drawn.length === 0) return (0, import_react49.createElement)(CellEmpty);
   const env = { sessionId, roster, actions, useUi, useWork, findBot, heldCards, hooks: { useBrowserHolds, useBrowserTabs, useBrowserPages, useComputer } };
-  return (0, import_react49.createElement)(import_react49.Fragment, null, drawn.map((call2, index) => (0, import_react49.createElement)(import_react49.Fragment, { key: call2.callId ?? index }, renderCall(call2, env))));
+  return (0, import_react49.createElement)(import_react49.Fragment, null, drawn.map((call3, index) => (0, import_react49.createElement)(import_react49.Fragment, { key: call3.callId ?? index }, renderCall(call3, env))));
 }
 
 // src/client/team-ui/activity-row.js
@@ -40137,7 +40138,7 @@ var BOT_MODELS_CSS = `
 
 // src/client/team-ui/settings.js
 var builtins = Object.entries(ENGINES).map(([route, { name, command }]) => ({ route, name, command }));
-var capitalize2 = (word) => word[0].toUpperCase() + word.slice(1);
+var capitalize2 = (word2) => word2[0].toUpperCase() + word2.slice(1);
 var SETTINGS_PAGES = [["general", "General"], ["models", "Models"], ["local-agents", "Local agents"], ["bots", "Bots"], ["bot-models", "Bot models"], ["groups", "Group chats"], ["connectors", "Connectors"], ["im", "IM"], ["phone", "Phone"], ["capabilities", "Capabilities"], ["browser", "Browser"], ["computer", "Computer use"], ["schedules", "Scheduled tasks"], ["usage", "Usage"], ["secrets", "Secrets"], ["feedback", "Feedback"], ["about", "About Godbot"]];
 var LAST_PAGES = /* @__PURE__ */ new Set(["feedback", "about"]);
 var MERGED_SECTIONS = /* @__PURE__ */ new Set(["general", "models"]);
@@ -40156,8 +40157,8 @@ function MemorySize({ label, value, save }) {
   const [text, setText] = (0, import_react66.useState)(String(value));
   (0, import_react66.useEffect)(() => setText(String(value)), [value]);
   const commit = () => {
-    const number = Number(text);
-    if (Number.isInteger(number) && number >= 1e3 && number <= 2e5 && number !== value) save(number);
+    const number2 = Number(text);
+    if (Number.isInteger(number2) && number2 >= 1e3 && number2 <= 2e5 && number2 !== value) save(number2);
     else setText(String(value));
   };
   return (0, import_react66.createElement)("input", { className: "bt-input bt-set-number", type: "number", min: 1e3, max: 2e5, step: 1e3, "aria-label": label, value: text, onChange: (event) => setText(event.target.value), onBlur: commit, onKeyDown: (event) => {
@@ -40235,10 +40236,10 @@ function GeneralPage({ roster, actions, run: run2, dsh }) {
   const look = LOOK_ITEMS.filter((id) => items.includes(id));
   const more = items.filter((id) => !LOOK_ITEMS.includes(id));
   const prefs = roster.prefs ?? {};
-  const themes2 = allThemes();
-  const current2 = themes2[prefs.theme] ? prefs.theme : "deepseek";
+  const themes = allThemes();
+  const current2 = themes[prefs.theme] ? prefs.theme : "deepseek";
   const scheme = (0, import_react66.useSyncExternalStore)(watchScheme, currentScheme);
-  const selectedAccent = prefs.accent ?? themes2[current2][scheme].accent;
+  const selectedAccent = prefs.accent ?? themes[current2][scheme].accent;
   const [custom, setCustom] = (0, import_react66.useState)(selectedAccent);
   (0, import_react66.useEffect)(() => setCustom(selectedAccent), [selectedAccent]);
   const timer = (0, import_react66.useRef)(0);
@@ -40258,7 +40259,7 @@ function GeneralPage({ roster, actions, run: run2, dsh }) {
         (0, import_react66.createElement)(
           "select",
           { className: "bt-select", "aria-label": t("Theme"), value: current2, onChange: (event) => run2(actions.setPrefs({ theme: event.target.value })) },
-          Object.entries(themes2).map(([id, theme]) => (0, import_react66.createElement)("option", { key: id, value: id }, t(theme.label)))
+          Object.entries(themes).map(([id, theme]) => (0, import_react66.createElement)("option", { key: id, value: id }, t(theme.label)))
         )
       ),
       (0, import_react66.createElement)(
@@ -42111,7 +42112,7 @@ function mentionRows(roster, sessionId, query = "") {
   const needle = query.trim().toLowerCase();
   const rows2 = bots.filter((bot) => bot.name.toLowerCase().includes(needle)).map((bot) => ({ bot, text: `@${bot.name} ` }));
   const everyone = t("Everyone");
-  if (here.room && bots.length > 1 && [everyone, ...ROOM_ALL].some((word) => word.toLowerCase().startsWith(needle))) {
+  if (here.room && bots.length > 1 && [everyone, ...ROOM_ALL].some((word2) => word2.toLowerCase().startsWith(needle))) {
     rows2.push({ room: here.room, text: `@${everyone} ` });
   }
   return rows2;
@@ -42282,12 +42283,12 @@ async function matchSideEnter(roster, sessionId, line, envelope2, signal) {
   if (parsed.bare) throw new Error(t(EMPTY_REFUSAL));
   return { claim: true };
 }
-async function submitSide({ call: call2, roster, sessionId, args, attachments, open }) {
+async function submitSide({ call: call3, roster, sessionId, args, attachments, open }) {
   const text = String(args ?? "").trim();
   if (sideSurface(roster, sessionId) === "group") throw new Error(t(GROUP_REFUSAL));
   if (Array.isArray(attachments) && attachments.length > 0) throw new Error(t(ATTACHMENT_REFUSAL));
   if (text === "") throw new Error(t(EMPTY_REFUSAL));
-  const value = await call2("side-ask", { sessionId, recent: true, text });
+  const value = await call3("side-ask", { sessionId, recent: true, text });
   open?.(value?.chatId);
   return { kind: "success" };
 }
@@ -42684,11 +42685,11 @@ function installHeaderNavigation(slots, face, component, priority) {
 var import_react72 = require("react");
 
 // src/host/team-runtime/shared/file-chunks.js
-async function* fileChunks(call2, target) {
+async function* fileChunks(call3, target) {
   let offset = 0;
   let version2;
   for (; ; ) {
-    const part = await call2("file-download", { ...target, offset, ...version2 === void 0 ? {} : { version: version2 } });
+    const part = await call3("file-download", { ...target, offset, ...version2 === void 0 ? {} : { version: version2 } });
     const bytes = Uint8Array.from(atob(part.bytes), (char) => char.charCodeAt(0));
     if (part.nextOffset === void 0) {
       yield { ...part, data: bytes };
@@ -46943,7 +46944,7 @@ ${fence}`;
   };
   const list = (el2, ctx) => {
     const ordered = el2.localName === "ol";
-    let number = ordered ? Number(el2.getAttribute("start") || 1) || 1 : 1;
+    let number2 = ordered ? Number(el2.getAttribute("start") || 1) || 1 : 1;
     const lines = [];
     for (const child of childrenOf(el2)) {
       if (over()) break;
@@ -46956,7 +46957,7 @@ ${fence}`;
       if (style.display === "none") continue;
       let body2 = block(children(child, { ...ctx, depth: ctx.depth + 1, shown: style.visibility === "visible" }));
       if (!body2.includes("```")) body2 = body2.replace(/\n{2,}/g, "\n");
-      const marker = ordered ? `${number++}. ` : "- ";
+      const marker = ordered ? `${number2++}. ` : "- ";
       if (body2 === "") continue;
       const pad = " ".repeat(marker.length);
       lines.push(body2.split("\n").map((line, index) => (index === 0 ? marker : line ? pad : "") + line).join("\n"));
@@ -48782,8 +48783,8 @@ function agentSessionToReuse(list, latest, pending) {
 function singleFlight(map, key, run2) {
   const running = map.get(key);
   if (running !== void 0) return running;
-  const call2 = Promise.resolve().then(run2);
-  const tracked = call2.finally(() => {
+  const call3 = Promise.resolve().then(run2);
+  const tracked = call3.finally(() => {
     if (map.get(key) === tracked) map.delete(key);
   });
   map.set(key, tracked);
@@ -49300,8 +49301,8 @@ function apply(ctx, godbot) {
     const render = () => {
       const snapshot = roster.getSnapshot();
       const prefs = snapshot.ready ? snapshot.prefs ?? {} : savedPrefs;
-      const themes2 = allThemes();
-      const id = themes2[prefs.theme] ? prefs.theme : "deepseek";
+      const themes = allThemes();
+      const id = themes[prefs.theme] ? prefs.theme : "deepseek";
       const accent = isHex(prefs.accent) ? prefs.accent : void 0;
       const motion = prefs.motion === "quiet" || prefs.motion === "lively" ? prefs.motion : "normal";
       const layout = layoutOf(prefs);
@@ -49316,11 +49317,11 @@ function apply(ctx, godbot) {
       const next = `${id}|${accent ?? ""}|${motion}|${layout}|${effects}|${width}|${flatWidth}|${registry.getSnapshot()}`;
       if (next === key) return;
       key = next;
-      style.textContent = themeCss(themes2[id], accent);
-      activeTheme = themes2[id];
+      style.textContent = themeCss(themes[id], accent);
+      activeTheme = themes[id];
       skin.apply();
       const release = releaseTokens;
-      releaseTokens = ctx.theme.overrideTokens("dsh-godbot", shellTokens(themes2[id]));
+      releaseTokens = ctx.theme.overrideTokens("dsh-godbot", shellTokens(themes[id]));
       if (typeof release === "function") release();
       if (snapshot.ready) {
         try {
@@ -50068,8 +50069,8 @@ function apply(ctx, godbot) {
     syncEffects();
     const snapshot = roster.getSnapshot();
     const prefs = snapshot.ready ? snapshot.prefs ?? {} : savedPrefs;
-    const themes2 = allThemes();
-    const theme = themes2[prefs.theme] ?? themes2.deepseek;
+    const themes = allThemes();
+    const theme = themes[prefs.theme] ?? themes.deepseek;
     const offs = [
       roster.subscribe(syncEffects),
       ...SHELL_SHEETS.map(([text, tag]) => installCompiledStyles(botOwnCss(text), `settings-${tag}`)),
@@ -60374,7 +60375,7 @@ var xterm_default = `/**
 `;
 
 // src/client/terminal-panel.css
-var terminal_panel_default = '.gb-terminal-panel {\n  --gb-term-line: #353841;\n  --gb-term-bg: #191b20;\n  --gb-term-chrome: #202228;\n  --gb-term-text: #e7e9ef;\n  --gb-term-muted: #aeb3bf;\n  --gb-term-icon: #2e313b;\n  --gb-term-hover: #383c47;\n  --gb-term-border: #474b58;\n  --gb-term-confirm: #2b2c32;\n  --gb-term-action: #e4e7f0;\n  --gb-term-action-label: #24262b;\n  --gb-term-error: #fac3b9;\n  --gb-term-note: #e3ce9f;\n  box-sizing: border-box;\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  flex: 1 1 auto;\n  width: 100%;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--gb-term-text);\n  background: var(--gb-term-bg);\n  border-inline-start: 1px solid var(--gb-term-line);\n  font: 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;\n}\n.gb-terminal-panel[data-scheme=light] {\n  --gb-term-line: #dedfe3;\n  --gb-term-bg: #fcfcfc;\n  --gb-term-chrome: #f7f7f8;\n  --gb-term-text: #25262b;\n  --gb-term-muted: #61646e;\n  --gb-term-icon: #e9eaee;\n  --gb-term-hover: #e4e6ea;\n  --gb-term-border: #c9cbd3;\n  --gb-term-confirm: #f1f2f5;\n  --gb-term-action: #343844;\n  --gb-term-action-label: #fff;\n  --gb-term-error: #953b35;\n  --gb-term-note: #78571a;\n}\n.gb-term-head,.gb-term-foot,.gb-term-confirm,.gb-term-note {\n  flex: none;\n  display: flex;\n  align-items: center;\n  gap: 9px;\n  padding: 10px 12px;\n}\n.gb-term-head { border-bottom: 1px solid var(--gb-term-line); background: var(--gb-term-chrome) }\n.gb-term-heading { display: flex; flex-direction: column; gap: 1px; min-width: 0 }\n.gb-term-heading strong,.gb-term-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }\n.gb-term-heading strong { font-weight: 600; font-size: 14px }\n.gb-term-heading small { color: var(--gb-term-muted); font-size: 11px }\n.gb-term-mark { display: grid; place-items: center; flex: none; width: 31px; height: 31px; border-radius: 8px; background: var(--gb-term-icon); color: var(--gb-term-text) }\n.gb-term-actions { display: inline-flex; align-items: center; flex: none; gap: 4px; margin-left: auto }\n.gb-terminal-panel button { font: inherit; line-height: 1.3; border: 1px solid transparent; border-radius: 6px; color: var(--gb-term-text); background: transparent; padding: 5px 8px; cursor: pointer }\n.gb-terminal-panel button:hover { background: var(--gb-term-hover) }\n.gb-terminal-panel button:focus-visible { outline: 2px solid #a4baff; outline-offset: -1px }\n.gb-term-actions .gb-term-collapse { width: 28px; height: 28px; display: grid; place-items: center; padding: 0 }\n.gb-term-screen { min-height: 0; min-width: 0; flex: 1 1 0; overflow: hidden; box-sizing: border-box; padding: 8px 4px 3px 8px }\n.gb-term-body { position: relative; display: flex; min-height: 0; min-width: 0; flex: 1 1 0 }\n.gb-term-conversation { display: flex; min-height: 0; min-width: 0; flex: 1 1 0 }\n.gb-term-conversation[hidden] { display: none }\n.gb-terminal-panel[data-mode=conversation] .gb-term-screen { position: absolute; inset: 0; visibility: hidden }\n.gb-term-modes { display: flex; flex: none; gap: 2px; padding: 4px 10px; border-bottom: 1px solid var(--gb-term-line) }\n.gb-term-modes button { color: var(--gb-term-muted) }\n.gb-term-modes button[aria-pressed=true] { color: var(--gb-term-text); background: var(--gb-term-icon); font-weight: 600 }\n.gb-term-foot { flex-wrap: wrap; padding: 5px 12px; min-height: 28px; color: var(--gb-term-muted); font-size: 11px; border-top: 1px solid var(--gb-term-line); background: var(--gb-term-chrome) }\n.gb-term-state { display: inline-flex; align-items: center; gap: 6px; flex: none }\n.gb-term-state i { height: 6px; width: 6px; border-radius: 50%; background: #878d99 }\n.gb-term-state i[data-live] { background: #7dc9a7 }\n.gb-term-path { flex: 1 1 0; min-width: 0; direction: ltr; text-align: end; font-family: ui-monospace,Menlo,monospace }\n.gb-term-output { flex: 1 1 100px; max-height: 5em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere }\n.gb-terminal-panel[data-phase=error] .gb-term-output { color: var(--gb-term-error) }\n.gb-term-foot button,.gb-term-confirm button { flex: none; border-color: var(--gb-term-border) }\n.gb-term-confirm,.gb-term-note { flex-wrap: wrap; background: var(--gb-term-confirm); border-bottom: 1px solid var(--gb-term-line); font-size: 12px }\n.gb-term-confirm span { flex: 1 1 180px }\n.gb-term-confirm .gb-term-primary { background: var(--gb-term-action); color: var(--gb-term-action-label); border-color: var(--gb-term-action) }\n.gb-term-note { color: var(--gb-term-note) }\n@media(max-width: 680px) {\n  .gb-terminal-panel { flex: 1 1 100% }\n  .gb-term-head,.gb-term-foot { padding-inline: 8px }\n  .gb-term-screen { padding-inline: 3px }\n}\n';
+var terminal_panel_default = '.gb-terminal-panel {\n  --gb-term-line: #353841;\n  --gb-term-bg: #191b20;\n  --gb-term-chrome: #202228;\n  --gb-term-text: #e7e9ef;\n  --gb-term-muted: #aeb3bf;\n  --gb-term-icon: #2e313b;\n  --gb-term-hover: #383c47;\n  --gb-term-border: #474b58;\n  --gb-term-confirm: #2b2c32;\n  --gb-term-action: #e4e7f0;\n  --gb-term-action-label: #24262b;\n  --gb-term-error: #fac3b9;\n  --gb-term-note: #e3ce9f;\n  --gb-term-accent: #a4baff;\n  box-sizing: border-box;\n  position: relative;\n  display: flex;\n  flex-direction: column;\n  flex: 1 1 auto;\n  width: 100%;\n  height: 100%;\n  min-height: 0;\n  min-width: 0;\n  overflow: hidden;\n  color: var(--gb-term-text);\n  background: var(--gb-term-bg);\n  border-inline-start: 1px solid var(--gb-term-line);\n  font: 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;\n}\n.gb-terminal-panel[data-scheme=light] {\n  --gb-term-line: #dedfe3;\n  --gb-term-bg: #fcfcfc;\n  --gb-term-chrome: #f7f7f8;\n  --gb-term-text: #25262b;\n  --gb-term-muted: #61646e;\n  --gb-term-icon: #e9eaee;\n  --gb-term-hover: #e4e6ea;\n  --gb-term-border: #c9cbd3;\n  --gb-term-confirm: #f1f2f5;\n  --gb-term-action: #343844;\n  --gb-term-action-label: #fff;\n  --gb-term-error: #953b35;\n  --gb-term-note: #78571a;\n  --gb-term-accent: #3f5fd6;\n}\n.gb-term-head,.gb-term-foot,.gb-term-confirm,.gb-term-note {\n  flex: none;\n  display: flex;\n  align-items: center;\n  gap: 9px;\n  padding: 10px 12px;\n}\n.gb-term-head { border-bottom: 1px solid var(--gb-term-line); background: var(--gb-term-chrome) }\n.gb-term-heading { display: flex; flex-direction: column; gap: 1px; min-width: 0 }\n.gb-term-heading strong,.gb-term-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap }\n.gb-term-heading strong { font-weight: 600; font-size: 14px }\n.gb-term-heading small { color: var(--gb-term-muted); font-size: 11px }\n.gb-term-mark { display: grid; place-items: center; flex: none; width: 31px; height: 31px; border-radius: 8px; background: var(--gb-term-icon); color: var(--gb-term-text) }\n.gb-term-actions { display: inline-flex; align-items: center; flex: none; gap: 4px; margin-left: auto }\n.gb-terminal-panel button { font: inherit; line-height: 1.3; border: 1px solid transparent; border-radius: 6px; color: var(--gb-term-text); background: transparent; padding: 5px 8px; cursor: pointer }\n.gb-terminal-panel button:hover { background: var(--gb-term-hover) }\n.gb-terminal-panel button:focus-visible { outline: 2px solid #a4baff; outline-offset: -1px }\n.gb-term-actions .gb-term-collapse,.gb-term-actions .gb-term-icon-button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0 }\n.gb-term-actions .gb-term-icon-button { color: var(--gb-term-muted) }\n.gb-term-actions .gb-term-icon-button[aria-pressed=true] { color: var(--gb-term-accent); background: var(--gb-term-icon) }\n.gb-term-screen { min-height: 0; min-width: 0; flex: 1 1 0; overflow: hidden; box-sizing: border-box; padding: 8px 4px 3px 8px }\n.gb-term-body { position: relative; display: flex; min-height: 0; min-width: 0; flex: 1 1 0 }\n.gb-term-conversation { display: flex; min-height: 0; min-width: 0; flex: 1 1 0 }\n.gb-term-conversation[hidden] { display: none }\n.gb-terminal-panel[data-mode=conversation] .gb-term-screen { position: absolute; inset: 0; visibility: hidden }\n.gb-term-modes { display: flex; flex: none; gap: 2px; padding: 4px 10px; border-bottom: 1px solid var(--gb-term-line) }\n.gb-term-modes button { color: var(--gb-term-muted) }\n.gb-term-modes button[aria-pressed=true] { color: var(--gb-term-text); background: var(--gb-term-icon); font-weight: 600 }\n.gb-term-foot { flex-wrap: wrap; padding: 5px 12px; min-height: 28px; color: var(--gb-term-muted); font-size: 11px; border-top: 1px solid var(--gb-term-line); background: var(--gb-term-chrome) }\n.gb-term-state { display: inline-flex; align-items: center; gap: 6px; flex: none }\n.gb-term-state i { height: 6px; width: 6px; border-radius: 50%; background: #878d99 }\n.gb-term-state i[data-live] { background: #7dc9a7 }\n.gb-term-path { flex: 1 1 0; min-width: 0; direction: ltr; text-align: end; font-family: ui-monospace,Menlo,monospace }\n.gb-term-output { flex: 1 1 100px; max-height: 5em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere }\n.gb-terminal-panel[data-phase=error] .gb-term-output { color: var(--gb-term-error) }\n.gb-term-foot button,.gb-term-confirm button { flex: none; border-color: var(--gb-term-border) }\n.gb-term-confirm,.gb-term-note { flex-wrap: wrap; background: var(--gb-term-confirm); border-bottom: 1px solid var(--gb-term-line); font-size: 12px }\n.gb-term-confirm span { flex: 1 1 180px }\n.gb-term-confirm .gb-term-primary { background: var(--gb-term-action); color: var(--gb-term-action-label); border-color: var(--gb-term-action) }\n.gb-term-note { color: var(--gb-term-note) }\n@media(max-width: 680px) {\n  .gb-terminal-panel { flex: 1 1 100% }\n  .gb-term-head,.gb-term-foot { padding-inline: 8px }\n  .gb-term-screen { padding-inline: 3px }\n}\n';
 
 // src/client/terminal-connection.js
 function attachTerminal({ client, target, terminal, refit, options, status }) {
@@ -60543,6 +60544,538 @@ function attachTerminal({ client, target, terminal, refit, options, status }) {
     }
   };
 }
+
+// src/client/terminal-highlight.js
+var extensions = "js|mjs|cjs|jsx|ts|mts|cts|tsx|json|jsonc|md|mdx|py|pyi|rs|go|java|kt|kts|c|h|cc|cpp|hpp|cs|rb|php|swift|sh|bash|zsh|fish|ps1|yml|yaml|toml|ini|cfg|conf|env|lock|css|scss|sass|less|html|htm|vue|svelte|astro|sql|graphql|gql|proto|txt|log|csv|tsv|xml|svg|gradle|dart|lua|ex|exs|erl|zig|nix|tf|patch|diff|ipynb|png|jpg|jpeg|gif|webp|pdf";
+var lineRef = String.raw`(?::\d+(?::\d+)?)?`;
+var urlRe = /\b(?:https?:\/\/|file:\/\/|www\.)[^\s<>"'`\u3000-\u303f\uff00-\uffef]+/giu;
+var prose = [
+  ["url", urlRe],
+  ["code", /`[^`]+`/gu],
+  ["string", /"(?:[^"\\]|\\.)+"/gu],
+  ["string", /(?<![\p{L}\p{N}_'])'(?:[^'\\]|\\.)+'(?![\p{L}\p{N}_])/gu],
+  ["path", new RegExp(String.raw`(?<![\w/.~@-])(?:~|\.{1,2})?(?:/[\w@.+-]+)+/?` + lineRef, "gu")],
+  ["path", new RegExp(String.raw`(?<![\w/.~@-])[\w@.+-]+(?:/[\w@.+-]+)+/?` + lineRef, "gu"), relativePath],
+  ["path", new RegExp(String.raw`(?<![\w/.@-])[\w@+-][\w@.+-]*\.(?:${extensions})` + lineRef + String.raw`(?![\w/-])`, "giu")],
+  ["hash", /\b[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\b/giu],
+  ["hash", /\b(?=[\da-f]*[a-f])(?=[\da-f]*\d)[\da-f]{7,40}\b/gu],
+  ["error", /(?<![\w-])(?:[A-Z]\w*(?:Error|Exception)|ERROR|Error|errors?|ERR!?|FAIL(?:ED|URE|S)?|[Ff]ail(?:ed|ure|s)|FATAL|[Ff]atal|[Pp]anic(?:ked)?|PANIC|[Dd]enied|[Rr]efused|Traceback|ENOENT|EACCES|EPERM|EEXIST|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EADDRINUSE)(?![\w-])|[✗✘✖❌]|失败|错误|异常|报错/gu],
+  ["warn", /(?<![\w-])(?:WARN(?:ING)?S?|[Ww]arn(?:ing|ings)?|[Dd]eprecated|DEPRECATED|[Cc]aution)(?![\w-])|⚠\uFE0F?|警告/gu],
+  ["ok", /(?<![\w-])(?:OK|PASS(?:ED)?|[Pp]assed|[Ss]uccess(?:ful(?:ly)?)?|SUCCESS|[Ss]ucceeded|[Cc]ompleted|DONE)(?![\w-])|[✓✔✅]|成功|通过|已完成/gu],
+  ["info", /(?<![\w-])(?:INFO|DEBUG|TRACE|NOTE|TODO|FIXME|HINT|TIP)(?![\w-])/gu],
+  ["key", /(?<=^\s*(?:[-*+•◦▪‣·]\s+)?)[A-Za-z_][\w.-]{0,39}(?=:(?:\s|$))/gu],
+  ["flag", /(?<![\w-])--?[A-Za-z][\w-]*(?:=[^\s,;)]+)?/gu],
+  ["number", /\b\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\b/gu],
+  ["number", /(?<![\w:.])\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?![\w:])/gu],
+  ["number", /(?<![\w.-])v?\d+\.\d+(?:\.\d+)+(?:-[\w.]+)?(?![\w]|\.\d)/gu],
+  ["number", /(?<![\w.$#-])(?:0x[\da-fA-F]+|\d+(?:[,_]\d{3})*(?:\.\d+)?(?:[eE][-+]?\d+)?)(?:%|ms|μs|ns|s|m|h|d|[KMGT]i?B|kB|[kKMBGT]|x|px|em|rem)?(?![\w]|\.\d)/gu]
+];
+var keywords = new Set("abstract and as assert async await break case catch chan class const continue crate debugger declare def default defer del delete do done dyn elif else enum esac except export extends extern fi final finally fn for from func function global go goto if impl implements import in instanceof interface is lambda let loop match mod module move mut namespace new nonlocal not of or package pass private protected pub public raise readonly ref return select static struct super switch then throw throws trait try type typeof unsafe use var void where while with yield".split(" "));
+var constants = new Set("true false null undefined None True False nil NaN Infinity self this".split(" "));
+var codeStart = /^\s*(?:import\s|export\s|from\s+\S+\s+import\s|(?:const|let|var)\s+[\w${[]|(?:async\s+)?function[\s*(]|def\s+\w|class\s+\w|return\b|if\s*\(|else\b\s*[{:]?|elif\s|for\s*\(|for\s+\w+\s+in\s|while\s*\(|switch\s*\(|case\s.+:|try\s*[{:]|catch\s*\(|except\b|fn\s+\w|pub\s|impl\b|struct\s+\w|enum\s+\w|use\s+[\w:]+|package\s+\w|func\s|interface\s+\w|type\s+\w+\s*=|@\w+|#include|#define|SELECT\s|INSERT\s|UPDATE\s|DELETE\s|CREATE\s)/u;
+var codeShape = /[;{]\s*$|^\s*[}\])]+[;,)]*\s*$|\)\s*(?:=>|\{)|^\s*[\w.$[\]]+\s*(?:[-+*/]?=|:=)\s*\S/u;
+function relativePath(text) {
+  const plain = text.replace(/:\d+(?::\d+)?$/u, "");
+  return /[A-Za-z]/u.test(plain) && (plain.split("/").length > 2 || /\.\w{1,8}$/u.test(plain) || plain !== text);
+}
+function trimUrl(text) {
+  let end = text.length, previous;
+  const count = (char, stop) => {
+    let n = 0;
+    for (let i = 0; i < stop; i++) if (text[i] === char) n++;
+    return n;
+  };
+  while (end !== previous) {
+    previous = end;
+    while (end && /[.,;:!?'"*_~>]/u.test(text[end - 1])) end--;
+    for (const [open, close] of [["(", ")"], ["[", "]"], ["{", "}"]])
+      while (text[end - 1] === close && count(close, end) > count(open, end)) end--;
+  }
+  return end;
+}
+function fenceOf(text) {
+  return /^\s*(?:```|~~~)/u.test(text);
+}
+function diffHeader(text) {
+  return /^(?:diff --git |index [\da-f]{7,}\.\.[\da-f]{7,}|--- (?:a\/|\/dev\/null)|\+\+\+ (?:b\/|\/dev\/null))/u.test(text);
+}
+var hunkRe = /^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/u;
+function nextState(text, state = {}) {
+  if (fenceOf(text)) return { diff: false, fence: !state.fence };
+  if (state.fence) return state;
+  if (diffHeader(text) || hunkRe.test(text)) return { diff: true, fence: false };
+  if (state.diff && /^[-+ \\]/u.test(text)) return state;
+  return state.diff ? { diff: false, fence: false } : state;
+}
+function isCodeLine(text) {
+  return codeStart.test(text) || codeShape.test(text);
+}
+function tokenizeLine(text, state = {}) {
+  const tokens2 = [];
+  const taken = new Uint8Array(text.length);
+  const claim = (start, end, kind) => {
+    if (end <= start) return false;
+    for (let i = start; i < end; i++) if (taken[i]) return false;
+    taken.fill(1, start, end);
+    tokens2.push({ start, end, kind });
+    return true;
+  };
+  const next = nextState(text, state);
+  const done = () => ({ tokens: tokens2.sort((a, b2) => a.start - b2.start), state: next });
+  if (fenceOf(text)) {
+    claim(0, text.length, "comment");
+    return done();
+  }
+  if (state.fence) {
+    codeTokens(text, claim);
+    return done();
+  }
+  if (diffHeader(text)) {
+    claim(0, text.length, "hunk");
+    return done();
+  }
+  const hunk = hunkRe.exec(text);
+  if (hunk) {
+    claim(0, hunk[0].length, "hunk");
+    codeTokens(text, claim, hunk[0].length);
+    return done();
+  }
+  if (state.diff && next.diff) {
+    const first = text[0];
+    if (first === "+") claim(0, text.length, "added");
+    else if (first === "-") claim(0, text.length, "removed");
+    else if (first === "\\") claim(0, text.length, "comment");
+    else codeTokens(text, claim, 1);
+    return done();
+  }
+  const gutter = /^\s*\d+\s?[│|→┃]/u.exec(text);
+  if (gutter) {
+    claim(0, gutter[0].length, "comment");
+    codeTokens(text, claim, gutter[0].length);
+    return done();
+  }
+  const heading2 = /^(\s{0,3})#{1,6}\s+\S/u.exec(text);
+  if (heading2) {
+    claim(heading2[1].length, text.length, "heading");
+    return done();
+  }
+  const prompt = /^(\s*)([$%❯›➜»]|>)(?=\s)/u.exec(text);
+  if (prompt) {
+    const start = prompt[1].length;
+    claim(start, start + prompt[2].length, "punct");
+    if (prompt[2] === "$" || prompt[2] === "%") {
+      const command = /\s+([\w./@+-]+)/uy;
+      command.lastIndex = start + 1;
+      const match = command.exec(text);
+      if (match) claim(match.index + match[0].length - match[1].length, match.index + match[0].length, "func");
+    }
+  } else {
+    const bullet = /^(\s*)([-*+•◦▪‣·]|\d{1,3}[.)])(?=\s)/u.exec(text);
+    if (bullet) claim(bullet[1].length, bullet[0].length, "punct");
+  }
+  if (!prompt && isCodeLine(text)) {
+    claimMatches(text, claim, prose.slice(0, 1));
+    codeTokens(text, claim);
+    return done();
+  }
+  claimMatches(text, claim, prose);
+  return done();
+}
+function claimMatches(text, claim, rules) {
+  for (const [kind, re2, accept] of rules) {
+    re2.lastIndex = 0;
+    for (let match; match = re2.exec(text); ) {
+      let end = match.index + match[0].length;
+      if (kind === "url") end = match.index + trimUrl(match[0]);
+      if (!accept || accept(match[0])) claim(match.index, end, kind);
+      if (!match[0].length) re2.lastIndex++;
+    }
+  }
+}
+var word = /[@$]?[A-Za-z_$][\w$]*/uy;
+var number = /(?:0x[\da-f_]+|0b[01_]+|0o[0-7_]+|\d[\d_]*(?:\.\d[\d_]*)?(?:e[-+]?\d+)?)[a-z]*/iuy;
+var call2 = /\s*\(/uy;
+var identChar = /[\w$]/u;
+function codeTokens(text, claim, from = 0) {
+  const n = text.length;
+  let i = from;
+  while (i < n) {
+    const c = text[i], prev = i > from ? text[i - 1] : "";
+    if (c === "/" && text[i + 1] === "/" && prev !== ":") {
+      claim(i, n, "comment");
+      return;
+    }
+    if (c === "/" && text[i + 1] === "*") {
+      const close = text.indexOf("*/", i + 2), end = close < 0 ? n : close + 2;
+      claim(i, end, "comment");
+      i = end;
+      continue;
+    }
+    if (c === "#" && (!prev || /\s/u.test(prev)) && !/^#(?:!|\[|include\b|define\b|if|endif\b|pragma\b|import\b)/u.test(text.slice(i, i + 8))) {
+      claim(i, n, "comment");
+      return;
+    }
+    if (c === "-" && text[i + 1] === "-" && text[i + 2] === " " && (!prev || /\s/u.test(prev))) {
+      claim(i, n, "comment");
+      return;
+    }
+    if (c === '"' || c === "`" || c === "'" && !/[\p{L}\p{N}_]/u.test(prev)) {
+      let j2 = i + 1;
+      while (j2 < n && text[j2] !== c) j2 += text[j2] === "\\" ? 2 : 1;
+      const end = Math.min(n, j2 + 1);
+      claim(i, end, "string");
+      i = end;
+      continue;
+    }
+    if (c >= "0" && c <= "9" && !identChar.test(prev) && prev !== ".") {
+      number.lastIndex = i;
+      const match = number.exec(text);
+      claim(i, i + match[0].length, "number");
+      i += match[0].length;
+      continue;
+    }
+    if (/[A-Za-z_$@]/u.test(c) && !identChar.test(prev)) {
+      word.lastIndex = i;
+      const match = word.exec(text);
+      if (!match) {
+        i++;
+        continue;
+      }
+      const name = match[0], end = i + name.length;
+      call2.lastIndex = end;
+      const kind = name[0] === "@" ? "func" : keywords.has(name) ? "keyword" : constants.has(name) ? "number" : call2.test(text) ? "func" : /^[A-Z][A-Z\d_]{2,}$/u.test(name) ? "number" : /^[A-Z][a-z\d]/u.test(name) ? "type" : null;
+      if (kind) claim(i, end, kind);
+      i = end;
+      continue;
+    }
+    i++;
+  }
+}
+function readLogicalLine(buffer, start, end, cell) {
+  let text = "";
+  const rows2 = [], cols = [], widths = [], plain = [];
+  for (let y = start; y < end; y++) {
+    const line = buffer.getLine(y);
+    if (!line) continue;
+    const last = visibleCells(line, cell, y + 1 === end);
+    for (let x = 0; x < last; x++) {
+      const current2 = line.getCell(x, cell);
+      if (!current2) break;
+      const width = current2.getWidth();
+      if (!width) continue;
+      const chars = current2.getChars() || " ";
+      const unstyled = current2.isFgDefault() && current2.isBgDefault() && !current2.isInverse() && !current2.isInvisible();
+      for (let k = 0; k < chars.length; k++) {
+        text += chars[k];
+        rows2.push(y);
+        cols.push(x);
+        widths.push(width);
+        plain.push(unstyled);
+      }
+    }
+  }
+  return { text, rows: rows2, cols, widths, plain };
+}
+function visibleCells(line, cell, last) {
+  let x = line.length;
+  while (x > 0) {
+    const current2 = line.getCell(x - 1, cell);
+    if (current2 && (current2.getChars() || (last ? !current2.isBgDefault() : current2.getWidth() !== 1))) break;
+    x--;
+  }
+  return x;
+}
+function logicalBounds(buffer, top, bottom) {
+  let start = top;
+  while (start > 0 && buffer.getLine(start)?.isWrapped) start--;
+  let end = Math.min(bottom, buffer.length);
+  while (end < buffer.length && buffer.getLine(end)?.isWrapped) end++;
+  return [start, end];
+}
+function nextLogical(buffer, y, end) {
+  let stop = y + 1;
+  while (stop < end && buffer.getLine(stop)?.isWrapped) stop++;
+  return stop;
+}
+function runsOf(line, token, out, fillTo) {
+  let run2;
+  for (let i = token.start; i < token.end; i++) {
+    if (!line.plain[i]) {
+      run2 = void 0;
+      continue;
+    }
+    const y = line.rows[i], x = line.cols[i], w = line.widths[i];
+    if (run2 && run2.y === y && run2.x + run2.w === x) run2.w += w;
+    else if (run2 && run2.y === y && run2.x + run2.w > x) continue;
+    else {
+      run2 = { y, x, w, kind: token.kind };
+      if (!out.has(y)) out.set(y, []);
+      out.get(y).push(run2);
+    }
+  }
+  if (fillTo && run2 && token.end === line.text.length) run2.w = Math.max(run2.w, fillTo - run2.x);
+}
+var filled = /* @__PURE__ */ new Set(["added", "removed"]);
+var decorationColors = (color) => typeof color === "string" ? { foregroundColor: color } : { foregroundColor: color.foreground, backgroundColor: color.background };
+var contextRows = 160;
+function attachTerminalHighlight(terminal, { colors, enabled = true } = {}) {
+  let palette = colors, on2 = enabled, frame = 0, disposed = false;
+  const entries2 = /* @__PURE__ */ new Map();
+  const cell = terminal.buffer.active.getNullCell();
+  function drop(entry) {
+    if (entry.dropped) return;
+    entry.dropped = true;
+    entries2.delete(entry.marker);
+    for (const decoration of entry.decorations) decoration.dispose();
+    entry.marker.dispose();
+  }
+  function clear() {
+    for (const entry of [...entries2.values()]) drop(entry);
+  }
+  function schedule() {
+    if (on2 && !disposed && !frame) frame = requestAnimationFrame(scan);
+  }
+  function stateBefore(buffer, start) {
+    let y = Math.max(0, start - contextRows);
+    while (y > 0 && buffer.getLine(y)?.isWrapped) y--;
+    let state = {};
+    while (y < start) {
+      const stop = nextLogical(buffer, y, start);
+      let text = "";
+      for (let row2 = y; row2 < stop; row2++) text += buffer.getLine(row2)?.translateToString(row2 + 1 === stop) ?? "";
+      state = nextState(text, state);
+      y = stop;
+    }
+    return state;
+  }
+  function scan() {
+    frame = 0;
+    if (!on2 || disposed) return;
+    const buffer = terminal.buffer.active;
+    const top = buffer.viewportY, bottom = Math.min(buffer.length, top + terminal.rows);
+    const [start, end] = logicalBounds(buffer, top, bottom);
+    const wanted = /* @__PURE__ */ new Map();
+    let state = stateBefore(buffer, start);
+    for (let y = start; y < end; ) {
+      const stop = nextLogical(buffer, y, end);
+      const line = readLogicalLine(buffer, y, stop, cell);
+      const result = tokenizeLine(line.text, state);
+      state = result.state;
+      for (const token of result.tokens)
+        if (palette[token.kind]) runsOf(line, token, wanted, filled.has(token.kind) && terminal.cols);
+      y = stop;
+    }
+    const byLine = /* @__PURE__ */ new Map();
+    for (const entry of [...entries2.values()]) {
+      const line = entry.marker.line;
+      if (entry.marker.isDisposed || line < top || line >= bottom || byLine.has(line)) drop(entry);
+      else byLine.set(line, entry);
+    }
+    for (let y = top; y < bottom; y++) {
+      const runs = wanted.get(y) ?? [];
+      const signature = runs.map((run2) => run2.x + ":" + run2.w + ":" + run2.kind).join(",");
+      const entry = byLine.get(y);
+      if (entry?.signature === signature) continue;
+      if (entry) drop(entry);
+      if (runs.length) decorate(buffer, y, runs, signature);
+    }
+  }
+  function decorate(buffer, y, runs, signature) {
+    const marker = terminal.registerMarker(y - buffer.baseY - buffer.cursorY);
+    if (!marker) return;
+    if (marker.line !== y) {
+      marker.dispose();
+      return;
+    }
+    const entry = { marker, signature, decorations: [] };
+    for (const run2 of runs) {
+      const decoration = terminal.registerDecoration({ marker, x: run2.x, width: run2.w, ...decorationColors(palette[run2.kind]) });
+      if (decoration) entry.decorations.push(decoration);
+    }
+    entries2.set(marker, entry);
+    marker.onDispose(() => drop(entry));
+  }
+  const listeners3 = [
+    terminal.onWriteParsed(schedule),
+    terminal.onScroll(schedule),
+    terminal.onResize(() => {
+      clear();
+      schedule();
+    }),
+    terminal.buffer.onBufferChange(() => {
+      clear();
+      schedule();
+    })
+  ];
+  schedule();
+  return {
+    setColors(next) {
+      palette = next;
+      clear();
+      schedule();
+    },
+    setEnabled(value) {
+      on2 = !!value;
+      if (on2) schedule();
+      else {
+        cancelAnimationFrame(frame);
+        frame = 0;
+        clear();
+      }
+    },
+    dispose() {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      for (const listener of listeners3) listener.dispose();
+      clear();
+    }
+  };
+}
+function linkUrl(text) {
+  return /^www\./iu.test(text) ? "https://" + text : text;
+}
+function attachTerminalLinks(terminal, { open, hint }) {
+  const cell = terminal.buffer.active.getNullCell();
+  return terminal.registerLinkProvider({
+    provideLinks(lineNumber, callback) {
+      const buffer = terminal.buffer.active;
+      const y = lineNumber - 1;
+      const [start, end] = logicalBounds(buffer, y, y + 1);
+      const line = readLogicalLine(buffer, start, end, cell);
+      const links = [];
+      urlRe.lastIndex = 0;
+      for (let match; match = urlRe.exec(line.text); ) {
+        const last = match.index + trimUrl(match[0]) - 1;
+        if (/^file:/iu.test(match[0]) || last <= match.index || line.rows[match.index] > y || line.rows[last] < y) continue;
+        const text = line.text.slice(match.index, last + 1);
+        links.push({
+          text,
+          range: {
+            start: { x: line.cols[match.index] + 1, y: line.rows[match.index] + 1 },
+            end: { x: line.cols[last] + line.widths[last], y: line.rows[last] + 1 }
+          },
+          decorations: { pointerCursor: true, underline: true },
+          activate(event) {
+            if (event.metaKey || event.ctrlKey) open(linkUrl(text));
+          },
+          hover() {
+            hint(true);
+          },
+          leave() {
+            hint(false);
+          }
+        });
+      }
+      callback(links.length ? links : void 0);
+    }
+  });
+}
+
+// src/client/terminal-theme.js
+var terminalThemes = {
+  dark: {
+    background: "#191b20",
+    foreground: "#e9e9ee",
+    cursor: "#f2f1fa",
+    cursorAccent: "#191b20",
+    selectionBackground: "#434b65",
+    selectionInactiveBackground: "#343a4d",
+    scrollbarSliderBackground: "rgba(137,144,158,.22)",
+    scrollbarSliderHoverBackground: "rgba(137,144,158,.36)",
+    scrollbarSliderActiveBackground: "rgba(137,144,158,.48)",
+    black: "#202228",
+    red: "#f2777a",
+    green: "#9bd08a",
+    yellow: "#e8c37a",
+    blue: "#7aa7f5",
+    magenta: "#c792ea",
+    cyan: "#6fcfd9",
+    white: "#c9ccd6",
+    brightBlack: "#89909e",
+    brightRed: "#ff8f8f",
+    brightGreen: "#b4e3a1",
+    brightYellow: "#f2d68f",
+    brightBlue: "#9bbcff",
+    brightMagenta: "#d7aefb",
+    brightCyan: "#8be3ea",
+    brightWhite: "#f2f3f7"
+  },
+  light: {
+    background: "#fcfcfc",
+    foreground: "#24262c",
+    cursor: "#24262c",
+    cursorAccent: "#fcfcfc",
+    selectionBackground: "#c4d6fb",
+    selectionInactiveBackground: "#dde6f8",
+    scrollbarSliderBackground: "rgba(101,105,115,.2)",
+    scrollbarSliderHoverBackground: "rgba(101,105,115,.32)",
+    scrollbarSliderActiveBackground: "rgba(101,105,115,.44)",
+    black: "#22242b",
+    red: "#cf3c44",
+    green: "#2e8540",
+    yellow: "#9a6a00",
+    blue: "#2f63d6",
+    magenta: "#8a3fc6",
+    cyan: "#0f7f8c",
+    white: "#b9bac0",
+    brightBlack: "#656973",
+    brightRed: "#e05158",
+    brightGreen: "#3a9a4e",
+    brightYellow: "#b07d0a",
+    brightBlue: "#4a7ef0",
+    brightMagenta: "#a057db",
+    brightCyan: "#1795a3",
+    brightWhite: "#d5d6da"
+  }
+};
+var highlightColors = {
+  dark: {
+    url: "#78b4ff",
+    path: "#5fd0dc",
+    number: "#f2a65e",
+    string: "#9fd68a",
+    code: { foreground: "#f4a3c8", background: "#2a2d37" },
+    keyword: "#c69cf4",
+    func: "#7ab0ff",
+    type: "#e5c07b",
+    comment: "#7d8594",
+    error: "#ff7b7b",
+    warn: "#ecc265",
+    ok: "#8bd68c",
+    info: "#7ab0ff",
+    hash: "#d2a8ff",
+    added: { foreground: "#8bd68c", background: "#1d2b23" },
+    removed: { foreground: "#ff8b8b", background: "#332328" },
+    hunk: "#5fd0dc",
+    heading: "#7ab0ff",
+    key: "#93b7ec",
+    flag: "#e5c07b",
+    punct: "#a4baff"
+  },
+  light: {
+    url: "#1f5fd1",
+    path: "#0b7285",
+    number: "#b35309",
+    string: "#2b7a32",
+    code: { foreground: "#b5306b", background: "#f0f1f5" },
+    keyword: "#8239c7",
+    func: "#2257c9",
+    type: "#8a6100",
+    comment: "#6c7380",
+    error: "#c62f37",
+    warn: "#8f5e00",
+    ok: "#24803a",
+    info: "#2257c9",
+    hash: "#8a3fc6",
+    added: { foreground: "#24803a", background: "#eaf6ed" },
+    removed: { foreground: "#c62f37", background: "#fcecee" },
+    hunk: "#0b7285",
+    heading: "#2257c9",
+    key: "#355fa8",
+    flag: "#8a6100",
+    punct: "#3f5fd6"
+  }
+};
 
 // src/client/native-conversation-panel.js
 var import_react94 = require("react");
@@ -60801,35 +61334,34 @@ var agents2 = {
   dsh: "dsh"
 };
 var states4 = { opening: "正在连接", recovering: "恢复屏幕", live: "已连接", error: "连接中断", exited: "已退出", ending: "正在交还", returned: "已交还" };
-var themes = {
-  dark: {
-    background: "#191b20",
-    foreground: "#e9e9ee",
-    cursor: "#f2f1fa",
-    cursorAccent: "#191b20",
-    selectionBackground: "#434b65",
-    black: "#202228",
-    brightBlack: "#89909e"
-  },
-  light: {
-    background: "#fcfcfc",
-    foreground: "#24262c",
-    cursor: "#24262c",
-    cursorAccent: "#fcfcfc",
-    selectionBackground: "#c4d6fb",
-    black: "#22242b",
-    brightBlack: "#656973",
-    white: "#b9bac0",
-    brightWhite: "#d5d6da"
+var highlightKey = "godbot.terminal.highlight";
+var linkHint = (/Mac|iPhone|iPad/u.test(navigator.platform) ? "⌘" : "Ctrl") + " + 点击打开链接";
+function readHighlight() {
+  try {
+    return localStorage.getItem(highlightKey) !== "off";
+  } catch {
+    return true;
   }
-};
+}
+function saveHighlight(on2) {
+  try {
+    localStorage.setItem(highlightKey, on2 ? "on" : "off");
+  } catch {
+  }
+}
+function openLink(url) {
+  if (/^https?:\/\//iu.test(url)) window.open(url, "_blank", "noopener,noreferrer");
+}
 function TerminalSession({ client, target, close, mode, onModeChange }) {
-  const view = (0, import_react95.useRef)(null), wire = (0, import_react95.useRef)(null), termRef = (0, import_react95.useRef)(null);
+  const view = (0, import_react95.useRef)(null), wire = (0, import_react95.useRef)(null), termRef = (0, import_react95.useRef)(null), highlighter = (0, import_react95.useRef)(null);
   const [attempt, setAttempt] = (0, import_react95.useState)({ number: 0 });
   const [state, setState] = (0, import_react95.useState)({ phase: "opening" });
   const [confirm2, setConfirm] = (0, import_react95.useState)(false);
   const [screen, setScreen] = (0, import_react95.useState)("");
+  const [highlight, setHighlight] = (0, import_react95.useState)(readHighlight);
   const conversation = mode === "conversation";
+  const highlighting = (0, import_react95.useRef)(highlight && !conversation);
+  highlighting.current = highlight && !conversation;
   const { memberId, botId, sessionId, agent, label } = target;
   (0, import_react95.useLayoutEffect)(() => {
     const node = view.current;
@@ -60841,32 +61373,50 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
     let currentTheme = scheme();
     const panel = node.closest(".gb-terminal-panel");
     panel.dataset.scheme = currentTheme;
+    let viewport;
+    const hint = (on2) => {
+      if (viewport) viewport.title = on2 ? linkHint : "";
+    };
     const terminal = new Dl({
       cursorBlink: true,
       cursorStyle: "block",
       fontSize: 13,
       lineHeight: 1.14,
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
-      theme: themes[currentTheme],
+      theme: terminalThemes[currentTheme],
       minimumContrastRatio: 4.5,
       scrollback: 3e3,
-      macOptionIsMeta: true
+      macOptionIsMeta: true,
+      // Decorations tint unstyled output without rewriting the CLI's bytes.
+      allowProposedApi: true,
+      // OSC 8 hyperlinks from the CLI follow the same Cmd/Ctrl-click rule as detected URLs.
+      linkHandler: {
+        activate: (event, uri) => {
+          if (event.metaKey || event.ctrlKey) openLink(uri);
+        },
+        hover: () => hint(true),
+        leave: () => hint(false)
+      }
     });
     const fit2 = new o();
     terminal.loadAddon(fit2);
     const shadow = node.shadowRoot ?? node.attachShadow({ mode: "open" });
     const sheet = document.createElement("style");
     sheet.textContent = xterm_default + "\n.xterm { height: 100%; width: 100%; padding: 0 }";
-    const viewport = document.createElement("div");
+    viewport = document.createElement("div");
     viewport.style.height = "100%";
     shadow.replaceChildren(sheet, viewport);
     terminal.open(viewport);
+    const highlights = attachTerminalHighlight(terminal, { colors: highlightColors[currentTheme], enabled: highlighting.current });
+    const links = attachTerminalLinks(terminal, { open: openLink, hint });
+    highlighter.current = highlights;
     const updateTheme = () => {
       const next = scheme();
       if (next === currentTheme) return;
       currentTheme = next;
       panel.dataset.scheme = next;
-      terminal.options.theme = themes[next];
+      terminal.options.theme = terminalThemes[next];
+      highlights.setColors(highlightColors[next]);
     };
     const themeObserver = new MutationObserver(updateTheme);
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-ds-theme-source", "data-theme"] });
@@ -60900,7 +61450,10 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
     return () => {
       wire.current = null;
       termRef.current = null;
+      highlighter.current = null;
       connection.detach();
+      highlights.dispose();
+      links.dispose();
       observer.disconnect();
       themeObserver.disconnect();
       media.removeEventListener("change", updateTheme);
@@ -60934,6 +61487,13 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
       resized.dispose();
     };
   }, [conversation, attempt]);
+  (0, import_react95.useLayoutEffect)(() => {
+    highlighter.current?.setEnabled(highlight && !conversation);
+  }, [highlight, conversation]);
+  const toggleHighlight = () => {
+    saveHighlight(!highlight);
+    setHighlight(!highlight);
+  };
   const retry = (restart) => {
     setConfirm(false);
     setAttempt((previous) => ({ number: previous.number + 1, options: restart && state.info ? { restart: true, terminalId: state.info.terminalId } : void 0 }));
@@ -60964,6 +61524,14 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
       (0, import_react95.createElement)(
         "div",
         { className: "gb-term-actions" },
+        !conversation && (0, import_react95.createElement)("button", {
+          className: "gb-term-icon-button",
+          type: "button",
+          "aria-pressed": highlight,
+          "aria-label": "输出高亮",
+          title: highlight ? "关闭输出高亮" : "开启输出高亮：为路径、链接、数字、代码和错误着色",
+          onClick: toggleHighlight
+        }, (0, import_react95.createElement)(Icon, { name: "sparkle", size: 16 })),
         canEnd && (0, import_react95.createElement)("button", {
           type: "button",
           title: "结束终端并将控制权交还聊天",
@@ -61894,7 +62462,7 @@ function ProviderList({ rows: rows2, AgentLogo: AgentLogo2, select, focusRoute }
     ));
   }));
 }
-function ProviderAgentsPage({ client, call: call2, builtins: builtins2, AgentLogo: AgentLogo2, AgentForm: AgentForm2, readOnly }) {
+function ProviderAgentsPage({ client, call: call3, builtins: builtins2, AgentLogo: AgentLogo2, AgentForm: AgentForm2, readOnly }) {
   const [view, setView] = (0, import_react98.useState)(null);
   const [catalog, setCatalog] = (0, import_react98.useState)(null);
   const [route, setRoute] = (0, import_react98.useState)("");
@@ -61913,13 +62481,13 @@ function ProviderAgentsPage({ client, call: call2, builtins: builtins2, AgentLog
   const load = (0, import_react98.useCallback)(async (scan = false) => {
     const id = ++loadId.current;
     setLoading(true);
-    const [agents4, accounts] = await Promise.allSettled([call2(scan ? "local-agent-refresh" : "local-agents"), client.dispatch({ action: "provider-accounts" })]);
+    const [agents4, accounts] = await Promise.allSettled([call3(scan ? "local-agent-refresh" : "local-agents"), client.dispatch({ action: "provider-accounts" })]);
     if (!mounted.current || id !== loadId.current) return;
     if (agents4.status === "fulfilled") setView(agents4.value);
     if (accounts.status === "fulfilled") setCatalog(accounts.value);
     setError([agents4, accounts].filter((res) => res.status === "rejected").map((res) => errorText(res.reason)).join(" · "));
     setLoading(false);
-  }, [client, call2]);
+  }, [client, call3]);
   (0, import_react98.useEffect)(() => {
     mounted.current = true;
     void load();
@@ -61929,7 +62497,7 @@ function ProviderAgentsPage({ client, call: call2, builtins: builtins2, AgentLog
     };
   }, [load]);
   async function customAction(endpoint, payload) {
-    await call2(endpoint, payload);
+    await call3(endpoint, payload);
     await load();
   }
   async function change(action2, payload = {}) {
@@ -62063,7 +62631,7 @@ function ProviderAgentsPage({ client, call: call2, builtins: builtins2, AgentLog
 
 // src/client/provider-agents-hook.js
 var import_react99 = require("react");
-function useProviderChoices(wanted, call2, client) {
+function useProviderChoices(wanted, call3, client) {
   const [agents4, setAgents] = (0, import_react99.useState)([]);
   const [known, setKnown] = (0, import_react99.useState)(false);
   const [scanning, setScanning] = (0, import_react99.useState)(false);
@@ -62072,14 +62640,14 @@ function useProviderChoices(wanted, call2, client) {
     const id = ++revision.current;
     setScanning(true);
     const [discovery, accounts] = await Promise.allSettled([
-      call2(fresh ? "local-agent-refresh" : "local-agents"),
+      call3(fresh ? "local-agent-refresh" : "local-agents"),
       client.dispatch({ action: "provider-accounts" })
     ]);
     if (id !== revision.current) return;
     setAgents(providerChoices(discovery.value, accounts.value));
     setScanning(false);
     setKnown(true);
-  }, [call2, client]);
+  }, [call3, client]);
   (0, import_react99.useEffect)(() => {
     if (!wanted) return;
     const refresh = () => {
@@ -63113,10 +63681,10 @@ function BrowserPanel2({ client, bot, sessionId, close }) {
   const [input2, setInput] = (0, import_react106.useState)("");
   const [address, setAddress] = (0, import_react106.useState)("");
   const [error, setError] = (0, import_react106.useState)("");
-  const call2 = (0, import_react106.useCallback)((action2, values) => client.dispatch({ action: "browser." + action2, botId: bot.id, sessionId, ...values }), [client, bot.id, sessionId]);
+  const call3 = (0, import_react106.useCallback)((action2, values) => client.dispatch({ action: "browser." + action2, botId: bot.id, sessionId, ...values }), [client, bot.id, sessionId]);
   (0, import_react106.useEffect)(() => {
     alive.current = true;
-    call2("status").then((value) => {
+    call3("status").then((value) => {
       if (!alive.current) return;
       setAvailable(value.targets);
       setTarget(value.target);
@@ -63126,18 +63694,18 @@ function BrowserPanel2({ client, bot, sessionId, close }) {
     });
     return () => {
       alive.current = false;
-      if (lease.current) void call2("release", { lease: lease.current }).catch(() => {
+      if (lease.current) void call3("release", { lease: lease.current }).catch(() => {
       });
       lease.current = void 0;
     };
-  }, [call2]);
+  }, [call3]);
   (0, import_react106.useEffect)(() => {
     if (!open) return;
     let stop = false, timer;
     async function poll() {
       try {
         const sentLease = lease.current;
-        const value = await call2("frame", { lease: sentLease, surface });
+        const value = await call3("frame", { lease: sentLease, surface });
         if (!stop) {
           setFrame(value);
           if (lease.current === sentLease && value.control !== "mine" && value.control !== "pending") lease.current = void 0;
@@ -63158,7 +63726,7 @@ function BrowserPanel2({ client, bot, sessionId, close }) {
       stop = true;
       clearTimeout(timer);
     };
-  }, [open, call2, surface]);
+  }, [open, call3, surface]);
   const perform = async (work) => {
     setBusy(true);
     setError("");
@@ -63172,25 +63740,25 @@ function BrowserPanel2({ client, bot, sessionId, close }) {
   };
   const controllable = frame?.control === "mine" && lease.current && !busy;
   const send = (data, afterSend) => perform(async () => {
-    await call2("input", { lease: lease.current, frameId: frame.frameId, surface: frame.surface, ...data });
+    await call3("input", { lease: lease.current, frameId: frame.frameId, surface: frame.surface, ...data });
     afterSend?.();
   });
   const openEnvironment = () => perform(async () => {
-    await call2("open", { target });
+    await call3("open", { target });
     if (alive.current) setOpen(true);
   });
   const closeEnvironment = () => perform(async () => {
-    await call2("close", { lease: lease.current });
+    await call3("close", { lease: lease.current });
     lease.current = void 0;
     setOpen(false);
     setFrame(void 0);
   });
   const takeControl = () => perform(async () => {
-    const value = await call2("take");
+    const value = await call3("take");
     lease.current = value.lease;
   });
   const releaseControl = () => perform(async () => {
-    await call2("release", { lease: lease.current });
+    await call3("release", { lease: lease.current });
     lease.current = void 0;
   });
   const state = {
@@ -63840,14 +64408,10 @@ button.gb-bot-model:focus-visible { outline: 2px solid var(--bt-accent); outline
   pointer-events: auto;
 }
 .gb-chat-tools .gb-native-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  width: auto;
-  padding: 0 8px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
   color: var(--bt-ink);
-  font: 500 12px/1 var(--bt-font);
-  white-space: nowrap;
   cursor: pointer;
 }
 .gb-chat-tools .bt-pmenu-pop { pointer-events: auto; }
@@ -63862,9 +64426,6 @@ button.gb-bot-model:focus-visible { outline: 2px solid var(--bt-accent); outline
   height: 4px;
   border-radius: 50%;
   background: currentColor;
-}
-@media (max-width: 600px) {
-  .gb-chat-tools .gb-native-button > span { display: none; }
 }
 `;
 function NativeAgentButton({ client, target, actions }) {
@@ -63896,7 +64457,7 @@ function NativeAgentButton({ client, target, actions }) {
       { key: "terminal", icon: TerminalIcon, label: "原生终端", title: title2, onPick: () => actions.showDetails(sessionId, nativeTabs.terminal) },
       { key: "conversation", icon: ChatsIcon, label: "原生对话", title: title2, onPick: () => actions.showDetails(sessionId, nativeTabs.conversation) }
     ]
-  }, (0, import_react107.createElement)(TerminalIcon), (0, import_react107.createElement)("span", null, "原生 Agent"));
+  }, (0, import_react107.createElement)(TerminalIcon));
 }
 function readLast() {
   try {
@@ -63994,7 +64555,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
         publish
       });
     },
-    useProviderChoices: (wanted, call2) => useProviderChoices(wanted, call2, client),
+    useProviderChoices: (wanted, call3) => useProviderChoices(wanted, call3, client),
     async changeProvider(bot, agent, target2, actions, avatarAfter2) {
       if (agent?.disabled || !agent && target2.startsWith("local-"))
         throw new Error("运行账号已变化，请重新选择提供商。");
