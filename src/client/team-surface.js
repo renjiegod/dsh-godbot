@@ -18,7 +18,6 @@ import { botHome } from './session-links.js'
 import { Icon } from './chat-ui.js'
 import { WorkspaceActions } from './workspace-actions.js'
 import { TaskSettings } from './task-settings.js'
-import { t } from './team-ui/i18n.js'
 import { BotSchedulesPage } from './bot-schedules.js'
 import { WebBrowserButton } from './browser-viewer.js'
 import { mainSession, sessionSelection } from './navigation.js'
@@ -63,9 +62,6 @@ const controlsStyle = `
 .bt-side .bt-row[aria-current=page] { box-shadow: inset 3px 0 var(--bt-accent); }
 .bt-side:not(.bt-rail) .bt-row { border-radius: 8px; }
 
-.bt-side .gb-schedule-shortcut{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:34px;margin:0 8px 4px;padding:0 10px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--bt-ink-2);font:inherit;font-size:13px;cursor:pointer}
-.bt-side .gb-schedule-shortcut:hover{background:var(--bt-hover);color:var(--bt-ink)}
-.bt-rail .gb-schedule-shortcut{justify-content:center;align-self:center;width:34px;margin:0 0 4px;padding:0}
 .bt-msg[data-gb-command-report]{width:min(42rem,100%)}
 .bt-msg[data-gb-command-report]>.bt-msg-line{width:100%}
 .bt-msg[data-gb-command-report]>.bt-msg-line>.bt-bubble{width:100%;background:transparent;padding:0}
@@ -358,9 +354,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
         Fragment,
         null,
         h('style', null, controlsStyle + executionStyle + sandboxSettingsStyle),
-        h(WorkspaceActions, { client, wide, onBack: navigation.back }),
-        h('button', { type: 'button', className: 'gb-schedule-shortcut', title: t('Scheduled messages'), 'aria-label': t('Scheduled messages'),
-          onClick: () => actions.openSettings('schedules') }, h(Icon, { name: 'clock', size: 17 }), wide ? t('Scheduled messages') : null),
+        h(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings('schedules'), onBack: navigation.back }),
       )
     },
   }

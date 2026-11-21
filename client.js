@@ -29904,7 +29904,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.8";
+var version = "0.2.0-rc.9";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -37789,6 +37789,7 @@ var glyphs = {
   stop: ["M7 7h10v10H7z"],
   terminal: ["m4 7 5 5-5 5m8 0h8"],
   monitor: ["M4 5h16v11H4zM12 16v4m-4 0h8"],
+  inbox: ["M4 13l3-8h10l3 8v6H4z", "M4 13h4l2 3h4l2-3h4"],
   task: ["M8 4h11v16H5V7", "m7 12 2 2 4-4"],
   clock: ["M12 7v5l3 2", "M21 12a9 9 0 11-18 0 9 9 0 0118 0Z"],
   sparkle: ["M10 4.5l1.7 4.3 4.3 1.7-4.3 1.7L10 16.5l-1.7-4.3L4 10.5l4.3-1.7Z", "M17.5 14v6M14.5 17h6"]
@@ -60950,16 +60951,17 @@ function WorkspaceInbox({ client }) {
   return (0, import_react95.createElement)(
     import_react95.Fragment,
     null,
-    (0, import_react95.createElement)("button", { type: "button", className: "gb-workspace-action", title, "aria-label": title, "aria-haspopup": "dialog", onClick: () => setOpen(true) }, (0, import_react95.createElement)(Icon, { name: "task", size: 16 })),
+    (0, import_react95.createElement)("button", { type: "button", className: "gb-workspace-action", title, "aria-label": title, "aria-haspopup": "dialog", onClick: () => setOpen(true) }, (0, import_react95.createElement)(Icon, { name: "inbox", size: 17 })),
     open && (0, import_react95.createElement)(Inbox, { client, close: () => setOpen(false) })
   );
 }
 
 // src/client/workspace-actions.css
-var workspace_actions_default = ".gb-workspace-actions {\n  display: flex;\n  align-items: center;\n  justify-content: flex-end;\n  gap: 4px;\n  margin: 10px 0 6px;\n  padding-block: 8px;\n  flex: none;\n  border-block: 1px solid var(--bt-line);\n}\n.gb-workspace-actions .gb-workspace-action {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex: none;\n  width: 34px;\n  height: 34px;\n  padding: 0;\n  border: 0;\n  border-radius: 7px;\n  background: transparent;\n  color: var(--bt-ink-2);\n  cursor: pointer;\n}\n.gb-workspace-actions .gb-workspace-action:hover { background: var(--bt-hover); color: var(--bt-ink); }\n.gb-workspace-action:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }\n.gb-workspace-actions[data-rail] { flex-direction: column; margin: 0; padding-block: 6px; }\n";
+var workspace_actions_default = ".gb-workspace-actions {\n  display: flex;\n  align-items: center;\n  gap: 4px;\n  flex: none;\n  padding-block: 4px 8px;\n  border-bottom: 1px solid var(--bt-line);\n}\n.gb-workspace-actions .gb-workspace-action {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex: none;\n  width: 34px;\n  height: 34px;\n  padding: 0;\n  border: 0;\n  border-radius: 8px;\n  background: transparent;\n  color: var(--bt-ink-2);\n  cursor: pointer;\n}\n.gb-workspace-actions .gb-workspace-action:hover { background: var(--bt-hover); color: var(--bt-ink); }\n.gb-workspace-action:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }\n.gb-workspace-actions .gb-schedule-shortcut {\n  background: var(--bt-hover);\n  color: var(--bt-ink);\n}\n.gb-workspace-actions .gb-schedule-shortcut:hover { background: var(--bt-active); }\n.gb-workspace-actions:not([data-rail]) .gb-schedule-shortcut {\n  flex: 1 1 auto;\n  min-width: 0;\n  width: auto;\n  justify-content: flex-start;\n  gap: 7px;\n  padding-inline: 9px;\n  font-family: inherit;\n  font-size: 13px;\n  font-weight: 500;\n}\n.gb-schedule-shortcut > span {\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.gb-workspace-actions[data-rail] {\n  flex-direction: column;\n  padding-block: 0 4px;\n  border-bottom: 0;\n}\n";
 
 // src/client/workspace-actions.js
-function WorkspaceActions({ wide, onBack, client }) {
+function WorkspaceActions({ wide, client, onSchedules, onBack }) {
+  const schedules = t("Scheduled messages");
   return (0, import_react96.createElement)(
     "nav",
     {
@@ -60968,6 +60970,14 @@ function WorkspaceActions({ wide, onBack, client }) {
       "data-rail": !wide || void 0
     },
     (0, import_react96.createElement)("style", null, workspace_actions_default),
+    (0, import_react96.createElement)("button", {
+      type: "button",
+      className: "gb-workspace-action gb-schedule-shortcut",
+      title: schedules,
+      "aria-label": schedules,
+      "aria-haspopup": "dialog",
+      onClick: onSchedules
+    }, (0, import_react96.createElement)(Icon, { name: "clock", size: 17 }), wide && (0, import_react96.createElement)("span", null, schedules)),
     (0, import_react96.createElement)(WorkspaceInbox, { client }),
     (0, import_react96.createElement)("button", {
       type: "button",
@@ -60975,7 +60985,7 @@ function WorkspaceActions({ wide, onBack, client }) {
       title: "返回 dsh",
       "aria-label": "返回 dsh",
       onClick: onBack
-    }, (0, import_react96.createElement)(Icon, { name: "back", size: 16 }))
+    }, (0, import_react96.createElement)(Icon, { name: "back", size: 17 }))
   );
 }
 
@@ -63557,9 +63567,6 @@ var controlsStyle = `
 .bt-side .bt-row[aria-current=page] { box-shadow: inset 3px 0 var(--bt-accent); }
 .bt-side:not(.bt-rail) .bt-row { border-radius: 8px; }
 
-.bt-side .gb-schedule-shortcut{display:flex;align-items:center;justify-content:flex-start;gap:8px;min-height:34px;margin:0 8px 4px;padding:0 10px;flex:none;border:0;border-radius:8px;background:transparent;color:var(--bt-ink-2);font:inherit;font-size:13px;cursor:pointer}
-.bt-side .gb-schedule-shortcut:hover{background:var(--bt-hover);color:var(--bt-ink)}
-.bt-rail .gb-schedule-shortcut{justify-content:center;align-self:center;width:34px;margin:0 0 4px;padding:0}
 .bt-msg[data-gb-command-report]{width:min(42rem,100%)}
 .bt-msg[data-gb-command-report]>.bt-msg-line{width:100%}
 .bt-msg[data-gb-command-report]>.bt-msg-line>.bt-bubble{width:100%;background:transparent;padding:0}
@@ -63882,14 +63889,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
         import_react107.Fragment,
         null,
         (0, import_react107.createElement)("style", null, controlsStyle + executionStyle + sandboxSettingsStyle),
-        (0, import_react107.createElement)(WorkspaceActions, { client, wide, onBack: navigation.back }),
-        (0, import_react107.createElement)("button", {
-          type: "button",
-          className: "gb-schedule-shortcut",
-          title: t("Scheduled messages"),
-          "aria-label": t("Scheduled messages"),
-          onClick: () => actions.openSettings("schedules")
-        }, (0, import_react107.createElement)(Icon, { name: "clock", size: 17 }), wide ? t("Scheduled messages") : null)
+        (0, import_react107.createElement)(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings("schedules"), onBack: navigation.back })
       );
     }
   };

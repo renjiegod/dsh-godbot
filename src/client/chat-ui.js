@@ -16,6 +16,7 @@ const glyphs = {
   stop: ['M7 7h10v10H7z'],
   terminal: ['m4 7 5 5-5 5m8 0h8'],
   monitor: ['M4 5h16v11H4zM12 16v4m-4 0h8'],
+  inbox: ['M4 13l3-8h10l3 8v6H4z', 'M4 13h4l2 3h4l2-3h4'],
   task: ['M8 4h11v16H5V7', 'm7 12 2 2 4-4'],
   clock: ['M12 7v5l3 2', 'M21 12a9 9 0 11-18 0 9 9 0 0118 0Z'],
   sparkle: ['M10 4.5l1.7 4.3 4.3 1.7-4.3 1.7L10 16.5l-1.7-4.3L4 10.5l4.3-1.7Z', 'M17.5 14v6M14.5 17h6'],
