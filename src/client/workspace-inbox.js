@@ -62,6 +62,6 @@ function Inbox({ client, close }) {
 export function WorkspaceInbox({ client }) {
   const [open, setOpen] = useState(false)
   return h(Fragment, null,
-    h('button', { type: 'button', className: 'gb-workspace-action', title, 'aria-label': title, 'aria-haspopup': 'dialog', onClick: () => setOpen(true) }, h(Icon, { name: 'task', size: 16 })),
+    h('button', { type: 'button', className: 'gb-workspace-action', title, 'aria-label': title, 'aria-haspopup': 'dialog', onClick: () => setOpen(true) }, h(Icon, { name: 'inbox', size: 17 })),
     open && h(Inbox, { client, close: () => setOpen(false) }))
 }

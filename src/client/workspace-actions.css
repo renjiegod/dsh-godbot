@@ -1,12 +1,10 @@
 .gb-workspace-actions {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 4px;
-  margin: 10px 0 6px;
-  padding-block: 8px;
   flex: none;
-  border-block: 1px solid var(--bt-line);
+  padding-block: 4px 8px;
+  border-bottom: 1px solid var(--bt-line);
 }
 .gb-workspace-actions .gb-workspace-action {
   display: inline-flex;
@@ -17,11 +15,37 @@
   height: 34px;
   padding: 0;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--bt-ink-2);
   cursor: pointer;
 }
 .gb-workspace-actions .gb-workspace-action:hover { background: var(--bt-hover); color: var(--bt-ink); }
 .gb-workspace-action:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }
-.gb-workspace-actions[data-rail] { flex-direction: column; margin: 0; padding-block: 6px; }
+.gb-workspace-actions .gb-schedule-shortcut {
+  background: var(--bt-hover);
+  color: var(--bt-ink);
+}
+.gb-workspace-actions .gb-schedule-shortcut:hover { background: var(--bt-active); }
+.gb-workspace-actions:not([data-rail]) .gb-schedule-shortcut {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  justify-content: flex-start;
+  gap: 7px;
+  padding-inline: 9px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+.gb-schedule-shortcut > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gb-workspace-actions[data-rail] {
+  flex-direction: column;
+  padding-block: 0 4px;
+  border-bottom: 0;
+}
