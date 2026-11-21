@@ -770,6 +770,7 @@ export const ES = {
   'Start a new session with {name}': 'Iniciar una nueva sesión con {name}',
   'New session · {time}': 'Nueva sesión · {time}',
   'Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.': 'Los mensajes anteriores siguen arriba. {name} empieza esta sesión solo con un resumen de traspaso; envía un mensaje para empezar.',
+  'The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.': 'La conversación anterior sigue en la lista de sesiones. {name} empieza de cero aquí; envía un mensaje para empezar.',
   Archive: 'Archivar',
   'Session actions': 'Acciones de sesión',
   'Plugins': 'Complementos',
