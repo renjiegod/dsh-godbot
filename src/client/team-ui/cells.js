@@ -18,6 +18,7 @@ import { AppAccessCall, ComputerCallRow, ComputerHandoffCall } from './computer.
 import { mdLabels, t } from './i18n.js'
 import { call } from './api.js'
 import { failureLabel } from './diagnostics.js'
+import { withoutEmptyParts } from './part-dividers.js'
 import { turnReasoning, thinkingStep, opensReply, stepActivity } from './turn-reasoning.js'
 import { parseReplies, relayRange, stackReplies } from '../../host/team-runtime/shared/group-replies.js'
 import { FOLD_AT, FOLD_HUGE, stripLongNote, useFold } from './fold.js'
@@ -522,12 +523,6 @@ function PartLine({ time, fresh = false }) {
     h('span', null, Number.isFinite(time) ? t('New session · {time}', { time: dayLabel(time) }) : t('New session')))
 }
 
-// An earlier part nobody talked in shows nothing but its line. Lines in a row keep the
-// last one, and the line where the current part begins (drawn after these) needs none
-// right above it.
-const withoutEmptyParts = items => items.filter((item, index) => item?.kind !== 'divider'
-  || (index + 1 < items.length && items[index + 1]?.kind !== 'divider'))
-
 const scrollParent = (node) => {
   for (let at = node.parentElement; at; at = at.parentElement) {
     if (/(auto|scroll)/.test(getComputedStyle(at).overflowY)) return at
@@ -548,8 +543,10 @@ function EarlierUser({ row, actions }) {
 
 // The earlier parts of a Bot's own chat, above its current part as one conversation.
 // Pages load from the host as the user scrolls up; a thin line marks where each
-// part begins, the last one where the current part begins.
-function EarlierParts({ sessionId, roster, actions }) {
+// part begins, the last one where the current part begins. `opening`: a part a New
+// session opened while the Bot was busy, with nothing carried over (parts.js
+// OPENING_PACKAGE); the conversation it left goes on in the session list.
+function EarlierParts({ sessionId, roster, actions, opening = false }) {
   const [view, setView] = useState({ pages: [], cursor: undefined, loading: true, failed: false, startedAt: null })
   const top = useRef(null)
   const busy = useRef(false)
@@ -617,10 +614,11 @@ function EarlierParts({ sessionId, roster, actions }) {
   }))
   const loaded = []
   for (const page of view.pages) loaded.push(...withBtwRows(actions.godbot.earlierReports(page.items, roster.byId[sessionId]), page.btw))
-  const items = withoutEmptyParts(loaded)
+  const complete = !view.loading && !view.failed && !view.cursor
+  const items = withoutEmptyParts(loaded, { complete })
   // The column's own opening time belongs to this part, not to the earlier messages
   // above it (styles.js leaves it out here); the oldest one gets its own time instead.
-  const first = !view.loading && !view.failed && !view.cursor && items[0]?.kind !== 'divider' ? items[0]?.time : undefined
+  const first = complete && items[0]?.kind !== 'divider' ? items[0]?.time : undefined
   // A New session nobody has talked in yet says what it is under its line.
   const bot = roster.byId[sessionId]
   const fresh = bot !== undefined && currentPart(bot) === sessionId && roster.newSessions?.[bot.id] === 'empty'
@@ -632,8 +630,10 @@ function EarlierParts({ sessionId, roster, actions }) {
     Number.isFinite(first) ? h('div', { className: 'bt-time-sep', role: 'separator' }, clockLabel(first)) : null,
     h(ChatRows, { items, sessionId, roster, actions, onBtwDelete: removeBtw }),
     h(PartLine, { time: view.startedAt, fresh }),
-    fresh ? h('p', { className: 'bt-part-fresh', role: 'note' },
-      t('Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.', { name: bot.name })) : null)
+    fresh ? h('p', { className: 'bt-part-fresh', role: 'note', 'data-opening': opening || undefined },
+      opening
+        ? t('The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.', { name: bot.name })
+        : t('Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.', { name: bot.name })) : null)
 }
 
 // A Bot chat's entries as the host lists them (the `earlier` and `chat` endpoints): the
@@ -753,7 +753,7 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
   function triggerBody() {
     if (source.kind === 'bot') {
       // A part opens with its handoff package, so the earlier parts go right above it.
-      if (source.handoff === true) return h(EarlierParts, { sessionId, roster, actions })
+      if (source.handoff === true) return h(EarlierParts, { sessionId, roster, actions, opening: source.opening === true })
       // Group turns belong to the group chat; the member's own chat stays one-to-one.
       if (source.role === 'kickoff' || source.role === 'room' || source.role === 'goal') return null
       // The secret card itself shows what the user did; the note to the Bot stays out.
