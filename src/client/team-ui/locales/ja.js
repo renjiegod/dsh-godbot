@@ -768,6 +768,7 @@ export const JA = {
   "Start a new session with {name}": "{name} と新しいセッションを開始",
   "New session · {time}": "新しいセッション · {time}",
   "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "これまでのメッセージは上に残っています。{name} は引き継ぎの要約だけを持ってこのセッションを始めます。メッセージを送って始めましょう。",
+  "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "これまでの会話はセッション一覧で続いています。{name} はここから新しく始めます。メッセージを送って始めましょう。",
   "Archive": "アーカイブ",
   "Session actions": "セッションの操作",
   "Plugins": "プラグイン",

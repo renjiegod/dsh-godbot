@@ -157,14 +157,16 @@ export function install(rt) {
       .map(sessionId => [sessionId, true])),
     // Per Bot, where a New session of its own chat stands: 'opening' while a fresh part
     // is on its way, 'empty' while nobody has talked in the current part, so a New
-    // session would add nothing. `emptyParts`: its earlier parts nobody talked in, which
-    // the session list leaves out.
+    // session would add nothing. `emptyParts`: its earlier parts nobody talked in, and
+    // the parts opened while it was busy that nobody talked in, which the session list
+    // leaves out.
     newSessions: Object.fromEntries(Object.values(state.bots).flatMap((bot) => {
       if (rt.openingChat?.(bot.id)) return [[bot.id, 'opening']]
       return rt.partEmpty?.(rt.chatOf(bot.id)) ? [[bot.id, 'empty']] : []
     })),
     emptyParts: Object.fromEntries(Object.values(state.bots).flatMap((bot) => {
-      const empty = (bot.segments ?? []).map(segment => segment.sessionId).filter(sessionId => rt.partEmpty?.(sessionId))
+      const parts = [...(bot.segments ?? []), ...(bot.openParts ?? [])].map(part => part?.sessionId)
+      const empty = parts.filter(sessionId => rt.partEmpty?.(sessionId))
       return empty.length > 0 ? [[bot.id, empty]] : []
     })),
     work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },

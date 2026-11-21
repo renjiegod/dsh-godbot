@@ -786,6 +786,7 @@ const ZH = {
   'Start a new session with {name}': '和 {name} 开启新会话',
   'New session · {time}': '新会话 · {time}',
   'Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.': '之前的对话留在上方。{name} 只带着一份交接摘要进入这个新会话，发条消息开始吧。',
+  'The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.': '之前的对话在会话列表里继续。{name} 在这里重新开始，发条消息开始吧。',
   Archive: '归档',
   'Session actions': '会话操作',
   Plugins: '插件',

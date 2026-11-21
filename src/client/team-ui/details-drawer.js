@@ -242,14 +242,16 @@ function GroupOverview({ room, roster, actions, usage, useWork, openSettings }) 
 // first. Every Bot's chat has parts, whether it answers with a Godbot model or a local
 // CLI. A running part opened from here is read-only until its turn ends: two sessions
 // running at once means two model calls. Earlier parts nobody talked in hold nothing to
-// go back to, so the list leaves them out.
+// go back to, so the list leaves them out, and so does a part opened while the Bot was
+// busy that nobody talked in, once another one is current.
 function BotSessions({ bot, part, run, useSessions, actions, running, roster }) {
   const runningOf = id => running?.[id] === true
+  const empty = new Set(roster.emptyParts?.[bot.id] ?? [])
   const open = (bot.openParts ?? []).map(entry => ({ id: entry.sessionId, open: true, running: runningOf(entry.sessionId) }))
+    .filter(entry => entry.running || !empty.has(entry.id))
   // Two sessions running at once means two model calls: shown only while a background
   // part really runs, above the list rather than as a quiet footnote.
   const backgroundRunning = open.some(entry => entry.running)
-  const empty = new Set(roster.emptyParts?.[bot.id] ?? [])
   const fresh = newSessionState(roster, bot, part) === 'empty'
   const entries = [
     { id: part, current: true, running: runningOf(part) },

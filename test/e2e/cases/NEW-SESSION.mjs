@@ -7,7 +7,8 @@ import { openBotChat, openFullTeam } from '../native-ui.mjs'
 // New session in a Bot's own chat: the labelled button in the chat's top bar, the
 // details panel and the sidebar menu each start one fresh part, the view stays on the
 // Bot, and a part nobody has talked in yet (a greeting, or a New session just made)
-// gets no second one on top.
+// gets no second one on top. While the Bot works, the part it leaves keeps running in
+// the background and the fresh one still opens as the Bot's own chat.
 export default async function newSession({ makeHost, candidate, note }) {
   const host = await makeHost()
   await host.install(candidate)
@@ -60,7 +61,8 @@ export default async function newSession({ makeHost, candidate, note }) {
   await waitState('empty', 'the fresh part reads as a new session')
   const line = page.locator('.bt-part-line[data-fresh]')
   await line.waitFor()
-  assert.match(await line.innerText(), /^新会话 · /u)
+  // The line gets its time once the earlier parts have loaded.
+  await until(async () => /^新会话 · /u.test(await line.innerText()), 'the fresh part\'s line says when it began')
   await page.locator('.bt-part-fresh').waitFor()
   await host.capture('new-session-fresh-part')
 
@@ -131,8 +133,108 @@ export default async function newSession({ makeHost, candidate, note }) {
   assert.equal(names[0], '新会话', 'the empty current session is named for what it is')
   assert.ok(names.slice(1).every(name => /^会话 \d+$/u.test(name)), 'earlier sessions are numbered, not all named after the Bot: ' + JSON.stringify(names))
   await host.capture('new-session-details-panel')
+
+  // While the Bot is working, a New session leaves the part it works in running in the
+  // background and opens one with nothing carried over. That part still opens with a turn
+  // of its own: DSH takes a Session no turn has started in for a blank conversation and
+  // swaps the Bot's message box for its workspace picker.
+  const holds = new Map()
+  const replies = host.model.reply
+  host.model.reply = async (body, call) => {
+    const last = JSON.stringify(body.messages.at(-1) ?? '')
+    for (const [text, held] of holds) {
+      if (!last.includes(text)) continue
+      await held
+      return 'Answer to ' + text
+    }
+    return replies(body, call)
+  }
+  const state = () => host.bot('state')
+  const threadNow = async () => {
+    const value = (await state()).bots.find(entry => entry.id === bot.id)
+    return { current: value.sessionId ?? value.id, earlier: value.parts ?? [], open: (value.openParts ?? []).map(part => part.sessionId) }
+  }
+  const busyNewSession = async (text) => {
+    let release
+    holds.set(text, new Promise(resolve => { release = resolve }))
+    const before = await threadNow()
+    await host.bot('send', { sessionId: bot.id, text })
+    await until(() => host.model.calls.some(call => JSON.stringify(call.body.messages.at(-1) ?? '').includes(text)), 'the Bot is working on ' + text)
+    await waitState('ready', 'the working part was talked in')
+    const clickedAt = Date.now()
+    await button.click()
+    const after = await until(async () => {
+      const now = await threadNow()
+      return now.current !== before.current ? now : undefined
+    }, 'a New session while the Bot works opened a fresh part')
+    return { release, left: before.current, after, clickedAt }
+  }
+
+  const busyText = 'Busy question ' + tag
+  const busy = await busyNewSession(busyText)
+  assert.deepEqual(busy.after.earlier, [], 'the fresh part begins a thread of its own')
+  assert.deepEqual(busy.after.open, [busy.left], 'the part it left goes on in the background')
+  assert.equal((await state()).partsRunning?.[busy.left], true, 'the part it left is still working')
+  await waitState('empty', 'the busy-time part reads as a new session')
+  const busyHint = page.locator('.bt-part-fresh[data-opening]')
+  await busyHint.waitFor()
+  assert.match(await busyHint.innerText(), /会话列表/u, 'the hint says where the earlier conversation went')
+  assert.equal(await page.locator('[class*="composerHero"]').count(), 0, 'the Bot keeps its own message box, not DSH\'s workspace picker')
+  const top = await host.bot('earlier', { sessionId: busy.after.current })
+  assert.ok(top.startedAt >= busy.clickedAt - 5000, 'the new thread begins when it was made, not with the Bot: ' + top.startedAt)
+  // The opening turn is answered with the fixed line. Godbot's own requests (a memory
+  // review of the earlier messages, say) may name the part too; a turn carries the
+  // Bot's tools.
+  await until(async () => (await state()).partsRunning?.[busy.after.current] !== true, 'the opening turn ended')
+  const openingTurns = host.model.calls.filter(call => call.sessionId === busy.after.current && (call.body.tools ?? []).length > 0)
+  assert.equal(openingTurns.length, 0, 'opening the part asked the model nothing')
+  const opened = await host.bot('chat', { botId: bot.id })
+  assert.equal(opened.sessionId, busy.after.current)
+  assert.ok(!opened.items.some(item => item.kind === 'bot'), 'the opening shows no reply: ' + JSON.stringify(opened.items))
+  await openPanel()
+  await until(async () => (await rows.count()) === 2, 'the panel lists the new session and the one still running')
+  await page.locator('.bt-agent-sessions-warn').waitFor()
+  await host.capture('new-session-busy-fresh-part')
+
+  // The part it left answers in the background. Going back to it leaves the busy-time
+  // part nobody talked in out of the list.
+  busy.release()
+  await until(async () => (await state()).partsRunning?.[busy.left] !== true, 'the background part finished its answer')
+  await rows.nth(1).click()
+  await until(async () => (await threadNow()).current === busy.left, 'the background part became current again')
+  await until(async () => (await state()).emptyParts?.[bot.id]?.includes(busy.after.current), 'the host counts the busy-time part as empty')
+  // The part it went back to and its four earlier ones, all talked in; the busy-time part
+  // would make a sixth row.
+  let listed
+  await until(async () => {
+    listed = await page.locator('.bt-agent-session').allInnerTexts()
+    return listed.length === 5
+  }, 'the list leaves the empty busy-time part out').catch(async (error) => {
+    const now = await state()
+    const value = now.bots.find(entry => entry.id === bot.id)
+    throw new Error(error.message + ' ' + JSON.stringify({ listed, panel: await panelButton.isVisible(), current: value.sessionId, parts: value.parts, open: value.openParts, empty: now.emptyParts?.[bot.id], running: now.partsRunning }))
+  })
+  await page.getByText('Answer to ' + busyText).first().waitFor()
+
+  // A busy-time part answers like any other once the user talks in it, with nothing from
+  // the part it left.
+  const againText = 'Busy again ' + tag
+  const again = await busyNewSession(againText)
+  await waitState('empty', 'the second busy-time part reads as a new session')
+  const beforeTalk = host.model.calls.length
+  await talk('After the busy one ' + tag)
+  // The part's own turns; a memory review that names the part carries no tools.
+  const freshCalls = host.model.calls.slice(beforeTalk)
+    .filter(call => call.sessionId === again.after.current && (call.body.tools ?? []).length > 0)
+    .map(call => JSON.stringify(call.body.messages))
+  assert.ok(freshCalls.length > 0, 'the busy-time part asked the model')
+  assert.ok(freshCalls.every(text => (text.match(/\[Handoff · new conversation\]/gu) ?? []).length === 1), 'each request opens with the one opening')
+  assert.ok(freshCalls.every(text => !text.includes(againText) && !text.includes(busyText)), 'nothing from the part it left came over')
+  again.release()
+  await until(async () => (await state()).partsRunning?.[again.left] !== true, 'the second background part finished its answer')
+
   // A New session opens at once: none of them asked the model for a handoff note.
   const noteAsks = host.model.calls.filter(call => JSON.stringify(call.body).includes('Your conversation is long')).length
   assert.equal(noteAsks, 0, 'no New session asked the model for a handoff note')
-  note('new-session', { botId: bot.id, parts: [first, second, third, fourth, fifth].map(parts => parts.current), handoffsPerRequest: handoffs })
+  note('new-session', { botId: bot.id, parts: [first, second, third, fourth, fifth].map(parts => parts.current), handoffsPerRequest: handoffs, busyParts: [busy.after.current, again.after.current] })
 }
