@@ -13801,6 +13801,8 @@ var ZH = {
   "{n} d": "{n} 天",
   // Plugin updates
   "Godbot {version} is available": "Godbot {version} 可以更新",
+  "Godbot {version} is ready to install": "Godbot {version} 可以安装",
+  "Godbot update failed": "Godbot 更新失败",
   "Updating Godbot…": "正在更新 Godbot…",
   "Godbot {version} is installed. Restart DSH to use it.": "Godbot {version} 已安装，重启 DSH 后生效",
   "Godbot {version} is installed.": "Godbot {version} 已安装。",
@@ -13813,6 +13815,7 @@ var ZH = {
   "What's new": "更新说明",
   "Updating…": "正在更新…",
   "DSH {version} is available": "DSH {version} 可以更新",
+  "DSH update failed": "DSH 更新失败",
   "Updating DSH…": "正在更新 DSH…",
   "DSH update": "DSH 更新",
   "DSH {version}": "DSH {version}",
@@ -29901,7 +29904,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.7";
+var version = "0.2.0-rc.8";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -31147,11 +31150,11 @@ function TeamSidebar(props) {
   (0, import_react39.useEffect)(() => {
     if (mode !== "drawer") return void 0;
     const onDown = (event) => {
-      if (event.target instanceof Element && event.target.closest(".bt-leftcol")) return;
+      if (event.target instanceof Element && event.target.closest(".bt-leftcol, .bt-update-pop")) return;
       actions.setLeftDrawer?.(false);
     };
     const onKey = (event) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented || document.querySelector(".bt-update-pop:not([data-leaving])")) return;
       event.stopPropagation();
       actions.setLeftDrawer?.(false);
     };
@@ -31200,7 +31203,6 @@ function TeamSidebar(props) {
     "div",
     { className: "bt-side-top" },
     (0, import_react39.createElement)("span", { className: "bt-brand" }, (0, import_react39.createElement)(BrandMark), (0, import_react39.createElement)(BrandName)),
-    (0, import_react39.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
     (0, import_react39.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New section"), title: t("New section"), onClick: createNewSection }, (0, import_react39.createElement)(FolderIcon)),
     (0, import_react39.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("Search"), title: t("Search"), onClick: () => actions.openPalette() }, (0, import_react39.createElement)(SearchIcon)),
     (0, import_react39.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react39.createElement)(PlusIcon)),
@@ -31208,7 +31210,7 @@ function TeamSidebar(props) {
   ) : (0, import_react39.createElement)(
     "div",
     { className: "bt-rail-top" },
-    (0, import_react39.createElement)(UpdateButton, { useUpdate: props.useUpdate, actions }),
+    (0, import_react39.createElement)(UpdateNotice, { useUpdate: props.useUpdate, actions }),
     (0, import_react39.createElement)("button", { type: "button", className: "bt-round bt-side-collapse", "aria-label": t("Collapse sidebar"), title: t("Collapse sidebar"), onClick: onToggle }, (0, import_react39.createElement)(SidebarIcon)),
     main ? (0, import_react39.createElement)(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : bootFailed ? (0, import_react39.createElement)(BootFailed, { actions }) : (0, import_react39.createElement)("div", { className: "bt-hint" }, t("Setting up your Main Bot…")),
     (0, import_react39.createElement)("span", { className: "bt-rail-sep", "aria-hidden": true })
@@ -31224,6 +31226,7 @@ function TeamSidebar(props) {
     "div",
     { className: wideContent ? "bt-side" : "bt-side bt-rail", onKeyDown: typeToSearch },
     top,
+    wideContent ? (0, import_react39.createElement)(UpdateNotice, { wide: true, useUpdate: props.useUpdate, actions }) : null,
     actions.godbot.navigation(wideContent, roster, actions),
     wideContent && roster.readOnly ? (0, import_react39.createElement)("div", { className: "bt-hint bt-read-only", role: "status" }, hostText(roster.readOnly)) : null,
     (0, import_react39.createElement)(
@@ -31271,7 +31274,7 @@ function TeamSidebar(props) {
     shown === "hidden" ? null : (0, import_react39.createElement)(LeftColumn, { mode: shown, width: ourWidth, onGrip: startDrag, leaving, animateOnMount: mounted.current }, content)
   );
 }
-function UpdateButton({ useUpdate, actions }) {
+function UpdateNotice({ wide, useUpdate, actions }) {
   const update = useUpdate((value) => value);
   const [open, setOpen] = (0, import_react39.useState)(false);
   const [shown, leaving] = useLinger(open, 120);
@@ -31279,6 +31282,9 @@ function UpdateButton({ useUpdate, actions }) {
   const [error, setError] = (0, import_react39.useState)("");
   const [dshError, setDshError] = (0, import_react39.useState)("");
   const button3 = (0, import_react39.useRef)(null);
+  const focusDetails = (0, import_react39.useCallback)((node) => {
+    node?.focus({ preventScroll: true });
+  }, []);
   (0, import_react39.useEffect)(() => {
     if (!open) return void 0;
     const onDown = (event) => {
@@ -31286,11 +31292,11 @@ function UpdateButton({ useUpdate, actions }) {
       setOpen(false);
     };
     const onKey = (event) => {
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        setOpen(false);
-        button3.current?.focus();
-      }
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      button3.current?.focus();
     };
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey, true);
@@ -31322,26 +31328,42 @@ function UpdateButton({ useUpdate, actions }) {
     void actions.installDshUpdate().catch((failure) => setDshError(hostText(failure?.message ?? String(failure))));
   };
   const label = phase === "installing" ? t("Updating Godbot…") : dshPhase === "installing" ? t("Updating DSH…") : phase === "installed" ? t("Godbot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is installed.", { version: update.installed ?? update.latest }) : dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : pending ?? (update?.available ? t("Godbot {version} is available", { version: update.latest }) : t("DSH {version} is available", { version: dsh?.verified }));
+  const summary = phase === "failed" || error ? t("Godbot update failed") : dshPhase === "failed" || dshError ? t("DSH update failed") : phase === "ready" ? t("Godbot {version} is ready to install", { version: update.latest }) : label;
   const message = error || (phase === "failed" ? update.error : "");
   const dshMessage = dshError || (dshPhase === "failed" ? dsh?.error : "");
   const dshText = dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : dsh?.available === false && dsh?.blockedBy ? t("Update Godbot {version} first.", { version: dsh.blockedBy }) : t("You have {version}.", { version: dsh?.current });
   return (0, import_react39.createElement)(
     import_react39.Fragment,
     null,
-    (0, import_react39.createElement)("button", {
-      ref: button3,
-      type: "button",
-      className: "bt-round bt-update",
-      "data-phase": cloudPhase,
-      "aria-label": label,
-      title: label,
-      "aria-haspopup": "dialog",
-      "aria-expanded": open,
-      onClick: toggle
-    }, (0, import_react39.createElement)(CloudDownloadIcon, { done: phase === "installed" || phase === "updated" }), phase === "failed" || dshPhase === "failed" ? (0, import_react39.createElement)("span", { className: "bt-update-dot", "aria-hidden": true }) : null),
+    (0, import_react39.createElement)(
+      "button",
+      {
+        ref: button3,
+        type: "button",
+        className: wide ? "bt-update bt-update-notice" : "bt-round bt-update",
+        "data-phase": cloudPhase,
+        "aria-label": wide ? void 0 : summary,
+        title: summary,
+        "aria-haspopup": "dialog",
+        "aria-expanded": open,
+        onClick: toggle
+      },
+      (0, import_react39.createElement)(CloudDownloadIcon, { done: phase === "installed" || phase === "updated" }),
+      wide ? (0, import_react39.createElement)("span", { className: "bt-update-summary" }, summary) : null,
+      wide ? (0, import_react39.createElement)("span", { className: "bt-update-chevron", "aria-hidden": true }, (0, import_react39.createElement)(ChevronRightIcon)) : null,
+      !wide && (phase === "failed" || dshPhase === "failed" || error || dshError) ? (0, import_react39.createElement)("span", { className: "bt-update-dot", "aria-hidden": true }) : null
+    ),
     shown && box ? (0, import_react_dom6.createPortal)((0, import_react39.createElement)(
       "div",
-      { className: "bt-update-pop", role: "dialog", "aria-label": update?.available || phase !== "idle" ? t("Godbot update") : t("DSH update"), style: box, "data-leaving": leaving || void 0 },
+      {
+        ref: focusDetails,
+        className: "bt-update-pop",
+        role: "dialog",
+        tabIndex: -1,
+        "aria-label": update?.available || phase !== "idle" ? t("Godbot update") : t("DSH update"),
+        style: box,
+        "data-leaving": leaving || void 0
+      },
       update?.available || phase !== "idle" ? (0, import_react39.createElement)(
         import_react39.Fragment,
         null,
@@ -31651,16 +31673,22 @@ var SIDEBAR_CSS = `
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"]{grid-column:3}
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"] button[class*="_trigger"] [class*="_label"]{display:none!important}
 
-/* The update cloud springs in when a newer Godbot shows up; its arrow drops in a
-   loop while the release downloads and while the install runs. */
-.bt-round.bt-update{position:relative;color:var(--bt-accent,#4D6BFE);animation:bt-update-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
-.bt-round.bt-update svg{width:17px;height:17px}
-.bt-round.bt-update[data-phase=installed]{color:var(--bt-ink-2)}
-@keyframes bt-update-in{from{opacity:0;transform:scale(.6);filter:var(--bt-fx-blur-4,blur(4px))}}
+/* Keep the notice above the scrollable list and highlight its rail counterpart. */
+.bt-update{position:relative;animation:bt-update-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+.bt-update>svg{flex:none;width:18px;height:18px;color:var(--bt-accent)}
+.bt-update-notice{display:flex;flex:none;align-items:center;gap:9px;min-height:44px;margin:8px 0 6px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--bt-accent) 30%,transparent);border-radius:10px;background:var(--bt-accent-soft);color:var(--bt-ink);font:600 13px/18px var(--bt-font);text-align:left;cursor:pointer;transition:background-color .12s ease}
+.bt-update-summary{flex:1;min-width:0;overflow-wrap:anywhere}
+.bt-update-chevron{display:inline-flex;flex:none;color:var(--bt-ink-2)}
+.bt-update-chevron svg{width:14px;height:14px}
+.bt-update-notice:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
+.bt-round.bt-update{background:var(--bt-accent-soft);border-color:color-mix(in srgb,var(--bt-accent) 30%,transparent)}
+.bt-update-notice:is(:hover,[aria-expanded=true]),.bt-round.bt-update:is(:hover,[aria-expanded=true]){background:color-mix(in srgb,var(--bt-accent) 24%,transparent)}
+.bt-update:is([data-phase=installed],[data-phase=updated])>svg{color:var(--bt-ink-2)}
+@keyframes bt-update-in{from{opacity:0;transform:translateY(-3px)}}
 .bt-update[data-phase=installing] .bt-cloud-arrow,.bt-update[data-phase=downloading] .bt-cloud-arrow{animation:bt-cloud-drop 1.1s cubic-bezier(.45,0,.55,1) infinite}
 @keyframes bt-cloud-drop{0%{transform:translateY(-3px);opacity:0}35%{opacity:1}70%{transform:translateY(1px);opacity:1}100%{transform:translateY(2px);opacity:0}}
 .bt-update-dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#E5484D;box-shadow:0 0 0 1.5px var(--bt-sidebar)}
-.bt-update-pop{position:fixed;z-index:60;width:280px;padding:14px 14px 12px;border-radius:16px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);color:var(--bt-ink);box-sizing:border-box;transform-origin:top left;font-family:var(--bt-font);animation:bt-update-pop ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+.bt-update-pop{position:fixed;z-index:60;width:min(280px,calc(100vw - 16px));padding:14px 14px 12px;border-radius:16px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);color:var(--bt-ink);box-sizing:border-box;transform-origin:top left;font-family:var(--bt-font);animation:bt-update-pop ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-update-pop[data-leaving]{animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards;pointer-events:none}
 @keyframes bt-update-pop{from{opacity:0;transform:scale(.96);filter:var(--bt-fx-blur-4,blur(4px))}}
 .bt-update-title{font-size:14px;line-height:20px;font-weight:600}
@@ -31674,7 +31702,7 @@ var SIDEBAR_CSS = `
 .bt-update-go:active:not(:disabled){transform:scale(.96)}
 .bt-update-go:disabled{opacity:.6;cursor:default}
 .bt-update-dsh:not(:first-child){margin-top:12px;padding-top:12px;border-top:.5px solid var(--bt-line-2)}
-@media (prefers-reduced-motion:reduce){.bt-round.bt-update,.bt-update-pop,.bt-update .bt-cloud-arrow{animation:none}}
+@media (prefers-reduced-motion:reduce){.bt-update,.bt-update-pop,.bt-update .bt-cloud-arrow{animation:none}}
 
 /* The DSH Agent row and its expanding Session list. The avatar is the
    harness's own mark, so the row reads as "plain dsh" next to the Bot marks. */
