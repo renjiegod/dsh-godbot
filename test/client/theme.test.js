@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import test from 'node:test'
 import { darkTokens, lightTokens, themeStyle, workspaceTheme } from '../../src/client/theme.js'
 import { styles } from '../../src/client/styles.js'
 import { switchStyle } from '../../src/client/workspace-switch-style.js'
 
 const controlsStyle = readFileSync(new URL('../../src/client/workspace-controls.css', import.meta.url), 'utf8')
+const runtimeStyle = readFileSync(new URL('../../src/client/workspace-runtime.css', import.meta.url), 'utf8')
+const entrySource = readFileSync(new URL('../../src/client/index.js', import.meta.url), 'utf8')
 
 function luminance(hex) {
   const channels = hex.slice(1).match(/../g).map(pair => parseInt(pair, 16) / 255)
@@ -29,10 +31,12 @@ test('both workspace palettes preserve readable control labels and conversation 
 })
 
 test('the workspace sheets read the shared palette instead of a fixed dark scheme', () => {
-  assert.match(themeStyle, /body\[data-ds-dark-theme\] \.gb-root\{/)
-  assert.ok(styles.startsWith(themeStyle))
+  assert.match(themeStyle, /body\[data-ds-dark-theme\] :is\(\.gb-root,\.gb-theme\)\{/)
+  // Installed once for the plugin, so surfaces DSH mounts outside .gb-root share it.
+  assert.match(entrySource, /installStyles\(themeStyle \+/)
+  assert.doesNotMatch(styles, /--bt-ink:/)
   assert.doesNotMatch(styles, /color-scheme:\s*dark/)
-  for (const sheet of [styles.slice(themeStyle.length), controlsStyle, switchStyle]) {
+  for (const sheet of [styles, controlsStyle, switchStyle, runtimeStyle]) {
     const used = new Set([...sheet.matchAll(/var\(--bt-([a-z0-9-]+)/g)].map((m) => m[1]))
     for (const name of used) assert.ok(name in lightTokens, `--bt-${name} is declared for 原生 Agent`)
   }
@@ -55,4 +59,14 @@ test('base control rules have zero specificity so component rules win in every s
     }
     assert.match(selector, /:not\(\.gb-terminal-panel \*\)/, selector)
   }
+})
+
+test('every Godbot alert carries a styled class, including those shown in the Bot workspace', () => {
+  const dir = new URL('../../src/client/', import.meta.url)
+  for (const name of readdirSync(dir).filter(file => file.endsWith('.js'))) {
+    const source = readFileSync(new URL(name, dir), 'utf8')
+    for (const [props] of source.matchAll(/\{[^{}]*role: ?'alert'[^{}]*\}/g))
+      assert.match(props, /className: ?'[^']+'/, name + ': ' + props)
+  }
+  assert.match(controlsStyle, /^\.gb-error \{/m)
 })

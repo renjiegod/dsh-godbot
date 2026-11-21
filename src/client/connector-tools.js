@@ -23,7 +23,7 @@ export function ConnectorToolsPanel({ client, bot, sessionId }) {
   }, [client, bot.id, sessionId, open])
   return h('details', { className: 'bt-drawer-model', onToggle: event => setOpen(event.currentTarget.open) },
     h('summary', { className: 'bt-section-title' }, '连接器工具'),
-    error && h('p', { role: 'alert' }, error),
+    error && h('p', { role: 'alert', className: 'gb-error' }, error),
     open && !view && !error && h('p', { role: 'status' }, '正在读取工具目录…'),
     view && h('div', null,
       h('p', null, '后端 ', view.route || '等待选择模型'),

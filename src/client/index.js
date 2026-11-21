@@ -4,6 +4,8 @@ import { Workbench } from './workbench.js'
 import controlsCss from './workspace-controls.css'
 import modalCss from './modal.css'
 import inboxCss from './workspace-inbox.css'
+import runtimeCss from './workspace-runtime.css'
+import { themeStyle } from './theme.js'
 import { createClient } from './model.js'
 import { mountTeamSurface } from './team-surface.js'
 import { connectNavigation, panelId, sidebarOutlet } from './navigation.js'
@@ -26,7 +28,7 @@ function icon({ size = 18 }) {
 export function apply(ctx) {
   ctx.effect(() => installSidebarLoadingStyle(document), 'Godbot sidebar loading style')
   ctx.effect(() => {
-    const style = installStyles(controlsCss + modalCss + inboxCss, 'workspace-controls')
+    const style = installStyles(themeStyle + controlsCss + modalCss + inboxCss + runtimeCss, 'workspace-controls')
     return () => style.remove()
   }, 'Godbot controls and dialogs')
   const client = createClient(ctx.connection)

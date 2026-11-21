@@ -206,3 +206,28 @@
 .gb-question legend {
   font-weight: 500;
 }
+
+/* A failure note inside a Godbot panel: the same note the Godbot dialogs show
+   (.gb-modal-note[role=alert]). It also renders in the Bot workspace, outside
+   .gb-root and .gb-modal, so it carries its own class. */
+.gb-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--bt-line);
+  border-radius: 8px;
+  background: var(--bt-danger-soft);
+  color: var(--bt-danger);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+span.gb-error {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: none;
+}

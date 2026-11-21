@@ -1,8 +1,8 @@
 import { sandboxSettingsStyle } from './bot-settings-style.js'
-import { themeStyle } from './theme.js'
 
+// The palette itself (themeStyle) is installed globally by index.js.
 export const styles =
-  themeStyle + sandboxSettingsStyle +
+  sandboxSettingsStyle +
   `
 /* Our own header has navigation controls in dsh's web drawer. The desktop window
    still reserves its native titlebar and traffic-light area. */

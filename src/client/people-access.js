@@ -34,7 +34,7 @@ export function PeopleAccess({ team, client }) {
     else setInvitation('')
   } },h('summary',null,'多人共享与审计'),
   h('p',null,'按人选择可见会话。共享后，该会话已有的消息、任务证据和附件也可读取。'),
-  error && h('p',{role:'alert'},error),
+  error && h('p',{role:'alert',className:'gb-error'},error),
   h('form',{className:'gb-form',onSubmit:e => {
     e.preventDefault()
     const name = new FormData(e.currentTarget).get('name')

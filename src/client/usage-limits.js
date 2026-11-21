@@ -60,7 +60,7 @@ export function UsageLimits({ client, bots, models }) {
       ),
       h('button', { disabled: busy }, '查看用量与设置'),
     ),
-    error && h('p', { role: 'alert' }, error),
+    error && h('p', { role: 'alert', className: 'gb-error' }, error),
     s &&
       h(
         'form',

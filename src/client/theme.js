@@ -83,7 +83,9 @@ const aliases = `
   --gb-panel:var(--bt-card);
 `
 
+// Installed for the whole plugin lifetime. .gb-theme gives the same palette to
+// Godbot surfaces that DSH mounts outside a workspace, such as its overlay seat.
 export const themeStyle = `
-.gb-root{${declare(lightTokens)}${aliases}}
-body[data-ds-dark-theme] .gb-root{${declare(darkTokens)}}
+:is(.gb-root,.gb-theme){${declare(lightTokens)}${aliases}}
+body[data-ds-dark-theme] :is(.gb-root,.gb-theme){${declare(darkTokens)}}
 `
