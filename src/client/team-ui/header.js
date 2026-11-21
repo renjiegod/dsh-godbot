@@ -157,22 +157,28 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
     goalShown && view?.number !== undefined ? h('span', { className: 'bt-pill-count' }, `${view.number}/${view.count}`) : null,
     h(MemoryNotice, { shown: memoryNotice }),
     h('span', { className: 'bt-pill-go', 'aria-hidden': true }, h(GoArrow)))
+  const search = room !== undefined && !away
+    ? h('button', {
+      type: 'button', className: 'bt-icon-btn bt-head-search', 'aria-label': t('Search this group'), title: t('Search this group'),
+      onClick: () => actions.openGroupSearch(room.id),
+    }, h(SearchIcon))
+    : null
+  // Godbot: who this is, its model and the conversation tools share one bar at the
+  // top-right, so the transcript's leading edge stays clear. A goal keeps its island.
   return h('div', { className: 'bt-head' },
-    showGoal ? h(GoalIsland, { room, goal, view, open: goalOpen, composing: goalCompose, roomWork, roster, actions, pill })
-      : !away && bot && currentPart(bot) === sessionId
-        ? h('div', { className: 'gb-chat-heading' }, pill, h(BotHeaderModel, { key: bot.appliedModel ?? bot.model, bot, roster, actions, sessionId }))
-        : pill,
-    !away && h('div', { className: 'gb-chat-tools' },
-      actions.godbot.browserButton(bot, sessionId, roster),
-      actions.godbot.executionButton(bot, sessionId, roster, actions),
-      actions.godbot.nativeButton(bot, sessionId, roster, actions)),
+    showGoal
+      ? h(Fragment, null, h(GoalIsland, { room, goal, view, open: goalOpen, composing: goalCompose, roomWork, roster, actions, pill }), search)
+      : h('div', { className: 'gb-chat-bar' },
+        h('div', { className: 'gb-chat-heading' }, pill,
+          !away && bot && currentPart(bot) === sessionId
+            ? h(BotHeaderModel, { key: bot.appliedModel ?? bot.model, bot, roster, actions, sessionId })
+            : null),
+        !away && h('div', { className: 'gb-chat-tools' },
+          search,
+          actions.godbot.browserButton(bot, sessionId, roster),
+          actions.godbot.executionButton(bot, sessionId, roster, actions),
+          actions.godbot.nativeButton(bot, sessionId, roster, actions))),
     h('span', { className: 'bt-sr', role: 'status' }, memoryNotice ? t('Memory updated') : ''),
-    room !== undefined && !away
-      ? h('button', {
-        type: 'button', className: 'bt-icon-btn bt-head-search', 'aria-label': t('Search this group'), title: t('Search this group'),
-        onClick: () => actions.openGroupSearch(room.id),
-      }, h(SearchIcon))
-      : null,
     h(NewMessagePills, { key: sessionId, sessionId, useSessions, useUi, useTurnClock }),
     h(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions }))
 }

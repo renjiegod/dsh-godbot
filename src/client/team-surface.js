@@ -67,111 +67,139 @@ const controlsStyle = `
 .bt-msg[data-gb-command-report]{width:min(42rem,100%)}
 .bt-msg[data-gb-command-report]>.bt-msg-line{width:100%}
 .bt-msg[data-gb-command-report]>.bt-msg-line>.bt-bubble{width:100%;background:transparent;padding:0}
-.bt-head:has(>.gb-chat-heading) {
-  justify-content: flex-start;
-  gap: 8px;
+.bt-head:has(> .gb-chat-bar) {
+  justify-content: flex-end;
   min-width: 0;
-  padding-inline: 8px;
+  padding-inline: 12px;
   box-sizing: border-box;
+  container-type: inline-size;
+}
+/* A phone-width column keeps the avatar, the model and the tools; a name cut
+   to a letter or two says less than the avatar does. */
+@container (max-width: 480px) {
+  .gb-chat-heading:has(> .gb-bot-model) > .bt-pill { flex: none; padding-inline: 4px; }
+  .gb-chat-heading:has(> .gb-bot-model) > .bt-pill > .bt-pill-name { display: none; }
+}
+/* One floating glass bar at the top-right: the conversation (name, then the
+   Bot's model) and its tools, split by a hairline. Segments are flat inside it. */
+.gb-chat-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: min(100%, 46rem);
+  height: 40px;
+  padding: 3px;
+  box-sizing: border-box;
+  border: 0.5px solid var(--bt-glass-rim);
+  border-radius: 12px;
+  background: var(--bt-glass-bg);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: var(--bt-glass-shadow);
+  pointer-events: auto;
 }
 .gb-chat-heading {
   display: inline-flex;
-  align-items: stretch;
+  align-items: center;
+  flex: 0 1 auto;
+  gap: 2px;
   min-width: 0;
-  max-width: min(100%, 32rem);
-  height: 40px;
-  box-sizing: border-box;
-  border: 1px solid var(--bt-line);
-  border-radius: 8px;
-  background: var(--bt-card);
-  margin-inline-end: auto;
+  height: 100%;
 }
 .gb-chat-heading > .bt-pill {
-  min-width: 0;
+  /* In a narrow bar the name yields first, keeping its avatar and the model. */
+  flex: 0 2 auto;
+  min-width: 34px;
   max-width: none;
   height: 100%;
-  padding-inline: 7.5px 12px;
+  gap: 7px;
+  padding: 0 10px 0 4px;
   border: 0;
+  border-radius: 9px;
   background: transparent;
   box-shadow: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-.gb-chat-heading:has(>.gb-bot-model) > .bt-pill {
-  flex: 0 1 auto;
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
-}
-.gb-chat-heading:has(>.gb-bot-model) > .bt-pill > .bt-pill-go { display: none; }
+.gb-chat-heading:has(> .gb-bot-model) > .bt-pill > .bt-pill-go { display: none; }
 .gb-chat-heading > .bt-pill:active { transform: none; }
 .gb-bot-model {
-  /* Give short names their intrinsic width on desktop. In a narrow header the
-     conversation name yields first, leaving its avatar and the model control. */
-  flex: 0 0 auto;
-  max-width: calc(100% - 48px);
+  flex: 0 1 auto;
   position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 0 8px;
+  max-width: 16rem;
+  height: 100%;
+  padding: 0 8px 0 10px;
   border: 0;
-  border-start-end-radius: 7px;
-  border-end-end-radius: 7px;
+  border-radius: 9px;
   background: transparent;
   color: var(--bt-ink);
   font: inherit;
   text-align: start;
   pointer-events: auto;
 }
-.gb-bot-model::before {
+.gb-bot-model::before,
+.gb-chat-heading + .gb-chat-tools:not(:empty)::before {
   content: '';
-  position: absolute;
-  inset-block: 10px;
-  inset-inline-start: 0;
+  flex: none;
   width: 1px;
+  height: 18px;
   background: var(--bt-line-2);
 }
+.gb-bot-model::before {
+  position: absolute;
+  inset-inline-start: -1px;
+  inset-block-start: 8px;
+}
+.gb-chat-heading + .gb-chat-tools:not(:empty)::before { margin-inline: 3px 1px; }
 .gb-chat-heading > .bt-pill:hover,
+.gb-chat-heading > .bt-pill[aria-expanded=true],
 button.gb-bot-model:hover { background: var(--bt-hover); }
 button.gb-bot-model { cursor: pointer; }
 .gb-chat-heading > .bt-pill:focus-visible,
-button.gb-bot-model:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: -2px; }
+button.gb-bot-model:focus-visible,
+.gb-chat-tools > .bt-icon-btn:focus-visible,
+.gb-chat-tools .gb-native-button:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: -2px; }
 .gb-bot-model-copy { display: grid; min-width: 0; }
 .gb-bot-model-name, .gb-bot-model-effort { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gb-bot-model-name { font-size: 12px; font-weight: 500; line-height: 16px; }
 .gb-bot-model-effort { color: var(--bt-ink-2); font-size: 11px; line-height: 13px; }
-.gb-chat-tools { display: inline-flex; align-items: center; flex: none; gap: 4px; }
+.gb-chat-tools { display: inline-flex; align-items: center; flex: none; gap: 2px; height: 100%; }
 .gb-chat-tools:empty { display: none; }
 .gb-chat-tools > .bt-icon-btn, .gb-chat-tools .gb-native-button {
   position: relative;
-  width: 34px;
-  height: 34px;
-  margin: 0;
-  border: 1px solid var(--bt-line);
-  border-radius: 8px;
-  background: var(--bt-card);
-  pointer-events: auto;
-}
-.gb-chat-tools .gb-native-button {
   display: inline-grid;
   place-items: center;
+  width: 32px;
+  height: 32px;
+  margin: 0;
   padding: 0;
-  color: var(--bt-ink);
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--bt-ink-2);
   cursor: pointer;
+  pointer-events: auto;
 }
+.gb-chat-tools > .bt-icon-btn svg, .gb-chat-tools .gb-native-button svg { width: 17px; height: 17px; }
 .gb-chat-tools .bt-pmenu-pop { pointer-events: auto; }
-.gb-chat-tools > .bt-icon-btn:hover, .gb-chat-tools .gb-native-button:hover { background: var(--bt-hover); }
+.gb-chat-tools > .bt-icon-btn:hover, .gb-chat-tools .gb-native-button:hover,
+.gb-chat-tools .gb-native-button[aria-expanded=true] { background: var(--bt-hover); color: var(--bt-ink); }
 .gb-chat-tools .gb-native-button[data-active] { color: var(--bt-accent); }
 .gb-chat-tools .gb-native-button[data-active]::after {
   content: '';
   position: absolute;
-  inset-block-start: 6px;
-  inset-inline-end: 6px;
-  width: 4px;
-  height: 4px;
+  inset-block-start: 5px;
+  inset-inline-end: 5px;
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: currentColor;
+  box-shadow: 0 0 0 1.5px var(--bt-card);
 }
 `
 
