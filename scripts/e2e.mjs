@@ -26,11 +26,11 @@ if (values.help) {
       return false
     }
   }
-  const release = ['BOT-MANAGEMENT', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5', 'E8', 'E12', 'E13', 'E15', 'E16', 'E17', 'UPDATE']
-  const all = ['BOT-MANAGEMENT', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE']
+  const release = ['BOT-MANAGEMENT', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5', 'E8', 'E12', 'E13', 'E15', 'E16', 'E17', 'UPDATE', 'PHONE', 'PHONE-PAGES']
+  const all = ['BOT-MANAGEMENT', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE', 'PHONE', 'PHONE-PAGES']
   const connectorCases = ['L-CLAUDE', 'L-CODEX']
   const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
-  const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX']
+  const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX', 'PHONE-ANDROID']
   const suites = { release, all, 'live-connectors': connectorCases, 'live-routines': Object.keys(routineFiles) }
   if ((values.case && ![...all, ...live].includes(values.case)) || (values.suite && !Object.hasOwn(suites, values.suite))) throw new Error('Unknown case or suite')
   const cases = values.case ? [values.case] : suites[values.suite ?? 'release']
@@ -70,6 +70,13 @@ if (values.help) {
         if (id === 'E12' && !previous) {
           row.status = 'skipped'
           row.reason = 'Upgrade baseline ' + upgradeBaseline + ' is not in this checkout; pass --previous <tgz> to run E12'
+          console.log(row.reason)
+          continue
+        }
+        // PHONE needs a godbot-server relay binary (renjiegod/godbot-server, go build ./cmd/godbot-relay).
+        if (id.startsWith('PHONE') && !process.env.GODBOT_RELAY_BIN) {
+          row.status = 'skipped'
+          row.reason = 'Set GODBOT_RELAY_BIN to a godbot-relay binary to run ' + id
           console.log(row.reason)
           continue
         }

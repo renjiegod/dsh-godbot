@@ -114,7 +114,7 @@ Godbot 会自己检查新版本。Host 启动后以及之后每 6 小时，它�
 - **协作与追踪。** 成员可直接聊天、在群聊中使用 `@成员` 或由管理员调度。群组有独立历史、任务板、待办和阶段目标。运行中可补充消息、处理审批或提问，`/side` 可就当前上下文开旁聊。工作台还提供聊天检索、分段历史、文件与图片、交互卡片和用量统计。
 - **记忆与隐私。** 在 Bot 或群聊详情中管理记忆条目、主题、固定、变更历史与撤销，也可以在对话中让 Bot 记住或回忆。私密 Bot 需要独立目录，并受群成员身份和对外分享审批约束；删除后私密目录保护仍有效。CLI 的 shell 和网络访问服从各自运行环境的权限。
 - **定时任务与集成。** 设置中可管理计划、共享 MCP、技能、连接器和通讯渠道。计划使用当前 dsh 的调度服务，真实账号连接沿用各服务的授权流程。设备能力以宿主为准：浏览器接管依赖桌面桥，电脑操控需要可用的执行器和系统授权。
-- **手机配对。** 在团队设置的「手机」页面填入可用的 WebSocket 中继地址，开启访问后，用兼容客户端扫描一次性配对码。管理员也可以通过 `teamWorkspace.phoneRelay` 为新 profile 指定中继，已有配对继续使用之前的中继。
+- **手机配对。** 在团队设置的「手机」页面填入 WebSocket 中继地址（godbot-server，例如 `wss://relay.example.org/v1/link`），开启访问后，用 Godbot Android App 扫描一次性配对码。管理员也可以通过 `teamWorkspace.phoneRelay` 为新 profile 指定中继，已有配对继续使用之前的中继。中继支持推送时，「推送通知」开着的情况下，手机没连接时也会收到需要你处理的审批、提问和 Bot 回复；通知内容在电脑上加密，中继和 FCM 看不到。同一页面有从中继下载 App 的二维码。
 
 每个 DSH profile 使用自己的 Bot 名单和任务板。首次运行这个版本会清理该 profile 原独立团队的成员、任务、工作流和关联历史；已有的 Bot、群聊、私聊历史和账号配置继续由 Bot 工作区保存。
 
@@ -452,7 +452,7 @@ npm test
 npm pack --dry-run
 ```
 
-构建会生成浏览器入口和 Host 构建标识。常规测试使用本地夹具，覆盖协议回执、迟到事件、工作区、审批和任务依赖。
+构建会生成手机链路（`src/link` → `src/host/team-runtime/mobile-link.js`）、浏览器入口和 Host 构建标识，三者都要和源码一起提交；`npm run typecheck` 检查 `src/link` 的类型。常规测试使用本地夹具，覆盖协议回执、迟到事件、工作区、审批和任务依赖。
 
 | 命令 | 说明 |
 | --- | --- |
@@ -460,6 +460,10 @@ npm pack --dry-run
 | `npm run test:e2e` | 浏览器端到端测试，默认 `release` 套件；可加 `--artifact <tgz>` 测试指定安装包 |
 | `npm run test:e2e -- --case E12 --previous <tgz>` | 升级测试：从指定的旧版安装包升级到当前构建。未传 `--previous` 且仓库中没有 0.1.0 基线提交时，E12 记为 `skipped` |
 | `npm run test:e2e -- --case UPDATE` | 自动更新：从本机模拟的发布列表下载、校验新版本，经 DSH 插件管理器安装，重启后运行新版本 |
+| `GODBOT_RELAY_BIN=<godbot-relay> npm run test:e2e -- --case PHONE` | 手机链路：经 godbot-server 中继配对、调用团队接口、交换推送密钥，离线时经（模拟的）FCM 收到加密推送，移除后无法再连。未设置 `GODBOT_RELAY_BIN` 时记为 `skipped` |
+| `GODBOT_RELAY_BIN=<godbot-relay> npm run test:e2e -- --case PHONE-PAGES` | 手机 App 的每个页面经加密链路各做一次读和一次写（Bot、群、记忆、日程、工作文件夹、用量、Bot 浏览器、密钥、模型服务商、连接器、能力、更新、诊断、侧聊），写入都在电脑上核对 |
+| `GODBOT_RELAY_BIN=<godbot-relay> node test/e2e/phone-host.mjs` | 常驻的测试宿主：隔离的 Godbot、中继和一个本地控制接口，给手机 App 的 UI 测试用（打印配对链接） |
+| `GODBOT_RELAY_BIN=<godbot-relay> GODBOT_ANDROID_E2E=<godbot-app> npm run test:e2e -- --case PHONE-ANDROID` | 真机流程：模拟器上的 Godbot Android App 扫码配对、加载团队、给主 Bot 发消息并显示回复。需要已构建的 App 和一台运行中的模拟器 |
 | `npm run test:e2e -- --case E1` | 验证跨后端读取连接器工具 |
 | `npm run test:e2e -- --case E2` | 验证写入审批、撤权、重启和终端交还 |
 | `npm run test:e2e -- --suite live-connectors` | 通过本机已登录的 Claude Code、Codex 调用测试工单服务 |

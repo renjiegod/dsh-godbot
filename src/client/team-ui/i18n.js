@@ -742,6 +742,14 @@ const ZH = {
   Phones: '手机',
   'No phones yet': '还没有配对的手机',
   'Paired on {date}': '{date} 配对',
+  'Push notifications': '推送通知',
+  'Off. Phones hear about new work only while the app is open.': '已关闭。手机只有在打开 App 时才能收到新消息。',
+  'Works once phone access is on and the Server is reachable.': '打开手机访问并连上服务器后生效。',
+  'On. A phone that is not connected gets a notification when something needs you.': '已开启。手机没连着时，有需要你处理的事也会收到通知。',
+  'This Server does not send notifications. Phones still get them while the app keeps its connection.': '这个服务器不发推送。App 保持连接时，手机仍能收到通知。',
+  'Last notification failed: {code}': '上次推送失败：{code}',
+  'Notifications on': '已开启推送',
+  'Scan to download the Android app from your Server.': '扫码从你的服务器下载 Android App。',
 
   // Context menu
   Unpin: '取消置顶',

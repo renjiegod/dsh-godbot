@@ -17203,6 +17203,14 @@ var ZH = {
   Phones: "手机",
   "No phones yet": "还没有配对的手机",
   "Paired on {date}": "{date} 配对",
+  "Push notifications": "推送通知",
+  "Off. Phones hear about new work only while the app is open.": "已关闭。手机只有在打开 App 时才能收到新消息。",
+  "Works once phone access is on and the Server is reachable.": "打开手机访问并连上服务器后生效。",
+  "On. A phone that is not connected gets a notification when something needs you.": "已开启。手机没连着时，有需要你处理的事也会收到通知。",
+  "This Server does not send notifications. Phones still get them while the app keeps its connection.": "这个服务器不发推送。App 保持连接时，手机仍能收到通知。",
+  "Last notification failed: {code}": "上次推送失败：{code}",
+  "Notifications on": "已开启推送",
+  "Scan to download the Android app from your Server.": "扫码从你的服务器下载 Android App。",
   // Context menu
   Unpin: "取消置顶",
   Pin: "置顶",
@@ -38707,7 +38715,7 @@ var qrcode_default = qrcode;
 var stringToBytes = qrcode.stringToBytes;
 
 // src/client/team-ui/phone-page.js
-var OFF = { server: "", on: false, status: "off", phones: [], pairing: null };
+var OFF = { server: "", on: false, status: "off", phones: [], pairing: null, pushEnabled: true, pushAvailable: false };
 var QUIET = 4;
 function statusText4(phone) {
   if (phone.error) return phone.error;
@@ -38732,6 +38740,27 @@ function QrCode({ text }) {
     (0, import_react60.createElement)("rect", { width: size, height: size }),
     (0, import_react60.createElement)("path", { d: path2 })
   );
+}
+function downloadUrl(server) {
+  try {
+    const url = new URL(server);
+    if (url.protocol !== "ws:" && url.protocol !== "wss:") return null;
+    return `${url.protocol === "wss:" ? "https:" : "http:"}//${url.host}/download/latest`;
+  } catch {
+    return null;
+  }
+}
+function pushText(phone) {
+  if (!phone.pushEnabled) return t("Off. Phones hear about new work only while the app is open.");
+  if (!phone.on || phone.status !== "online") return t("Works once phone access is on and the Server is reachable.");
+  if (phone.pushAvailable) return t("On. A phone that is not connected gets a notification when something needs you.");
+  return t("This Server does not send notifications. Phones still get them while the app keeps its connection.");
+}
+function phoneHint(entry) {
+  const base = entry.connected ? t("Connected") : t("Paired on {date}", { date: new Date(entry.pairedAt).toLocaleDateString(dateLocale(), { dateStyle: "medium" }) });
+  if (!entry.push) return base;
+  if (entry.lastPush && !entry.lastPush.ok) return `${base} · ${t("Last notification failed: {code}", { code: entry.lastPush.code ?? "" })}`;
+  return `${base} · ${t("Notifications on")}`;
 }
 function minutesLeft(until) {
   return Math.max(0, Math.ceil((until - Date.now()) / 6e4));
@@ -38760,6 +38789,7 @@ function PhonePage({ roster, actions, Section: Section2, Row: Row4 }) {
     void run2(actions.phoneSet({ server }));
   };
   const online = phone.on && phone.status === "online";
+  const download3 = downloadUrl(phone.server);
   return (0, import_react60.createElement)(
     "div",
     { className: "bt-phone" },
@@ -38781,6 +38811,30 @@ function PhonePage({ roster, actions, Section: Section2, Row: Row4 }) {
         (0, import_react60.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy || server.trim() === phone.server, onClick: saveServer }, t("Save"))
       )
     ),
+    (0, import_react60.createElement)(
+      Section2,
+      { title: t("Notifications") },
+      (0, import_react60.createElement)(
+        Row4,
+        { label: t("Push notifications"), hint: pushText(phone) },
+        (0, import_react60.createElement)(Switch, { on: phone.pushEnabled !== false, label: t("Push notifications"), disabled: busy, onChange: (push) => void run2(actions.phoneSet({ push })) })
+      )
+    ),
+    download3 ? (0, import_react60.createElement)(
+      Section2,
+      { title: t("Phone app") },
+      (0, import_react60.createElement)(
+        "div",
+        { className: "bt-phone-pair" },
+        (0, import_react60.createElement)(QrCode, { text: download3 }),
+        (0, import_react60.createElement)(
+          "div",
+          { className: "bt-phone-pair-copy" },
+          (0, import_react60.createElement)("span", null, t("Scan to download the Android app from your Server.")),
+          (0, import_react60.createElement)("a", { className: "bt-set-hint", href: download3, target: "_blank", rel: "noreferrer" }, download3)
+        )
+      )
+    ) : null,
     error ? (0, import_react60.createElement)("div", { className: "bt-connector-error bt-phone-error", role: "alert" }, error) : null,
     (0, import_react60.createElement)(Section2, { title: t("Pair a phone") }, phone.pairing ? (0, import_react60.createElement)(
       "div",
@@ -38801,7 +38855,7 @@ function PhonePage({ roster, actions, Section: Section2, Row: Row4 }) {
     (0, import_react60.createElement)(Section2, { title: t("Phones") }, phone.phones.length === 0 ? (0, import_react60.createElement)(Row4, { label: t("No phones yet") }) : phone.phones.map((entry) => (0, import_react60.createElement)(Row4, {
       key: entry.id,
       label: entry.name || t("Phone"),
-      hint: entry.connected ? t("Connected") : t("Paired on {date}", { date: new Date(entry.pairedAt).toLocaleDateString(dateLocale(), { dateStyle: "medium" }) })
+      hint: phoneHint(entry)
     }, (0, import_react60.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => void run2(actions.phoneRemove(entry.id)) }, t("Remove")))))
   );
 }

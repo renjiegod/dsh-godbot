@@ -18,6 +18,14 @@ The following parts of Godbot incorporate and adapt that work:
   distributed phone link. Godbot adapts the service and storage namespaces,
   workspace ownership, web and native session control, provider accounts,
   connectors, browser environments and the team roster.
+- src/link/ is ds-bot's link/src (the phone link shared by the phone app and
+  the computer, which itself adapts DSH Remote's MIT connection code; see the
+  original notices). Godbot changed the pairing scheme to godbot:// (dsbot://
+  still parses) and added the push extension: the push.register, push.send and
+  push.result frames, the push.fcm.v1 capability, HostLink.sendPush,
+  RelayTransport.registerPush and the end-to-end encrypted notifications in
+  push.ts. src/host/team-runtime/mobile-link.js is built from it by
+  scripts/build-link.mjs.
 - src/drivers/external/{acp,claude,codex,discover,engines,jsonrpc,mcp-stdio}.js
   and src/team/mcp.js originate in ds-bot/src/host/local-agents/.
   Godbot adapts protocol handling, request correlation, team tools and
