@@ -835,7 +835,8 @@ export function install(rt) {
       : segment.fallback === 'cutoff' ? 'the part kept being cut off at the output limit'
         : segment.fallback === 'failure' ? 'a request in the previous part kept failing'
           : segment.fallback === 'engine' ? 'what you run on changed'
-            : 'the model did not write a usable note'
+            : segment.fallback === 'manual' ? 'the user started a new session'
+              : 'the model did not write a usable note'
     const head = `(Godbot put this note together without the model, because ${why}.`
     return segment.note === undefined
       ? `${head} There was no earlier note to carry over. Go by the messages below, and look up anything else.)`
@@ -1242,7 +1243,10 @@ export function install(rt) {
     let failure
     const local = localPart(session)
     // The group's own Session only relays; it has no route a note could be written with.
-    if (!job.engine && !job.overflow && job.cutoff !== true && job.failed === undefined && !whole && bot !== undefined) {
+    // A New session the user asked for opens at once: the model is not asked for a note
+    // (on a local CLI that is a whole turn), and the earlier note goes with the latest
+    // messages instead.
+    if (!job.engine && !job.overflow && job.cutoff !== true && job.failed === undefined && !job.manual && !whole && bot !== undefined) {
       try {
         const noteSignal = AbortSignal.any([signal, AbortSignal.timeout(NOTE_TIMEOUT_MS)])
         written = local ? await writeLocalNote(agent, noteSignal, { folder: job.folder }) : await writeNote(agent, noteSignal, { folder: job.folder })
@@ -1267,7 +1271,7 @@ export function install(rt) {
     const earlierNote = previous?.note ? { note: previous.note, noteFrom: previous.noteFrom ?? previous.number } : {}
     const noted = written !== undefined ? { note: written.note }
       : job.engine ? { fallback: 'engine', ...earlierNote }
-      : { fallback: whole ? 'whole' : job.failed !== undefined ? 'failure' : job.overflow ? 'overflow' : job.cutoff === true ? 'cutoff' : 'failed', ...earlierNote }
+      : { fallback: whole ? 'whole' : job.failed !== undefined ? 'failure' : job.overflow ? 'overflow' : job.cutoff === true ? 'cutoff' : job.manual ? 'manual' : 'failed', ...earlierNote }
     carried ??= await readLines()
     if (signal.aborted) throw signal.reason
     const dir = rt.workDirOf(job)
@@ -2078,11 +2082,10 @@ export function install(rt) {
     return false
   }
 
-  // "New session" in a Bot's chat. An idle Bot moves on to a fresh part the way a long
-  // part does: the fresh part opens with the handoff package, a note (the model's when
-  // it can write one, else the earlier note) and the latest messages. While the Bot is
-  // working the fresh part starts at once, bare, and the part it replaces keeps running
-  // in the background. A part nobody has talked in is already a fresh conversation, and
+  // "New session" in a Bot's chat. An idle Bot moves on to a fresh part at once: it opens
+  // with the handoff package, put together without the model (the earlier note and the
+  // latest messages). While the Bot is working the fresh part starts bare, and the part
+  // it replaces keeps running in the background. A part nobody has talked in is already a fresh conversation, and
   // a fresh part on its way will be one: neither gets another empty part, with another
   // handoff, stacked on top of it, and the answer is false.
   const newParts = new Map()

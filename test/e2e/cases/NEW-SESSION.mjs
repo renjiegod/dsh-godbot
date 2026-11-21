@@ -76,6 +76,7 @@ export default async function newSession({ makeHost, candidate, note }) {
   const sent = host.model.calls.slice(calls).map(call => JSON.stringify(call.body.messages))
   const handoffs = sent.map(text => (text.match(/\[Handoff · part \d+\]/gu) ?? []).length)
   assert.ok(handoffs.length > 0 && handoffs.every(count => count === 1), 'each request of the fresh part carries one handoff: ' + JSON.stringify(handoffs))
+  assert.ok(sent.some(text => text.includes('because the user started a new session')), 'the handoff says Godbot put it together for a New session')
   await page.locator('.bt-part-fresh').waitFor({ state: 'detached' })
 
   // The details panel starts the next one from the row above its session list.
@@ -130,5 +131,8 @@ export default async function newSession({ makeHost, candidate, note }) {
   assert.equal(names[0], '新会话', 'the empty current session is named for what it is')
   assert.ok(names.slice(1).every(name => /^会话 \d+$/u.test(name)), 'earlier sessions are numbered, not all named after the Bot: ' + JSON.stringify(names))
   await host.capture('new-session-details-panel')
+  // A New session opens at once: none of them asked the model for a handoff note.
+  const noteAsks = host.model.calls.filter(call => JSON.stringify(call.body).includes('Your conversation is long')).length
+  assert.equal(noteAsks, 0, 'no New session asked the model for a handoff note')
   note('new-session', { botId: bot.id, parts: [first, second, third, fourth, fifth].map(parts => parts.current), handoffsPerRequest: handoffs })
 }
