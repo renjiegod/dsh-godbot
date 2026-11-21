@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { prepareProviderAccounts } from '../fixtures/provider-account-setup.mjs'
 import { until } from '../host.mjs'
-import { openProviderSettingsFromManagement, openProviderSettingsFromTeam } from '../provider-settings.mjs'
+import { openProviderSettingsFromTeam } from '../provider-settings.mjs'
 
 const routes = { antigravity:'local-antigravity', claude:'local-claude-code', codex:'local-codex-cli' }
 const selector = (kind, value) => '[' + kind + '="' + value + '"]'
@@ -73,7 +73,7 @@ export default async function run({ makeHost, candidate, note, scratch }) {
   const provider = async kind => (await catalog()).providers.find(p=>p.kind===kind)
   await host.install(candidate)
   await host.start()
-  let view = await openProviderSettingsFromManagement(host)
+  let view = await openProviderSettingsFromTeam(host)
   const switcher = () => view.getByRole('switch',{name:'启用沙箱多账号'})
   await until(() => switcher().isEnabled(),'unified provider settings loaded')
   assert.equal(await switcher().isChecked(),false)
@@ -211,6 +211,6 @@ export default async function run({ makeHost, candidate, note, scratch }) {
   await until(async () => !(await catalog()).enabled,'sandbox option disabled')
   assert.deepEqual(await preservedBot(host,bot.id),original)
   assert.equal(host.model.calls.length,0,'settings operations did not dispatch an inference')
-  note('unified-provider-settings',{managementAndTeamGlobalPage:true,providers:Object.keys(routes),accountsPerProvider:3,
+  note('unified-provider-settings',{settingsPage:true,providers:Object.keys(routes),accountsPerProvider:3,
     loginCommandPreview:true,freshDeepLink:true,newBotPicker:true,refreshedNewExecutable:true,customAgentCrud:true,removeAndReadd:true,identityChecks:2,defaultSurvivedRestart:true,existingBotUnchanged:true,newBotPreferredAccount:selected.account,newBotId:created.id})
 }
