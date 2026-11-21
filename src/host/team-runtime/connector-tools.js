@@ -151,6 +151,17 @@ export class ConnectorTools {
     item.listedAt = Date.now()
   }
 
+  // A Bot's own DSH round shows the tools it was offered. Godbot's own requests
+  // for that Session, such as the memory keeper after each turn, name the
+  // Session but carry a usage tag; they must not replace the round's catalog or
+  // its call receipts. CLI rounds are observed through their MCP bridge instead.
+  step(options) {
+    const rt = this.rt
+    if (options.purpose !== undefined || !options.sessionId || !rt.isBotSession(options.sessionId) ||
+        rt.ownRequest?.(options) || rt.isLocalAgentRoute?.(options.provider)) return
+    this.listed(options.sessionId, options.provider, options.tools ?? [])
+  }
+
   event(sessionId, event) {
     const observed = this.observed.get(sessionId)
     if (!observed || !this.rt.isBotSession(sessionId)) return
@@ -212,9 +223,7 @@ export function install(rt) {
   const { ctx: _ctx, ...installed } = connectorRuntime
   Object.assign(rt, installed)
   ctx.on('llm/stream', (options, next) => {
-    if (options.purpose === undefined && options.sessionId && rt.isBotSession(options.sessionId) && !rt.isLocalAgentRoute?.(options.provider)) {
-      catalog.listed(options.sessionId, options.provider, options.tools ?? [])
-    }
+    catalog.step(options)
     return next()
   })
   ctx.on('session/event', (session, event) => {
