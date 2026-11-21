@@ -1273,6 +1273,7 @@ export function install(rt) {
     const dir = rt.workDirOf(job)
     const intended = dir !== undefined && await rt.isFolder(dir) ? dir : rt.teamFolder()
     const freshId = await rt.createSession(room === undefined ? name : bot === undefined ? room.name : `${name} · ${room.name}`, { dir })
+    talked.set(freshId, false)
     // The group's own Session never asks the model, so it takes the team's default; the
     // earlier part's route may be one DSH no longer serves (#1310).
     if (bot === undefined) await rt.selectRoomSession(freshId)
@@ -1354,6 +1355,8 @@ export function install(rt) {
       await ctx.sessions.flush(fresh.session)
       carry.push(...job.carry.splice(0))
       await forward(job, [...carry, ...held], freshId)
+      // A turn stopped for the move goes on in the fresh part with what it was answering.
+      if ([...carry, ...held].some(talkMessage)) talked.set(freshId, true)
     } catch (error) {
       job.kept = true
       try { restore(agent, [...carry, ...job.carry.splice(0)]) } catch {}
@@ -2014,22 +2017,104 @@ export function install(rt) {
     return { sessionId: parts.at(-1).sessionId, ...(await partPage(parts, index, cursor, steps)) }
   }
 
-  // "New session" in a Bot's chat: a manual move to a fresh part with the
-  // deterministic handoff package, no model call. While the Bot is working the fresh
-  // part starts at once and the part it replaces keeps running in the background.
+  // Whether anyone has talked in a part yet: the user, another Bot, or an answer to a
+  // card. Godbot's handoff package (and the fixed line that acknowledges it), a setup
+  // kickoff and DSH's context notes are not talk, so a part with only those in it is
+  // still the fresh conversation a New session gives. Each part is read from its record
+  // once, then kept by session/event; a part made here starts out with no talk.
+  const talked = new Map()
+  const talkReads = new Map()
+  const talkRetry = new Map()
+  const TALK_PAGE = 60
+  const TALK_PAGES_MAX = 20
+  const TALK_RETRY_MS = 30_000
+  const talkMessage = (message) => {
+    const source = message?.source
+    if (source?.kind === undefined || source.kind === 'user' || source.kind === REPLY_KIND) return true
+    return source.kind === SOURCE_KIND && source.handoff !== true && source.role !== 'kickoff'
+  }
+  const isTalk = event => event?.type === 'user/message' && talkMessage(event.data)
+  async function readTalk(sessionId) {
+    const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
+    let beforeSeq
+    for (let pages = 0; pages < TALK_PAGES_MAX; pages += 1) {
+      const page = await ctx.sessionController.page({
+        address: { kind: 'session', sessionId },
+        ...(beforeSeq === undefined ? {} : { beforeSeq }),
+        maxMessages: TALK_PAGE,
+      }, signal)
+      const events = page.records.map(record => record.event)
+      if (events.some(isTalk)) return true
+      if (!page.hasMore || events.length === 0) return false
+      beforeSeq = events[0].seq
+    }
+    // This much record with no message in reach was talked in all the same.
+    return true
+  }
+  function partTalked(sessionId) {
+    if (talked.has(sessionId)) return Promise.resolve(talked.get(sessionId))
+    let reading = talkReads.get(sessionId)
+    if (reading === undefined) {
+      reading = readTalk(sessionId).then((found) => {
+        // A message that came while the record was read is already noted.
+        if (!talked.has(sessionId)) talked.set(sessionId, found)
+        return talked.get(sessionId)
+      }).finally(() => talkReads.delete(sessionId))
+      talkReads.set(sessionId, reading)
+    }
+    return reading
+  }
+  ctx.on('session/event', (session, event) => {
+    if (isTalk(event) && (talked.has(session.id) || talkReads.has(session.id))) talked.set(session.id, true)
+  })
+  // True only for a part known to have no talk yet. An unknown part is read in the
+  // background for the next ask; a read that failed waits a while before the next try.
+  rt.partEmpty = (sessionId) => {
+    if (sessionId === undefined) return false
+    if (talked.has(sessionId)) return talked.get(sessionId) === false
+    if (!talkReads.has(sessionId) && Date.now() >= (talkRetry.get(sessionId) ?? 0)) {
+      void partTalked(sessionId).then(() => talkRetry.delete(sessionId), () => talkRetry.set(sessionId, Date.now() + TALK_RETRY_MS))
+    }
+    return false
+  }
+
+  // "New session" in a Bot's chat. An idle Bot moves on to a fresh part the way a long
+  // part does: the fresh part opens with the handoff package, a note (the model's when
+  // it can write one, else the earlier note) and the latest messages. While the Bot is
+  // working the fresh part starts at once, bare, and the part it replaces keeps running
+  // in the background. A part nobody has talked in is already a fresh conversation, and
+  // a fresh part on its way will be one: neither gets another empty part, with another
+  // handoff, stacked on top of it, and the answer is false.
+  const newParts = new Map()
+  // A New session the user is waiting for: one being made, or the current part of the
+  // Bot's own chat moving on.
+  rt.openingChat = botId => newParts.has(botId) || switches.has(rt.chatOf(botId))
   async function newPart(sessionId) {
     await rt.load()
     const agent = await rt.resolveAgent(sessionId)
     const place = placeOf(sessionId)
     if (place?.botId === undefined || place.roomId !== undefined) throw Object.assign(new Error('Only a Bot\'s own chat can start a fresh part'), { code: 'bot/invalid' })
-    if (agent.status === 'idle') {
-      startSwitch(agent, { manual: true })
+    const { botId } = place
+    if (rt.openingChat(botId)) return false
+    const making = (async () => {
+      if (!await partTalked(agent.id).catch(() => true)) return false
+      // The read took a moment: the part may have moved on, or started moving, meanwhile.
+      if (rt.chatOf(botId) !== agent.id || switches.has(agent.id)) return false
+      if (agent.status === 'idle') {
+        startSwitch(agent, { manual: true })
+        return true
+      }
+      const bot = rt.botOf(botId)
+      if (bot === undefined) throw Object.assign(new Error('The Bot is working; wait for it to finish or stop it first'), { code: 'bot/busy' })
+      await openPartNow(bot, agent)
       return true
+    })()
+    newParts.set(botId, making)
+    try {
+      return await making
+    } finally {
+      if (newParts.get(botId) === making) newParts.delete(botId)
     }
-    const bot = rt.botOf(place.botId)
-    if (bot === undefined || switches.has(sessionId)) throw Object.assign(new Error('The Bot is working; wait for it to finish or stop it first'), { code: 'bot/busy' })
-    await openPartNow(bot, agent)
-    return true
   }
 
   // The part the user leaves stays live: no handoff note, no archive, no stop of its
@@ -2037,6 +2122,7 @@ export function install(rt) {
   async function openPartNow(bot, agent) {
     const dir = rt.workDirOf({ botId: bot.id })
     const freshId = await rt.createSession(bot.name, { dir })
+    talked.set(freshId, false)
     const picked = await freshRoute(bot, agent.session)
     if (picked !== undefined) await selectRoute({ name: bot.name }, freshId, picked)
     await rt.applyPermission(bot, freshId, undefined)
