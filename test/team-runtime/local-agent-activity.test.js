@@ -154,6 +154,10 @@ for (const cwdPerProcess of [false, true]) {
     update('tool_call_update', { toolCallId: 'read', status: 'completed' })
     update('tool_call', { toolCallId: 'shell', kind: 'execute', title: 'npm test', rawInput: { command: 'npm test -- private-arg' } })
     update('tool_call', { toolCallId: 'connector', toolName: 'fixture_connector', status: 'completed' })
+    update('tool_call', { toolCallId: 'bridge', name: 'mcp_godbot_list_bots', status: 'pending' })
+    update('tool_call_update', { toolCallId: 'bridge', status: 'completed' })
+    update('tool_call', { toolCallId: 'bridge-failed', name: 'mcp_godbot_list_bots', status: 'pending' })
+    update('tool_call_update', { toolCallId: 'bridge-failed', status: 'failed', rawOutput: 'bridge unavailable' })
     update('tool_call_update', { toolCallId: 'other', status: 'failed' }, 'other-native-id')
 
     const permission = worker.onRequest('session/request_permission', {
@@ -168,10 +172,9 @@ for (const cwdPerProcess of [false, true]) {
 
     assert.deepEqual(notices.filter(event => event.type === 'activity').map(event => event.text), [
       '▸ Read · src/a.js · 调用',
-      '▸ Read · src/a.js · 完成',
       '▸ Shell · npm test · 调用',
       '▸ fixture_connector · 完成',
-      '▸ Shell · npm test · 失败',
+      '▸ mcp_godbot_list_bots · 失败',
     ])
     const read = notices.map(event => event.trace).filter(trace => trace?.id === 'read')
     assert.deepEqual(read.map(trace => trace.status), ['pending', 'running', 'completed', 'completed'])
@@ -198,7 +201,7 @@ test('ACP command results expose a nonzero process exit even when the agent comp
   update('tool_call_update', { status: 'completed' })
   assert.deepEqual(notices.map(notice => notice.trace.status), ['pending', 'failed', 'failed'])
   assert.equal(notices[1].trace.exitCode, 127)
-  assert.equal(notices.filter(notice => notice.type === 'activity' && notice.trace.status === 'failed').length, 1)
+  assert.deepEqual(notices.map(notice => notice.type), ['activity', 'execution-trace', 'execution-trace'])
 })
 
 test('Codex Bot records rich tool updates during its matching turn without streaming raw output into the model', async () => {
@@ -233,7 +236,7 @@ test('Codex Bot records rich tool updates during its matching turn without strea
     { type: 'tool', id: 'edit-1', name: 'Edit', status: 'completed', changes },
   ])
   const activity = chunks.filter(chunk => chunk.type === 'reasoning-delta').map(chunk => chunk.text).join('')
-  assert.match(activity, /▸ Shell · npm test · 调用/)
+  assert.match(activity, /▸ Shell · npm test · 调用\ttool="command-1"/)
   assert.doesNotMatch(activity, /fixture test output|--reporter|late previous output/)
 })
 
@@ -249,7 +252,7 @@ test('Codex Bot forwards assistant text deltas and only the unseen completion su
   const report = { id: 'report', type: 'agentMessage' }
   notice('item/started', { item: { ...report, text: '' } })
   notice('item/agentMessage/delta', { itemId: report.id, delta: 'First ' })
-  assert.deepEqual(events, [{ type: 'text', text: 'First ', turnId: 'turn-first' }])
+  assert.deepEqual(events, [{ type: 'text', text: 'First ', textKey: report.id, turnId: 'turn-first' }])
   notice('item/agentMessage/delta', { itemId: report.id, delta: 'pass' })
   notice('item/completed', { item: { ...report, text: 'First pass complete.' } })
   notice('item/completed', { item: { ...report, text: 'First pass complete.' } })
@@ -287,7 +290,9 @@ test('Codex Bot leaves its verified godbot MCP receipts to DSH without hiding ot
   const unavailable = { ...tool, id: 'unavailable' }
   notice('item/started', { item: unavailable })
   notice('item/completed', { item: { ...unavailable, status: 'failed', result: null, error: { message: 'Loopback unavailable' } } })
-  assert.deepEqual(events.slice(0, 2).map(event => event.text), ['▸ message_bot · 调用', '▸ message_bot · 完成'])
+  assert.deepEqual(events.filter(event => event.type === 'activity').map(event => event.text), [
+    '▸ fixture_fetch · 调用', '▸ message_bot · 失败',
+  ])
   const trace = events.map(event => event.trace).filter(Boolean)
   assert.deepEqual(trace.map(event => event.id), ['direct', 'direct', 'direct', 'unavailable'])
   assert.equal(trace[1].outputDelta, 'Reading fixture\n')

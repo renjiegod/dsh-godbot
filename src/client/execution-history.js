@@ -1,5 +1,5 @@
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { createElement as h, useEffect, useId, useRef, useState } from 'react'
+import { createElement as h, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Icon } from './chat-ui.js'
 
 const labels = {
@@ -13,7 +13,7 @@ const labels = {
 const markdownLabels = { code: { copyLabel: '复制', copiedLabel: '已复制' }, footnotes: '脚注' }
 
 export const executionStyle = `
-.gb-execution-turn { max-width: 100%; margin: 6px 0; color: var(--bt-ink); font-size: 13px; line-height: 1.45; }
+.gb-execution-inline { align-self: stretch; min-width: 0; margin: 4px 0; color: var(--bt-ink); font-size: 13px; line-height: 1.45; }
 .gb-execution-list { display: grid; gap: 5px; min-width: 0; }
 .gb-execution-header, .gb-execution-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .gb-execution-header { justify-content: space-between; }
@@ -23,9 +23,10 @@ export const executionStyle = `
 .gb-execution-button:focus-visible, .gb-execution-tool > summary:focus-visible, .gb-execution-select:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }
 .gb-execution-tool { min-width: 0; border: 1px solid var(--bt-line); border-radius: 8px; }
 .gb-execution-tool[data-child] { margin-inline-start: 12px; }
-.gb-execution-tool > summary { padding: 5px 8px; cursor: pointer; }
-.gb-execution-tool > summary > span { margin-inline-end: 8px; overflow-wrap: anywhere; }
-.gb-execution-tool > summary > span:last-child { margin-inline-end: 0; }
+.gb-execution-tool > summary, .gb-execution-legacy { padding: 5px 8px; }
+.gb-execution-tool > summary { cursor: pointer; }
+:is(.gb-execution-tool > summary, .gb-execution-legacy) > span { margin-inline-end: 8px; overflow-wrap: anywhere; }
+:is(.gb-execution-tool > summary, .gb-execution-legacy) > span:last-child { margin-inline-end: 0; }
 .gb-execution-state, .gb-execution-meta, .gb-execution-note { color: var(--bt-ink-2); font-size: 12px; }
 .gb-execution-tool[data-status=failed] .gb-execution-state, .gb-execution-error { color: var(--bt-danger); }
 .gb-execution-body { display: grid; gap: 8px; padding: 6px 8px 9px; border-top: 1px solid var(--bt-line); min-width: 0; }
@@ -79,6 +80,56 @@ function useExecution(client, botId, sessionId, { turn, toolId, expanded = true,
     return () => { disposed = true; clearTimeout(timer) }
   }, [client, botId, sessionId, turn, toolId, expanded, running, live, refresh])
   return { ...snapshot, loading, reload: () => setRefresh(count => count + 1) }
+}
+
+// A turn can render tools in several assistant and host-tool cells. Share the
+// lightweight status poll across all of them and load full receipts on demand.
+const emptyTools = []
+const emptyToolStore = { read: () => emptyTools, subscribe: () => () => {} }
+const toolStores = new WeakMap()
+
+export function useExecutionTools(client, botId, sessionId, turn, enabled) {
+  const key = JSON.stringify([botId, sessionId, turn])
+  const store = useMemo(() => {
+    if (!enabled) return emptyToolStore
+    let turns = toolStores.get(client)
+    if (!turns) toolStores.set(client, turns = new Map())
+    if (turns.has(key)) return turns.get(key)
+    let events = emptyTools, timer, loading = false, failures = 0
+    const listeners = new Set()
+    const load = async () => {
+      if (loading) return
+      loading = true
+      try {
+        const data = await client.dispatch({ action: 'execution.history', botId, sessionId, turn, onlyTools: true })
+        failures = 0
+        events = data.events ?? emptyTools
+        for (const notify of listeners) notify()
+        if (data.running && listeners.size) timer = setTimeout(load, 700)
+      } catch {
+        if (++failures < 3 && listeners.size) timer = setTimeout(load, 1400)
+      } finally {
+        loading = false
+      }
+    }
+    const view = {
+      read: () => events,
+      subscribe(notify) {
+        listeners.add(notify)
+        turns.set(key, view)
+        if (listeners.size === 1) void load()
+        return () => {
+          listeners.delete(notify)
+          if (listeners.size) return
+          clearTimeout(timer)
+          if (turns.get(key) === view) turns.delete(key)
+        }
+      },
+    }
+    turns.set(key, view)
+    return view
+  }, [client, key, enabled])
+  return useSyncExternalStore(store.subscribe, store.read)
 }
 
 function press(text, onClick, props) {
@@ -163,7 +214,7 @@ function ToolRow({ event, target, running }) {
   const [expanded, setExpanded] = useState(false)
   const { client, botId, sessionId, turn } = target
   const live = running && (event.status === 'running' || event.status === 'pending')
-  const fetchable = event.detailAvailable !== false && typeof event.id === 'string' && event.id !== ''
+  const fetchable = typeof event.id === 'string' && event.id !== ''
   const info = useExecution(client, botId, sessionId, { turn, toolId: event.id, expanded: fetchable && expanded,
     running: fetchable && expanded && live })
   const detail = { ...event, ...info.data?.events?.[0] }
@@ -180,17 +231,20 @@ function ToolRow({ event, target, running }) {
   ].filter(Boolean)
   const output = detail.output ?? detail.outputDelta
   const changes = detail.changes != null || /^(?:Edit|MultiEdit|Write|WriteFile|ApplyPatch|apply_patch|FileChange)$/iu.test(detail.name ?? '')
+  const heading = [
+    h('span', { key: 'name' }, detail.name || event.id || '工具'),
+    typeof toolTarget === 'string' && h('span', { key: 'target', className: 'gb-execution-meta' }, toolTarget),
+    h('span', { key: 'status', className: 'gb-execution-state' }, statusLabel),
+    outcome.length > 0 && h('span', { key: 'outcome', className: 'gb-execution-meta' }, outcome.join(' · ')),
+  ]
+  if (!fetchable) return h('div', { className: 'gb-execution-tool gb-execution-legacy', 'data-status': status }, heading)
   return h('details', {
     className: 'gb-execution-tool', open: expanded,
     'data-gb-execution-tool': event.id ?? '', 'data-status': status,
     'data-child': detail.parentId != null ? '' : undefined,
     onToggle: e => setExpanded(e.currentTarget.open),
   },
-  h('summary', null,
-    h('span', null, detail.name || event.id || '工具'),
-    typeof toolTarget === 'string' && h('span', { className: 'gb-execution-meta' }, toolTarget),
-    h('span', { className: 'gb-execution-state' }, statusLabel),
-    outcome.length > 0 && h('span', { className: 'gb-execution-meta' }, outcome.join(' · '))),
+  h('summary', null, heading),
   expanded && h('div', { className: 'gb-execution-body' },
     info.loading && !info.data && h('p', { role: 'status', className: 'gb-execution-note' }, '正在读取工具详情…'),
     info.error && h('p', { role: 'alert', className: 'gb-execution-error' }, '无法读取工具详情。', press('重试', info.reload)),
@@ -220,32 +274,8 @@ function Rows({ events, target, running, transcript = false }) {
   }))
 }
 
-export function TurnExecution({ client, botId, sessionId, turn, running, legacy }) {
-  const [choice, setExpanded] = useState(null)
-  const expanded = choice ?? running
-  useEffect(() => {
-    if (running) setExpanded(was => was ?? true)
-  }, [running])
-  const viewId = useId()
-  const view = useExecution(client, botId, sessionId, { turn, expanded, running, live: true })
-  const events = view.data?.events ?? []
-  const tools = events.filter(event => event.type === 'tool')
-  if (!running && !legacy.length && !tools.length && !expanded) return null
-  if (!running && !legacy.length && !tools.length && view.data) return null
-  const legacyOnly = tools.length === 0 && legacy.length > 0
-  return h('section', { className: 'gb-execution-turn', 'data-gb-delegated-activity': '', 'aria-label': '执行记录' },
-    h('div', { className: 'gb-execution-controls' },
-      press('执行记录' + (tools.length ? ' · ' + tools.length : ''), () => setExpanded(!expanded),
-        { 'aria-expanded': expanded, 'aria-controls': viewId }),
-      expanded && (view.error || !running) && press(view.error ? '重试' : '刷新', view.reload, { disabled: view.loading }),
-      running && !tools.length && !legacy.length && h('span', { className: 'gb-execution-state' }, '运行中')),
-    h('div', { id: viewId, hidden: !expanded && !legacyOnly },
-      expanded && view.error && h('p', { className: 'gb-execution-error', role: 'alert' }, '暂时无法读取执行详情。'),
-      expanded && view.loading && !view.data && !legacyOnly && h('p', { className: 'gb-execution-note', role: 'status' }, '正在读取…'),
-      expanded && tools.length > 0 && h(Rows, { events: tools, target: { client, botId, sessionId, turn }, running: running || view.data?.running }),
-      legacyOnly && h('div', { className: 'bt-agent-activity' }, legacy.map((step, index) => h('div', {
-        key: index, className: 'bt-agent-act',
-      }, h('span', { className: 'bt-agent-act-text' }, step))))))
+export function InlineExecution({ client, botId, sessionId, turn, running, events }) {
+  return h('div', { className: 'gb-execution-inline' }, h(Rows, { events, target: { client, botId, sessionId, turn }, running }))
 }
 
 function TurnHistory({ client, botId, sessionId, turn, running }) {

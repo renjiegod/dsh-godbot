@@ -17,8 +17,10 @@
 // activity items first: a test can then tell whether the one text event reached
 // the client. `--record <file>` appends the params of thread/start and thread/resume,
 // so a test can check the shape the client sent without a model call.
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 const exitAfterTurn = process.argv.includes('--exit-after-turn')
 const textOnly = process.argv.includes('--text-only')
 const holdCompact = process.argv.includes('--hold-compact')
@@ -86,18 +88,29 @@ function runTurn(thread, turnId, text, effort, images = []) {
       })
     return
   }
-  const trace = process.env.GODBOT_E2E_GATE_DIR && text.match(/GODBOT-CODEX-EXECUTION-TRACE ([a-f\d-]+)/u)
+  const dir = process.env.GODBOT_E2E_GATE_DIR
+  const trace = dir && text.match(/GODBOT-CODEX-EXECUTION-TRACE ([a-f\d-]+)/u)
   if (trace) {
+    const emit = (method, payload) => notice(method, { threadId: thread.id, turnId, ...payload })
+    const textItem = (id, text) => {
+      emit('item/agentMessage/delta', { itemId: id, delta: text })
+      emit('item/completed', { item: { id, type: 'agentMessage', text } })
+    }
+    textItem('trace-before', 'Codex fixture progress before the command.')
     const item = { id: 'trace-command', type: 'commandExecution', command: 'cat fixture-trace.txt', cwd: thread.params.cwd,
       commandActions: [{ type: 'read', path: 'fixture-trace.txt' }] }
-    notice('item/started', { threadId: thread.id, turnId, item: { ...item, status: 'inProgress' } })
-    notice('item/commandExecution/outputDelta', { threadId: thread.id, turnId, itemId: item.id, delta: 'Codex fixture ' })
-    notice('item/commandExecution/outputDelta', { threadId: thread.id, turnId, itemId: item.id, delta: 'command output' })
-    notice('item/completed', { threadId: thread.id, turnId, item: { ...item, status: 'completed', exitCode: 0, durationMs: 250 } })
-    const report = 'TRACE_COMPLETE ' + trace[1] + '\n\n## Fixture verification report\n\nTool results and final checks are included.'
-    notice('item/completed', { threadId: thread.id, turnId, item: { id: 'trace-result', type: 'agentMessage', text: report } })
-    thread.turn = undefined
-    notice('turn/completed', { threadId: thread.id, turn: { id: turnId, status: 'completed' } })
+    emit('item/started', { item: { ...item, status: 'inProgress' } })
+    textItem('trace-during', 'Codex fixture progress while the command runs.')
+    void (async () => {
+      while (!existsSync(join(dir, 'codex-execution-trace-release'))) await delay(60)
+      emit('item/commandExecution/outputDelta', { itemId: item.id, delta: 'Codex fixture ' })
+      emit('item/commandExecution/outputDelta', { itemId: item.id, delta: 'command output' })
+      emit('item/completed', { item: { ...item, status: 'completed', exitCode: 0, durationMs: 250 } })
+      const report = 'TRACE_COMPLETE ' + trace[1] + '\n\n## Fixture verification report\n\nTool results and final checks are included.'
+      emit('item/completed', { item: { id: 'trace-result', type: 'agentMessage', text: report } })
+      thread.turn = undefined
+      notice('turn/completed', { threadId: thread.id, turn: { id: turnId, status: 'completed' } })
+    })()
     return
   }
   if (/elicit \S+ \S+/.test(text)) return void elicitTurn(thread, turnId, text)

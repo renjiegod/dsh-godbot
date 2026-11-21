@@ -11,6 +11,7 @@ import { claimTeamTerminal, TerminalLeases } from './terminal-lease.js'
 import { SandboxTeamAgents, sandboxRouteInfo } from './sandbox-agents.js'
 import { sandboxTeamEngine } from './sandbox-engines.js'
 import { commandLabel, toolActivity } from './tool-activity.js'
+import { toolReference } from './shared/tool-timeline.js'
 import { readBoundCodexHistory } from './codex-execution-history.js'
 import { acpToolExitCode, acpToolStatus } from '../../drivers/external/tool-results.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -19,7 +20,7 @@ import { serviceOf } from './core/services.js'
 import { splitRef } from './core/text.js'
 import { output } from './core/tools.js'
 import { LocalAgentAdapter, DEFAULT_CONTEXT_WINDOW } from './core/local-agents/adapter.js'
-import { AcpEngine } from './core/local-agents/acp.js'
+import { AcpEngine, ownToolCall } from './core/local-agents/acp.js'
 import { CodexEngine } from './core/local-agents/codex.js'
 import { createWorkspaceClaudeEngine } from '../workspace-agent-controls.js'
 import { CodexEngine as NativeCodexEngine, consumeCodexCommandNotice } from '../../drivers/external/codex.js'
@@ -76,10 +77,14 @@ function recordAcpTool(sessions, { sessionId, update }) {
   if (id !== undefined) session.toolCalls.set(id, call)
   const exitCode = acpToolExitCode(call)
   const reportedStatus = acpToolStatus(call, exitCode)
-  const status = reportedStatus === 'completed' || reportedStatus === 'failed' ? reportedStatus : 'started'
+  const status = ['failed', 'completed', 'declined', 'interrupted'].includes(reportedStatus) ? reportedStatus : 'started'
   const name = call.name ?? call.toolName ?? acpToolNames[call.kind] ?? '工具'
   const trace = acpExecution(id, name, call, reportedStatus, exitCode)
-  if (known && (status === 'started' || acpToolStatus(known, acpToolExitCode(known)) === status)) {
+  const bridged = ownToolCall(call)
+  // The loopback bridge publishes its own live DSH node. Keep provider
+  // failures as well, since a failed transport may never reach the bridge.
+  if (bridged && (status === 'started' || status === 'completed')) return
+  if (known && (!bridged || acpToolStatus(known, acpToolExitCode(known)) === status)) {
     if (trace) session.push({ type: 'execution-trace', trace })
     return
   }
@@ -178,7 +183,7 @@ function codexTurnItems(thread, turnId) {
   const turns = thread.noticeItems ??= new Map()
   let items = turns.get(turnId)
   if (!items) {
-    items = { messages: new Map(), bridgedTools: new Set() }
+    items = { messages: new Map(), tools: new Set(), bridgedTools: new Set() }
     turns.set(turnId, items)
   }
   return items
@@ -207,14 +212,14 @@ export class WorkspaceCodexEngine extends CodexEngine {
     if (!thread) return super.onNotice(method, params)
     if (method === 'turn/completed') thread.noticeItems?.delete(params?.turn?.id)
     const { item, turnId } = params ?? {}
-    if (method === 'item/agentMessage/delta') {
+    if (method === 'item/agentMessage/delta' || method === 'item/plan/delta') {
       const { itemId, delta } = params ?? {}
       if (typeof itemId === 'string' && typeof delta === 'string' && delta !== '') {
         const messages = codexTurnItems(thread, turnId).messages
         const streamed = messages.get(itemId)
         if (streamed !== null) {
           messages.set(itemId, (streamed ?? 0) + delta.length)
-          thread.push({ type: 'text', text: delta, turnId })
+          thread.push({ type: 'text', text: delta, textKey: itemId, turnId })
         }
       }
       return
@@ -226,7 +231,7 @@ export class WorkspaceCodexEngine extends CodexEngine {
       return
     }
     if ((method === 'item/started' || method === 'item/completed') && item) {
-      if (item.type === 'agentMessage' || item.type === 'agent_message') {
+      if (item.type === 'agentMessage' || item.type === 'agent_message' || item.type === 'plan') {
         if (method === 'item/completed') {
           const messages = codexTurnItems(thread, turnId).messages
           const streamed = messages.get(item.id)
@@ -235,7 +240,7 @@ export class WorkspaceCodexEngine extends CodexEngine {
             // A completion repeats the streamed prefix. Some backends report
             // a final suffix here even when a text delta did not arrive.
             const text = typeof item.text === 'string' ? item.text.slice(streamed ?? 0) : undefined
-            if (text) thread.push({ type: 'text', text, turnId })
+            if (text) thread.push({ type: 'text', text, textKey: item.id, turnId })
           }
         }
         return
@@ -247,12 +252,20 @@ export class WorkspaceCodexEngine extends CodexEngine {
         // The `godbot` loopback sends its own DSH tool/call and tool/result
         // events. Codex reports transport errors separately from MCP results.
         const bridged = item.type === 'mcpToolCall' && item.server === 'godbot'
-        if (bridged && typeof item.id === 'string') codexTurnItems(thread, turnId).bridgedTools.add(item.id)
+        const items = codexTurnItems(thread, turnId)
+        if (bridged && typeof item.id === 'string') items.bridgedTools.add(item.id)
         const transportFailed = method === 'item/completed' && item.error != null && item.result == null
-        const trace = bridged && !transportFailed ? undefined : codexExecution(item, name, status)
+        if (bridged && !transportFailed) return
+        const trace = codexExecution(item, name, status)
+        if (trace && items.tools.has(trace.id)) {
+          thread.push({ type: 'execution-trace', trace, turnId })
+          return
+        }
+        if (trace) items.tools.add(trace.id)
         thread.push({ ...toolActivity(name, target, status), trace, turnId })
         return
       }
+      if (method === 'item/started' && !['reasoning', 'contextCompaction'].includes(item.type)) return
     }
     super.onNotice(method, params)
   }
@@ -325,8 +338,10 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
       // Match the workspace drain's turn fence, and ignore a pending dequeue that
       // settled after cancellation. Trace-only events produce no model chunks.
       if (event.trace && !options.signal?.aborted && !live.dead &&
-          (event.turnId === undefined || live.turnTag === undefined || event.turnId === live.turnTag))
+          (event.turnId === undefined || live.turnTag === undefined || event.turnId === live.turnTag)) {
         history.record(live.sessionId, event.trace)
+        if (event.type === 'activity') return { ...event, text: toolReference(event.text, event.trace.id) }
+      }
       return event
     }
     try { yield* super.drain(live, options) } finally { live.next = next }

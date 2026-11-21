@@ -44,6 +44,7 @@ export const CAPABILITIES = [
   'stop-chat',
   'row-meta',
   'chat-steps',
+  'chat-inline-tools',
   'link-feed',
   'images',
   'image-preview',

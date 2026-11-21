@@ -12,7 +12,7 @@ import { useProviderChoices } from './provider-agents-hook.js'
 import { sandboxSettingsStyle } from './bot-settings-style.js'
 import { AgentSetup } from './agent-setup.js'
 import { ConnectorToolsPanel } from './connector-tools.js'
-import { ExecutionHistory, executionStyle, TurnExecution } from './execution-history.js'
+import { ExecutionHistory, executionStyle, InlineExecution, useExecutionTools } from './execution-history.js'
 import { openWorkspace } from './workspace-entry.js'
 import { botHome } from './session-links.js'
 import { Icon } from './chat-ui.js'
@@ -201,21 +201,27 @@ button.gb-bot-model:focus-visible,
 }
 `
 
-function NativeAgentButton({ client, target, actions }) {
-  const { botId, sessionId, agent } = target
-  const [active, setActive] = useState(false)
+function useNativeTerminalActive(client, target, running) {
+  const { botId, sessionId } = target ?? {}
+  const [activePart, setActivePart] = useState()
   useEffect(() => {
+    if (!botId || !sessionId) return
     let timer, mounted = true
     async function update() {
       try {
         const value = await client.terminalStatus({ botId, sessionId })
-        if (mounted) setActive(value.active)
+        if (mounted) setActivePart(value.active ? sessionId : undefined)
       } catch { /* The opener can show a connection error on demand. */ }
-      if (mounted) timer = setTimeout(update, 4000)
+      if (mounted) timer = setTimeout(update, running ? 1000 : 4000)
     }
     void update()
     return () => { mounted = false; clearTimeout(timer) }
-  }, [client, botId, sessionId])
+  }, [client, botId, sessionId, running])
+  return target != null && activePart === sessionId
+}
+
+function NativeAgentButton({ target, active, actions }) {
+  const { sessionId, agent } = target
   const title = agent === 'local-claude-code' ? '打开原生会话并信任此 Bot 的工作目录' : undefined
   return h(PanelMenu, { className: 'gb-native-button', 'aria-label': '原生 Agent', active,
     title: active ? '原生 Agent 控制中，聊天消息等待交还' : '原生 Agent',
@@ -280,9 +286,11 @@ function mountProduct(ctx, client, navigation, target, ready) {
       return bot && !state.readOnly && !state.browser && (bot.sessionId ?? bot.id) === id
         ? h(WebBrowserButton, { key: 'web-browser-' + bot.id, client, bot, sessionId: id }) : null
     },
-    nativeButton(bot, id, state, actions) {
+    useNativeTerminalActive: (bot, id, state, running) =>
+      useNativeTerminalActive(client, botNativeTarget(bot, id, state), running),
+    nativeButton(bot, id, state, actions, terminalActive) {
       const target = botNativeTarget(bot, id, state)
-      return target && h(NativeAgentButton, { key: 'native:' + id, client, target, actions })
+      return target && h(NativeAgentButton, { key: 'native:' + id, target, active: terminalActive, actions })
     },
     nativePane(bot, id, state, close, mode, actions) {
       const target = botNativeTarget(bot, id, state)
@@ -297,8 +305,9 @@ function mountProduct(ctx, client, navigation, target, ready) {
     executionPane(bot, id, state, close) {
       return canViewExecution(bot, id, state) ? h(ExecutionHistory, { key: id, client, bot, sessionId: id, close }) : null
     },
-    executionTurn: (bot, sessionId, turn, running, legacy) => h(TurnExecution, {
-      key: JSON.stringify([sessionId, turn]), client, botId: bot.id, sessionId, turn, running, legacy,
+    useExecutionTools: (botId, sessionId, turn, enabled) => useExecutionTools(client, botId, sessionId, turn, enabled),
+    inlineExecution: (key, botId, sessionId, turn, running, events) => h(InlineExecution, {
+      key, client, botId, sessionId, turn, running, events,
     }),
     providerAgents: props => h(ProviderAgentsPage, { client, ...props }),
     taskSettings: (page, focus, actions, readOnly) => h(TaskSettings, { client, actions, page, focus, readOnly }),

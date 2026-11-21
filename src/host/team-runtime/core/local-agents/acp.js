@@ -621,7 +621,7 @@ function serversFor(mcp, mode = 'http') {
 
 // ACP has no standard field for the MCP server of a call, so each CLI marks it
 // differently: provider/server fields in input/_meta, permissionRule, or name prefixes.
-const ownToolCall = (call) => {
+export const ownToolCall = (call) => {
   const input = inputOf(call)
   const args = call?.args !== null && typeof call?.args === 'object' ? call.args : {}
   const name = String(call?.name ?? call?.toolName ?? '')

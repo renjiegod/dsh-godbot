@@ -19,17 +19,13 @@ test('full-team Claude matches tool results by native call ID', { timeout: 5000 
   for (;;) {
     const event = await session.next()
     if (event.type === 'error') throw event.error
-    if (event.type === 'activity') {
-      activity.push(event.text)
-      traces.push(event.trace)
-    }
+    if (event.type === 'activity') activity.push(event.text)
+    if (event.trace) traces.push(event.trace)
     if (event.type === 'done') break
   }
   assert.deepEqual(activity, [
     '▸ Read · fixture-trace.txt · 调用',
     '▸ Grep · fixture-trace.txt · 调用',
-    '▸ Grep · fixture-trace.txt · 失败',
-    '▸ Read · fixture-trace.txt · 完成',
   ])
   assert.equal(traces[0].id, traces[3].id)
   assert.equal(traces[1].id, traces[2].id)

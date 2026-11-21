@@ -84,7 +84,20 @@ test('account engine requires fresh mapped session and never attempts a host exe
       assert.ok(Array.isArray(seenArgs))
       if (kind === 'antigravity') assert.ok(session.acpSessionId)
       if (kind === 'codex') assert.ok(session.threadId)
-      if (kind === 'claude') assert.ok(seenArgs.includes('stream-json'))
+      if (kind === 'claude') {
+        assert.ok(seenArgs.includes('stream-json'))
+        await engine.prompt(session, [{ type: 'text', text: 'raw-shell-receipts' }])
+        const receipts = []
+        for (;;) {
+          const event = await session.next()
+          if (event.type === 'error') throw event.error
+          if (event.type === 'done') break
+          if (event.trace) receipts.push([event.type, event.trace.status, event.trace.id])
+        }
+        assert.deepEqual(receipts, [
+          ['activity', 'running', 'raw-bash-receipt'], ['execution-trace', 'failed', 'raw-bash-receipt'],
+        ])
+      }
     } finally { await engine.close() }
     assert.equal(releases, 1)
   })

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { AcpEngine as NativeAcpEngine } from '../../drivers/external/acp.js'
 import { CodexEngine as NativeCodexEngine } from '../../drivers/external/codex.js'
 import { ClaudeEngine } from '../../drivers/external/claude.js'
+import { attachClaudeBotTimeline } from '../claude-bot-timeline.js'
 
 function acpConnection(engine) {
   engine.startPeer = NativeAcpEngine.prototype.startPeer
@@ -57,7 +58,9 @@ export function sandboxTeamEngine(target, baseSpec, current, acquire, types) {
     if (options.cwd !== current.hostCwd) throw new Error('Bot 工作目录与已绑定沙箱不一致。')
     const launch = await prepare(options.mcp)
     try {
-      return await open(id, { ...options, cwd: launch.guestCwd, mcp: launch.mcp })
+      const session = await open(id, { ...options, cwd: launch.guestCwd, mcp: launch.mcp })
+      if (target.kind === 'claude') attachClaudeBotTimeline(session, { cwd: launch.guestCwd })
+      return session
     } catch (error) {
       await engine.close()
       throw error

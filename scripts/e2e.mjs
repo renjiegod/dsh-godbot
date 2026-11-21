@@ -30,15 +30,18 @@ if (values.help) {
   const all = ['BOT-MANAGEMENT', 'NEW-SESSION', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE', 'PHONE', 'PHONE-PAGES']
   const connectorCases = ['L-CLAUDE', 'L-CODEX']
   const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
-  const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX', 'PHONE-ANDROID']
+  const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS']
+  const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX']
   const suites = { release, all, 'live-connectors': connectorCases, 'live-routines': Object.keys(routineFiles) }
-  if ((values.case && ![...all, ...live].includes(values.case)) || (values.suite && !Object.hasOwn(suites, values.suite))) throw new Error('Unknown case or suite')
+  if ((values.case && ![...all, ...live, ...androidCases].includes(values.case)) || (values.suite && !Object.hasOwn(suites, values.suite))) throw new Error('Unknown case or suite')
   const cases = values.case ? [values.case] : suites[values.suite ?? 'release']
   const reportDir = values['report-dir'] ? resolve(values['report-dir']) : await mkdtemp(join(tmpdir(), 'godbot-e2e-report-'))
   await mkdir(reportDir, { recursive: true, mode: 0o700 })
   const scratch = await mkdtemp(join(tmpdir(), 'godbot-e2e-'))
   const report = { startedAt: new Date().toISOString(), revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8' }).trim(),
-    platform: process.platform + '-' + process.arch, versions: installedVersions(), cases: cases.map(id => ({ id, status: 'not-run', evidence: [] })), level: cases.some(id => live.includes(id)) ? 'packaged DSH Web / browser / authenticated native CLI / local test application' : 'packaged DSH Web / browser / fixture models' }
+    platform: process.platform + '-' + process.arch, versions: installedVersions(), cases: cases.map(id => ({ id, status: 'not-run', evidence: [] })),
+    level: androidCases.includes(values.case) ? 'packaged Android app / emulator / relay / packaged DSH Web / fixture agents'
+      : cases.some(id => live.includes(id)) ? 'packaged DSH Web / browser / authenticated native CLI / local test application' : 'packaged DSH Web / browser / fixture models' }
   await saveEvidence(reportDir, 'report.json', report)
   let browser
   try {

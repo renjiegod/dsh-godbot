@@ -98,25 +98,65 @@ process.stdin.on('data', (chunk) => {
         // Two calls can arrive in the same message and finish out of order.
         const readId = randomUUID(), grepId = randomUUID()
         const bashId = randomUUID()
+        const read = { type: 'tool_use', id: readId, name: 'Read', input: { file_path: 'fixture-trace.txt' } }
+        const grep = { type: 'tool_use', id: grepId, name: 'Grep', input: { path: 'fixture-trace.txt', pattern: 'test' } }
+        const progress = { type: 'text', text: 'Claude fixture progress before the report.' }
+        const middle = { type: 'text', text: 'Claude fixture progress after both tool starts.' }
         if (dir) {
           const id = 'native-progress'
-          const progress = 'Claude fixture progress before the report.'
-          send({ type: 'stream_event', event: { type: 'message_start', message: { id } } })
-          send({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: progress } } })
-          send({ type: 'assistant', message: { id, content: [{ type: 'text', text: progress }] } })
+          const partial = event => send({ type: 'stream_event', event })
+          partial({ type: 'message_start', message: { id } })
+          partial({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: progress.text } })
+          partial({ type: 'content_block_start', index: 1, content_block: { ...read, input: {} } })
+          while (!existsSync(join(dir, 'claude-execution-trace-start'))) await delay(60)
+          partial({ type: 'content_block_start', index: 2, content_block: { ...grep, input: {} } })
+          partial({ type: 'content_block_delta', index: 3, delta: { type: 'text_delta', text: middle.text } })
+          send({ type: 'assistant', message: { id, content: [progress, read, grep, middle] } })
         }
-        send({ type: 'assistant', message: { content: [
-          { type: 'tool_use', id: readId, name: 'Read', input: { file_path: 'fixture-trace.txt' } },
-          { type: 'tool_use', id: grepId, name: 'Grep', input: { path: 'fixture-trace.txt', pattern: 'test' } },
-          ...(dir ? [{ type: 'tool_use', id: bashId, name: 'Bash', input: { command: 'node --version', description: 'Read fixture version' } }] : []),
-        ] } })
+        if (!dir) send({ type: 'assistant', message: { content: [read, grep] } })
         send({ type: 'user', message: { content: [
           { type: 'tool_result', tool_use_id: grepId, is_error: true, content: 'Claude fixture grep error' },
           { type: 'tool_result', tool_use_id: readId, content: dir ? 'Claude fixture file content' : 'RAW_TRACE_OUTPUT' },
         ] } })
+        if (dir) send({ type: 'assistant', message: { content: [
+          { type: 'tool_use', id: bashId, name: 'Bash', input: { command: 'node --version', description: 'Read fixture version' } },
+        ] } })
+        while (dir && !existsSync(join(dir, 'claude-execution-trace-continue'))) await delay(60)
+        const finishBash = id => send({ type: 'user', message: { content: [
+          { type: 'tool_result', tool_use_id: id, content: 'Checked fixture routing.' },
+        ] } })
+        let lateId
+        if (dir) {
+          // Claude sends a separate assistant frame for each tool-use block.
+          // Let a long run keep adding calls before and after a later text block.
+          for (let i = 1; i <= 72; i++) {
+            const id = randomUUID()
+            send({ type: 'assistant', message: { id: 'routing-' + i, content: [
+              { type: 'tool_use', id, name: 'Bash', input: { command: 'printf route', description: 'Check fixture route ' + i } },
+            ] } })
+            finishBash(id)
+          }
+          const id = 'native-rewire'
+          const text = 'Now rewire the fixture routing.'
+          send({ type: 'stream_event', event: { type: 'message_start', message: { id } } })
+          send({ type: 'stream_event', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } } })
+          send({ type: 'assistant', message: { id, content: [{ type: 'text', text }] } })
+          for (const [index, description] of ['Read the new fixture route', 'Verify the new fixture route'].entries()) {
+            lateId = randomUUID()
+            const call = { type: 'tool_use', id: lateId, name: 'Bash' }
+            send({ type: 'stream_event', event: { type: 'content_block_start', index: index + 1, content_block: { ...call, input: {} } } })
+            send({ type: 'assistant', message: { id, content: [
+              { ...call, input: { command: 'printf new-route', description } },
+            ] } })
+            if (index === 0) finishBash(lateId)
+          }
+        }
         while (dir && !existsSync(join(dir, 'claude-execution-trace-release'))) await delay(60)
-        if (dir) send({ type: 'user', tool_use_result: { stdout: 'Claude fixture standard output', stderr: 'Claude fixture standard error', exitCode: 7 },
-          message: { content: [{ type: 'tool_result', tool_use_id: bashId, is_error: false, content: 'Claude fixture command failed' }] } })
+        if (dir) {
+          finishBash(lateId)
+          send({ type: 'user', tool_use_result: { stdout: 'Claude fixture standard output', stderr: 'Claude fixture standard error', exitCode: 7 },
+            message: { content: [{ type: 'tool_result', tool_use_id: bashId, is_error: false, content: 'Claude fixture command failed' }] } })
+        }
         const reply = 'TRACE_COMPLETE ' + trace[1] + '\n\n## Fixture verification report\n\nTool results and final checks are included.'
         send({ type: 'assistant', message: { content: [{ type: 'text', text: reply }] } })
         send({ type: 'result', subtype: 'success', session_id: sessionId, result: reply })
