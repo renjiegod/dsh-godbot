@@ -3,12 +3,13 @@ import { randomUUID } from 'node:crypto'
 import { saveEvidence } from '../artifacts.mjs'
 import { ciTeam } from '../automation-client.mjs'
 import { until } from '../host.mjs'
+import { openSettingsPage } from '../native-ui.mjs'
 import { reportBotAssignments } from '../workflow-model.mjs'
 
 const title = 'E17 scheduled editorial decision'
 async function schedule(host, ci, flow) {
   const { page } = host
-  await page.getByRole('navigation', { name: '团队管理导航' }).getByRole('button', { name: '自动化任务', exact: true }).click()
+  await openSettingsPage(host, /^(定时派工|Scheduled assignments)$/u)
   const routines = page.getByRole('region', { name: '团队自动化任务' })
   await routines.getByRole('button', { name: '新建自动化任务' }).click()
   const form = page.getByRole('form', { name: '自动化任务设置' })

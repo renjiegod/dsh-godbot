@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { until } from '../host.mjs'
 import { openFullTeam } from '../native-ui.mjs'
-import { openProviderSettingsFromManagement } from '../provider-settings.mjs'
+import { openProviderSettingsFromTeam } from '../provider-settings.mjs'
 import { prepareProviderAccounts } from '../fixtures/provider-account-setup.mjs'
 
 const number = n => new Intl.NumberFormat('zh-CN').format(n)
@@ -132,7 +132,7 @@ else {
   for (const routeName of ['local-codex-cli','local-claude-code'])
     assert.ok(route(usage,routeName).periods.today.tokens>0)
   assert.ok(route(usage,'local-opencode').periods.today.unreported>0)
-  const view=await openProviderSettingsFromManagement(host)
+  const view=await openProviderSettingsFromTeam(host)
   await view.locator('[data-agent-action=usage]').click()
   const overview=view.locator('[data-provider-usage-overview]')
   await overview.getByRole('button',{name:'刷新统计'}).click()

@@ -4,7 +4,7 @@ import { Component, createElement as h, useCallback, useEffect, useRef, useState
 import { ACCENT_INKS, INKS } from './inks.js'
 import { isMainOf } from './sources.js'
 import { MESSAGE_WIDTH, allThemes, effectsOf, flatWidthOf, layoutOf, thinkingShown, widthOf } from './themes.js'
-import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, ChatsIcon, ClockIcon, ConnectorIcon, GlobeIcon, InfoIcon, MonitorIcon, PhoneIcon, PlugIcon, PlusIcon, SlidersIcon, TerminalIcon, SETTINGS_ICONS } from './icons.js'
+import { CloseIcon, ChevronLeftIcon, ChevronRightIcon, CalendarIcon, ChatsIcon, ClockIcon, ConnectorIcon, GlobeIcon, InfoIcon, MonitorIcon, PhoneIcon, PlugIcon, PlusIcon, QueueIcon, SlidersIcon, TerminalIcon, SETTINGS_ICONS } from './icons.js'
 import { IconAgentPresetOutlineMedium, IconArchiveOutlineMedium, IconPersonalizationOutlineMedium, IconSettingsOutlineMedium, IconUserOutlineMedium } from '@deepseek-ai/dsh-client-ui-primitives'
 import { AdminStar, BotAvatar, RoomAvatar } from './mark.js'
 import { useEscape } from './overlay-hooks.js'
@@ -43,7 +43,7 @@ const capitalize = word => word[0].toUpperCase() + word.slice(1)
 // Godbot's pages come first; below a rule, the pages DSH and other plugins register
 // (`settings.section`), then Feedback and About. DSH's General rows join General, and
 // its Models page opens from Godbot's Models page as the advanced settings.
-const SETTINGS_PAGES = [['general', 'General'], ['models', 'Models'], ['local-agents', 'Local agents'], ['bots', 'Bots'], ['bot-models', 'Bot models'], ['groups', 'Group chats'], ['connectors', 'Connectors'], ['im', 'IM'], ['phone', 'Phone'], ['capabilities', 'Capabilities'], ['browser', 'Browser'], ['computer', 'Computer use'], ['schedules', 'Scheduled tasks'], ['usage', 'Usage'], ['secrets', 'Secrets'], ['feedback', 'Feedback'], ['about', 'About Godbot']]
+const SETTINGS_PAGES = [['general', 'General'], ['models', 'Models'], ['local-agents', 'Local agents'], ['bots', 'Bots'], ['bot-models', 'Bot models'], ['groups', 'Group chats'], ['connectors', 'Connectors'], ['im', 'IM'], ['phone', 'Phone'], ['capabilities', 'Capabilities'], ['browser', 'Browser'], ['computer', 'Computer use'], ['tasks', 'Task board'], ['routines', 'Scheduled assignments'], ['schedules', 'Scheduled messages'], ['usage', 'Usage'], ['secrets', 'Secrets'], ['feedback', 'Feedback'], ['about', 'About Godbot']]
 const LAST_PAGES = new Set(['feedback', 'about'])
 // DSH sections Godbot's own pages already hold.
 const MERGED_SECTIONS = new Set(['general', 'models'])
@@ -53,7 +53,7 @@ const DSH_ICONS = { account: IconUserOutlineMedium, 'agent-presets': IconAgentPr
 export const dshPages = dsh => (dsh?.sections ?? []).filter(row => row.id !== '' && !MERGED_SECTIONS.has(row.id))
 const hasSection = (dsh, id) => (dsh?.sections ?? []).some(row => row.id === id)
 const dshItem = (dsh, id) => h('div', { key: id, className: 'bt-dsh-item', 'data-item': id }, dsh.renderSlot('settings.general.item', {}, { only: id }))
-const PAGE_ICONS = { ...SETTINGS_ICONS, models: SlidersIcon, 'bot-models': IconPersonalizationOutlineMedium, 'local-agents': TerminalIcon, connectors: ConnectorIcon, im: ChatsIcon, phone: PhoneIcon, capabilities: PlugIcon, browser: GlobeIcon, computer: MonitorIcon, schedules: ClockIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon }
+const PAGE_ICONS = { ...SETTINGS_ICONS, models: SlidersIcon, 'bot-models': IconPersonalizationOutlineMedium, 'local-agents': TerminalIcon, connectors: ConnectorIcon, im: ChatsIcon, phone: PhoneIcon, capabilities: PlugIcon, browser: GlobeIcon, computer: MonitorIcon, tasks: QueueIcon, routines: ClockIcon, schedules: CalendarIcon, secrets: KeyIcon, feedback: FeedbackIcon, about: InfoIcon }
 
 // What each MEMORY.md holds by default, in characters of entry text.
 const MEMORY_SIZES = [
@@ -333,15 +333,18 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
   // DSH's Models page, one level into Models.
   const advanced = page === 'models' && id === 'advanced' && hasSection(dsh, 'models')
   const shown = section ? 'dsh' : pages.some(([key]) => key === page) ? page : 'general'
-  const usageFocus = shown === 'usage' && id ? id : null
-  const label = section ? section.label : advanced ? t('Advanced settings') : t(pages.find(([key]) => key === shown)[1])
-  const back = bot ? t('Back to Bots') : room ? t('Back to group chats') : usageFocus ? t('All usage') : advanced ? t('Back to models') : null
+  const usageLimits = shown === 'usage' && id === 'limits' && !roster.readOnly
+  const usageFocus = shown === 'usage' && id !== 'limits' ? id : null
+  const usageShown = shown === 'usage' && !usageLimits
+  const label = section ? section.label : advanced ? t('Advanced settings')
+    : usageLimits ? t('Usage limits and fallback models') : t(pages.find(([key]) => key === shown)[1])
+  const back = bot ? t('Back to Bots') : room ? t('Back to group chats') : usageFocus || usageLimits ? t('All usage') : advanced ? t('Back to models') : null
   const nav = useGlide(section ? `dsh:${section.id}` : shown, { axis: 'y' })
   // A page enters from the right when it is one level in, from the left when it comes
   // back out, and from below beside it. Usage keeps its own entrance and its data
   // across its own levels, so they share one page.
-  const pageKey = `${shown}:${bot?.id ?? room?.id ?? section?.id ?? (advanced ? 'advanced' : '')}`
-  const depth = bot || room || advanced ? 1 : 0
+  const pageKey = `${shown}:${bot?.id ?? room?.id ?? section?.id ?? (advanced ? 'advanced' : usageLimits ? 'limits' : '')}`
+  const depth = bot || room || advanced || usageLimits ? 1 : 0
   const last = useRef({ key: pageKey, depth, move: 'up' })
   if (last.current.key !== pageKey) {
     last.current = { key: pageKey, depth, move: depth > last.current.depth ? 'in' : depth < last.current.depth ? 'out' : 'up' }
@@ -349,8 +352,8 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
   // Usage stays mounted from its first visit until Settings closes: coming back to it
   // shows the same page at once instead of loading it again. Meanwhile it keeps its
   // rendered state off screen (content-visibility).
-  const [usageOpened, setUsageOpened] = useState(shown === 'usage')
-  if (shown === 'usage' && !usageOpened) setUsageOpened(true)
+  const [usageOpened, setUsageOpened] = useState(usageShown)
+  if (usageShown && !usageOpened) setUsageOpened(true)
   const errorLine = error ? h('div', { className: 'bt-error', role: 'alert', style: { padding: 0 } }, error) : null
   const pageButton = (key, text) => h('button', {
     key, type: 'button', className: 'bt-settings-item', 'aria-current': shown === key ? 'page' : undefined, onClick: () => actions.openSettings(key),
@@ -373,9 +376,13 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
       h('div', { className: 'bt-settings-main' },
         h('div', { className: 'bt-settings-head' },
           back ? h('button', { type: 'button', className: 'bt-icon-btn', 'aria-label': back, title: back, onClick: () => actions.openSettings(shown) }, h(ChevronLeftIcon)) : null,
-          h('h2', { key: bot?.id ?? room?.id ?? section?.id ?? (advanced ? 'advanced' : shown) }, bot?.name ?? room?.name ?? label),
-          dsh ? h('div', { className: 'bt-settings-actions' }, dsh.renderSlot('settings.action', {})) : null),
-        shown === 'usage' ? null : h('div', { key: pageKey, className: 'bt-settings-scroll bt-settings-page', 'data-move': last.current.move },
+          h('h2', { key: bot?.id ?? room?.id ?? section?.id ?? (advanced ? 'advanced' : usageLimits ? 'limits' : shown) }, bot?.name ?? room?.name ?? label),
+          h('div', { className: 'bt-settings-actions' },
+            usageShown && !usageFocus && !roster.readOnly ? h('button', {
+              type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openSettings('usage', 'limits'),
+            }, t('Usage limits and fallback models')) : null,
+            dsh?.renderSlot('settings.action', {}))),
+        usageShown ? null : h('div', { key: pageKey, className: 'bt-settings-scroll bt-settings-page', 'data-move': last.current.move },
           errorLine,
           h(PageBoundary, null,
           shown === 'computer' ? h(ComputerPage, { roster, actions, run, Section: SetSection, Row: SetRow, Switch }) : null,
@@ -394,12 +401,14 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
           shown === 'capabilities' ? h(CapabilitiesPage, { roster, actions, run }) : null,
           shown === 'phone' ? h(PhonePage, { roster, actions, Section: SetSection, Row: SetRow }) : null,
           shown === 'browser' ? h(BrowserPage, { roster, actions, run, Section: SetSection, Row: SetRow }) : null,
+          shown === 'tasks' || shown === 'routines' || usageLimits
+            ? actions.godbot.taskSettings(usageLimits ? 'limits' : shown, shown === 'tasks' ? id : null, actions, roster.readOnly) : null,
           shown === 'schedules' ? actions.godbot.schedulesPage(roster, actions, id, publishSchedules) : null,
           shown === 'secrets' ? h(SecretsPage, { roster, actions, run, Section: SetSection }) : null,
           shown === 'feedback' ? h(FeedbackPage, { actions, run, Section: SetSection, Row: SetRow }) : null,
           shown === 'about' ? h(AboutPage, { useUpdate, actions, run, Section: SetSection, Row: SetRow }) : null)),
-        usageOpened ? h('div', { key: 'usage', className: 'bt-settings-scroll bt-settings-usage', 'data-off': shown === 'usage' ? undefined : '', 'aria-hidden': shown === 'usage' ? undefined : true },
-          shown === 'usage' ? errorLine : null,
+        usageOpened ? h('div', { key: 'usage', className: 'bt-settings-scroll bt-settings-usage', 'data-off': usageShown ? undefined : '', 'aria-hidden': usageShown ? undefined : true },
+          usageShown ? errorLine : null,
           h(PageBoundary, { reset: shown }, h(UsagePage, { roster, actions, focusId: usageFocus }))) : null),
       h('button', { type: 'button', className: 'bt-settings-close', 'aria-label': t('Close settings'), onClick: close }, h(CloseIcon))))
 }

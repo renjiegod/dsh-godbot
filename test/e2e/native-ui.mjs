@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
+import { until } from './host.mjs'
 
 export async function openFullTeam(host) {
   await host.page.goto(host.url + '/#/godbot')
-  const switcher = host.page.getByRole('navigation', { name: 'Godbot 工作区' })
-  await switcher.getByRole('button', { name: 'Bot 团队', exact: true }).waitFor()
+  await host.page.locator('.bt-head .bt-pill').waitFor()
   const settings = host.page.locator('button.bt-settings-close:visible')
   if (await settings.count()) await settings.click()
   assert.equal((await host.snapshot()).workspaceRuntime.mode, 'embedded')
@@ -12,12 +12,33 @@ export async function openFullTeam(host) {
   return state.mainBotId
 }
 
-export async function openManagement(host) {
-  await openFullTeam(host)
+export async function openSettingsPage(host, name) {
   const { page } = host
-  await page.getByRole('navigation', { name: 'Godbot 工作区' })
-    .getByRole('button', { name: '团队管理', exact: true }).click()
-  await page.getByRole('main', { name: '团队管理' }).getByRole('heading', { name: '任务板' }).waitFor()
+  const nav = page.locator('.bt-settings-layer:not([data-leaving]) .bt-settings-nav')
+  if (await nav.isVisible()) {
+    await nav.getByRole('button', { name }).click()
+    return
+  }
+  await page.locator('.bt-head .bt-pill').click({ trial: true })
+  const launchers = page.locator('button.bt-account, button.bt-settings-trigger')
+  const { index, menu } = await until(async () => launchers.evaluateAll(buttons => {
+    for (const [index, button] of buttons.entries()) {
+      const box = button.getBoundingClientRect()
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2)
+      if (hit && button.contains(hit)) return { index, menu: button.getAttribute('aria-haspopup') === 'menu' }
+    }
+    return null
+  }), 'active workbench settings launcher')
+  await launchers.nth(index).click()
+  if (menu) await page.getByRole('menuitem', { name: /^(设置|Settings)$/u }).click()
+  await nav.getByRole('button', { name }).click()
+}
+
+export async function openTaskBoard(host) {
+  await openSettingsPage(host, /^(任务板|Task board)$/u)
+  const board = host.page.locator('.gb-task-settings')
+  await board.getByText('分配任务', { exact: true }).waitFor()
+  return board
 }
 
 export async function openBotChat(host, bot) {
