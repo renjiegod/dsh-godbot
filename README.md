@@ -36,6 +36,7 @@
 - [故障排查](#故障排查)
 - [开发与验证](#开发与验证)
 - [相关文档与第三方声明](#相关文档与第三方声明)
+- [许可证](#许可证)
 
 ## 环境要求
 
@@ -448,3 +449,7 @@ npm pack --dry-run
 | [VERIFICATION.md](VERIFICATION.md) | 发布候选版本验证记录 |
 
 复用组件、原始版权和修改范围见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES)，相关许可证全文位于 [`licenses/`](licenses/)。
+
+## 许可证
+
+本项目以 [MIT 许可证](LICENSE) 发布。其中来自第三方的部分（例如源自 DS-Bot 的代码，使用 Apache-2.0）继续沿用各自的许可证，详见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES)。
