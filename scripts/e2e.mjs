@@ -15,6 +15,17 @@ if (values.help) {
   console.log('node scripts/e2e.mjs [--case E0|--suite release|all|live-connectors|live-routines] [--artifact <tgz>] [--previous <tgz>] [--report-dir <output>]')
 } else {
   if (values.case && values.suite) throw new Error('Select a case or a suite')
+  // E12 upgrades from the 0.1.0 build committed at this revision. Clones without
+  // that commit (such as the public history) skip E12 unless --previous is given.
+  const upgradeBaseline = '71e8cac'
+  const hasRevision = revision => {
+    try {
+      execFileSync('git', ['cat-file', '-e', revision + '^{commit}'], { cwd: repository, stdio: 'ignore' })
+      return true
+    } catch {
+      return false
+    }
+  }
   const release = ['BOT-MANAGEMENT', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5', 'E8', 'E12', 'E13', 'E15', 'E16', 'E17']
   const all = ['BOT-MANAGEMENT', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id])]
   const connectorCases = ['L-CLAUDE', 'L-CODEX']
@@ -35,8 +46,9 @@ if (values.help) {
     report.archive = { sha256: candidate.sha256, buildId: candidate.buildId, version: candidate.version }
     let previous
     if (cases.includes('E12')) {
-      previous = values.previous ? await inspectArchive(values.previous) : await buildArchive(scratch, '71e8cac')
-      report.previous = { sha256: previous.sha256, buildId: previous.buildId, version: previous.version }
+      if (values.previous) previous = await inspectArchive(values.previous)
+      else if (hasRevision(upgradeBaseline)) previous = await buildArchive(scratch, upgradeBaseline)
+      if (previous) report.previous = { sha256: previous.sha256, buildId: previous.buildId, version: previous.version }
     }
     const launch = await openBrowser()
     browser = launch.browser
@@ -53,6 +65,12 @@ if (values.help) {
       try {
         if (!existsSync(file)) {
           row.reason = 'Scenario has no implementation'
+          continue
+        }
+        if (id === 'E12' && !previous) {
+          row.status = 'skipped'
+          row.reason = 'Upgrade baseline ' + upgradeBaseline + ' is not in this checkout; pass --previous <tgz> to run E12'
+          console.log(row.reason)
           continue
         }
         console.log('Running ' + id)
@@ -91,6 +109,6 @@ if (values.help) {
     report.endedAt = new Date().toISOString()
     await saveEvidence(reportDir, 'report.json', report)
     console.log('Godbot E2E report: ' + join(reportDir, 'report.json'))
-    if (report.environmentFailure || report.cases.some(row => row.status !== 'passed') || report.cases.length !== cases.length) process.exitCode = 1
+    if (report.environmentFailure || report.cases.some(row => row.status !== 'passed' && row.status !== 'skipped') || report.cases.length !== cases.length) process.exitCode = 1
   }
 }
