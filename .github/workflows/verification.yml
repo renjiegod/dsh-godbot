@@ -6,7 +6,27 @@ on:
 permissions:
   contents: read
 jobs:
+  # Every push and pull request: unit and integration tests, the client build
+  # and a dry-run of the npm package.
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@0.2.2-rc.1
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: npm pack --dry-run
+
+  # The packaged browser end-to-end suite is long-running, so it only runs when
+  # started by hand from the Actions tab (Run workflow).
   packaged-release:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest
     timeout-minutes: 45
     steps:
@@ -21,7 +41,6 @@ jobs:
       - run: npm ci
       - name: Install Chromium matched to the locked Playwright version
         run: npx --no-install playwright-core install --no-shell chromium
-      - run: npm test
       - run: npm run build
       - name: Pack and test the uploaded candidate
         shell: bash
