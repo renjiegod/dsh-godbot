@@ -26,7 +26,7 @@ export const isMainOf = (roster, id) => id !== undefined && (roster.mainBotIds ?
 // (running, unread, turns) is read from the current part, team state from the Bot id.
 export function indexRoster(value) {
   const byId = {}
-  // The previous default Chief had a blue whale avatar. Resolve it for display,
+  // The first Main Bot's previous default look was a blue whale. Resolve it for display,
   // preserving uploaded photos, custom looks and avatars on all other members.
   const bots = value.bots.map(bot => bot.id === value.mainBotId && bot.avatar?.shape === 'whale' && bot.color === 'deepseek' && !bot.avatar.image
     ? { ...bot, color: 'cyan', avatar: { ...bot.avatar, shape: 'godbot' } }

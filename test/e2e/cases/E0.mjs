@@ -14,7 +14,7 @@ export default async function E0({ makeHost, candidate, note }) {
   // The paint scenario finishes on deliberately stale pre-upgrade HTML with a
   // rejected startup snapshot. Begin the chat journey in the candidate document.
   await a.page.goto('about:blank')
-  const chief = await openFullTeam(a)
+  const godbot = await openFullTeam(a)
   await a.capture('team-workspace')
   const marker = 'E0-' + randomUUID()
   const bot = await a.bot('create-bot', { name: 'E0 Worker', model: 'deepseek-official/deepseek-flash' })
@@ -52,11 +52,11 @@ export default async function E0({ makeHost, candidate, note }) {
   const restored = await a.bot('chat', { botId: bot.id })
   assert.equal(restored.sessionId, before.sessionId)
   assert.ok(restored.items.some(row => row.kind === 'bot' && row.turn === turn.turn && row.text === response))
-  assert.equal(await openFullTeam(a), chief)
+  assert.equal(await openFullTeam(a), godbot)
   await openBotChat(a, bot)
   await flow.getByText(response, { exact: true }).first().waitFor()
-  await openBotChat(a, (await a.bot('state')).bots.find(row => row.id === chief))
-  await verifyBotModelHeader(a, chief, note)
+  await openBotChat(a, (await a.bot('state')).bots.find(row => row.id === godbot))
+  await verifyBotModelHeader(a, godbot, note)
   await openProviderSettingsFromTeam(a)
   const settings = a.page.locator('.bt-settings-nav:visible')
   await settings.getByRole('button', { name: /^(关于|About).*Godbot$/iu }).click()
@@ -70,7 +70,7 @@ export default async function E0({ makeHost, candidate, note }) {
   const b = await makeHost()
   await b.install(candidate)
   await b.start()
-  assert.notEqual(await openFullTeam(b), chief)
+  assert.notEqual(await openFullTeam(b), godbot)
   await openManagement(b)
   const other = await b.snapshot()
   assert.equal(other.tasks.length, 0)
@@ -80,7 +80,7 @@ export default async function E0({ makeHost, candidate, note }) {
     fixtureModelCalls: a.model.calls.length, secondBotCount: other.bots.length })
 }
 
-async function verifyBotModelHeader(host, chief, note) {
+async function verifyBotModelHeader(host, godbot, note) {
   const { page } = host
   const ref = 'deepseek-official/deepseek-flash'
   const peerRef = 'deepseek-official/deepseek-v4-pro'
@@ -100,13 +100,13 @@ async function verifyBotModelHeader(host, chief, note) {
   const level = badge.locator('.gb-bot-model-effort')
   const showsModel = label => name.getByText(label, { exact: true }).waitFor()
   const showsLevel = label => level.getByText(label, { exact: true }).waitFor()
-  await host.bot('update-bot', { id: chief, model: ref, effort: null })
+  await host.bot('update-bot', { id: godbot, model: ref, effort: null })
   await showsModel(model.name)
   await showsLevel(defaultLabel)
-  const chiefLabel = page.locator('.bt-head .bt-pill-name')
-  await chiefLabel.getByText('Chief', { exact: true }).waitFor()
-  assert.ok(await chiefLabel.evaluate(label => label.scrollWidth <= label.clientWidth),
-    'the Chief name fits its desktop chat header')
+  const godbotLabel = page.locator('.bt-head .bt-pill-name')
+  await godbotLabel.getByText('GodBot', { exact: true }).waitFor()
+  assert.ok(await godbotLabel.evaluate(label => label.scrollWidth <= label.clientWidth),
+    'the GodBot name fits its desktop chat header')
 
   await badge.click()
   const drawer = page.locator('.bt-drawer-model').filter({ has: page.getByRole('slider') })
@@ -119,7 +119,7 @@ async function verifyBotModelHeader(host, chief, note) {
   await drawer.waitFor({ state: 'hidden' })
 
   const peer = await host.bot('create-bot', { name: 'Header fixture Bot', model: peerRef, effort: explicit.id })
-  const room = await host.bot('create-room', { name: 'Header fixture group', members: [chief, peer.id] })
+  const room = await host.bot('create-room', { name: 'Header fixture group', members: [godbot, peer.id] })
   await page.locator(`[data-bot-id="${peer.id}"]`).click()
   await page.locator('.bt-head .bt-pill-name').getByText(peer.name, { exact: true }).waitFor()
   await showsModel(peerModel.name)
@@ -128,7 +128,7 @@ async function verifyBotModelHeader(host, chief, note) {
   await page.locator(`[data-room-id="${room.id}"]`).click()
   await page.locator('.bt-head .bt-pill-name').getByText(room.name, { exact: true }).waitFor()
   await badge.waitFor({ state: 'hidden' })
-  await page.locator(`[data-bot-id="${chief}"]`).click()
+  await page.locator(`[data-bot-id="${godbot}"]`).click()
   await showsModel(model.name)
   await showsLevel(defaultLabel)
 

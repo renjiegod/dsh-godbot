@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -41,7 +41,7 @@ test('the managed runtime loads one durable workspace in the owning Godbot profi
   const expectedHome = join(stateDir, 'team-workspace')
   await mkdir(expectedHome, { recursive: true })
   await writeFile(join(expectedHome, 'state.json'), JSON.stringify({
-    version: 1, mainBotId: 'm1', bots: { m1: { id: 'm1', name: 'Local chief', createdAt: 1 } },
+    version: 1, mainBotId: 'm1', bots: { m1: { id: 'm1', name: 'Local lead', createdAt: 1 } },
     rooms: {}, exchanges: [], exchangeTurns: {}, questions: {},
   }))
   const options = { updateCheck: false, github: false, diagnosticsFile: false, home: join(home, 'bot'), checkRatio: 0.45 }
@@ -60,11 +60,41 @@ test('the managed runtime loads one durable workspace in the owning Godbot profi
   assert.ok(child.calls.includes('route GET /api/godbot/team/feed'))
   const state = await rt.channelCall('state', {})
   assert.equal(state.ok, true, JSON.stringify(state.error))
-  assert.equal(state.value.bots[0].name, 'Local chief')
+  assert.equal(state.value.bots[0].name, 'Local lead')
   assert.equal(state.value.bots[0].avatar.shape, 'godbot')
   assert.equal(state.value.bots[0].color, 'cyan')
   assert.equal(rt.phoneView().server, '')
 
+})
+
+test('a Main Bot that kept the old defaults Chief, Chief of Staff becomes GodBot, Team Lead once', async t => {
+  async function open(extra) {
+    const { home, owner, stateDir } = await profile(t)
+    const workspace = join(stateDir, 'team-workspace')
+    await mkdir(workspace, { recursive: true })
+    await writeFile(join(workspace, 'state.json'), JSON.stringify({
+      version: 1, mainBotId: 'm1', ...extra,
+      bots: { m1: { id: 'm1', name: 'Chief', role: 'Chief of Staff', createdAt: 1 }, w1: { id: 'w1', name: 'Writer', createdAt: 2 } },
+      rooms: {}, exchanges: [], exchangeTurns: {}, questions: {},
+    }))
+    mountTeamRuntime(owner, stateDir, { updateCheck: false, github: false, diagnosticsFile: false, home: join(home, 'bot') })
+    await owner.started
+    const rt = await getTeamRuntime(owner)
+    const state = await rt.channelCall('state', {})
+    assert.equal(state.ok, true, JSON.stringify(state.error))
+    const saved = JSON.parse(await readFile(join(workspace, 'state.json'), 'utf8'))
+    return { bots: Object.fromEntries(state.value.bots.map(bot => [bot.id, [bot.name, bot.role]])), saved }
+  }
+  const upgraded = await open()
+  assert.deepEqual(upgraded.bots, { m1: ['GodBot', 'Team Lead'], w1: ['Writer', undefined] })
+  assert.deepEqual([upgraded.saved.bots.m1.name, upgraded.saved.bots.m1.role], ['GodBot', 'Team Lead'])
+  assert.deepEqual([upgraded.saved.mainRenamed, upgraded.saved.mainRoleRenamed], [true, true])
+  // A team already renamed before the role changed gets only the new role.
+  const named = await open({ mainRenamed: true })
+  assert.deepEqual(named.bots.m1, ['Chief', 'Team Lead'])
+  // Once updated, a name or role the user picks later, the old ones included, stays.
+  const chosen = await open({ mainRenamed: true, mainRoleRenamed: true })
+  assert.deepEqual(chosen.bots.m1, ['Chief', 'Chief of Staff'])
 })
 
 test('an upgraded and rolled-back workspace reopens the original directory and flags conflicting histories', async t => {

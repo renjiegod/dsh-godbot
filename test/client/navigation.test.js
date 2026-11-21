@@ -11,16 +11,16 @@ import {
 } from '../../src/client/navigation.js'
 
 test('automatic Bot recovery does not supersede a later selection or its empty main view', async () => {
-  let main = 'chief'
+  let main = 'godbot'
   const opened = []
   const selection = sessionSelection({ current: () => main, waitMs: 5000 })
   try {
     const refresh = Promise.withResolvers()
-    const stale = selection.recover(() => opened.push('chief'), () => refresh.promise)
+    const stale = selection.recover(() => opened.push('godbot'), () => refresh.promise)
     selection.open('worker', (id) => opened.push(id))
     main = undefined
     selection.observe(main)
-    await selection.recover(() => opened.push('chief'))
+    await selection.recover(() => opened.push('godbot'))
     refresh.resolve()
     await stale
     assert.deepEqual(opened, ['worker'])
@@ -30,21 +30,21 @@ test('automatic Bot recovery does not supersede a later selection or its empty m
     await selection.recover(() => opened.push('worker-next'))
     main = undefined
     selection.observe(main)
-    await selection.recover(() => opened.push('chief'))
+    await selection.recover(() => opened.push('godbot'))
     assert.deepEqual(opened, ['worker', 'worker-next'])
 
     main = 'other'
     selection.observe(main)
     main = undefined
-    await selection.recover(() => opened.push('chief'))
-    assert.deepEqual(opened, ['worker', 'worker-next', 'chief'])
+    await selection.recover(() => opened.push('godbot'))
+    assert.deepEqual(opened, ['worker', 'worker-next', 'godbot'])
   } finally {
     selection.dispose()
   }
 })
 
 test('an unresolved selection releases the guard and recovers only an empty main view', () => {
-  let main = 'chief'
+  let main = 'godbot'
   let expire, recoveries = 0
   const selection = sessionSelection({
     current: () => main,
@@ -138,7 +138,7 @@ function shell(browser, initial = null) {
     list: {
       getSnapshot: () => ({
         byId: Object.fromEntries(
-          ['ordinary', 'chief', 'worker'].map((id) => [
+          ['ordinary', 'godbot', 'worker'].map((id) => [
             id,
             { id, retainedBy: { mainView: Number(id === session) } },
           ]),
@@ -172,7 +172,7 @@ function shell(browser, initial = null) {
   }
   const mount = (mode, target) => {
     changes.push(['enter', mode, target])
-    if (mode === 'bot') openSession(target ?? 'chief')
+    if (mode === 'bot') openSession(target ?? 'godbot')
     return () => changes.push(['leave', mode])
   }
   const nav = connectNavigation(
@@ -205,7 +205,7 @@ test('the sidebar opens the real Bot conversation, switches internal views in on
   app.select(panelId)
   assert.equal(browser.location.hash, workspaceHash)
   assert.equal(app.panel, null)
-  assert.equal(app.session, 'chief')
+  assert.equal(app.session, 'godbot')
   app.nav.openManagement()
   assert.equal(browser.location.hash, managementHash)
   assert.equal(app.panel, panelId)

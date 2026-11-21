@@ -23,15 +23,15 @@ test('the workspace copies historical preferences once and preserves both instal
   assert.equal(values.has(STORAGE.notify), false)
 })
 
-test('only the original default Chief look resolves to the Godbot icon', () => {
-  const chief = { id: 'chief', avatar: { shape: 'whale' }, color: 'deepseek' }
-  const member = { ...chief, id: 'artist' }
-  const roster = { mainBotId: chief.id, bots: [chief, member], rooms: [] }
+test('only the original default Main Bot look resolves to the Godbot icon', () => {
+  const godbot = { id: 'godbot', avatar: { shape: 'whale' }, color: 'deepseek' }
+  const member = { ...godbot, id: 'artist' }
+  const roster = { mainBotId: godbot.id, bots: [godbot, member], rooms: [] }
   const indexed = indexRoster(roster)
-  assert.deepEqual(indexed.byId.chief.avatar, { shape: 'godbot' })
-  assert.equal(indexed.byId.chief.color, 'cyan')
+  assert.deepEqual(indexed.byId.godbot.avatar, { shape: 'godbot' })
+  assert.equal(indexed.byId.godbot.color, 'cyan')
   assert.equal(indexed.byId.artist, member)
-  assert.deepEqual(chief.avatar, { shape: 'whale' })
-  const photo = { ...chief, avatar: { shape: 'whale', image: 'custom.png' } }
-  assert.equal(indexRoster({ ...roster, bots: [photo] }).byId.chief, photo)
+  assert.deepEqual(godbot.avatar, { shape: 'whale' })
+  const photo = { ...godbot, avatar: { shape: 'whale', image: 'custom.png' } }
+  assert.equal(indexRoster({ ...roster, bots: [photo] }).byId.godbot, photo)
 })

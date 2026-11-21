@@ -240,11 +240,11 @@ export default async function E16({ makeHost, candidate, note, reportDir }) {
   const host = await makeHost()
   await host.install(candidate)
   await host.start()
-  const chiefId = await openFullTeam(host)
+  const godbotId = await openFullTeam(host)
   const team = { id: 'godbot-workspace' }
   const model = 'deepseek-official/deepseek-flash'
-  await host.bot('update-bot', { id: chiefId, model })
-  const member = (await host.bot('state')).bots.find(bot => bot.id === chiefId)
+  await host.bot('update-bot', { id: godbotId, model })
+  const member = (await host.bot('state')).bots.find(bot => bot.id === godbotId)
   const separateDirectory = join(host.root, 'reviewer-work')
   await mkdir(separateDirectory)
   const reviewer = await host.bot('create-bot', { name: 'Review analyst', model, workDir: separateDirectory })
