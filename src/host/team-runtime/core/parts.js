@@ -26,7 +26,7 @@ import { RESUME_DELAY_MS } from './resume.js'
 import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, splitRef, textOf } from './text.js'
 import { pageThinkingMs } from './thinking.js'
 import { viaOf } from '../shared/im-platforms.js'
-import { focusOpenPart, isOpenPart, ownChatSessions, pushThreadPart, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart } from './threads.js'
+import { focusOpenPart, isOpenPart, ownChatSessions, pushThreadPart, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
 import { checkShownView, normalizeView, readViewReply, viewCardText, viewReply, viewReplyText } from 'deep-view/core'
 
 // An ask_user card as the user saw it. The user's reply is often just an option label,
@@ -385,8 +385,10 @@ export function install(rt) {
     if (bot === undefined) return []
     const earlier = (room ? room.segments?.[botId] : (segments ?? bot.segments)) ?? []
     const current = room ? room.sessions?.[botId] : (currentSessionId ?? rt.chatOf(botId))
-    const parts = earlier.map((segment, index) => ({ ...segment, number: index + 1, startedAt: earlier[index - 1]?.endedAt ?? bot.createdAt }))
-    if (current !== undefined) parts.push({ sessionId: current, number: parts.length + 1, startedAt: earlier.at(-1)?.endedAt ?? bot.createdAt })
+    // A thread opened while the Bot was busy began with its first part, not with the Bot.
+    const begun = (room || current === undefined ? undefined : threadStart(bot, current)) ?? bot.createdAt
+    const parts = earlier.map((segment, index) => ({ ...segment, number: index + 1, startedAt: earlier[index - 1]?.endedAt ?? begun }))
+    if (current !== undefined) parts.push({ sessionId: current, number: parts.length + 1, startedAt: earlier.at(-1)?.endedAt ?? begun })
     return parts
   }
 
@@ -892,6 +894,25 @@ export function install(rt) {
             : 'You were in the middle of a turn. Go on with it now from where you stopped.',
     ].join('\n')
   }
+
+  // What opens a part a New session made while the Bot was busy. Nothing is carried
+  // over, but the part is not left without a turn: DSH reads a Session no turn has
+  // started in as a blank one, and offers to pick a workspace in place of the Bot's own
+  // message box. Like a handoff package it is a turn of its own, answered with the
+  // fixed line instead of a model call (the llm/stream hook below).
+  const OPENING_PACKAGE = [
+    '[Handoff · new conversation]',
+    'The user started a fresh conversation with you while an earlier one was still working. That conversation goes on by itself and is not carried into this one. This message is not from the user.',
+    'Everything earlier stays saved, and read_own_chat finds it.',
+    '',
+    '## Handoff note',
+    '(none: this conversation starts fresh)',
+    '',
+    'Nothing needs an answer now; wait for the next message.',
+  ].join('\n')
+  // A handoff in every other way (hidden, not talk, acknowledged without the model);
+  // `opening` tells the chat that nothing came over with it.
+  const openingSource = () => ({ kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'Godbot', exchangeId: randomUUID(), handoff: true, opening: true })
 
   // Carries any active IM turn origin onto a synthetic switch/resume source without
   // replaying a stale request rpcId that the earlier part already consumed.
@@ -2084,10 +2105,11 @@ export function install(rt) {
 
   // "New session" in a Bot's chat. An idle Bot moves on to a fresh part at once: it opens
   // with the handoff package, put together without the model (the earlier note and the
-  // latest messages). While the Bot is working the fresh part starts bare, and the part
-  // it replaces keeps running in the background. A part nobody has talked in is already a fresh conversation, and
-  // a fresh part on its way will be one: neither gets another empty part, with another
-  // handoff, stacked on top of it, and the answer is false.
+  // latest messages). While the Bot is working the fresh part opens with nothing carried
+  // over, and the part it replaces keeps running in the background. A part nobody has
+  // talked in is already a fresh conversation, and a fresh part on its way will be one:
+  // neither gets another empty part, with another handoff, stacked on top of it, and the
+  // answer is false.
   const newParts = new Map()
   // A New session the user is waiting for: one being made, or the current part of the
   // Bot's own chat moving on.
@@ -2121,7 +2143,8 @@ export function install(rt) {
   }
 
   // The part the user leaves stays live: no handoff note, no archive, no stop of its
-  // turn. It keeps its own earlier parts with it (threads.js).
+  // turn. It keeps its own earlier parts with it (threads.js). The fresh part opens with
+  // OPENING_PACKAGE.
   async function openPartNow(bot, agent) {
     const dir = rt.workDirOf({ botId: bot.id })
     const freshId = await rt.createSession(bot.name, { dir })
@@ -2144,6 +2167,17 @@ export function install(rt) {
     // part is the Bot's, as the switch does.
     const now = await freshRoute(bot, agent.session)
     if (now !== undefined && (now.ref !== picked?.ref || now.effort !== picked?.effort)) await selectRoute({ name: bot.name }, freshId, now)
+    // The part is the Bot's now; it opens the way a handoff package opens one. A part
+    // that did not open still works: the user's first message starts its first turn.
+    try {
+      await rt.ensureCapabilities(freshId)
+      const fresh = await rt.resolveAgent(freshId)
+      freshParts.set(freshId, estimateTokens(OPENING_PACKAGE))
+      fresh.followup(createUserMessage({ content: [{ type: 'text', text: OPENING_PACKAGE }], source: openingSource() }))
+      await ctx.sessions.flush(fresh.session)
+    } catch (error) {
+      rt.warn('godbot: the new part of %s did not open with its first turn: %s', bot.name, error)
+    }
   }
 
   // Opening an earlier part again: it becomes the current one and the part that

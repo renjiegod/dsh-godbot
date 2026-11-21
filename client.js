@@ -1415,6 +1415,7 @@ var JA = {
   "Start a new session with {name}": "{name} と新しいセッションを開始",
   "New session · {time}": "新しいセッション · {time}",
   "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "これまでのメッセージは上に残っています。{name} は引き継ぎの要約だけを持ってこのセッションを始めます。メッセージを送って始めましょう。",
+  "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "これまでの会話はセッション一覧で続いています。{name} はここから新しく始めます。メッセージを送って始めましょう。",
   "Archive": "アーカイブ",
   "Session actions": "セッションの操作",
   "Plugins": "プラグイン",
@@ -3880,6 +3881,7 @@ var KO = {
   "Start a new session with {name}": "{name}와(과) 새 세션 시작",
   "New session · {time}": "새 세션 · {time}",
   "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "이전 메시지는 위에 남아 있습니다. {name}은(는) 인수인계 요약만 가지고 이 세션을 시작합니다. 메시지를 보내 시작하세요.",
+  "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "이전 대화는 세션 목록에서 이어집니다. {name}은(는) 여기서 새로 시작합니다. 메시지를 보내 시작하세요.",
   Archive: "보관",
   "Session actions": "세션 작업",
   "Plugins": "플러그인",
@@ -6366,6 +6368,7 @@ var ES = {
   "Start a new session with {name}": "Iniciar una nueva sesión con {name}",
   "New session · {time}": "Nueva sesión · {time}",
   "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "Los mensajes anteriores siguen arriba. {name} empieza esta sesión solo con un resumen de traspaso; envía un mensaje para empezar.",
+  "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "La conversación anterior sigue en la lista de sesiones. {name} empieza de cero aquí; envía un mensaje para empezar.",
   Archive: "Archivar",
   "Session actions": "Acciones de sesión",
   "Plugins": "Complementos",
@@ -8828,6 +8831,7 @@ var FR = {
   "Start a new session with {name}": "Démarrer une nouvelle session avec {name}",
   "New session · {time}": "Nouvelle session · {time}",
   "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "Les messages précédents restent au-dessus. {name} commence cette session avec seulement un résumé de passation ; envoyez un message pour commencer.",
+  "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "La conversation précédente se poursuit dans la liste des sessions. {name} repart de zéro ici ; envoyez un message pour commencer.",
   "Archive": "Archiver",
   "Session actions": "Actions de session",
   "Plugins": "Plugins",
@@ -11293,6 +11297,7 @@ var DE = {
   "Start a new session with {name}": "Neue Sitzung mit {name} starten",
   "New session · {time}": "Neue Sitzung · {time}",
   "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "Frühere Nachrichten bleiben oben. {name} beginnt diese Sitzung nur mit einer Übergabe-Zusammenfassung – schick eine Nachricht, um loszulegen.",
+  "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "Das frühere Gespräch läuft in der Sitzungsliste weiter. {name} beginnt hier neu – schick eine Nachricht, um loszulegen.",
   Archive: "Archivieren",
   "Session actions": "Sitzungsaktionen",
   "Plugins": "Plugins",
@@ -13785,6 +13790,7 @@ var ZH = {
   "Start a new session with {name}": "和 {name} 开启新会话",
   "New session · {time}": "新会话 · {time}",
   "Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.": "之前的对话留在上方。{name} 只带着一份交接摘要进入这个新会话，发条消息开始吧。",
+  "The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.": "之前的对话在会话列表里继续。{name} 在这里重新开始，发条消息开始吧。",
   Archive: "归档",
   "Session actions": "会话操作",
   Plugins: "插件",
@@ -27335,6 +27341,12 @@ var CONNECTOR_CSS = `
 .dv-q-textarea{field-sizing:content;min-height:66px;max-height:240px;overflow-y:auto;line-height:22px}
 `;
 
+// src/client/team-ui/part-dividers.js
+function withoutEmptyParts(items, { complete = false } = {}) {
+  const kept = items.filter((item, index) => item?.kind !== "divider" || index + 1 < items.length && items[index + 1]?.kind !== "divider");
+  return complete && kept[0]?.kind === "divider" ? kept.slice(1) : kept;
+}
+
 // src/client/team-ui/turn-reasoning.js
 function turnReasoning(steps, current2) {
   const members = steps.length ? steps : [current2];
@@ -28894,7 +28906,6 @@ function PartLine({ time, fresh = false }) {
     (0, import_react35.createElement)("span", null, Number.isFinite(time) ? t("New session · {time}", { time: dayLabel(time) }) : t("New session"))
   );
 }
-var withoutEmptyParts = (items) => items.filter((item, index) => item?.kind !== "divider" || index + 1 < items.length && items[index + 1]?.kind !== "divider");
 var scrollParent = (node) => {
   for (let at2 = node.parentElement; at2; at2 = at2.parentElement) {
     if (/(auto|scroll)/.test(getComputedStyle(at2).overflowY)) return at2;
@@ -28918,7 +28929,7 @@ function EarlierUser({ row: row2, actions }) {
     row2.via ? (0, import_react35.createElement)("div", { className: "bt-utime" }, (0, import_react35.createElement)(ViaTag, { via: row2.via }), Number.isFinite(row2.time) ? messageClock(row2.time) : null) : null
   );
 }
-function EarlierParts({ sessionId, roster, actions }) {
+function EarlierParts({ sessionId, roster, actions, opening = false }) {
   const [view, setView] = (0, import_react35.useState)({ pages: [], cursor: void 0, loading: true, failed: false, startedAt: null });
   const top = (0, import_react35.useRef)(null);
   const busy = (0, import_react35.useRef)(false);
@@ -28983,8 +28994,9 @@ function EarlierParts({ sessionId, roster, actions }) {
   }));
   const loaded = [];
   for (const page of view.pages) loaded.push(...withBtwRows(actions.godbot.earlierReports(page.items, roster.byId[sessionId]), page.btw));
-  const items = withoutEmptyParts(loaded);
-  const first = !view.loading && !view.failed && !view.cursor && items[0]?.kind !== "divider" ? items[0]?.time : void 0;
+  const complete = !view.loading && !view.failed && !view.cursor;
+  const items = withoutEmptyParts(loaded, { complete });
+  const first = complete && items[0]?.kind !== "divider" ? items[0]?.time : void 0;
   const bot = roster.byId[sessionId];
   const fresh = bot !== void 0 && currentPart(bot) === sessionId && roster.newSessions?.[bot.id] === "empty";
   return (0, import_react35.createElement)(
@@ -29000,8 +29012,8 @@ function EarlierParts({ sessionId, roster, actions }) {
     (0, import_react35.createElement)(PartLine, { time: view.startedAt, fresh }),
     fresh ? (0, import_react35.createElement)(
       "p",
-      { className: "bt-part-fresh", role: "note" },
-      t("Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.", { name: bot.name })
+      { className: "bt-part-fresh", role: "note", "data-opening": opening || void 0 },
+      opening ? t("The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.", { name: bot.name }) : t("Earlier messages stay above. {name} starts this session with only a handoff summary — send a message to begin.", { name: bot.name })
     ) : null
   );
 }
@@ -29116,7 +29128,7 @@ function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnClock, us
   return unreadOpening ? (0, import_react35.createElement)(import_react35.Fragment, null, (0, import_react35.createElement)("div", { className: "bt-open-new" }, (0, import_react35.createElement)(NewDivider), (0, import_react35.createElement)("div", { className: "bt-time-sep", role: "separator" }, unreadOpening)), body) : body ?? (0, import_react35.createElement)(CellEmpty);
   function triggerBody() {
     if (source.kind === "bot") {
-      if (source.handoff === true) return (0, import_react35.createElement)(EarlierParts, { sessionId, roster, actions });
+      if (source.handoff === true) return (0, import_react35.createElement)(EarlierParts, { sessionId, roster, actions, opening: source.opening === true });
       if (source.role === "kickoff" || source.role === "room" || source.role === "goal") return null;
       if (source.role === "secret" || deferred) return null;
       if (source.role === "update") return (0, import_react35.createElement)("div", { className: "bt-event" }, t("Profile updated"));
@@ -29889,7 +29901,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.5";
+var version = "0.2.0-rc.6";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -42462,9 +42474,9 @@ function GroupOverview({ room: room2, roster, actions, usage, useWork, openSetti
 }
 function BotSessions({ bot, part, run: run2, useSessions, actions, running, roster }) {
   const runningOf = (id) => running?.[id] === true;
-  const open = (bot.openParts ?? []).map((entry) => ({ id: entry.sessionId, open: true, running: runningOf(entry.sessionId) }));
-  const backgroundRunning = open.some((entry) => entry.running);
   const empty2 = new Set(roster.emptyParts?.[bot.id] ?? []);
+  const open = (bot.openParts ?? []).map((entry) => ({ id: entry.sessionId, open: true, running: runningOf(entry.sessionId) })).filter((entry) => entry.running || !empty2.has(entry.id));
+  const backgroundRunning = open.some((entry) => entry.running);
   const fresh = newSessionState(roster, bot, part) === "empty";
   const entries2 = [
     { id: part, current: true, running: runningOf(part) },
