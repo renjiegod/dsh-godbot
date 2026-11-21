@@ -12,6 +12,7 @@
   --gb-term-action-label: #24262b;
   --gb-term-error: #fac3b9;
   --gb-term-note: #e3ce9f;
+  --gb-term-accent: #a4baff;
   box-sizing: border-box;
   position: relative;
   display: flex;
@@ -41,6 +42,7 @@
   --gb-term-action-label: #fff;
   --gb-term-error: #953b35;
   --gb-term-note: #78571a;
+  --gb-term-accent: #3f5fd6;
 }
 .gb-term-head,.gb-term-foot,.gb-term-confirm,.gb-term-note {
   flex: none;
@@ -59,7 +61,9 @@
 .gb-terminal-panel button { font: inherit; line-height: 1.3; border: 1px solid transparent; border-radius: 6px; color: var(--gb-term-text); background: transparent; padding: 5px 8px; cursor: pointer }
 .gb-terminal-panel button:hover { background: var(--gb-term-hover) }
 .gb-terminal-panel button:focus-visible { outline: 2px solid #a4baff; outline-offset: -1px }
-.gb-term-actions .gb-term-collapse { width: 28px; height: 28px; display: grid; place-items: center; padding: 0 }
+.gb-term-actions .gb-term-collapse,.gb-term-actions .gb-term-icon-button { width: 28px; height: 28px; display: grid; place-items: center; padding: 0 }
+.gb-term-actions .gb-term-icon-button { color: var(--gb-term-muted) }
+.gb-term-actions .gb-term-icon-button[aria-pressed=true] { color: var(--gb-term-accent); background: var(--gb-term-icon) }
 .gb-term-screen { min-height: 0; min-width: 0; flex: 1 1 0; overflow: hidden; box-sizing: border-box; padding: 8px 4px 3px 8px }
 .gb-term-body { position: relative; display: flex; min-height: 0; min-width: 0; flex: 1 1 0 }
 .gb-term-conversation { display: flex; min-height: 0; min-width: 0; flex: 1 1 0 }
