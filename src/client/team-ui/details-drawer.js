@@ -21,6 +21,7 @@ import { PermissionPicker, presetDanger, presetName } from './permission-picker.
 import { TaskBoard } from './task-board.js'
 import { BotConnectors } from './connectors.js'
 import { ComputerView } from './computer.js'
+import { NewSessionButton, newSessionState } from './new-session.js'
 import { t } from './i18n.js'
 import { nativeMode } from '../native-agent-target.js'
 
@@ -240,17 +241,20 @@ function GroupOverview({ room, roster, actions, usage, useWork, openSettings }) 
 // was busy (each still live, marked when its turn runs), then the earlier ones, newest
 // first. Every Bot's chat has parts, whether it answers with a Godbot model or a local
 // CLI. A running part opened from here is read-only until its turn ends: two sessions
-// running at once means two model calls.
-function BotSessions({ bot, part, run, useSessions, actions, running }) {
+// running at once means two model calls. Earlier parts nobody talked in hold nothing to
+// go back to, so the list leaves them out.
+function BotSessions({ bot, part, run, useSessions, actions, running, roster }) {
   const runningOf = id => running?.[id] === true
   const open = (bot.openParts ?? []).map(entry => ({ id: entry.sessionId, open: true, running: runningOf(entry.sessionId) }))
   // Two sessions running at once means two model calls: shown only while a background
   // part really runs, above the list rather than as a quiet footnote.
   const backgroundRunning = open.some(entry => entry.running)
+  const empty = new Set(roster.emptyParts?.[bot.id] ?? [])
+  const fresh = newSessionState(roster, bot, part) === 'empty'
   const entries = [
     { id: part, current: true, running: runningOf(part) },
     ...open,
-    ...(bot.parts ?? []).filter(id => id !== part).slice().reverse().map(id => ({ id, earlier: true })),
+    ...(bot.parts ?? []).filter(id => id !== part && !empty.has(id)).slice().reverse().map(id => ({ id, earlier: true })),
   ]
   const rows = useSessions(list => entries.map(entry => list.byId?.[entry.id]), rowsEqual)
   const total = entries.length
@@ -260,9 +264,8 @@ function BotSessions({ bot, part, run, useSessions, actions, running }) {
     return () => run(call('bot-open-part', { botId: bot.id, sessionId: entry.id }))
   }
   return h('div', { className: 'bt-drawer-model' },
-    h('div', { className: 'bt-agent-sessions-head' },
-      h('div', { className: 'bt-section-title' }, t('Sessions')),
-      h('button', { type: 'button', className: 'bt-agent-sessions-new', onClick: () => run(actions.newPart !== undefined ? actions.newPart(bot.id) : call('bot-new-part', { botId: bot.id })) }, h(PlusIcon), t('New session'))),
+    h('div', { className: 'bt-section-title' }, t('Sessions')),
+    h(NewSessionButton, { bot, roster, actions, sessionId: part, variant: 'panel' }),
     backgroundRunning
       ? h('div', { className: 'bt-agent-sessions-warn', role: 'status' },
           h(AlertIcon),
@@ -271,7 +274,11 @@ function BotSessions({ bot, part, run, useSessions, actions, running }) {
     h('div', { className: 'bt-agent-sessions' }, entries.map((entry, index) => {
       const row = rows[index]
       const when = row?.updatedAt ?? row?.createdAt
-      const label = row?.title && row.title.trim() !== '' ? row.title : t('Session {number}', { number: total - index })
+      // A part is made under the Bot's name, which every row would repeat; a title of
+      // its own is shown, else its number, or New session for a current part nobody
+      // has talked in yet.
+      const own = typeof row?.title === 'string' && row.title.trim() !== '' && row.title.trim() !== bot.name ? row.title.trim() : ''
+      const label = own || (entry.current && fresh ? t('New session') : t('Session {number}', { number: total - index }))
       const title = entry.current ? t('Current session') : entry.open && entry.running ? t('Open this running session') : entry.open ? t('Open this session') : t('Open this earlier session')
       return h('button', {
         key: entry.id, type: 'button', disabled: entry.current,
@@ -404,7 +411,7 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
           h(ModelMenu, { bot, roster, actions, run, wide: true, inline: true }),
           modelOf(bot, roster) ? null : h('div', { className: 'bt-note' }, t('Pick a model and {name} can start.', { name: bot.name })),
         ),
-        h(BotSessions, { key: 'sessions', bot, part, run, useSessions, actions, running: roster.partsRunning }),
+        h(BotSessions, { key: 'sessions', bot, part, run, useSessions, actions, running: roster.partsRunning, roster }),
         h(PermissionRow, { key: 'permission', bot, roster, actions, run }),
         h(BotConnectors, { key: 'connectors', bot, roster, actions, run }),
         actions.godbot.connectorTools(bot),
