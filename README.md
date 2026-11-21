@@ -427,6 +427,7 @@ npm pack --dry-run
 | --- | --- |
 | `npm test` | 单元与集成测试 |
 | `npm run test:e2e` | 浏览器端到端测试，默认 `release` 套件；可加 `--artifact <tgz>` 测试指定安装包 |
+| `npm run test:e2e -- --case E12 --previous <tgz>` | 升级测试：从指定的旧版安装包升级到当前构建。未传 `--previous` 且仓库中没有 0.1.0 基线提交时，E12 记为 `skipped` |
 | `npm run test:e2e -- --case E1` | 验证跨后端读取连接器工具 |
 | `npm run test:e2e -- --case E2` | 验证写入审批、撤权、重启和终端交还 |
 | `npm run test:e2e -- --suite live-connectors` | 通过本机已登录的 Claude Code、Codex 调用测试工单服务 |
