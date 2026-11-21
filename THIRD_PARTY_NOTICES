@@ -1,0 +1,44 @@
+DS Bot
+Copyright 2026 Fei2411 and the DS Bot contributors
+https://github.com/Fei2411/DS-Bot
+Source revision: 5e9b7da8882da3b68d8a0624342708c2150a9156 (0.3.8)
+License: Apache License, Version 2.0 (licenses/DS-Bot-Apache-2.0.txt)
+Original notices: licenses/DS-Bot-NOTICE.txt
+
+The following parts of Godbot incorporate and adapt that work:
+
+- src/client/team-ui/ originates in ds-bot/src/client/ and its shared
+  utilities. Godbot integrates workspace navigation, session selection,
+  schedules, provider accounts, diagnostics, terminal controls and its
+  visual identity directly in the source modules. The team UI uses CLI
+  vendor marks. The original notices identify
+  the trademark owners and Simple Icons (CC0) contributions.
+- src/host/team-runtime/ includes modules from ds-bot/index.js,
+  ds-bot/src/{host,shared,office}/, the web search provider and the
+  distributed phone link. Godbot adapts the service and storage namespaces,
+  workspace ownership, web and native session control, provider accounts,
+  connectors, browser environments and the team roster.
+- src/drivers/external/{acp,claude,codex,discover,engines,jsonrpc,mcp-stdio}.js
+  and src/team/mcp.js originate in ds-bot/src/host/local-agents/.
+  Godbot adapts protocol handling, request correlation, team tools and
+  native turn outcomes. src/team/mentions.js originates in
+  ds-bot/src/shared/mentions.js.
+- test/external/local-agents-*.test.js, protocol fixtures, Windows shims,
+  recorded upstream samples and test/team-runtime/fake-ctx.js incorporate
+  tests and samples from ds-bot/test/. Godbot's native qualification
+  results and packaged integration runs are recorded separately.
+
+The original notices also identify dependencies bundled in the phone link
+and provide attribution for Office skills, artwork and other components.
+
+Deep View 0.1.2 (https://github.com/Fei2411/deep-view)
+The client bundles its interactive-view code. The Apache 2.0 license text
+is included in licenses/DS-Bot-Apache-2.0.txt.
+
+qrcode-generator 2.0.4 (https://github.com/kazuhikoarase/qrcode-generator)
+Copyright (c) 2009 Kazuhiko Arase. QR pairing codes in the browser use this
+MIT-licensed implementation. See the MIT notice in licenses/DS-Bot-NOTICE.txt.
+
+xterm.js
+The browser terminal bundles @xterm/xterm and @xterm/addon-fit (MIT).
+Copyright and license texts are in licenses/xterm-MIT.txt.

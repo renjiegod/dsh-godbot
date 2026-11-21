@@ -1,0 +1,22 @@
+.gb-bot-schedules,.gb-schedule-card,.gb-schedule-form,.gb-schedule-form>fieldset,.gb-schedule-history{display:grid;align-content:start;gap:12px;min-width:0}
+.gb-bot-schedules{color:var(--bt-ink);font:inherit;font-size:13px;line-height:1.5}
+.gb-bot-schedules p,.gb-bot-schedules h3,.gb-bot-schedules h4{margin:0}
+.gb-schedule-card,.gb-schedule-form{padding:16px}
+.gb-schedule-heading,.gb-schedule-toolbar,.gb-schedule-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.gb-schedule-heading,.gb-schedule-toolbar{justify-content:space-between}
+.gb-bot-schedules h3{font-size:14px;font-weight:600;overflow-wrap:anywhere}
+.gb-schedule-prompt,.gb-schedule-history li>p,.gb-schedule-meta{white-space:pre-wrap;overflow-wrap:anywhere}
+.gb-schedule-meta,.gb-schedule-history li>p{color:var(--bt-ink-2)}
+.gb-schedule-history{border-top:1px solid var(--bt-line);padding-top:12px}
+.gb-schedule-history ol{display:grid;gap:10px;list-style:none;margin:0;padding:0}
+.gb-schedule-history li>button{margin-inline-start:8px}
+.gb-schedule-form fieldset{border:0;min-width:0;margin:0;padding:0}
+.gb-schedule-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,155px),1fr))}
+.gb-schedule-field{display:grid;align-content:start;gap:5px;min-width:0}
+.gb-schedule-field>span,.gb-schedule-days legend{font-size:12px;color:var(--bt-ink-2)}
+.gb-schedule-field :is(input,textarea,select){box-sizing:border-box;width:100%;min-width:0;padding:7px 9px;border:1px solid var(--bt-line-2);border-radius:8px;background:var(--bt-main);color:var(--bt-ink);font:inherit}
+.gb-schedule-field textarea{resize:vertical}
+.gb-schedule-days{grid-column:1/-1}
+.gb-schedule-days label,.gb-schedule-check{display:inline-flex;gap:4px;align-items:center}
+.gb-schedule-days label{margin-inline-end:10px}
+.gb-schedule-days input,.gb-schedule-check input{accent-color:var(--bt-accent)}

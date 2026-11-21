@@ -1,0 +1,392 @@
+{
+  "projects": [
+    {
+      "id": "01-handoff",
+      "name": "01 · 接棒",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。任务从一个 Agent 交给下一个时，两个斜切笔画像交接同一根接力棒，在右下拼出 G。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/01-handoff.svg",
+      "darkAsset": "marks/01-handoff-dark.svg",
+      "iconAsset": "marks/01-handoff.svg",
+      "iconDarkAsset": "marks/01-handoff-dark.svg",
+      "oldAsset": "previous-mascot.png"
+    },
+    {
+      "id": "02-workbench",
+      "name": "02 · 同窗",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。错位的窗页从 G 顶部露出一角，内侧留出同一个会话区，呼应团队与原生 Agent 工作区之间的切换。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/02-workbench.svg",
+      "darkAsset": "marks/02-workbench-dark.svg",
+      "iconAsset": "marks/02-workbench.svg",
+      "iconDarkAsset": "marks/02-workbench-dark.svg"
+    },
+    {
+      "id": "03-receipt",
+      "name": "03 · 回执",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。执行证据回到任务时，G 的横笔先向下压出一个勾，再接回外弧，像把回执扣到原任务上。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/03-receipt.svg",
+      "darkAsset": "marks/03-receipt-dark.svg",
+      "iconAsset": "marks/03-receipt.svg",
+      "iconDarkAsset": "marks/03-receipt-dark.svg"
+    },
+    {
+      "id": "04-takeover",
+      "name": "04 · 接管",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。G 上端的表情保留伙伴感，横笔是一枚可切换的拨片，表达在团队对话里接管原生会话。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/04-takeover.svg",
+      "darkAsset": "marks/04-takeover-dark.svg",
+      "iconAsset": "marks/04-takeover.svg",
+      "iconDarkAsset": "marks/04-takeover-dark.svg"
+    },
+    {
+      "id": "05-native",
+      "name": "05 · 原生",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。左壁有一枚向内的提示符折角，像把 CLI 的输入边缘嵌入 G，外侧保留原生会话的硬朗轮廓。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/05-native.svg",
+      "darkAsset": "marks/05-native-dark.svg",
+      "iconAsset": "marks/05-native.svg",
+      "iconDarkAsset": "marks/05-native-dark.svg"
+    },
+    {
+      "id": "06-parallel",
+      "name": "06 · 并行",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。G 的横笔分成两股，直到右端才汇合，呼应外部 CLI 各自执行、在同一个工作台汇报。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/06-parallel.svg",
+      "darkAsset": "marks/06-parallel-dark.svg",
+      "iconAsset": "marks/06-parallel.svg",
+      "iconDarkAsset": "marks/06-parallel-dark.svg"
+    },
+    {
+      "id": "07-conversation",
+      "name": "07 · 会话",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。左下的一处对话留白保留消息的读法，G 的横笔把多个会话收进同一个团队入口。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/07-conversation.svg",
+      "darkAsset": "marks/07-conversation-dark.svg",
+      "iconAsset": "marks/07-conversation.svg",
+      "iconDarkAsset": "marks/07-conversation-dark.svg"
+    },
+    {
+      "id": "08-dispatch",
+      "name": "08 · 分派",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。横笔像同一条任务在内侧分成上下两路，分岔处直接长在 G 里，呼应把工作分派给不同 Agent。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/08-dispatch.svg",
+      "darkAsset": "marks/08-dispatch-dark.svg",
+      "iconAsset": "marks/08-dispatch.svg",
+      "iconDarkAsset": "marks/08-dispatch-dark.svg"
+    },
+    {
+      "id": "09-bridge",
+      "name": "09 · 桥接",
+      "sources": [
+        {
+          "url": "https://github.com/webkubor/logo-brand-designer/tree/7a9fc81e8ea92e8d053b9cd052f624a62d82a728",
+          "label": "本轮设计与评审方法"
+        }
+      ],
+      "tokens": {
+        "primary": "#4D6BFE",
+        "accent": "#3149D2",
+        "onLight": "#4D6BFE",
+        "onDark": "#9EACFF",
+        "accentOnDark": "#C9D0FF",
+        "background": "transparent"
+      },
+      "tokenSources": {
+        "primary": "项目既有。src/client/theme.js:25 的工作台交互强调色，本次用于候选标志主笔。",
+        "onLight": "项目既有。沿用 src/client/theme.js:25，适配浅色面板。",
+        "accent": "本次建议。加深交接处的次笔，在浅底上区分两个笔画。",
+        "onDark": "本次建议。提高蓝色明度，适配 src/client/theme.js:50–51 的深色侧栏和工作区。",
+        "accentOnDark": "本次建议。用于深底上的回笔或交接笔。",
+        "background": "本次建议。透明画布便于复用 DSH 宿主提供的底色。"
+      },
+      "rationale": [
+        "产品来源为本地 README.md:3，其中说明团队消息、任务分派、执行证据及本机 CLI 会话。",
+        "本次解释。两段笔画在左侧以不同宽度相接，上面的长悬臂跨过接缝，把本机会话和团队工作区连成一个 G。"
+      ],
+      "userDecisions": [
+        "使用 Godbot 首字母 G。",
+        "去掉四个节点。",
+        "借鉴所附图标的风格。",
+        "探索九种方向并结合 Logo Brand Designer 重设计。"
+      ],
+      "recommendations": [
+        "探索候选，待用户选择。参考实际侧栏默认 18px，并在 16px 与 24px 预览。"
+      ],
+      "asset": "marks/09-bridge.svg",
+      "darkAsset": "marks/09-bridge-dark.svg",
+      "iconAsset": "marks/09-bridge.svg",
+      "iconDarkAsset": "marks/09-bridge-dark.svg"
+    }
+  ]
+}

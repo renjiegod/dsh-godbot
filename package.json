@@ -1,0 +1,77 @@
+{
+  "name": "dsh-godbot",
+  "version": "0.2.0-rc.3",
+  "description": "Control native agent sessions and collaborate in a local dsh team.",
+  "type": "module",
+  "exports": {
+    ".": "./src/host/plugin.js",
+    "./client": "./client.js",
+    "./assets/godbot-icon-*.png": "./src/host/assets/godbot-icon-*.png",
+    "./web-search": "./src/host/workspace-search.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "src/host",
+    "src/drivers",
+    "src/team",
+    "client.js",
+    "cordis.patch.yml",
+    "THIRD_PARTY_NOTICES",
+    "licenses",
+    "FEATURE_PARITY.md",
+    "README.md"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "engines": {
+    "node": ">=24.9",
+    "dsh": "0.2.2-rc.1"
+  },
+  "scripts": {
+    "build": "node scripts/build-client.mjs",
+    "test": "node --test test/**/*.test.js",
+    "test:e2e": "node scripts/e2e.mjs"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-subprocess-local": "0.2.2-rc.1",
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/xterm": "6.0.0",
+    "esbuild": "0.28.2",
+    "qrcode-generator": "2.0.4"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh-app-boot": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-scope": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-web": "0.2.2-rc.1"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@xmldom/xmldom": "0.9.12",
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/headless": "6.0.0",
+    "deep-view": "0.1.2",
+    "imapflow": "2.9.1",
+    "jpeg-js": "0.4.4",
+    "mailparser": "3.12.4",
+    "nodemailer": "10.2.1",
+    "playwright-core": "1.64.1",
+    "pngjs": "7.0.0",
+    "undici": "8.11.2",
+    "ws": "8.18.3"
+  },
+  "bin": {
+    "godbot": "bin/godbot.mjs"
+  }
+}

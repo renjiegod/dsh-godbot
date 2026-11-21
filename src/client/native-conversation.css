@@ -1,0 +1,85 @@
+.gb-native-conversation {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  color: var(--gb-term-text);
+  background: var(--gb-term-bg);
+}
+.gb-native-scroller {
+  flex: 1 1 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 14px 12px;
+}
+.gb-native-history {
+  margin-block-end: 16px;
+  padding-block-end: 10px;
+  border-block-end: 1px solid var(--gb-term-line);
+}
+.gb-native-history > summary, .gb-native-keys > summary {
+  width: fit-content;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--gb-term-muted);
+}
+.gb-native-history > .gb-native-messages { margin-block-start: 12px; }
+.gb-native-messages { display: flex; flex-direction: column; gap: 16px; }
+.gb-native-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.gb-native-message > small { display: block; margin-bottom: 3px; font-size: 11px; color: var(--gb-term-muted); }
+.gb-native-message > p, .gb-native-message > pre { margin: 0; white-space: pre-wrap; }
+.gb-native-message > pre { font: 12px/1.55 ui-monospace, Menlo, Consolas, monospace; }
+.gb-native-message [data-markdown-variant] { max-width: 100%; overflow: auto; }
+.gb-native-message[data-role=user] { align-self: flex-end; max-width: 90%; }
+.gb-native-message[data-role=user] > small { text-align: end; }
+.gb-native-message[data-role=user] > p {
+  padding: 7px 12px;
+  border-radius: 12px 12px 3px 12px;
+  background: var(--bt-user, var(--gb-term-icon));
+  color: var(--bt-user-ink, var(--gb-term-text));
+}
+.gb-native-compose {
+  flex: none;
+  margin: 0 10px 10px;
+  padding: 7px;
+  border: 1px solid var(--gb-term-border);
+  border-radius: 12px;
+  background: var(--gb-term-chrome);
+}
+.gb-native-compose:focus-within { border-color: var(--bt-accent, var(--gb-term-muted)); }
+.gb-native-compose textarea {
+  display: block;
+  width: 100%;
+  min-height: 42px;
+  max-height: 26vh;
+  box-sizing: border-box;
+  border: 0;
+  outline: 0;
+  padding: 4px;
+  resize: vertical;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+}
+.gb-native-compose-actions { display: flex; align-items: flex-end; gap: 8px; justify-content: space-between; }
+.gb-native-keys > summary { padding: 5px 4px; }
+.gb-native-key-list { display: flex; flex-wrap: wrap; gap: 3px; }
+.gb-native-key-list button { border-color: var(--gb-term-border); }
+.gb-terminal-panel .gb-native-submit {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  gap: 3px;
+  border-radius: 7px;
+  background: var(--gb-term-action);
+  color: var(--gb-term-action-label);
+}
+.gb-native-conversation button:disabled { opacity: .5; cursor: default; }
+.gb-native-input-error, .gb-native-history-error { color: var(--gb-term-error); font-size: 12px; overflow-wrap: anywhere; }

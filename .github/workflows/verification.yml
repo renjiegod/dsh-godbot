@@ -1,0 +1,36 @@
+name: Verify Godbot package
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  packaged-release:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@0.2.2-rc.1
+      - run: npm ci
+      - name: Install Chromium matched to the locked Playwright version
+        run: npx --no-install playwright-core install --no-shell chromium
+      - run: npm test
+      - run: npm run build
+      - name: Pack and test the uploaded candidate
+        shell: bash
+        run: |
+          mkdir -p verify
+          package=$(npm pack --pack-destination verify --silent)
+          npm run test:e2e -- --artifact "$PWD/verify/$package" --suite release --report-dir "$PWD/verify/release"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: godbot-package-and-report
+          path: verify/
