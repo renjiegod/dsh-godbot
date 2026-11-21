@@ -4,7 +4,8 @@ import { isMuted, toggleMuted } from './notifications.js'
 import { inkFill } from './inks.js'
 import { isMainOf } from './sources.js'
 import { currentPart } from './text.js'
-import { GearIcon, PinIcon, UnreadIcon, PencilIcon, StarLineIcon, CopyIcon, HideIcon, TrashIcon, DuplicateIcon, FolderIcon, PlusIcon, CheckIcon, PeopleIcon, SignOutIcon } from './icons.js'
+import { GearIcon, PinIcon, UnreadIcon, PencilIcon, StarLineIcon, CopyIcon, HideIcon, TrashIcon, DuplicateIcon, FolderIcon, PlusIcon, CheckIcon, PeopleIcon, SignOutIcon, NewSessionIcon } from './icons.js'
+import { newSessionState } from './new-session.js'
 import { BotMark, RoomAvatar } from './mark.js'
 import { useEscape } from './overlay-hooks.js'
 import { stepMenuFocus, useViewport, viewBottom } from './motion.js'
@@ -61,6 +62,12 @@ export function ContextMenu({ menu, roster, actions, useWork, leaving = false })
   const isTile = roster.mainBotId === menu.id
   const mainCount = (roster.mainBotIds ?? []).length
   const groups = [
+    // A fresh conversation with the Bot, opened on screen; not while one is on its way
+    // or the current one is still empty.
+    [bot && newSessionState(roster, bot) === 'ready' ? [t('New session'), NewSessionIcon, () => {
+      actions.openSession(bot.id)
+      return actions.newPart(bot.id)
+    }] : null],
     [
       isTile ? null : [entry.pinned ? t('Unpin') : t('Pin'), PinIcon, () => actions.setFlags(menu.id, { pinned: !entry.pinned })],
       [t('Mark as Unread'), UnreadIcon, () => actions.markUnread(menu.id)],
