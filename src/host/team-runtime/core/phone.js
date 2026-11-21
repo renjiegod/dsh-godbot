@@ -3,15 +3,24 @@
 // api/godbot/team endpoints as this window, end to end encrypted through a Relay Server that only
 // forwards (link/). The computer only connects out, so it needs no open port.
 //
-// phone.json keeps this computer's identity key, its Server token and the paired phones.
-// Only the dsh that owns the team runs the link: two would push each other off the Server.
+// phone.json keeps this computer's identity key, its Server token, the paired phones and the
+// push key each phone gave this computer. Only the dsh that owns the team runs the link: two
+// would push each other off the Server.
+//
+// Push: a phone that is not connected still hears about what needs it. Every notice that
+// matters (core/mobile.js addNotice) is sealed with that phone's push key and handed to the
+// Server, which forwards the ciphertext through FCM (godbot-server docs/protocol.md §9).
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
-import { DeviceRegistry, HostLink, LINK_PATH, deviceIdFor, generateKeyPair, pairingUri, randomToken } from '../mobile-link.js'
+import { DeviceRegistry, HostLink, LINK_PATH, PUSH_KEY_METHOD, deviceIdFor, encryptPush, generateKeyPair, isPushKey, pairingUri, randomToken } from '../mobile-link.js'
 
 const FILE = 'phone.json'
 const SERVER = /^wss?:\/\/[^\s/?#@]+(\/[^\s?#]*)?$/i
+// Notices worth waking a phone for: what waits on the user, a Bot's own reply and finished
+// group work. A member's every group line would be noise.
+const PUSH_KINDS = new Set(['approval', 'question', 'view', 'message', 'done'])
+const PUSH_TTL_SECONDS = 6 * 60 * 60
 
 const invalid = message => Object.assign(new Error(message), { code: 'bot/invalid' })
 
@@ -30,6 +39,7 @@ export function install(rt) {
     if (data !== undefined) return data
     try { data = JSON.parse(readFileSync(path, 'utf8')) } catch { data = {} }
     if (!Array.isArray(data.devices)) data.devices = []
+    if (data.pushKeys === null || typeof data.pushKeys !== 'object' || Array.isArray(data.pushKeys)) data.pushKeys = {}
     // Original clients that paired with the then-default public relay omitted
     // its address on disk. Only those existing pairings inherit that address.
     if (data.version === undefined && !data.server && data.devices.length) {
@@ -55,9 +65,50 @@ export function install(rt) {
     data.identity = { deviceId: deviceIdFor(fresh.publicKey), ...fresh }
     data.accessToken = randomToken()
     data.devices = []
+    data.pushKeys = {}
     registry = new DeviceRegistry([], (devices) => { data.devices = devices; write() })
     write()
     return data.identity
+  }
+
+  // The last push result per phone, for the settings page; kept in memory only.
+  const lastPush = new Map()
+  const createLink = rt.createPhoneLink ?? (options => new HostLink(options))
+
+  // A paired phone hands this computer the key its notifications are sealed with.
+  const setPushKey = (deviceId, params) => {
+    const key = params?.key
+    if (!isPushKey(key)) throw Object.assign(new Error('The push key is invalid'), { code: 'INVALID_PARAMS' })
+    if (!registry.list().some(device => device.deviceId === deviceId)) throw Object.assign(new Error('This phone is not paired'), { code: 'NOT_PAIRED' })
+    if (data.pushKeys[deviceId]?.key !== key) {
+      data.pushKeys[deviceId] = { key, at: Date.now() }
+      write()
+    }
+    return { ok: true }
+  }
+
+  // Seals one notice for every paired phone that has a push key and no open link.
+  rt.phonePush = (notice) => {
+    const running = link
+    if (running === null || !running.pushAvailable || !PUSH_KINDS.has(notice?.kind)) return
+    const connected = new Set(running.connectedDevices())
+    const title = notice.title ? `${notice.name} · ${notice.title}` : String(notice.name ?? '')
+    const message = {
+      v: 1, kind: notice.kind, title, body: String(notice.text ?? ''), time: notice.time ?? Date.now(),
+      ...(notice.seq === undefined ? {} : { seq: notice.seq }),
+      ...(notice.botId === undefined ? {} : { botId: notice.botId }),
+      ...(notice.sessionId === undefined ? {} : { sessionId: notice.sessionId }),
+      ...(notice.roomId === undefined ? {} : { roomId: notice.roomId }),
+    }
+    const collapseKey = `${notice.kind}:${notice.sessionId ?? notice.roomId ?? notice.botId ?? ''}`.slice(0, 64)
+    for (const { deviceId } of registry.list()) {
+      const entry = data.pushKeys[deviceId]
+      if (entry === undefined || connected.has(deviceId)) continue
+      let ciphertext
+      try { ciphertext = encryptPush(entry.key, data.identity.deviceId, message) } catch { continue }
+      void running.sendPush(deviceId, ciphertext, { collapseKey, ttlSeconds: PUSH_TTL_SECONDS })
+        .then(result => { lastPush.set(deviceId, { at: Date.now(), ok: result.ok, ...(result.code ? { code: result.code } : {}) }) })
+    }
   }
 
   // A phone may call every endpoint but these: pairing stays on the computer.
@@ -92,14 +143,19 @@ export function install(rt) {
     const want = data.on === true && serve !== null && blocked === undefined
     if (link !== null && (!want || linkServer !== serverUrl())) void stop()
     if (!want || link !== null) return
-    link = new HostLink({
+    link = createLink({
       url: serverUrl(),
       identity: identity(),
       accessToken: data.accessToken,
       name: hostname(),
       admits: (deviceId, key) => registry.admits(deviceId, key),
       authorize: (deviceId, key, hello) => registry.authorize(deviceId, key, hello),
-      handle: (method, params, request) => method === 'bot' ? callBot(params, request.signal) : Promise.reject(Object.assign(new Error(`Unknown method ${method}`), { code: 'METHOD_NOT_FOUND' })),
+      handle: async (method, params, request) => {
+        if (method === 'bot') return callBot(params, request.signal)
+        if (method === PUSH_KEY_METHOD) return setPushKey(request.deviceId, params)
+        throw Object.assign(new Error(`Unknown method ${method}`), { code: 'METHOD_NOT_FOUND' })
+      },
+      push: data.push !== false,
       // Feed events ride the link instead of SSE, but only while a phone is
       // actually ready to hear them — no tunnel, no feed work on the host.
       onReadyCount: count => {
@@ -126,7 +182,13 @@ export function install(rt) {
       on: data.on === true,
       status: link?.status ?? 'off',
       ...(reason === undefined ? {} : { error: reason }),
-      phones: registry.list().map(({ deviceId, name, pairedAt }) => ({ id: deviceId, name, pairedAt, connected: connected.has(deviceId) })),
+      phones: registry.list().map(({ deviceId, name, pairedAt }) => ({
+        id: deviceId, name, pairedAt, connected: connected.has(deviceId),
+        push: data.pushKeys[deviceId] !== undefined,
+        ...(lastPush.has(deviceId) ? { lastPush: lastPush.get(deviceId) } : {}),
+      })),
+      pushEnabled: data.push !== false,
+      pushAvailable: link?.pushAvailable === true,
       pairing,
     }
   }
@@ -145,6 +207,11 @@ export function install(rt) {
           registry?.closePairing()
         }
         if (body.on !== undefined) data.on = body.on === true
+        // The push offer is part of hello, so a change takes a new connection.
+        if (body.push !== undefined && (body.push === true) !== (data.push !== false)) {
+          data.push = body.push === true
+          void stop()
+        }
         identity()
         write()
         break
@@ -164,6 +231,11 @@ export function install(rt) {
         const id = String(body.id ?? '')
         if (!registry.revoke(id)) throw invalid('This phone is not paired')
         link?.disconnect(id)
+        if (data.pushKeys[id] !== undefined) {
+          delete data.pushKeys[id]
+          write()
+        }
+        lastPush.delete(id)
         break
       }
       default:

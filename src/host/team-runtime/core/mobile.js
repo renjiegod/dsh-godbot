@@ -180,6 +180,8 @@ export function install(rt) {
     kept.push(notice)
     if (kept.length > NOTICES_KEPT) kept.splice(0, kept.length - NOTICES_KEPT)
     rt.publishFeed?.('notice', notice)
+    // Phones that are not connected hear about it through push (core/phone.js).
+    rt.phonePush?.(notice)
     return notice
   }
 
