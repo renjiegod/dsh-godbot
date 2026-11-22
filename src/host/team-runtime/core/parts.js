@@ -2177,6 +2177,7 @@ export function install(rt) {
   // neither gets another empty part, with another handoff, stacked on top of it, and the
   // answer is false.
   const newParts = new Map()
+  const partSelections = new Map()
   // A New session the user is waiting for: one being made, or the current part of the
   // Bot's own chat moving on.
   rt.openingChat = botId => newParts.has(botId) || switches.has(rt.chatOf(botId))
@@ -2186,7 +2187,7 @@ export function install(rt) {
     const place = placeOf(sessionId)
     if (place?.botId === undefined || place.roomId !== undefined) throw Object.assign(new Error('Only a Bot\'s own chat can start a fresh part'), { code: 'bot/invalid' })
     const { botId } = place
-    if (rt.openingChat(botId)) return false
+    if (rt.openingChat(botId) || partSelections.has(botId)) return false
     const making = (async () => {
       if (!await partTalked(agent.id).catch(() => true)) return false
       // The read took a moment: the part may have moved on, or started moving, meanwhile.
@@ -2250,10 +2251,25 @@ export function install(rt) {
   // was current joins the earlier ones where it sat.
   async function switchPart(botId, partId) {
     await rt.load()
+    // Each request must read the current part after the previous switch has
+    // finished. Two clicks can otherwise both move the same archived part.
+    const previous = partSelections.get(botId) ?? Promise.resolve()
+    const selection = previous.catch(() => {}).then(() => selectPart(botId, partId))
+    partSelections.set(botId, selection)
+    try {
+      return await selection
+    } finally {
+      if (partSelections.get(botId) === selection) partSelections.delete(botId)
+    }
+  }
+
+  async function selectPart(botId, partId) {
     const bot = rt.botOf(botId)
     if (bot === undefined) throw Object.assign(new Error('Unknown Bot'), { code: 'bot/not-found' })
     const current = rt.chatOf(botId)
     if (partId === current) return false
+    const busy = () => Object.assign(new Error('The Bot is working; wait for it to finish or stop it first'), { code: 'bot/busy' })
+    if (newParts.has(botId)) throw busy()
     // A part opened while the Bot was busy is live. Making it current swaps the two
     // threads; both stay live and neither is archived or stopped.
     if (isOpenPart(bot, partId)) {
@@ -2266,11 +2282,19 @@ export function install(rt) {
     const segments = bot.segments ?? []
     const at = segments.findIndex(segment => segment.sessionId === partId)
     if (at === -1) throw Object.assign(new Error('Unknown part'), { code: 'bot/not-found' })
-    const live = rt.live.get(current)
-    if (live?.turn !== undefined) throw Object.assign(new Error('The Bot is working; wait for it to finish or stop it first'), { code: 'bot/busy' })
+    const stillIdle = () => !switches.has(current) && rt.live.get(current)?.turn === undefined
+    if (!stillIdle()) throw busy()
     // DSH turns away every step of an archived Session and every task aimed at it, so
     // the part leaves the archive before it becomes current.
+    const wasArchived = ctx.workspaceRegistry.archivedSessionIds.includes(partId)
     await ctx.workspaceRegistry.unarchiveSession(partId)
+    if (rt.botOf(botId) !== bot || rt.chatOf(botId) !== current || !stillIdle()) {
+      if (wasArchived && rt.pastOwners.get(partId)?.botId === botId) {
+        await ctx.workspaceRegistry.archiveSession(partId)
+          .catch(error => rt.warn('godbot: earlier part %s not archived: %s', partId, error))
+      }
+      throw busy()
+    }
     segments.splice(at, 1)
     // The swap leaves the thread out of order: the part that left takes the opened one's
     // place, and the opened one follows the last earlier part. `cut` keeps pages of

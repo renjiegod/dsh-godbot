@@ -183,15 +183,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     computerShot: attachmentId => call('computer-shot', { attachmentId }),
     computerUserActive: idleSeconds => call('computer-user-active', { idleSeconds }),
     stopMemberWork: (roomId, botId) => after(call('stop-member-work', { roomId, botId })),
-    // A running part opened from the session list takes no input until it ends.
     newPart: botId => after(call('bot-new-part', { botId })),
-    openPart: (botId, sessionId, running = false) => {
-      ui.set(state => ({ ...state, readOnlyPart: running ? sessionId : null }))
-      return after(call('bot-open-part', { botId, sessionId })).catch((error) => {
-        ui.set(state => (state.readOnlyPart === sessionId ? { ...state, readOnlyPart: null } : state))
-        throw error
-      })
-    },
     clearReadOnlyPart: () => ui.set(state => (state.readOnlyPart === null ? state : { ...state, readOnlyPart: null })),
     stopChat: botId => {
       ui.set(state => (state.readOnlyPart === null ? state : { ...state, readOnlyPart: null }))
