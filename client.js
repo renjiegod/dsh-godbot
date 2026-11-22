@@ -15592,15 +15592,7 @@ function teamActions({ call: call3, after, partFor, roster, ui: ui3, live, cards
     computerShot: (attachmentId) => call3("computer-shot", { attachmentId }),
     computerUserActive: (idleSeconds) => call3("computer-user-active", { idleSeconds }),
     stopMemberWork: (roomId, botId) => after(call3("stop-member-work", { roomId, botId })),
-    // A running part opened from the session list takes no input until it ends.
     newPart: (botId) => after(call3("bot-new-part", { botId })),
-    openPart: (botId, sessionId, running = false) => {
-      ui3.set((state) => ({ ...state, readOnlyPart: running ? sessionId : null }));
-      return after(call3("bot-open-part", { botId, sessionId })).catch((error) => {
-        ui3.set((state) => state.readOnlyPart === sessionId ? { ...state, readOnlyPart: null } : state);
-        throw error;
-      });
-    },
     clearReadOnlyPart: () => ui3.set((state) => state.readOnlyPart === null ? state : { ...state, readOnlyPart: null }),
     stopChat: (botId) => {
       ui3.set((state) => state.readOnlyPart === null ? state : { ...state, readOnlyPart: null });
@@ -30137,7 +30129,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.16";
+var version = "0.2.0-rc.17";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -42759,11 +42751,10 @@ function BotSessions({ bot, part, run: run2, useSessions, actions, running, rost
     ...(bot.parts ?? []).filter((id) => id !== part && !empty2.has(id)).slice().reverse().map((id) => ({ id, earlier: true }))
   ];
   const rows2 = useSessions((list) => entries2.map((entry) => list.byId?.[entry.id]), rowsEqual);
-  const total = entries2.length;
+  const numbers = new Map((bot.partOrder ?? entries2.map((entry) => entry.id).reverse()).map((id, index) => [id, index + 1]));
   const openPart = (entry) => {
     if (entry.current) return void 0;
-    if (entry.open && actions.openPart !== void 0) return () => run2(actions.openPart(bot.id, entry.id, entry.running));
-    return () => run2(call("bot-open-part", { botId: bot.id, sessionId: entry.id }));
+    return () => run2(actions.openPart(bot.id, entry.id, entry.running));
   };
   return (0, import_react72.createElement)(
     "div",
@@ -42780,7 +42771,7 @@ function BotSessions({ bot, part, run: run2, useSessions, actions, running, rost
       const row2 = rows2[index];
       const when3 = row2?.updatedAt ?? row2?.createdAt;
       const own = typeof row2?.title === "string" && row2.title.trim() !== "" && row2.title.trim() !== bot.name ? row2.title.trim() : "";
-      const label = own || (entry.current && fresh ? t("New session") : t("Session {number}", { number: total - index }));
+      const label = own || (entry.current && fresh ? t("New session") : t("Session {number}", { number: numbers.get(entry.id) }));
       const title2 = entry.current ? t("Current session") : entry.open && entry.running ? t("Open this running session") : entry.open ? t("Open this session") : t("Open this earlier session");
       return (0, import_react72.createElement)(
         "button",
@@ -42788,6 +42779,7 @@ function BotSessions({ bot, part, run: run2, useSessions, actions, running, rost
           key: entry.id,
           type: "button",
           disabled: entry.current,
+          "aria-current": entry.current || void 0,
           className: `bt-agent-session${entry.current ? " is-current" : ""}${entry.running ? " is-running" : ""}`,
           title: title2,
           onClick: openPart(entry)
@@ -46367,7 +46359,7 @@ function apply(ctx, godbot) {
   const pull = async () => {
     const order = ++pulls;
     const known = roster.getSnapshot();
-    const value = await call("state", { since: known.revision, models: known.modelsKey ?? "", live: liveKey, locale: language() });
+    const value = await call("state", { since: known.revision, models: known.modelsKey ?? "", live: liveKey, locale: language(), sessionOrder: true });
     if (order < applied) return;
     applied = order;
     const prevLiveKey = liveKey;
@@ -46840,6 +46832,12 @@ function apply(ctx, godbot) {
   const actions = {
     godbot,
     ...teamActions({ call, after, partFor, roster, ui: ui3, live, cards, heldCards, turnClock, panelFolded }),
+    // Reopening an archived part can clear the shell's main view. Reserve the exact
+    // destination before asking the Host to switch, then open it once it is live.
+    openPart: (botId, sessionId, running = false) => sessionSelection2.open(sessionId, (target) => {
+      ui3.set((state) => ({ ...state, readOnlyPart: running ? target : null }));
+      show2(target);
+    }, () => after(call("bot-open-part", { botId, sessionId }))),
     // The follow starts before the ask: DSH can clear the view before the answer lands.
     newPart: async (botId) => {
       const follow = followFreshPart(botId, partFor(botId));
@@ -63572,29 +63570,47 @@ function sessionSelection({ current: current2, onEmpty, waitMs, schedule = setTi
     return !disposed && (!pending || id === pending.target);
   }
   return {
-    open(target, open) {
+    open(target, open, prepare) {
       if (disposed) return;
       const requested = ++revision;
+      const isCurrent = () => !disposed && revision === requested;
       const from = current2();
       const continuing = pending?.target === target;
       endOpening();
-      if (from !== target || continuing) {
-        pending = { from, target };
-        timer = schedule(() => {
-          if (disposed || revision !== requested || !pending) return;
+      if (from !== target || continuing || prepare !== void 0) pending = { from, target };
+      const fail2 = (error) => {
+        if (isCurrent()) {
           endOpening();
-          if (current2() == null) onEmpty();
-        }, waitMs);
-      }
-      try {
-        open(target);
-      } catch (error) {
-        if (revision === requested) endOpening();
+          if (prepare !== void 0 && current2() == null) onEmpty();
+        }
         throw error;
-      }
+      };
+      const select = () => {
+        if (!isCurrent()) return;
+        if (pending) {
+          timer = schedule(() => {
+            if (!isCurrent() || !pending) return;
+            endOpening();
+            if (current2() == null) onEmpty();
+          }, waitMs);
+        }
+        try {
+          open(target);
+        } catch (error) {
+          fail2(error);
+        }
+      };
+      if (prepare === void 0) return select();
+      return prepare().then((value) => {
+        select();
+        return value;
+      }, fail2);
     },
     observe(id) {
-      if (pending && id != null && id !== pending.from && id !== pending.target) endOpening();
+      if (pending && id != null && id !== pending.from && id !== pending.target) {
+        revision += 1;
+        endOpening();
+      }
     },
     async recover(open, refresh) {
       const from = current2();

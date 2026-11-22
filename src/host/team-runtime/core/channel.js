@@ -59,6 +59,24 @@ export function install(rt) {
   const staged = new Map()
   const ok = value => ({ ok: true, value })
   const fail = (message, code = 'bot/error') => ({ ok: false, error: { code, message, details: {} } })
+  const partCreation = new Map()
+  async function createdAtOf(partId) {
+    if (partCreation.has(partId)) return partCreation.get(partId)
+    // The live and archived logs both retain their original creation time.
+    const header = ctx.get('sessions')?.get(partId)?.header
+      ?? (await ctx.get('sessionPersistence')?.stat(partId).catch(() => undefined))?.header
+    const at = header?.createdAt
+    if (at !== undefined) partCreation.set(partId, at)
+    return at ?? Number.MAX_SAFE_INTEGER
+  }
+  async function partOrderOf(bot) {
+    const background = (bot.openParts ?? []).flatMap(part => [...part.parts, part.sessionId])
+    const ids = new Set([...bot.parts, ...background, bot.sessionId])
+    // The Bot id is also its first part. Current and archived parts can trade
+    // places, so the list order and the last activity time cannot number them.
+    const parts = await Promise.all([...ids].map(async id => ({ id, at: id === bot.id ? -1 : await createdAtOf(id) })))
+    return parts.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)).map(part => part.id)
+  }
   // Models come from DSH, not state.json, so a provider added on the Models pages of Settings
   // changes the view without a new revision.
   const modelsKey = () => `${rt.cachedCatalog().map(entry => `${entry.ref}${entry.needsKey ? '!' : ''}${entry.reasoning ? `:${JSON.stringify(entry.reasoning)}` : ''}`).join(',')}|${rt.cachedDefault() ?? ''}`
@@ -293,6 +311,9 @@ export function install(rt) {
           }
           // A phone asks for photos by reference and fetches each once (`avatar`).
           const out = { ...view(), liveKey: answer.key, ...answer.value }
+          if (body.sessionOrder === true) {
+            out.bots = await Promise.all(out.bots.map(async bot => ({ ...bot, partOrder: await partOrderOf(bot) })))
+          }
           return ok(body.avatars === 'ref' ? rt.slimAvatars(out) : out)
         }
         case 'models':

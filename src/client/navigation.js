@@ -27,29 +27,41 @@ export function sessionSelection({ current, onEmpty, waitMs, schedule = setTimeo
   }
 
   return {
-    open(target, open) {
+    open(target, open, prepare) {
       if (disposed) return
       const requested = ++revision
+      const isCurrent = () => !disposed && revision === requested
       const from = current()
       const continuing = pending?.target === target
       endOpening()
-      if (from !== target || continuing) {
-        pending = { from, target }
-        timer = schedule(() => {
-          if (disposed || revision !== requested || !pending) return
+      // Reserve the destination before a host operation that may clear the main view.
+      if (from !== target || continuing || prepare !== undefined) pending = { from, target }
+      const fail = (error) => {
+        if (isCurrent()) {
           endOpening()
-          if (current() == null) onEmpty()
-        }, waitMs)
-      }
-      try {
-        open(target)
-      } catch (error) {
-        if (revision === requested) endOpening()
+          if (prepare !== undefined && current() == null) onEmpty()
+        }
         throw error
       }
+      const select = () => {
+        if (!isCurrent()) return
+        if (pending) {
+          timer = schedule(() => {
+            if (!isCurrent() || !pending) return
+            endOpening()
+            if (current() == null) onEmpty()
+          }, waitMs)
+        }
+        try { open(target) } catch (error) { fail(error) }
+      }
+      if (prepare === undefined) return select()
+      return prepare().then((value) => { select(); return value }, fail)
     },
     observe(id) {
-      if (pending && id != null && id !== pending.from && id !== pending.target) endOpening()
+      if (pending && id != null && id !== pending.from && id !== pending.target) {
+        revision += 1
+        endOpening()
+      }
     },
     async recover(open, refresh) {
       const from = current()

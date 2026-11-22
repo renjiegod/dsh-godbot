@@ -4,7 +4,6 @@ import { isMainOf } from './sources.js'
 import { HEADER, currentPart, runStatsOf, stripHeader, usageOf } from './text.js'
 import { AlertIcon, PlusIcon, ShareIcon, CloseIcon, ChevronLeftIcon, GearIcon } from './icons.js'
 import { botState, BotMark, BotAvatar } from './mark.js'
-import { call } from './api.js'
 import { GlobeIcon, Favicon, PanelMenu, menuItemFor } from './browser-pane.js'
 import { drawerMenuKeys } from './side-model.js'
 import { useEscape } from './overlay-hooks.js'
@@ -259,11 +258,10 @@ function BotSessions({ bot, part, run, useSessions, actions, running, roster }) 
     ...(bot.parts ?? []).filter(id => id !== part && !empty.has(id)).slice().reverse().map(id => ({ id, earlier: true })),
   ]
   const rows = useSessions(list => entries.map(entry => list.byId?.[entry.id]), rowsEqual)
-  const total = entries.length
+  const numbers = new Map((bot.partOrder ?? entries.map(entry => entry.id).reverse()).map((id, index) => [id, index + 1]))
   const openPart = (entry) => {
     if (entry.current) return undefined
-    if (entry.open && actions.openPart !== undefined) return () => run(actions.openPart(bot.id, entry.id, entry.running))
-    return () => run(call('bot-open-part', { botId: bot.id, sessionId: entry.id }))
+    return () => run(actions.openPart(bot.id, entry.id, entry.running))
   }
   return h('div', { className: 'bt-drawer-model' },
     h('div', { className: 'bt-section-title' }, t('Sessions')),
@@ -280,10 +278,11 @@ function BotSessions({ bot, part, run, useSessions, actions, running, roster }) 
       // its own is shown, else its number, or New session for a current part nobody
       // has talked in yet.
       const own = typeof row?.title === 'string' && row.title.trim() !== '' && row.title.trim() !== bot.name ? row.title.trim() : ''
-      const label = own || (entry.current && fresh ? t('New session') : t('Session {number}', { number: total - index }))
+      const label = own || (entry.current && fresh ? t('New session') : t('Session {number}', { number: numbers.get(entry.id) }))
       const title = entry.current ? t('Current session') : entry.open && entry.running ? t('Open this running session') : entry.open ? t('Open this session') : t('Open this earlier session')
       return h('button', {
         key: entry.id, type: 'button', disabled: entry.current,
+        'aria-current': entry.current || undefined,
         className: `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`,
         title, onClick: openPart(entry),
       },
