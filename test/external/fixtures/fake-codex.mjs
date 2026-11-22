@@ -278,7 +278,11 @@ process.stdin.on('data', (chunk) => {
         reply(id, { thread: { id: params.threadId },sandbox:{type:params.sandbox === 'read-only'?'readOnly':'workspaceWrite'},approvalPolicy:params.approvalPolicy,model:params.model ?? 'gpt-5.1-codex', reasoningEffort:params.model==='gpt-next'?'low':'high' })
         break
       }
-      case 'thread/inject_items': reply(id, {}); break
+      case 'config/read':
+        record('config/read', params)
+        reply(id, { config: { developer_instructions: process.env.FAKE_CODEX_DEVELOPER_INSTRUCTIONS ?? null } })
+        break
+      case 'thread/inject_items': record('thread/inject_items', params); reply(id, {}); break
       case 'turn/start': {
         record('turn/start', params)
         const input = params.input ?? []
