@@ -108,6 +108,18 @@ async function verifyBotModelHeader(host, godbot, note) {
   assert.ok(await godbotLabel.evaluate(label => label.scrollWidth <= label.clientWidth),
     'the GodBot name fits its desktop chat header')
 
+  await page.locator('.bt-side-collapse').click()
+  await page.locator('.bt-leftcol').waitFor({ state: 'detached' })
+  const expandSidebar = page.locator('.bt-title-toggle')
+  await expandSidebar.waitFor()
+  const collapsedStyle = await badge.evaluate(button => ({
+    toolbar: getComputedStyle(button.closest('.gb-chat-bar')).display,
+    border: getComputedStyle(button).borderTopWidth,
+  }))
+  assert.deepEqual(collapsedStyle, { toolbar: 'flex', border: '0px' },
+    'the chat toolbar keeps its layout and button styles without the sidebar')
+  await host.capture('bot-model-header-sidebar-collapsed')
+
   await badge.click()
   const drawer = page.locator('.bt-drawer-model').filter({ has: page.getByRole('slider') })
   await drawer.locator('.bt-model-trigger').waitFor()
@@ -117,6 +129,7 @@ async function verifyBotModelHeader(host, godbot, note) {
   await showsLevel(defaultLabel)
   await page.locator('.bt-head .bt-pill').click()
   await drawer.waitFor({ state: 'hidden' })
+  await expandSidebar.click()
 
   const peer = await host.bot('create-bot', { name: 'Header fixture Bot', model: peerRef, effort: explicit.id })
   const room = await host.bot('create-room', { name: 'Header fixture group', members: [godbot, peer.id] })

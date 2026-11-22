@@ -1,4 +1,4 @@
-import { Fragment, createElement as h, useEffect, useState } from 'react'
+import { createElement as h, useEffect, useState } from 'react'
 import { apply as applyBot, inject as botServices } from './team-ui/index.js'
 import { earlierReports, reportSessionUsage, turnReport } from './team-report.js'
 import { NativeCommandReport } from './native-command-report.js'
@@ -6,6 +6,7 @@ import { TerminalPanel } from './terminal-panel.js'
 import { botNativeTarget, nativeTabs } from './native-agent-target.js'
 import { PanelMenu } from './team-ui/browser-pane.js'
 import { ChatsIcon, TerminalIcon } from './team-ui/icons.js'
+import { installStyles } from './team-ui/styles.js'
 import { SandboxBinding } from './sandbox-settings.js'
 import { ProviderAgentsPage } from './provider-agents.js'
 import { useProviderChoices } from './provider-agents-hook.js'
@@ -365,12 +366,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
     },
     navigation(wide, latest, actions) {
       roster = latest
-      return h(
-        Fragment,
-        null,
-        h('style', null, controlsStyle + executionStyle + sandboxSettingsStyle),
-        h(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings('schedules'), onBack: navigation.back }),
-      )
+      return h(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings('schedules'), onBack: navigation.back })
     },
   }
   const fiber = ctx.plugin({
@@ -379,6 +375,10 @@ function mountProduct(ctx, client, navigation, target, ready) {
       if (!active) return
       try {
         applyBot(child, teamControls)
+        child.effect(() => {
+          const style = installStyles(controlsStyle + executionStyle + sandboxSettingsStyle, 'team-controls')
+          return () => style.remove()
+        }, 'Godbot team styles')
         ready()
       } catch (error) {
         ready(error)
