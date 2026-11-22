@@ -83,6 +83,13 @@
     .field input {
       margin-right: 6px;
     }
+    .portal {
+      flex-basis: 100%;
+      margin: 0;
+      padding: 8px 12px 12px;
+      border: 1px solid #8885;
+      border-radius: 8px;
+    }
     code {
       user-select: all;
       font-size: 12px;
@@ -198,18 +205,61 @@
       $('#buttons').replaceChildren(...buttons)
       if (!dialog.open) dialog.showModal()
     }
-    function ask(title, fn) {
+    function ask(title, fn, description, confirm = 'Continue') {
       modal(
         title,
-        [],
+        description ? [node('p', description)] : [],
         [
           btn('Cancel', () => dialog.close()),
-          btn('Continue', async () => {
+          btn(confirm, async () => {
             dialog.close()
             await fn()
           }),
         ],
       )
+    }
+    function portalSettings(device) {
+      const remembered = device.portalScopes || []
+      const supported = device.portalSupportedScopes || []
+      if (!remembered.length && !supported.length) return null
+      const fieldset = node('fieldset')
+      fieldset.className = 'portal'
+      fieldset.append(node('legend', 'Remember this Wayland screen'))
+      const controls = node('div')
+      controls.className = 'controls'
+      for (const [scope, mode, grant] of [
+        ['desktop.view', 'viewing', 'View desktop'],
+        ['desktop.control', 'control', 'Control desktop'],
+      ]) {
+        const forget = remembered.includes(scope)
+        if (!forget && !supported.includes(scope)) continue
+        if (!forget && !device.grants.includes(scope)) {
+          controls.append(node('small', 'Grant “' + grant + '” above to remember a screen for ' + mode + '.'))
+          continue
+        }
+        const action = forget ? 'Forget' : 'Remember'
+        controls.append(
+          btn(action + ' for ' + mode, () => {
+            const controller = device.name || device.deviceId
+            const description = forget
+              ? 'Godbot will clear the saved screen choice for this controller’s ' + mode + ' sessions.'
+              : 'Choose a screen in the system picker on this computer during the next approved ' +
+                mode + ' session. Future ' + mode + ' sessions from this controller may reuse that choice.'
+            ask(
+              action + ' the screen for ' + controller + '’s ' + mode + ' sessions?',
+              async () => {
+                await call(forget ? 'forget-portal' : 'remember-portal', [device.deviceId, scope])
+                seen = ''
+                await refresh()
+              },
+              description + ' Controller fingerprint ' + device.fingerprint + '.',
+              action + ' for ' + mode,
+            )
+          }),
+        )
+      }
+      fieldset.append(controls)
+      return fieldset
     }
     async function refresh() {
       if (!active || acting || dialog.open) return
@@ -267,6 +317,8 @@
             ),
           )
           row.append(perms)
+          const portal = portalSettings(d)
+          if (portal) row.append(portal)
           return row
         }),
       )

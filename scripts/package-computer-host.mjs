@@ -50,7 +50,7 @@ mkdirSync(out, { recursive: true })
 const key = readFileSync(args['signing-key'])
 const pub = createPublicKey(key).export({ type: 'spki', format: 'pem' })
 const hash = (buffer) => createHash('sha256').update(buffer).digest('hex')
-const version = '0.1.0',
+const version = '0.1.2',
   nodeVersion = '24.14.0'
 const stage = mkdtempSync(join(tmpdir(), 'godbot-machine-package-'))
 const run = (cmd, argv, cwd = root) =>
@@ -182,6 +182,7 @@ try {
       'runtime.js',
       'local.js',
       'sessions.js',
+      'portal-memory.js',
       'terminal.js',
       'consent.js',
       'service-install.js',
@@ -233,7 +234,19 @@ try {
         args['mac-app'] ||
         join(homedir(), 'Library/Application Support/Godbot Computer Host/native/Godbot Computer Host.app')
       run('codesign', ['--verify', '--strict', '-R=identifier "io.github.renjiegod.godbot.computerhost"', app])
-      run('lipo', ['-verify_arch', 'arm64', join(app, 'Contents/MacOS/godbot-screen')])
+      const capture = join(app, 'Contents/MacOS/godbot-screen')
+      run('lipo', ['-verify_arch', 'arm64', capture])
+      const compiled = JSON.parse(run(capture, ['bridge-info']))
+      const publisher = createPublicKey(key).export({ format: 'jwk' })
+      if (publisher.kty !== 'EC' || publisher.crv !== 'P-256') throw new Error('The Mac host requires a P-256 package key')
+      const encoded = Buffer.concat([
+        Buffer.from([4]),
+        Buffer.from(publisher.x, 'base64url'),
+        Buffer.from(publisher.y, 'base64url'),
+      ])
+      if (compiled.protocol !== 1 || compiled.publisherKeySha256 !== hash(encoded)) {
+        throw new Error('Rebuild the Mac capture app with the public key for this host signing key')
+      }
       cpSync(app, join(native, 'Godbot Computer Host.app'), { recursive: true })
       run('codesign', [
         '--verify',

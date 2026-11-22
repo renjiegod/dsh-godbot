@@ -162,6 +162,25 @@ export default async function remoteComputers({ makeHost, candidate, scratch, re
       .getByRole('button', { name: /^(?:Continue|继续)$/u })
       .click()
     await panel.getByText(/^(?:Pair your first computer|配对第一台电脑)$/u).waitFor()
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'languages', { value: ['fr-FR'] })
+      Object.defineProperty(navigator, 'language', { value: 'fr-FR' })
+    })
+    await page.reload()
+    await openFullTeam(host)
+    await page.getByRole('button', { name: 'Ordinateurs distants', exact: true }).click()
+    const frenchPanel = page.getByRole('dialog', { name: 'Ordinateurs distants', exact: true })
+    const pairFrench = frenchPanel.getByRole('button', { name: 'Associer un ordinateur', exact: true })
+    await pairFrench.last().click()
+    const canceledFrench = await localRequest(home, 'pair')
+    await localRequest(home, 'cancel-pair')
+    const frenchOffer = frenchPanel.getByLabel('Lien d’association')
+    await frenchOffer.fill(canceledFrench.uri)
+    await frenchPanel.getByRole('button', { name: 'Vérifier la demande', exact: true }).click()
+    await frenchPanel.getByText('Faire confiance à cet ordinateur ?', { exact: true }).waitFor()
+    await pairFrench.last().click()
+    await frenchPanel.getByText('Générez un nouveau lien d’association sur l’ordinateur.', { exact: true }).waitFor()
+    assert.equal(await frenchOffer.inputValue(), '')
     note('remote-computer-ui', {
       paired: true,
       headless: true,
@@ -172,6 +191,7 @@ export default async function remoteComputers({ makeHost, candidate, scratch, re
       shellExitAndRestart: true,
       scrollbackJump: true,
       revokeClosed: true,
+      canceledOfferInFrench: true,
     })
   } finally {
     await target?.close()

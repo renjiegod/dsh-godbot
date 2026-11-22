@@ -20,6 +20,8 @@ const actions = new Set([
   'cancel-pair',
   'grant',
   'ungrant',
+  'remember-portal',
+  'forget-portal',
   'revoke',
   'stop',
   'approve',

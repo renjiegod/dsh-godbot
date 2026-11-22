@@ -245,12 +245,17 @@ export class RemoteComputers {
     const machine = savedMachine()
     const link = this.current
     const holder = link?.holders.get(owner)
-    if (action !== 'rpc' || !allowed.has(request.method) || link?.id !== machine.hostDeviceId || !holder)
+    if (action !== 'rpc' || !allowed.has(request.method))
       throw new Error('Open this computer in the current tab first')
-    const params = request.params ?? {}
-    if (request.method !== 'session.open' && !holder.sessions.has(params.sessionId))
-      throw new Error('This tab does not own that session')
     const opening = request.method === 'session.open'
+    const reportConnectionRequired = opening && request.reportConnectionRequired === true
+    if (link?.id !== machine.hostDeviceId || !holder) {
+      if (reportConnectionRequired) return { connectionRequired: true }
+      throw new Error('Open this computer in the current tab first')
+    }
+    const params = request.params ?? {}
+    if (!opening && !holder.sessions.has(params.sessionId))
+      throw new Error('This tab does not own that session')
     const payload = opening
       ? {
           ...params,
@@ -284,7 +289,7 @@ export class RemoteComputers {
       else holder.sessions.delete(result.sessionId)
     }
     if (request.method === 'session.close') holder.sessions.delete(params.sessionId)
-    return result
+    return reportConnectionRequired ? { session: result } : result
   }
 
   async close() {
