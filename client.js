@@ -30130,7 +30130,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.13";
+var version = "0.2.0-rc.14";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -64739,12 +64739,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
     },
     navigation(wide, latest, actions) {
       roster = latest;
-      return (0, import_react111.createElement)(
-        import_react111.Fragment,
-        null,
-        (0, import_react111.createElement)("style", null, controlsStyle + executionStyle + sandboxSettingsStyle),
-        (0, import_react111.createElement)(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings("schedules"), onBack: navigation.back })
-      );
+      return (0, import_react111.createElement)(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings("schedules"), onBack: navigation.back });
     }
   };
   const fiber = ctx.plugin({
@@ -64753,6 +64748,10 @@ function mountProduct(ctx, client, navigation, target, ready) {
       if (!active) return;
       try {
         apply(child, teamControls);
+        child.effect(() => {
+          const style = installStyles(controlsStyle + executionStyle + sandboxSettingsStyle, "team-controls");
+          return () => style.remove();
+        }, "Godbot team styles");
         ready();
       } catch (error) {
         ready(error);
