@@ -102,7 +102,9 @@ export function TaskSettings({ client, actions, page, focus, readOnly: rosterRea
     actions.openSession(bot.id)
   }
   return h('div', { className: 'gb-task-settings gb-stack' },
-    row(button('刷新', refresh), !readOnly && button('统一创建自动化', () => actions.openSettings('automation', { kind: page === 'routines' ? 'task' : 'workflow' }))),
+    h('div', { className: 'gb-row gb-task-toolbar' },
+      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: refresh }, '刷新'),
+      !readOnly && h('button', { type: 'button', className: 'bt-send bt-soft-sm', onClick: () => actions.openSettings('automation', { kind: page === 'routines' ? 'task' : 'workflow' }) }, '统一创建自动化')),
     offline && h('div', { className: 'gb-alert', role: 'status' }, '连接中断，正在重试 · ' + offline),
     error && h('div', { className: 'gb-alert', role: 'alert' }, h('span', null, error.message),
       row(button('重试原请求', error.retry), button('关闭', clearError))),
