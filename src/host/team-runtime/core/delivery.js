@@ -2,7 +2,7 @@
 // Delivery: how one Bot, the user, or Godbot itself puts a message into a Bot Session.
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import { HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
+import { BACKGROUND_NOTE, BACKGROUND_ROLE, HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
 import { headOf, textOf } from './text.js'
 
 export function install(rt) {
@@ -157,6 +157,24 @@ export function install(rt) {
     return exchangeId
   }
 
+  // What a Bot's agent CLI said by itself — a background task it started ended, a
+  // Monitor fired — shows as the Bot's reply in a turn of its own. This message only
+  // opens that turn: the local agent adapter answers it with the CLI's own words, and it
+  // never reaches the CLI (local-agents/adapter.js). Behind a turn under way it waits
+  // for the next one. It carries the origin of the turn that left the work running, so
+  // the calls the CLI makes in it meet the same rules. False for a Session outside the team.
+  async function deliverBackground(sessionId, background) {
+    if (rt.selfOf(sessionId) === undefined) return false
+    const agent = await resolveAgent(sessionId)
+    const origin = rt.governance?.lastOrigin(sessionId)
+    agent.followup(createUserMessage({
+      content: [{ type: 'text', text: BACKGROUND_NOTE }],
+      source: { kind: SOURCE_KIND, form: 'background', role: BACKGROUND_ROLE, background, ...(origin ? { godbotInitiator: origin } : {}) },
+    }))
+    await ctx.sessions.flush(agent.session)
+    return true
+  }
+
   // A message between Bots, whole, from the Session it was delivered to: the message
   // there is its header line, then the text. `whole` is false when only the start could
   // be read (the Session is gone, or the message is past what the dialog shows).
@@ -229,5 +247,5 @@ export function install(rt) {
     return { ...record, ledger: true }
   }
 
-  Object.assign(rt, { resolveAgent, deliver, exchangeText, attachLong, fileText, exchangesOf, exchangeOf })
+  Object.assign(rt, { resolveAgent, deliver, deliverBackground, exchangeText, attachLong, fileText, exchangesOf, exchangeOf })
 }

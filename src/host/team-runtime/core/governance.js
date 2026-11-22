@@ -248,9 +248,12 @@ export function install(rt) {
     return { version: 1, rules: rules(), audit: page(req), origins: originKinds }
   }
 
+  // The origin of the turn under way, or of the last turn that had one.
+  const lastOrigin = id => active.get(id) ?? records(id).findLast(row => row.kind === 'turn' && row.origin)?.origin
+
   rt.governance = {
-    handle, registerPrompt, messageSource, current,
-    delegate: (id, botId) => delegatedOrigin(active.get(id) ?? records(id).findLast(row => row.kind === 'turn' && row.origin)?.origin, botId),
+    handle, registerPrompt, messageSource, current, lastOrigin,
+    delegate: (id, botId) => delegatedOrigin(lastOrigin(id), botId),
     nativePreset(id) {
       const origin = current(id)
       if (origin.readOnly) return 'read-only'

@@ -16,10 +16,12 @@ export function taskBudgetReceipt(store, sessionId, workId) {
   if (!sessionId || !workId) return
   return store.get(collection, keyFor(sessionId, { source: { kind: 'bot', role: 'request', exchangeId: workId } }))
 }
+// What a Bot's agent CLI already said by itself only shows: that turn spends nothing.
 const continuation = m => ['user-question-reply','subagent-settled','agent-message'].includes(m.source?.kind) ||
   (m.source?.kind === 'bot' && (
     (['reply','report'].includes(m.source.role) && typeof m.source.replyTo === 'string') ||
-    (m.source.role === 'post' && (m.source.late || m.source.progress || m.source.done || m.source.failed))))
+    (m.source.role === 'post' && (m.source.late || m.source.progress || m.source.done || m.source.failed)) ||
+    m.source.role === 'background'))
 // The scheduler injects these as non-waking context when its record changes.
 // Restoring one with followup would turn a configuration notice into new work.
 const passiveNotice = m => m.source?.kind === 'schedule' && m.content?.[0]?.type === 'text' &&
