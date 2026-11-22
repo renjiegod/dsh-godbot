@@ -314,9 +314,9 @@ function mountProduct(ctx, client, navigation, target, ready) {
     }),
     providerAgents: props => h(ProviderAgentsPage, { client, ...props }),
     taskSettings: (page, focus, actions, readOnly) => h(TaskSettings, { client, actions, page, focus, readOnly }),
-    platformSettings(page, roster, actions, initial) {
+    platformSettings(page, roster, actions, initial, ui = {}) {
       const pages = { automation: AutomationSetupPage, components: ComponentSettings, governance: GovernanceSettings, 'remote-agents': RemoteAgentSettings }
-      return h('div', { className: 'gb-platform' }, h(pages[page], { client, roster, actions, initial }))
+      return h('div', { className: 'gb-platform' }, h(pages[page], { client, roster, actions, initial, ...ui }))
     },
     schedulesPage(state, actions, start, publish) {
       const session = mainSession(ctx)

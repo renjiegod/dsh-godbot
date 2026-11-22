@@ -17295,12 +17295,14 @@ button.bt-set-row:hover .bt-chevron{transform:translateX(2px);color:var(--bt-ink
 .bt-browser-duration-choice:hover{color:var(--bt-ink)}
 .bt-browser-duration-choice:active{scale:.96}
 .bt-browser-duration-choice[aria-pressed=true]{background:var(--bt-card);color:var(--bt-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.bt-browser-form>.bt-set-row>.bt-set-control{flex:0 1 64%;min-width:0;justify-content:flex-end}
-.bt-browser-form .bt-select{width:auto;min-width:160px;max-width:260px}
-.bt-browser-form>.bt-set-row+.bt-set-row{border-top:.5px solid var(--bt-line)}
+:is(.bt-browser-form,.bt-automation-form)>.bt-set-row>.bt-set-control{flex:0 1 64%;min-width:0;justify-content:flex-end}
+:is(.bt-browser-form,.bt-automation-form) .bt-select{width:auto;min-width:160px;max-width:280px}
+.bt-automation-form .bt-input:not(.bt-input-area){width:100%;min-width:160px;max-width:280px}
+:is(.bt-browser-form,.bt-automation-form)>.bt-set-row+.bt-set-row{border-top:.5px solid var(--bt-line)}
 .bt-browser-site{width:min(320px,100%);max-width:320px}
 .bt-browser-form-foot{display:flex;justify-content:flex-end;padding:10px 16px;border-top:.5px solid var(--bt-line)}
-@media(max-width:700px){.bt-browser-grant{flex-wrap:wrap}.bt-browser-grant-who{flex:1}.bt-browser-grant-meta{order:3;flex:1 0 100%}}
+.bt-automation-form-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:.5px solid var(--bt-line)}
+@media(max-width:700px){.bt-browser-grant{flex-wrap:wrap}.bt-browser-grant-who{flex:1}.bt-browser-grant-meta{order:3;flex:1 0 100%}.bt-automation-form-foot{flex-direction:column;align-items:stretch;gap:8px}}
 .bt-set-paste{flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px}
 .bt-chevron{color:var(--bt-ink-3);display:inline-flex;flex:none;transition:transform .16s ease,color .16s ease}
 .bt-la-sec-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px}
@@ -17763,7 +17765,9 @@ body[data-ds-dark-theme] .bt-theme-chip i{background:var(--da)}
   .bt-settings-scroll{overflow-x:clip;padding:12px 16px calc(24px + env(safe-area-inset-bottom,0px))}
   .bt-set-row{flex-direction:column;align-items:stretch;gap:8px}
   .bt-set-row>.bt-set-copy{width:100%}
-  .bt-browser-form>.bt-set-row>.bt-set-control{flex:1 1 auto;justify-content:flex-start}
+  :is(.bt-browser-form,.bt-automation-form)>.bt-set-row>.bt-set-control{flex:1 1 auto;justify-content:flex-start}
+  .bt-automation-form .bt-select,.bt-automation-form .bt-input:not(.bt-input-area){max-width:100%}
+  .bt-automation-form-foot{flex-direction:column;align-items:stretch;gap:8px}
   .bt-browser-action-list{justify-content:flex-start}
   .bt-la-row{flex-direction:row;align-items:center;flex-wrap:wrap}
   .bt-la-row>.bt-set-copy{width:auto}
@@ -37789,7 +37793,7 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false,
             shown === "phone" ? (0, import_react52.createElement)(PhonePage, { roster, actions, Section: SetSection, Row: SetRow }) : null,
             shown === "browser" ? (0, import_react52.createElement)(BrowserPage, { roster, actions, run: run2, Section: SetSection, Row: SetRow }) : null,
             shown === "tasks" || shown === "routines" || usageLimits ? actions.godbot.taskSettings(usageLimits ? "limits" : shown, shown === "tasks" ? id : null, actions, roster.readOnly) : null,
-            ["automation", "remote-agents", "governance", "components"].includes(shown) ? actions.godbot.platformSettings(shown, roster, actions, id) : null,
+            ["automation", "remote-agents", "governance", "components"].includes(shown) ? actions.godbot.platformSettings(shown, roster, actions, id, { Section: SetSection, Row: SetRow, Switch }) : null,
             shown === "schedules" ? actions.godbot.schedulesPage(roster, actions, id, publishSchedules) : null,
             shown === "secrets" ? (0, import_react52.createElement)(SecretsPage, { roster, actions, run: run2, Section: SetSection }) : null,
             shown === "feedback" ? (0, import_react52.createElement)(FeedbackPage, { actions, run: run2, Section: SetSection, Row: SetRow }) : null,
@@ -66129,10 +66133,26 @@ function bindTeamSlashSource(controller, source, sessionId) {
 
 // src/client/automation-setup.js
 var import_react113 = require("react");
-var destinations = { messages: ["schedules", "查看会话日程"], routines: ["routines", "查看定时派工"], events: ["tasks", "查看事件设置"] };
+var destinations = {
+  messages: ["schedules", "查看会话日程"],
+  routines: ["routines", "查看定时派工"],
+  events: ["tasks", "查看事件设置"]
+};
 var days2 = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 var targets = [["message", "在会话执行"], ["task", "派工并验收"], ["workflow", "运行已保存工作流"]];
 var sharedTimings = [["once", "一次"], ["interval", "固定间隔"], ["daily", "每天"], ["weekly", "每周"]];
+var DefaultSection = ({ title: title2, action: action2 = null, className = "", children }) => (0, import_react113.createElement)(
+  "section",
+  { className: `bt-set-section ${className}`.trim() },
+  action2 ? (0, import_react113.createElement)("div", { className: "bt-la-sec-head" }, (0, import_react113.createElement)("h3", null, title2), action2) : title2 ? (0, import_react113.createElement)("h3", null, title2) : null,
+  (0, import_react113.createElement)("div", { className: "bt-set-card" }, children)
+);
+var DefaultRow = ({ label, hint, children, className = "" }) => (0, import_react113.createElement)(
+  "div",
+  { className: `bt-set-row ${className}`.trim() },
+  (0, import_react113.createElement)("div", { className: "bt-set-copy" }, (0, import_react113.createElement)("span", null, label), hint ? (0, import_react113.createElement)("span", { className: "bt-set-hint" }, hint) : null),
+  children ? (0, import_react113.createElement)("div", { className: "bt-set-control" }, children) : null
+);
 function timing(form, kind) {
   if (kind === "once") return { kind, at: new Date(form.get("when")).toISOString() };
   if (kind === "interval") return { kind, minutes: Number(form.get("minutes")) };
@@ -66145,25 +66165,83 @@ function timing(form, kind) {
     ...kind === "weekly" ? { weekdays: form.getAll("day").map(Number) } : {}
   };
 }
-function TimingFields({ kind }) {
+function TimingFields({ kind, Row: Row4 }) {
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (kind === "once") return field("执行时间", (0, import_react113.createElement)("input", { name: "when", type: "datetime-local", required: true }));
-  if (kind === "interval") return field("间隔分钟", (0, import_react113.createElement)("input", { name: "minutes", type: "number", min: 1, defaultValue: 60, required: true }));
-  if (kind === "rrule") return field("RRULE", (0, import_react113.createElement)("textarea", { name: "rrule", rows: 2, required: true }));
-  return (0, import_react113.createElement)(
-    "div",
-    { className: "gb-form" },
-    kind === "cron" ? field("五字段 Cron", (0, import_react113.createElement)("input", { name: "expression", placeholder: "0 9 * * 1-5", required: true })) : field("本地时间", (0, import_react113.createElement)("input", { name: "time", type: "time", defaultValue: "09:00", required: true })),
-    field("IANA 时区", (0, import_react113.createElement)("input", { name: "timeZone", defaultValue: zone, required: true })),
-    kind === "weekly" && row(...days2.map((day, index) => (0, import_react113.createElement)(
-      "label",
-      { key: day },
-      (0, import_react113.createElement)("input", { type: "checkbox", name: "day", value: index + 1, defaultChecked: index < 5 }),
-      day
-    )))
-  );
+  if (kind === "once") {
+    return (0, import_react113.createElement)(
+      Row4,
+      { label: "执行时间", hint: `按当前时区（${zone}）执行` },
+      (0, import_react113.createElement)("input", { name: "when", type: "datetime-local", className: "bt-input", "aria-label": "执行时间", required: true })
+    );
+  }
+  if (kind === "interval") {
+    return (0, import_react113.createElement)(
+      Row4,
+      { label: "间隔分钟", hint: "每隔指定分钟数自动触发执行" },
+      (0, import_react113.createElement)("input", { name: "minutes", type: "number", min: 1, defaultValue: 60, className: "bt-input", "aria-label": "间隔分钟", required: true })
+    );
+  }
+  if (kind === "rrule") {
+    return [
+      (0, import_react113.createElement)(
+        "div",
+        { key: "rrule", className: "bt-set-row bt-set-paste" },
+        (0, import_react113.createElement)(
+          "div",
+          { className: "bt-set-copy" },
+          (0, import_react113.createElement)("span", null, "RRULE 规则"),
+          (0, import_react113.createElement)("span", { className: "bt-set-hint" }, "标准 iCalendar 递归调度规则定义")
+        ),
+        (0, import_react113.createElement)("textarea", {
+          name: "rrule",
+          rows: 2,
+          className: "bt-input bt-input-area",
+          "aria-label": "RRULE",
+          placeholder: "DTSTART:20260101T090000Z\nRRULE:FREQ=MONTHLY;BYDAY=1MO",
+          required: true
+        })
+      ),
+      (0, import_react113.createElement)(
+        Row4,
+        { key: "tz", label: "IANA 时区", hint: "定时调度参考的时区名称" },
+        (0, import_react113.createElement)("input", { name: "timeZone", className: "bt-input", defaultValue: zone, "aria-label": "IANA 时区", required: true })
+      )
+    ];
+  }
+  return [
+    kind === "cron" ? (0, import_react113.createElement)(
+      Row4,
+      { key: "cron", label: "五字段 Cron", hint: "分 时 日 月 周，例如 0 9 * * 1-5" },
+      (0, import_react113.createElement)("input", { name: "expression", className: "bt-input", placeholder: "0 9 * * 1-5", "aria-label": "五字段 Cron", required: true })
+    ) : (0, import_react113.createElement)(
+      Row4,
+      { key: "time", label: "本地时间", hint: "每天固定触发时间（HH:MM）" },
+      (0, import_react113.createElement)("input", { name: "time", type: "time", className: "bt-input", defaultValue: "09:00", "aria-label": "本地时间", required: true })
+    ),
+    kind === "weekly" && (0, import_react113.createElement)(
+      Row4,
+      { key: "days", label: "执行日", hint: "选择每周几执行" },
+      (0, import_react113.createElement)(
+        "div",
+        { className: "bt-browser-action-list" },
+        days2.map((day, index) => (0, import_react113.createElement)(
+          "label",
+          { key: day, className: "bt-browser-action-choice" },
+          (0, import_react113.createElement)("input", { type: "checkbox", name: "day", value: index + 1, defaultChecked: index < 5 }),
+          day
+        ))
+      )
+    ),
+    (0, import_react113.createElement)(
+      Row4,
+      { key: "tz", label: "IANA 时区", hint: "定时调度参考的时区名称" },
+      (0, import_react113.createElement)("input", { name: "timeZone", className: "bt-input", defaultValue: zone, "aria-label": "IANA 时区", required: true })
+    )
+  ];
 }
-function AutomationSetupPage({ client, roster, actions, initial: initial2 }) {
+function AutomationSetupPage({ client, roster, actions, initial: initial2, Section: CustomSection, Row: CustomRow }) {
+  const Section2 = CustomSection ?? DefaultSection;
+  const Row4 = CustomRow ?? DefaultRow;
   const [catalog, setCatalog] = (0, import_react113.useState)();
   const [type, setType] = (0, import_react113.useState)(initial2?.kind ?? "message");
   const [trigger, setTrigger] = (0, import_react113.useState)("schedule");
@@ -66173,6 +66251,9 @@ function AutomationSetupPage({ client, roster, actions, initial: initial2 }) {
   const inFlight = (0, import_react113.useRef)(false);
   const last = (0, import_react113.useRef)();
   const [busy, setBusy] = (0, import_react113.useState)(false);
+  (0, import_react113.useEffect)(() => {
+    if (initial2?.kind) setType(initial2.kind);
+  }, [initial2?.kind]);
   (0, import_react113.useEffect)(() => {
     let disposed = false;
     client.dispatch({ action: "automation.setup.view" }).then(
@@ -66201,7 +66282,10 @@ function AutomationSetupPage({ client, roster, actions, initial: initial2 }) {
         instructions: form.get("instructions"),
         checkOnly: form.get("executionMode") === "check",
         target: { kind: type, id: form.get("target") },
-        trigger: { kind: trigger, ...trigger === "schedule" ? { when: timing(form, kind) } : trigger === "github" ? { repo: form.get("repo"), eventType: form.get("eventType") } : {} }
+        trigger: {
+          kind: trigger,
+          ...trigger === "schedule" ? { when: timing(form, kind) } : trigger === "github" ? { repo: form.get("repo"), eventType: form.get("eventType") } : {}
+        }
       };
       if (type === "workflow") input2.target.revision = catalog.workflows.find((item) => item.id === input2.target.id)?.revision;
       const signature = JSON.stringify(input2);
@@ -66218,67 +66302,220 @@ function AutomationSetupPage({ client, roster, actions, initial: initial2 }) {
   const available = catalog && (type !== "message" || catalog.available);
   return (0, import_react113.createElement)(
     "div",
-    { className: "gb-stack" },
-    error && (0, import_react113.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    { className: "bt-settings-form" },
+    error && (0, import_react113.createElement)("div", { role: "alert", className: "bt-error" }, error),
     (0, import_react113.createElement)(
       "form",
-      { className: "gb-card gb-form", onSubmit: submit2, "aria-label": "统一创建自动化" },
+      { className: "bt-automation-form", onSubmit: submit2, "aria-label": "统一创建自动化" },
       (0, import_react113.createElement)(
         "fieldset",
-        { disabled: busy || Boolean(roster.readOnly) },
+        { disabled: busy || Boolean(roster.readOnly), style: { border: 0, padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "18px" } },
         (0, import_react113.createElement)(
-          "div",
-          { className: "gb-form" },
-          field("执行方式", (0, import_react113.createElement)("select", { value: type, onChange: (event) => {
-            const next = event.target.value;
-            if (next === "message") setTrigger("schedule");
-            if (next !== "message" && ["cron", "rrule"].includes(kind)) setKind("once");
-            setType(next);
-          } }, ...targets.map(([value, label]) => option(value, label)))),
-          field("执行对象", (0, import_react113.createElement)(
-            "select",
-            { key: type, name: "target", defaultValue: initial2?.id ?? "", required: true },
-            option("", "选择" + (type === "workflow" ? "工作流版本" : type === "task" ? " Bot" : "会话")),
-            ...choices.map((item) => option(item.id, item.name))
-          )),
-          field("任务名称", (0, import_react113.createElement)("input", { name: "title", required: true, maxLength: 120 })),
-          type !== "workflow" && field(
-            type === "message" ? "执行指令" : "执行要求与验收条件",
-            (0, import_react113.createElement)("textarea", { name: "instructions", required: true, rows: 3, maxLength: 16e3 })
+          Section2,
+          { title: "执行目标" },
+          (0, import_react113.createElement)(
+            Row4,
+            { label: "执行方式", hint: "选择由 Bot 在会话中执行、创建派工任务，还是执行工作流" },
+            (0, import_react113.createElement)("select", {
+              className: "bt-select",
+              "aria-label": "执行方式",
+              value: type,
+              onChange: (event) => {
+                const next = event.target.value;
+                if (next === "message") setTrigger("schedule");
+                if (next !== "message" && ["cron", "rrule"].includes(kind)) setKind("once");
+                setType(next);
+              }
+            }, targets.map(([value, label]) => (0, import_react113.createElement)("option", { key: value, value }, label)))
           ),
-          field("动作权限", (0, import_react113.createElement)("select", { name: "executionMode" }, option("normal", "按 Bot 和工作区策略执行"), option("check", "只检查并反馈"))),
-          field("何时开始", (0, import_react113.createElement)(
-            "select",
-            { value: trigger, onChange: (event) => setTrigger(event.target.value) },
-            option("schedule", "按日程"),
-            type !== "message" && option("webhook", "收到 Webhook"),
-            type !== "message" && option("github", "GitHub 公开仓库事件")
-          )),
-          trigger === "schedule" && field("重复方式", (0, import_react113.createElement)(
-            "select",
-            { value: kind, onChange: (event) => setKind(event.target.value) },
-            ...[...sharedTimings, ...type === "message" ? [["cron", "Cron"], ["rrule", "RRULE"]] : []].map(([value, label]) => option(value, label))
-          )),
-          trigger === "schedule" && (0, import_react113.createElement)(TimingFields, { key: kind, kind }),
-          trigger === "github" && field("GitHub 仓库", (0, import_react113.createElement)("input", { name: "repo", placeholder: "owner/repo", required: true })),
-          trigger === "github" && field("事件类型", (0, import_react113.createElement)("input", { name: "eventType", placeholder: "例如 IssuesEvent，可留空" })),
-          catalog && !available && (0, import_react113.createElement)("p", { role: "status", className: "gb-muted" }, "在 DSH 插件设置启用自动化任务后可调度会话。"),
-          (0, import_react113.createElement)("button", { type: "submit", className: "gb-primary", disabled: busy || !available || !choices.length }, busy ? "正在创建…" : "创建自动化")
+          (0, import_react113.createElement)(
+            Row4,
+            {
+              label: "执行对象",
+              hint: type === "workflow" ? "选择要运行的工作流定义版本" : type === "task" ? "选择负责执行任务的 Bot" : "选择接收执行指令的目标会话"
+            },
+            (0, import_react113.createElement)(
+              "select",
+              {
+                key: type,
+                name: "target",
+                className: "bt-select",
+                "aria-label": "执行对象",
+                defaultValue: initial2?.id ?? "",
+                required: true
+              },
+              (0, import_react113.createElement)("option", { value: "" }, "选择" + (type === "workflow" ? "工作流版本" : type === "task" ? " Bot" : "会话")),
+              choices.map((item) => (0, import_react113.createElement)("option", { key: item.id, value: item.id }, item.name))
+            )
+          ),
+          (0, import_react113.createElement)(
+            Row4,
+            { label: "任务名称", hint: "设置简短清晰的自动化任务标题（最多 120 字）" },
+            (0, import_react113.createElement)("input", {
+              name: "title",
+              className: "bt-input",
+              "aria-label": "任务名称",
+              required: true,
+              maxLength: 120,
+              placeholder: "例如：每日项目状态同步"
+            })
+          ),
+          type !== "workflow" && (0, import_react113.createElement)(
+            "div",
+            { className: "bt-set-row bt-set-paste" },
+            (0, import_react113.createElement)(
+              "div",
+              { className: "bt-set-copy" },
+              (0, import_react113.createElement)("span", null, type === "message" ? "执行指令" : "执行要求与验收条件"),
+              (0, import_react113.createElement)("span", { className: "bt-set-hint" }, type === "message" ? "向目标会话发送给 Bot 的具体执行提示词" : "明确任务的目标要求、输出格式和验收标准")
+            ),
+            (0, import_react113.createElement)("textarea", {
+              name: "instructions",
+              className: "bt-input bt-input-area",
+              "aria-label": type === "message" ? "执行指令" : "执行要求与验收条件",
+              required: true,
+              rows: 3,
+              maxLength: 16e3,
+              placeholder: type === "message" ? "输入要发送到会话的提示词或指令…" : "描述执行目标与验收证据要求…"
+            })
+          )
+        ),
+        (0, import_react113.createElement)(
+          Section2,
+          { title: "触发规则" },
+          (0, import_react113.createElement)(
+            Row4,
+            { label: "何时开始", hint: "支持按定时日程、外部 Webhook 或 GitHub 仓库事件自动触发" },
+            (0, import_react113.createElement)(
+              "select",
+              {
+                className: "bt-select",
+                "aria-label": "何时开始",
+                value: trigger,
+                onChange: (event) => setTrigger(event.target.value)
+              },
+              (0, import_react113.createElement)("option", { value: "schedule" }, "按日程"),
+              type !== "message" && (0, import_react113.createElement)("option", { value: "webhook" }, "收到 Webhook"),
+              type !== "message" && (0, import_react113.createElement)("option", { value: "github" }, "GitHub 公开仓库事件")
+            )
+          ),
+          trigger === "schedule" && (0, import_react113.createElement)(
+            Row4,
+            { label: "重复方式", hint: "设置单次执行或周期性重复调度规则" },
+            (0, import_react113.createElement)(
+              "select",
+              {
+                className: "bt-select",
+                "aria-label": "重复方式",
+                value: kind,
+                onChange: (event) => setKind(event.target.value)
+              },
+              [...sharedTimings, ...type === "message" ? [["cron", "Cron 表达式"], ["rrule", "iCalendar (RRULE)"]] : []].map(([value, label]) => (0, import_react113.createElement)("option", { key: value, value }, label))
+            )
+          ),
+          trigger === "schedule" && (0, import_react113.createElement)(TimingFields, { key: kind, kind, Row: Row4 }),
+          trigger === "github" && [
+            (0, import_react113.createElement)(
+              Row4,
+              { key: "repo", label: "GitHub 仓库", hint: "填入公开仓库完整路径" },
+              (0, import_react113.createElement)("input", { name: "repo", className: "bt-input", "aria-label": "GitHub 仓库", placeholder: "owner/repo", required: true })
+            ),
+            (0, import_react113.createElement)(
+              Row4,
+              { key: "event", label: "事件类型", hint: "监听特定事件，例如 IssuesEvent；留空监听所有支持的事件" },
+              (0, import_react113.createElement)("input", { name: "eventType", className: "bt-input", "aria-label": "事件类型", placeholder: "例如 IssuesEvent，可留空" })
+            )
+          ],
+          trigger === "webhook" && (0, import_react113.createElement)(Row4, { label: "Webhook 说明", hint: "创建后将生成专用端点 URL 和签名密钥，支持外部系统回调触发" })
+        ),
+        (0, import_react113.createElement)(
+          Section2,
+          { title: "执行策略" },
+          (0, import_react113.createElement)(
+            Row4,
+            { label: "动作权限", hint: "按策略执行允许调用授权工具；只检查并反馈将限制修改外部系统" },
+            (0, import_react113.createElement)(
+              "select",
+              { className: "bt-select", name: "executionMode", "aria-label": "动作权限" },
+              (0, import_react113.createElement)("option", { value: "normal" }, "按 Bot 和工作区策略执行"),
+              (0, import_react113.createElement)("option", { value: "check" }, "只检查并反馈")
+            )
+          ),
+          (0, import_react113.createElement)(
+            "div",
+            { className: "bt-automation-form-foot" },
+            catalog && !available ? (0, import_react113.createElement)("span", { role: "status", className: "bt-set-hint bt-danger" }, "在 DSH 插件设置启用自动化任务后可调度会话。") : (0, import_react113.createElement)("span", { className: "bt-set-hint" }, "创建后将立即由调度系统接管运行"),
+            (0, import_react113.createElement)("button", {
+              type: "submit",
+              className: "bt-send bt-soft-sm",
+              disabled: busy || !available || !choices.length
+            }, busy ? "正在创建…" : "创建自动化")
+          )
         )
       )
     ),
     result && (0, import_react113.createElement)(
-      "div",
-      { className: "gb-card", role: "status" },
-      (0, import_react113.createElement)("p", null, result.replayed ? "此请求已创建" : "自动化已创建"),
-      result.url && (0, import_react113.createElement)("p", null, "投递地址 ", (0, import_react113.createElement)("code", null, result.url)),
-      result.secret && (0, import_react113.createElement)("p", { "data-sensitive": true }, "签名密钥 ", (0, import_react113.createElement)("code", null, result.secret)),
-      button(destinations[result.mode][1], () => actions.openSettings(destinations[result.mode][0]))
+      Section2,
+      { title: result.replayed ? "此请求已创建" : "自动化已创建" },
+      (0, import_react113.createElement)(
+        Row4,
+        {
+          label: result.replayed ? "已恢复已有自动化" : "自动化任务创建成功",
+          hint: "可在对应管理页面中查看调度状态、运行记录与执行结果"
+        },
+        (0, import_react113.createElement)("button", {
+          type: "button",
+          className: "bt-soft bt-soft-sm",
+          onClick: () => actions.openSettings(destinations[result.mode][0])
+        }, destinations[result.mode][1])
+      ),
+      result.url ? (0, import_react113.createElement)(
+        Row4,
+        { label: "投递地址", hint: "外部系统向此 URL 发送 POST 请求" },
+        (0, import_react113.createElement)("code", { className: "bt-la-path", style: { fontSize: "12px", userSelect: "all", padding: "4px 8px", borderRadius: "6px", background: "var(--bt-hover)" } }, result.url)
+      ) : null,
+      result.secret ? (0, import_react113.createElement)(
+        Row4,
+        { label: "签名密钥", hint: "用于请求签名的校验密钥" },
+        (0, import_react113.createElement)("code", { "data-sensitive": true, className: "bt-la-path", style: { fontSize: "12px", userSelect: "all", padding: "4px 8px", borderRadius: "6px", background: "var(--bt-hover)" } }, result.secret)
+      ) : null
     ),
-    row(
-      button("会话日程", () => actions.openSettings("schedules")),
-      button("定时派工", () => actions.openSettings("routines")),
-      button("事件与工作流", () => actions.openSettings("tasks"))
+    (0, import_react113.createElement)(
+      Section2,
+      { title: "相关管理" },
+      (0, import_react113.createElement)(
+        "button",
+        { type: "button", className: "bt-set-row", onClick: () => actions.openSettings("schedules") },
+        (0, import_react113.createElement)(
+          "span",
+          { className: "bt-set-copy" },
+          (0, import_react113.createElement)("span", null, "会话日程"),
+          (0, import_react113.createElement)("span", { className: "bt-set-hint" }, "管理会话中由 Bot 发送的定时消息")
+        ),
+        (0, import_react113.createElement)("span", { className: "bt-chevron" }, (0, import_react113.createElement)(ChevronRightIcon))
+      ),
+      (0, import_react113.createElement)(
+        "button",
+        { type: "button", className: "bt-set-row", onClick: () => actions.openSettings("routines") },
+        (0, import_react113.createElement)(
+          "span",
+          { className: "bt-set-copy" },
+          (0, import_react113.createElement)("span", null, "定时派工"),
+          (0, import_react113.createElement)("span", { className: "bt-set-hint" }, "管理团队成员的自动化派工与定期巡检任务")
+        ),
+        (0, import_react113.createElement)("span", { className: "bt-chevron" }, (0, import_react113.createElement)(ChevronRightIcon))
+      ),
+      (0, import_react113.createElement)(
+        "button",
+        { type: "button", className: "bt-set-row", onClick: () => actions.openSettings("tasks") },
+        (0, import_react113.createElement)(
+          "span",
+          { className: "bt-set-copy" },
+          (0, import_react113.createElement)("span", null, "事件与工作流"),
+          (0, import_react113.createElement)("span", { className: "bt-set-hint" }, "查看任务看板、工作流定义与事件触发器")
+        ),
+        (0, import_react113.createElement)("span", { className: "bt-chevron" }, (0, import_react113.createElement)(ChevronRightIcon))
+      )
     )
   );
 }
@@ -66876,9 +67113,9 @@ function mountProduct(ctx, client, navigation, target, ready) {
     }),
     providerAgents: (props) => (0, import_react115.createElement)(ProviderAgentsPage, { client, ...props }),
     taskSettings: (page, focus, actions, readOnly) => (0, import_react115.createElement)(TaskSettings, { client, actions, page, focus, readOnly }),
-    platformSettings(page, roster2, actions, initial2) {
+    platformSettings(page, roster2, actions, initial2, ui3 = {}) {
       const pages = { automation: AutomationSetupPage, components: ComponentSettings, governance: GovernanceSettings, "remote-agents": RemoteAgentSettings };
-      return (0, import_react115.createElement)("div", { className: "gb-platform" }, (0, import_react115.createElement)(pages[page], { client, roster: roster2, actions, initial: initial2 }));
+      return (0, import_react115.createElement)("div", { className: "gb-platform" }, (0, import_react115.createElement)(pages[page], { client, roster: roster2, actions, initial: initial2, ...ui3 }));
     },
     schedulesPage(state, actions, start, publish) {
       const session = mainSession(ctx);
