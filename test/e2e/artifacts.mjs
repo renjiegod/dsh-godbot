@@ -72,12 +72,22 @@ export async function brokenArchive(candidate, scratch) {
 }
 
 // The candidate's own files under another version: a release an installed
-// candidate can update to, built for the same DSH and peers.
-export async function bumpedArchive(candidate, scratch, version) {
+// candidate can update to, built for the same DSH and peers. With `trap`, its Host
+// refuses to load while the file the GODBOT_E2E_RELOAD_TRAP variable names exists,
+// the way a release fails to import into a DSH that resolved its dependencies at
+// their old paths: a case can tell whether the update loaded into the process
+// that installed it.
+export async function bumpedArchive(candidate, scratch, version, { trap = false } = {}) {
   const staging = await mkdtemp(join(scratch, 'bumped-'))
   execFileSync('tar', ['-xzf', candidate.path, '--strip-components', '1', '-C', staging])
   const manifest = join(staging, 'package.json')
   await writeFile(manifest, JSON.stringify({ ...JSON.parse(await readFile(manifest, 'utf8')), version }, null, 2) + '\n')
+  if (trap) {
+    const entry = join(staging, 'src/host/plugin.js')
+    await writeFile(entry, "import { existsSync as reloadTrapSet } from 'node:fs'\n"
+      + "if (process.env.GODBOT_E2E_RELOAD_TRAP && reloadTrapSet(process.env.GODBOT_E2E_RELOAD_TRAP)) throw new Error('GODBOT_E2E_RELOAD_TRAP: the update was loaded into the DSH that installed it')\n"
+      + await readFile(entry, 'utf8'))
+  }
   return pack(staging, scratch)
 }
 

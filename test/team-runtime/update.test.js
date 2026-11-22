@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { gzipSync } from 'node:zlib'
-import { IDLE_MS, RETRY_MS, install, sourceOf } from '../../src/host/team-runtime/core/update.js'
+import { IDLE_MS, RETRY_MS, install, profileCommand, sourceOf } from '../../src/host/team-runtime/core/update.js'
 import {
   GITHUB_API, archiveManifest, compatibility, downloadArchive, newer, newestRelease, releasesApi, sidecarDigest,
 } from '../../src/host/team-runtime/core/update-release.js'
@@ -79,9 +80,45 @@ function fakeNet(routes) {
 
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)) }
 
+// An installed DSH as its install anchor names it: the package.json and its `dsh` bin.
+function fakeDsh({ name = '@deepseek-ai/dsh' } = {}) {
+  const dir = scratch()
+  mkdirSync(join(dir, 'lib'))
+  writeFileSync(join(dir, 'lib/bin.js'), '')
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version: PKG.engines.dsh, bin: { dsh: 'lib/bin.js' } }))
+  return join(dir, 'package.json')
+}
+
+const setDependency = (profile, spec) => {
+  const path = join(profile, 'package.json')
+  const manifest = JSON.parse(readFileSync(path, 'utf8'))
+  writeFileSync(path, JSON.stringify({ ...manifest, dependencies: { ...manifest.dependencies, [PKG.name]: spec } }))
+}
+
+// A stand-in for child_process.spawn: each run prints `output`, may change the
+// profile (`install`, in the command's working directory) and exits with `code`.
+function fakeSpawn({ code = 0, output = '', install } = {}) {
+  const calls = []
+  const spawnProcess = (command, args, options) => {
+    calls.push({ command, args, options })
+    const child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter(), kill() {} })
+    setImmediate(() => {
+      install?.(options.cwd, args)
+      if (output) child.stderr.emit('data', output)
+      child.emit('close', code)
+    })
+    return child
+  }
+  return { calls, spawnProcess }
+}
+
 // The team runtime's update module with the profile, plugin manager, network and clock it reads.
-function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = Object.keys(PKG.peerDependencies), install: answer, home = scratch() } = {}) {
-  const profile = scratch()
+// `hmr` gives the host DSH's in-place reload service; `cli` the profile facts and the
+// installed DSH that DSH's CLI is found from; `spawn` runs that CLI.
+function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = Object.keys(PKG.peerDependencies), install: answer, home = scratch(), hmr = false, cli = false, spawn } = {}) {
+  const dshHome = scratch()
+  const profile = join(dshHome, 'profiles', 'web')
+  mkdirSync(profile, { recursive: true })
   const archives = scratch()
   writeFileSync(join(profile, 'package.json'), JSON.stringify({
     dependencies: Object.fromEntries([...peers.map(name => [name, `link:/dsh/${name}`]), [PKG.name, `file:/old/${PKG.name}-${PKG.version}-000000000000.tgz`]]),
@@ -99,8 +136,9 @@ function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = O
   const warnings = []
   const services = {
     pluginManager: manager,
-    profileContext: { dir: profile },
+    profileContext: { dir: profile, ...(cli ? { name: 'web', home: dshHome, installAnchor: fakeDsh() } : {}) },
     loader: { import: async () => ({ getDshRuntimeVersion: () => dsh }), unwrapExports: value => value },
+    ...(hmr ? { hmr: {} } : {}),
   }
   const rt = {
     ctx: { get: name => services[name], effect() {} },
@@ -111,9 +149,20 @@ function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = O
     warn: (...args) => warnings.push(args),
     updateNet: net,
     updateClock: () => clock.now,
+    ...(spawn ? { updateSpawn: spawn } : {}),
   }
   install(rt)
-  return { rt, net, clock, installs, archives, home, warnings, manager }
+  return { rt, net, clock, installs, archives, home, warnings, manager, profile, dshHome, services }
+}
+
+// Download the release, let Godbot sit idle, and let the clock install it.
+async function installWhenIdle({ rt, clock }) {
+  await rt.updateTick()
+  await rt.updatePrepare()
+  await rt.updateTick()
+  clock.now += IDLE_MS
+  await rt.updateTick()
+  await settle()
 }
 
 test('a packed archive install updates from GitHub releases; a folder or link does not', () => {
@@ -375,4 +424,106 @@ test('the start that runs the new version reports the update', () => {
   assert.equal(waiting.rt.updateView().phase, 'installed')
   assert.equal(waiting.rt.updateView().installed, NEXT)
   assert.equal(existsSync(join(home, 'update.json')), true)
+})
+
+test('DSH\'s CLI installs only where DSH reloads in place, into the profile it finds by name', () => {
+  const dshHome = scratch()
+  const dir = join(dshHome, 'profiles', 'web')
+  mkdirSync(dir, { recursive: true })
+  const profileContext = { name: 'web', dir, home: dshHome, installAnchor: fakeDsh() }
+  const ctx = services => ({ get: name => services[name] })
+  const command = profileCommand(ctx({ hmr: {}, profileContext }))
+  assert.equal(command.command, process.execPath)
+  assert.equal(command.args[0], join(dirname(profileContext.installAnchor), 'lib/bin.js'))
+  assert.deepEqual(command.args.slice(1), ['plugin', '--profile', 'web'])
+  assert.equal(command.cwd, dir)
+  assert.equal(command.env.DSH_HOME, dshHome)
+  // Without an in-place reload the plugin manager in this process installs for the next start itself.
+  assert.equal(profileCommand(ctx({ profileContext })), null)
+  // A profile the CLI would not find by its name, another app's install, the desktop app's profile.
+  assert.equal(profileCommand(ctx({ hmr: {}, profileContext: { ...profileContext, dir: scratch() } })), null)
+  assert.equal(profileCommand(ctx({ hmr: {}, profileContext: { ...profileContext, installAnchor: fakeDsh({ name: '@deepseek-ai/dsh-desktop' }) } })), null)
+  assert.equal(profileCommand(ctx({ hmr: {}, profileContext: { ...profileContext, name: 'Desktop' } })), null)
+  assert.equal(profileCommand(ctx({ hmr: {}, profileContext: { dir } })), null)
+  // The same profile reached through a link is still the one running here.
+  const elsewhere = scratch()
+  symlinkSync(join(dshHome, 'profiles'), join(elsewhere, 'profiles'))
+  assert.equal(profileCommand(ctx({ hmr: {}, profileContext: { ...profileContext, home: elsewhere } })).env.DSH_HOME, elsewhere)
+})
+
+test('where DSH reloads in place, its CLI installs the release and this process keeps running the current version', async () => {
+  const next = release(NEXT)
+  const cli = fakeSpawn({ install: (profile, args) => setDependency(profile, `file:${args.at(-1)}`) })
+  const h = harness({ releases: [next], hmr: true, cli: true, spawn: cli.spawnProcess })
+  await installWhenIdle(h)
+  const archive = join(h.archives, `${PKG.name}-${NEXT}-${sha(next.data).slice(0, 12)}.tgz`)
+  // Nothing went through the plugin manager here, which would load the new version into this process.
+  assert.deepEqual(h.installs, [])
+  assert.equal(cli.calls.length, 1)
+  const [{ command, args, options }] = cli.calls
+  assert.equal(command, process.execPath)
+  assert.deepEqual(args.slice(1), ['plugin', '--profile', 'web', 'add', '--save-exact', archive])
+  assert.equal(options.cwd, h.profile)
+  assert.equal(options.env.DSH_HOME, h.dshHome)
+  const view = h.rt.updateView()
+  assert.deepEqual([view.phase, view.installed, view.current, view.available], ['installed', NEXT, PKG.version, false])
+  // The note waits for the start that runs the new version.
+  const marker = JSON.parse(readFileSync(join(h.home, 'update.json'), 'utf8'))
+  assert.deepEqual([marker.from, marker.to, marker.auto, marker.error], [PKG.version, NEXT, true, undefined])
+  h.clock.now += IDLE_MS * 3
+  await h.rt.updateTick()
+  await h.rt.updateTick()
+  assert.equal(cli.calls.length, 1)
+})
+
+test('a release DSH\'s CLI could not install leaves the running version in place and is not retried by itself', async () => {
+  const next = release(NEXT)
+  const output = 'ERR_PNPM_FETCH_404 GET https://registry.npmjs.org/jose: Not Found - 404\ndsh: plugin command failed; diagnostics: /profile/.plugin-manager/logs/pnpm.log\n'
+  const cli = fakeSpawn({ code: 1, output })
+  const h = harness({ releases: [next], hmr: true, cli: true, spawn: cli.spawnProcess })
+  await installWhenIdle(h)
+  const view = h.rt.updateView()
+  assert.equal(view.phase, 'failed')
+  assert.match(view.error, /^dsh plugin add exited 1: ERR_PNPM_FETCH_404/)
+  assert.match(view.error, /plugin command failed; diagnostics/)
+  assert.equal(existsSync(join(h.home, 'update.json')), false)
+  h.clock.now += IDLE_MS * 3
+  await h.rt.updateTick()
+  await h.rt.updateTick()
+  assert.equal(cli.calls.length, 1)
+  assert.deepEqual(h.installs, [])
+
+  // An exit without the profile naming the verified archive is no install either.
+  const silent = fakeSpawn()
+  const other = harness({ releases: [next], hmr: true, cli: true, spawn: silent.spawnProcess })
+  await installWhenIdle(other)
+  assert.equal(other.rt.updateView().phase, 'failed')
+  assert.match(other.rt.updateView().error, /left dsh-godbot at file:\/old\//)
+  assert.equal(existsSync(join(other.home, 'update.json')), false)
+})
+
+test('a release the plugin manager installed but could not start in place waits for the next DSH start', async () => {
+  const next = release(NEXT)
+  const diagnostic = 'dsh: warning: 1 entry did not activate\ngodbot (dsh-godbot): failed to import: Error: ENOENT: no such file or directory, open \'node_modules/openid-client/node_modules/jose/dist/webapi/jwe/compact/decrypt.js\''
+  // DSH reloads in place, but its CLI cannot be found: the plugin manager in this process installs.
+  const h = harness({
+    releases: [next], hmr: true,
+    install: () => ({ stage: 'enable', target: PKG.name, bundle: PKG.name, version: NEXT, changed: true, application: 'failed', error: { code: 'operation-error', diagnostic } }),
+  })
+  await installWhenIdle(h)
+  assert.equal(h.installs.length, 1)
+  const view = h.rt.updateView()
+  assert.deepEqual([view.phase, view.installed, view.error], ['installed', NEXT, null])
+  const marker = JSON.parse(readFileSync(join(h.home, 'update.json'), 'utf8'))
+  assert.deepEqual([marker.from, marker.to, marker.error], [PKG.version, NEXT, undefined])
+  assert.ok(h.warnings.some(([template]) => template.includes('did not start in this DSH')))
+
+  // A run that failed before the package landed was undone: nothing waits for a restart.
+  const refused = harness({
+    releases: [next], hmr: true,
+    install: () => ({ stage: 'install', target: PKG.name, changed: false, application: 'failed', error: { code: 'operation-error', diagnostic: 'pnpm exited 1' } }),
+  })
+  await installWhenIdle(refused)
+  assert.equal(refused.rt.updateView().phase, 'failed')
+  assert.equal(existsSync(join(refused.home, 'update.json')), false)
 })
