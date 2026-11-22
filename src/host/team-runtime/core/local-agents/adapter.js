@@ -294,6 +294,9 @@ export class LocalAgentAdapter extends LlmAdapter {
     // An ACP agent read the team instructions as a prompt, which a compaction may
     // have condensed away: the next prompt carries them again.
     if (live.spec.kind === 'acp') live.promptHash = undefined
+    // The runtime context (memory, working folder) reached every CLI as a message,
+    // which the compaction may have condensed too: the next input carries it again.
+    live.resendContext = true
     this.deps.saveRecord(live.sessionId, this.recordOf(live))
   }
 
@@ -568,7 +571,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     }
     // The loop's runtime-context user messages are context, not input: they
     // fold into the next prompt or steer, never start a prompt on their own.
-    const contextText = delta
+    let contextText = delta
       .filter(message => message.role === 'user' && message.source?.kind === 'runtime-context')
       .map(message => textOf(message.content)).filter(text => text !== '').join('\n')
     // A message that opened a turn to show what the CLI said by itself is not input either.
@@ -657,6 +660,13 @@ export class LocalAgentAdapter extends LlmAdapter {
 
     const supportsImages = live.spec.kind !== 'acp' || live.engine.supportsImages?.(live.engineSession) !== false
     const resolveImage = block => this.resolveImageBlock(block, { supportsImages, signal: options.signal })
+    // After the CLI condensed its context, the current runtime context rides along
+    // with the next input, whether or not it changed since.
+    if (!fresh && live.resendContext === true && remaining.length > 0) {
+      if (contextText === '') contextText = latestContext(messages)
+      live.resendContext = false
+    }
+    if (fresh) live.resendContext = false
     let promptBlocks = fresh
       ? await renderReplay(messages, system, resolveImage)
       : await renderDelta(contextText, remaining, resolveImage)
@@ -1329,7 +1339,10 @@ async function renderDelta(contextText, remaining, resolveImage) {
 async function renderReplay(messages, system, resolveImage) {
   const picked = []
   let used = 0
-  const body = (messages ?? []).filter(message => message.role !== 'system')
+  // Runtime context is not conversation: only the latest snapshot counts, and it
+  // stands whole after the instructions (it carries the Bot's memory).
+  const context = latestContext(messages)
+  const body = (messages ?? []).filter(message => message.role !== 'system' && !isRuntimeContext(message))
   const latest = body.at(-1)
   let full = false
   for (const message of [...body].reverse()) {
@@ -1350,9 +1363,18 @@ async function renderReplay(messages, system, resolveImage) {
     picked.unshift(entry)
     used += approxLen
   }
-  if (picked.length === 0) return []
+  if (picked.length === 0) return context === '' ? [] : [{ type: 'text', text: context }]
   const head = system === '' ? '' : `The team instructions for this conversation:\n${system}\n\n`
-  return mergeTextBlocks([{ type: 'text', text: `${head}The conversation so far (oldest first):` }, ...picked.flat()])
+  const now = context === '' ? '' : `${context}\n\n`
+  return mergeTextBlocks([{ type: 'text', text: `${head}${now}The conversation so far (oldest first):` }, ...picked.flat()])
+}
+
+const isRuntimeContext = message => message?.role === 'user' && message.source?.kind === 'runtime-context'
+
+// The newest runtime-context snapshot; each one replaces the ones before it.
+function latestContext(messages) {
+  const message = (messages ?? []).findLast(isRuntimeContext)
+  return message === undefined ? '' : textOf(message.content)
 }
 
 // Process exits, missing CLIs, quota and sign-in failures get typed codes so the
