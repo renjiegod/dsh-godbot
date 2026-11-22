@@ -98,6 +98,29 @@ export default async function newSession({ makeHost, candidate, note }) {
   }
   await openPanel()
   assert.equal(await panelButton.getAttribute('data-state'), 'ready')
+
+  const rows = page.locator('.bt-agent-session')
+  const openEarlier = async ({ number, session, message, otherMessage }) => {
+    const label = `会话 ${number}`
+    await rows.getByText(label, { exact: true }).click()
+    await until(async () => (await partsOf()).current === session, `${label} became the Bot's current part`)
+    await scroller.getByText(message + tag, { exact: true }).waitFor()
+    assert.equal(await scroller.getByText(otherMessage + tag, { exact: true }).count(), 0, 'the other transcript stays in its own session')
+    assert.equal(await page.locator('.bt-agent-session.is-current .bt-agent-session-name').innerText(), label, 'the active row keeps the label the user clicked')
+  }
+  const firstSession = { number: 1, session: first.current, message: 'First question ', otherMessage: 'Second question ' }
+  const secondSession = { number: 2, session: second.current, message: 'Second question ', otherMessage: 'First question ' }
+  await openEarlier(firstSession)
+  await openEarlier(secondSession)
+
+  const reopenFirst = () => host.bot('bot-open-part', { botId: bot.id, sessionId: first.current })
+  const repeated = await Promise.all([reopenFirst(), reopenFirst()])
+  assert.deepEqual(repeated.toSorted(), [false, true], 'a repeated request switches to the same session once')
+  assert.deepEqual(await partsOf(), { current: first.current, earlier: [second.current] })
+  await openBotChat(host, bot)
+  await openPanel()
+  await openEarlier(secondSession)
+
   await host.capture('new-session-details-panel-ready')
   await panelButton.click()
   const third = await until(async () => {
@@ -135,11 +158,10 @@ export default async function newSession({ makeHost, candidate, note }) {
   // The session list: the empty current session first, then the earlier ones by number.
   await openPanel()
   assert.equal(await panelButton.getAttribute('aria-disabled'), 'true')
-  const rows = page.locator('.bt-agent-session')
   await until(async () => (await rows.count()) === 5, 'the panel lists the five sessions')
   const names = await page.locator('.bt-agent-session .bt-agent-session-name').allInnerTexts()
   assert.equal(names[0], '新会话', 'the empty current session is named for what it is')
-  assert.ok(names.slice(1).every(name => /^会话 \d+$/u.test(name)), 'earlier sessions are numbered, not all named after the Bot: ' + JSON.stringify(names))
+  assert.deepEqual(names.slice(1), ['会话 4', '会话 3', '会话 2', '会话 1'], 'earlier sessions keep their creation order')
   await host.capture('new-session-details-panel')
 
   // While the Bot is working, a New session leaves the part it works in running in the

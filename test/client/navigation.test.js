@@ -65,6 +65,33 @@ test('an unresolved selection releases the guard and recovers only an empty main
   assert.equal(recoveries, 1)
 })
 
+test('reopening a part reserves its destination while its old conversation is archived', async () => {
+  let main = 'second'
+  const opened = []
+  const selection = sessionSelection({ current: () => main, waitMs: 5000 })
+  try {
+    const ready = Promise.withResolvers()
+    const opening = selection.open('first', id => opened.push(id), () => ready.promise)
+    main = undefined
+    selection.observe(main)
+    await selection.recover(() => opened.push('godbot'))
+    ready.resolve(true)
+    assert.equal(await opening, true)
+    assert.deepEqual(opened, ['first'])
+
+    main = 'first'
+    selection.observe(main)
+    const another = Promise.withResolvers()
+    const earlier = selection.open('second', id => opened.push(id), () => another.promise)
+    selection.open('other-bot', id => opened.push(id))
+    another.resolve(true)
+    await earlier
+    assert.deepEqual(opened, ['first', 'other-bot'])
+  } finally {
+    selection.dispose()
+  }
+})
+
 function browserAt(url, state = null, prior = []) {
   const events = new Map()
   const pages = [
