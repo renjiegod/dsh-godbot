@@ -6,6 +6,11 @@
 //   ends at once with a result of its own (num_turns 0, origin task-notification);
 // - "BACKGROUND": the reply starts a background task, which ends a moment later and
 //   wakes the model into a turn of its own;
+// - "TASK <ms>": the reply starts a background task reported the way Claude Code does
+//   (background_tasks_changed with every live task, task_started, task_updated,
+//   task_notification) that ends <ms> later and wakes the model; without <ms> it never
+//   ends (`sleep infinity`). "AMBIENT" and "OFF_HOST" start one the CLI marks so,
+//   which never ends either;
 // - "MERGE": a foreground tool runs until a second message arrives, which joins the
 //   running turn (its completed comes before the turn's result);
 // - "STREAM": the reply streams slowly; a message sent meanwhile cannot join it and
@@ -36,20 +41,51 @@ async function say(text, pause = 0) {
 
 const queue = [] // messages written to stdin, waiting for a turn
 const wakeups = [] // turns the CLI starts by itself
+const tasks = new Map() // task_id -> its background_tasks_changed entry
 let working = false
 let arrived
+
+const tasksChanged = () => send({ type: 'system', subtype: 'background_tasks_changed', tasks: [...tasks.values()], uuid: randomUUID() })
+
+function startTask(entry, ms) {
+  const id = `b${randomUUID().slice(0, 8)}`
+  // A task that starts in the background joins the set before its task_started.
+  tasks.set(id, { task_id: id, ...entry })
+  tasksChanged()
+  send({ type: 'system', subtype: 'task_started', task_id: id, description: entry.description, task_type: entry.task_type, is_backgrounded: true, uuid: randomUUID() })
+  if (ms === undefined) return
+  setTimeout(() => {
+    // A finished task leaves the set after its task_updated and task_notification.
+    send({ type: 'system', subtype: 'task_updated', task_id: id, patch: { status: 'completed', end_time: Date.now() }, uuid: randomUUID() })
+    send({ type: 'system', subtype: 'task_notification', task_id: id, status: 'completed', summary: `${entry.description} finished`, uuid: randomUUID() })
+    tasks.delete(id)
+    tasksChanged()
+    wakeups.push({ text: 'autonomous: the background task finished', notified: true })
+    void pump()
+  }, ms)
+}
 
 async function turnFor({ uuid, text }) {
   lifecycle(uuid, 'started')
   init()
   requesting([uuid])
   const last = text.trim().split('\n').at(-1)
+  const task = /\bTASK(?: (\d+))?/u.exec(text)
+  if (task !== null || text.includes('AMBIENT') || text.includes('OFF_HOST')) {
+    if (task !== null) startTask({ task_type: 'local_bash', description: 'Run the e2e suite' }, task[1] === undefined ? undefined : Number(task[1]))
+    if (text.includes('AMBIENT')) startTask({ task_type: 'monitor_ws', description: 'Watch the pull request', ambient: true })
+    if (text.includes('OFF_HOST')) startTask({ task_type: 'mcp_task', description: 'Poll a remote job', off_host: true, tool_use_id: `toolu_${randomUUID()}` })
+    await say('started a background task')
+    result()
+    lifecycle(uuid, 'completed')
+    return
+  }
   if (text.includes('BACKGROUND')) {
     await say('started a background task')
     result()
     lifecycle(uuid, 'completed')
     setTimeout(() => {
-      wakeups.push('autonomous: the background task finished')
+      wakeups.push({ text: 'autonomous: the background task finished' })
       void pump()
     }, 30)
     return
@@ -79,8 +115,8 @@ async function turnFor({ uuid, text }) {
   lifecycle(uuid, 'completed')
 }
 
-async function wakeupFor(text) {
-  notification('Background command finished')
+async function wakeupFor({ text, notified = false }) {
+  if (!notified) notification('Background command finished')
   init()
   requesting()
   await say(text)
