@@ -846,6 +846,10 @@ var JA = {
   "Skill instructions": "スキルの指示",
   "New skill": "新しいスキル",
   "Awaiting approval": "承認待ち",
+  "If approved, it is saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}. It is not a file on disk.": "承認すると、チームの共有機能（設定 → 機能）に保存され、{name} に追加されます。ディスク上のファイルにはなりません。",
+  "Saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}.": "チームの共有機能（設定 → 機能）に保存され、{name} に追加されました。",
+  "{name} runs on a local agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} はローカルエージェントで動いており、チームのスキルを読み込めないため、承認しても何も変わりません。拒否するか、先に {name} を Godbot のモデルに戻してください。",
+  "{name} runs on a remote agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} はリモートエージェントで動いており、チームのスキルを読み込めないため、承認しても何も変わりません。拒否するか、先に {name} を Godbot のモデルに戻してください。",
   "Added": "追加",
   "Modified": "変更",
   "Show all {count} lines": "全 {count} 行を表示",
@@ -1343,6 +1347,10 @@ var JA = {
   "Show thinking": "思考プロセスを表示",
   "Enter sends message": "Enter キーでメッセージを送信",
   "Bring up related memory": "関連するメモリを自動的に参照",
+  "Propose skills from work": "作業からスキルを提案",
+  "When the team is idle, a review of recent work may propose a skill in a Bot's chat for you to approve. Bots on a local or remote agent get none: team skills do not reach them.": "チームがアイドルのとき、最近の作業を振り返って Bot のチャットでスキルを提案することがあり、承認はあなたが行います。ローカルまたはリモートエージェントの Bot には提案されません。チームのスキルが届かないためです。",
+  "Propose AGENTS.md changes": "AGENTS.md の変更を提案",
+  "The same review may propose changes to the AGENTS.md of a project folder the Bots worked in.": "同じ振り返りで、Bot が作業したプロジェクトフォルダーの AGENTS.md への変更を提案することがあります。",
   "Group memory size": "グループメモリの容量",
   "Bot memory size": "Bot メモリの容量",
   "Team memory size": "チームメモリの容量",
@@ -3296,6 +3304,10 @@ var KO = {
   "Skill instructions": "스킬 지침",
   "New skill": "새 스킬",
   "Awaiting approval": "승인 대기 중",
+  "If approved, it is saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}. It is not a file on disk.": "승인하면 팀의 공유 기능(설정 → 기능)에 저장되고 {name}에 연결됩니다. 디스크의 파일로 저장되지 않습니다.",
+  "Saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}.": "팀의 공유 기능(설정 → 기능)에 저장되었고 {name}에 연결되었습니다.",
+  "{name} runs on a local agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name}은(는) 로컬 Agent에서 실행되어 팀 스킬을 읽지 못하므로 승인해도 달라지는 것이 없습니다. 거절하거나, 먼저 {name}을(를) Godbot의 모델로 되돌리세요.",
+  "{name} runs on a remote agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name}은(는) 원격 Agent에서 실행되어 팀 스킬을 읽지 못하므로 승인해도 달라지는 것이 없습니다. 거절하거나, 먼저 {name}을(를) Godbot의 모델로 되돌리세요.",
   Added: "추가됨",
   Modified: "수정됨",
   "Show all {count} lines": "{count}줄 모두 표시",
@@ -3810,6 +3822,10 @@ var KO = {
   "Show thinking": "사고 과정 표시",
   "Enter sends message": "Enter 키로 메시지 전송",
   "Bring up related memory": "관련 메모리 자동으로 불러오기",
+  "Propose skills from work": "작업에서 스킬 제안",
+  "When the team is idle, a review of recent work may propose a skill in a Bot's chat for you to approve. Bots on a local or remote agent get none: team skills do not reach them.": "팀이 쉬고 있을 때 최근 작업을 돌아보고 Bot 채팅에서 스킬을 제안할 수 있으며, 승인은 사용자가 합니다. 로컬 또는 원격 Agent를 쓰는 Bot에는 제안하지 않습니다. 팀 스킬이 닿지 않기 때문입니다.",
+  "Propose AGENTS.md changes": "AGENTS.md 변경 제안",
+  "The same review may propose changes to the AGENTS.md of a project folder the Bots worked in.": "같은 검토에서 Bot이 작업한 프로젝트 폴더의 AGENTS.md 변경을 제안할 수도 있습니다.",
   "Group memory size": "그룹 메모리 용량",
   "Bot memory size": "Bot 메모리 용량",
   "Team memory size": "팀 메모리 용량",
@@ -5789,6 +5805,10 @@ var ES = {
   "Skill instructions": "Instrucciones de la habilidad",
   "New skill": "Nueva habilidad",
   "Awaiting approval": "Esperando aprobación",
+  "If approved, it is saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}. It is not a file on disk.": "Si la apruebas, se guarda en las capacidades compartidas del equipo (Ajustes → Capacidades) y se asigna a {name}. No es un archivo en el disco.",
+  "Saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}.": "Guardada en las capacidades compartidas del equipo (Ajustes → Capacidades) y asignada a {name}.",
+  "{name} runs on a local agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} funciona con un agente local, que no lee las habilidades del equipo, así que aprobarla no cambiaría nada. Recházala, o primero vuelve a poner a {name} en uno de los modelos de Godbot.",
+  "{name} runs on a remote agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} funciona con un agente remoto, que no lee las habilidades del equipo, así que aprobarla no cambiaría nada. Recházala, o primero vuelve a poner a {name} en uno de los modelos de Godbot.",
   Added: "Añadido",
   Modified: "Modificado",
   "Show all {count} lines": "Mostrar las {count} líneas",
@@ -6303,6 +6323,10 @@ var ES = {
   "Show thinking": "Mostrar razonamiento",
   "Enter sends message": "Enter envía el mensaje",
   "Bring up related memory": "Traer memoria relacionada",
+  "Propose skills from work": "Proponer habilidades a partir del trabajo",
+  "When the team is idle, a review of recent work may propose a skill in a Bot's chat for you to approve. Bots on a local or remote agent get none: team skills do not reach them.": "Cuando el equipo está inactivo, una revisión del trabajo reciente puede proponer una habilidad en el chat de un Bot para que la apruebes. Los Bots con un agente local o remoto no reciben ninguna: las habilidades del equipo no les llegan.",
+  "Propose AGENTS.md changes": "Proponer cambios en AGENTS.md",
+  "The same review may propose changes to the AGENTS.md of a project folder the Bots worked in.": "La misma revisión puede proponer cambios en el AGENTS.md de una carpeta de proyecto en la que trabajaron los Bots.",
   "Group memory size": "Tamaño de memoria del grupo",
   "Bot memory size": "Tamaño de memoria del Bot",
   "Team memory size": "Tamaño de memoria del equipo",
@@ -8280,6 +8304,10 @@ var FR = {
   "Skill instructions": "Instructions de la compétence",
   "New skill": "Nouvelle compétence",
   "Awaiting approval": "En attente d’approbation",
+  "If approved, it is saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}. It is not a file on disk.": "Si vous l'approuvez, elle est enregistrée dans les capacités partagées de l'équipe (Paramètres → Capacités) et attribuée à {name}. Ce n'est pas un fichier sur le disque.",
+  "Saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}.": "Enregistrée dans les capacités partagées de l'équipe (Paramètres → Capacités) et attribuée à {name}.",
+  "{name} runs on a local agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} fonctionne avec un agent local, qui ne lit pas les compétences de l'équipe : l'approuver ne changerait rien. Refusez-la, ou remettez d'abord {name} sur l'un des modèles de Godbot.",
+  "{name} runs on a remote agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} fonctionne avec un agent distant, qui ne lit pas les compétences de l'équipe : l'approuver ne changerait rien. Refusez-la, ou remettez d'abord {name} sur l'un des modèles de Godbot.",
   "Added": "Ajouté",
   "Modified": "Modifié",
   "Show all {count} lines": "Afficher les {count} lignes",
@@ -8777,6 +8805,10 @@ var FR = {
   "Show thinking": "Afficher la réflexion",
   "Enter sends message": "Entrée envoie le message",
   "Bring up related memory": "Rappeler automatiquement les souvenirs liés",
+  "Propose skills from work": "Proposer des compétences à partir du travail",
+  "When the team is idle, a review of recent work may propose a skill in a Bot's chat for you to approve. Bots on a local or remote agent get none: team skills do not reach them.": "Quand l'équipe est inactive, une revue du travail récent peut proposer une compétence dans le chat d'un Bot, à vous de l'approuver. Les Bots sur un agent local ou distant n'en reçoivent pas : les compétences de l'équipe ne les atteignent pas.",
+  "Propose AGENTS.md changes": "Proposer des modifications d'AGENTS.md",
+  "The same review may propose changes to the AGENTS.md of a project folder the Bots worked in.": "La même revue peut proposer des modifications de l'AGENTS.md d'un dossier de projet où les Bots ont travaillé.",
   "Group memory size": "Capacité de mémoire du groupe",
   "Bot memory size": "Capacité de mémoire du Bot",
   "Team memory size": "Capacité de mémoire d’équipe",
@@ -10730,6 +10762,10 @@ var DE = {
   "Skill instructions": "Skill-Anweisungen",
   "New skill": "Neuer Skill",
   "Awaiting approval": "Wartet auf Freigabe",
+  "If approved, it is saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}. It is not a file on disk.": "Nach der Freigabe wird er in den geteilten Fähigkeiten des Teams gespeichert (Einstellungen → Fähigkeiten) und {name} zugewiesen. Er ist keine Datei auf der Festplatte.",
+  "Saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}.": "In den geteilten Fähigkeiten des Teams gespeichert (Einstellungen → Fähigkeiten) und {name} zugewiesen.",
+  "{name} runs on a local agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} läuft auf einem lokalen Agenten, der keine Team-Skills liest, eine Freigabe würde also nichts ändern. Lehne ihn ab oder stelle {name} zuerst wieder auf eines der Godbot-Modelle um.",
+  "{name} runs on a remote agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} läuft auf einem Remote-Agenten, der keine Team-Skills liest, eine Freigabe würde also nichts ändern. Lehne ihn ab oder stelle {name} zuerst wieder auf eines der Godbot-Modelle um.",
   Added: "Hinzugefügt",
   Modified: "Geändert",
   "Show all {count} lines": "Alle {count} Zeilen anzeigen",
@@ -11244,6 +11280,10 @@ var DE = {
   "Show thinking": "Denkprozess anzeigen",
   "Enter sends message": "Enter sendet Nachricht",
   "Bring up related memory": "Verwandte Erinnerungen automatisch einbeziehen",
+  "Propose skills from work": "Skills aus der Arbeit vorschlagen",
+  "When the team is idle, a review of recent work may propose a skill in a Bot's chat for you to approve. Bots on a local or remote agent get none: team skills do not reach them.": "Wenn das Team untätig ist, kann eine Durchsicht der letzten Arbeit im Chat eines Bots einen Skill zur Freigabe vorschlagen. Bots auf einem lokalen oder Remote-Agenten erhalten keine: Team-Skills erreichen sie nicht.",
+  "Propose AGENTS.md changes": "Änderungen an AGENTS.md vorschlagen",
+  "The same review may propose changes to the AGENTS.md of a project folder the Bots worked in.": "Dieselbe Durchsicht kann Änderungen an der AGENTS.md eines Projektordners vorschlagen, in dem die Bots gearbeitet haben.",
   "Group memory size": "Kapazität des Gruppengedächtnisses",
   "Bot memory size": "Kapazität des Bot-Gedächtnisses",
   "Team memory size": "Kapazität des Teamgedächtnisses",
@@ -13201,6 +13241,10 @@ var ZH = {
   "Skill instructions": "技能说明",
   "New skill": "新技能",
   "Awaiting approval": "等待批准",
+  "If approved, it is saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}. It is not a file on disk.": "批准后存进团队的共享能力（设置 → 能力），挂到 {name} 上，不会写成磁盘上的文件。",
+  "Saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}.": "已存进团队的共享能力（设置 → 能力），挂到 {name} 上。",
+  "{name} runs on a local agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} 用的是本地 Agent，读不到团队技能，批准了也不会生效。可以拒绝，或者先把 {name} 换回 Godbot 的模型。",
+  "{name} runs on a remote agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.": "{name} 用的是远程 Agent，读不到团队技能，批准了也不会生效。可以拒绝，或者先把 {name} 换回 Godbot 的模型。",
   Added: "新增",
   Modified: "已修改",
   "Show all {count} lines": "展开全部 {count} 行",
@@ -13715,6 +13759,10 @@ var ZH = {
   "Show thinking": "显示思考过程",
   "Enter sends message": "回车发送消息",
   "Bring up related memory": "自动带上相关记忆",
+  "Propose skills from work": "从工作中提议技能",
+  "When the team is idle, a review of recent work may propose a skill in a Bot's chat for you to approve. Bots on a local or remote agent get none: team skills do not reach them.": "团队空闲时回顾最近的工作，可能在 Bot 的私聊里提议一个技能，由你批准。用本地或远程 Agent 的 Bot 不会收到提议：团队技能到不了它们。",
+  "Propose AGENTS.md changes": "提议修改 AGENTS.md",
+  "The same review may propose changes to the AGENTS.md of a project folder the Bots worked in.": "同一次回顾也可能提议修改 Bot 工作过的项目文件夹里的 AGENTS.md。",
   "Group memory size": "群记忆容量",
   "Bot memory size": "Bot 记忆容量",
   "Team memory size": "团队记忆容量",
@@ -37433,7 +37481,18 @@ function GeneralPage({ roster, actions, run: run2, dsh }) {
         SetRow,
         { key: scope, label: t(label) },
         (0, import_react52.createElement)(MemorySize, { label: t(label), value: prefs.memoryLimits?.[scope] ?? size, save: (value) => run2(actions.setPrefs({ memoryLimits: { [scope]: value } })) })
-      ))
+      )),
+      // The idle review of recent work (learning.js). The host config can take either away.
+      roster.learningAvailable?.skills ? (0, import_react52.createElement)(
+        SetRow,
+        { key: "learn-skills", label: t("Propose skills from work"), hint: t("When the team is idle, a review of recent work may propose a skill in a Bot's chat for you to approve. Bots on a local or remote agent get none: team skills do not reach them.") },
+        (0, import_react52.createElement)(Switch, { label: t("Propose skills from work"), on: prefs.learnSkills !== false, onChange: (learnSkills) => run2(actions.setPrefs({ learnSkills })) })
+      ) : null,
+      roster.learningAvailable?.agentsMd ? (0, import_react52.createElement)(
+        SetRow,
+        { key: "learn-agents", label: t("Propose AGENTS.md changes"), hint: t("The same review may propose changes to the AGENTS.md of a project folder the Bots worked in.") },
+        (0, import_react52.createElement)(Switch, { label: t("Propose AGENTS.md changes"), on: prefs.learnAgentsMd !== false, onChange: (learnAgentsMd) => run2(actions.setPrefs({ learnAgentsMd })) })
+      ) : null
     ),
     // Settings opens in Agent mode too; there the way goes back to Bot mode.
     actions.setSurface ? (0, import_react52.createElement)(
@@ -45218,7 +45277,17 @@ function proposalCards({ proposals = [], settled = [], failures = {} }) {
 
 // src/client/team-ui/learning-card.js
 var failedAnswers = /* @__PURE__ */ new Map();
-function ProposalCard({ proposal, initialError = "", onFailure, onResolved, actions }) {
+function skillHome(proposal, botName) {
+  if (proposal.kind === "agents" || proposal.outcome === "declined" || proposal.unreachable !== void 0) return void 0;
+  return proposal.outcome === "approved" ? t("Saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}.", { name: botName }) : t("If approved, it is saved in the team's shared capabilities (Settings → Capabilities) and attached to {name}. It is not a file on disk.", { name: botName });
+}
+function unreachableNote(proposal, botName) {
+  if (proposal.kind === "agents" || proposal.outcome !== void 0) return void 0;
+  if (proposal.unreachable === "local") return t("{name} runs on a local agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.", { name: botName });
+  if (proposal.unreachable === "remote") return t("{name} runs on a remote agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot's models first.", { name: botName });
+  return void 0;
+}
+function ProposalCard({ proposal, botName, initialError = "", onFailure, onResolved, actions }) {
   const outcome = proposal.outcome;
   const [busy, setBusy] = (0, import_react76.useState)(false);
   const [error, setError] = (0, import_react76.useState)(initialError);
@@ -45240,6 +45309,8 @@ function ProposalCard({ proposal, initialError = "", onFailure, onResolved, acti
   };
   const update = proposal.action === "update";
   const agents4 = proposal.kind === "agents";
+  const home = skillHome(proposal, botName);
+  const note = unreachableNote(proposal, botName);
   const rows2 = (0, import_react76.useMemo)(() => lineDiff(update ? proposal.previous?.content : "", proposal.content), [update, proposal.previous?.content, proposal.content]);
   const change = agents4 ? [
     (0, import_react76.createElement)(FileBox, { key: "file", name: "AGENTS.md", path: proposal.folder, state: proposal.exists === false ? "Added" : "Modified", blocks: proposal.edits.map((edit) => [
@@ -45248,9 +45319,11 @@ function ProposalCard({ proposal, initialError = "", onFailure, onResolved, acti
     ]) }),
     ...proposal.edits.map((edit, index) => edit.why ? (0, import_react76.createElement)("p", { className: "bt-learning-why", key: `why-${index}` }, edit.why) : null)
   ] : [
-    (0, import_react76.createElement)(FileBox, { key: "file", name: "SKILL.md", path: `skills/${proposal.name}`, state: update ? "Updated" : "Added", blocks: [rows2] }),
+    // A skill is saved in the team's library, not as a file: no file name or path here.
+    (0, import_react76.createElement)(FileBox, { key: "file", name: t("Skill instructions"), state: update ? "Updated" : "Added", blocks: [rows2] }),
     proposal.why ? (0, import_react76.createElement)("p", { className: "bt-learning-why", key: "why" }, proposal.why) : null,
-    proposal.demonstration ? (0, import_react76.createElement)("p", { className: "bt-learning-why", key: "demo" }, "浏览器示范 · " + proposal.demonstration.goal + " · " + proposal.demonstration.stepCount + " 步") : null
+    proposal.demonstration ? (0, import_react76.createElement)("p", { className: "bt-learning-why", key: "demo" }, "浏览器示范 · " + proposal.demonstration.goal + " · " + proposal.demonstration.stepCount + " 步") : null,
+    home ? (0, import_react76.createElement)("p", { className: "bt-learning-where", key: "where" }, home) : null
   ];
   const kind = t(agents4 ? "AGENTS.md update" : update ? "Skill update" : "New skill");
   if (outcome) {
@@ -45274,8 +45347,9 @@ function ProposalCard({ proposal, initialError = "", onFailure, onResolved, acti
     { className: "bt-q bt-learning-card", role: "group", "aria-labelledby": titleId, "aria-busy": busy },
     agents4 ? (0, import_react76.createElement)(ProposalHead, { titleId, icon: PencilIcon, title: kind }) : (0, import_react76.createElement)(ProposalHead, { titleId, title: proposal.name, kind, detail: proposal.description, oldDetail }),
     change,
+    note ? (0, import_react76.createElement)("p", { className: "bt-learning-note", role: "note" }, note) : null,
     error ? (0, import_react76.createElement)("div", { className: "bt-learning-error", role: "alert" }, error) : null,
-    (0, import_react76.createElement)(ProposalFoot, { busy, answer })
+    (0, import_react76.createElement)(ProposalFoot, { busy, answer, approvable: note === void 0 })
   );
 }
 function ProposalHead({ titleId, icon: icon3 = MemoryIcon, title: title2, kind, detail, oldDetail }) {
@@ -45294,17 +45368,17 @@ function ProposalHead({ titleId, icon: icon3 = MemoryIcon, title: title2, kind, 
     (0, import_react76.createElement)("span", { className: "bt-q-badge bt-learning-status" }, (0, import_react76.createElement)("span", { className: "bt-learning-dot", "aria-hidden": true }), t("Awaiting approval"))
   );
 }
-function ProposalFoot({ busy, answer }) {
+function ProposalFoot({ busy, answer, approvable }) {
   return (0, import_react76.createElement)(
     "div",
     { className: "bt-q-foot bt-learning-foot" },
     (0, import_react76.createElement)("button", { type: "button", className: "bt-learning-btn bt-learning-decline", disabled: busy, onClick: () => answer(false) }, t("Decline")),
-    (0, import_react76.createElement)(
+    approvable ? (0, import_react76.createElement)(
       "button",
       { type: "button", className: "bt-learning-btn bt-learning-approve", disabled: busy, onClick: () => answer(true) },
       (0, import_react76.createElement)(CheckIcon),
       t("Approve")
-    )
+    ) : null
   );
 }
 var COLLAPSE_ROWS = 8;
@@ -45390,6 +45464,7 @@ function LearningProposals({ turn, dock, sessionId, useRoster, actions }) {
     { className: "bt-q-inline", key: proposal.id },
     (0, import_react76.createElement)(ProposalCard, {
       proposal,
+      botName: bot.name,
       initialError: failed[proposal.id]?.error ?? failedAnswers.get(proposal.id)?.error,
       onFailure,
       onResolved,
@@ -45440,7 +45515,8 @@ var LEARNING_CSS = `
 .bt-learning-more{height:24px;padding:0 10px;border:0;border-radius:999px;background:var(--bt-card);box-shadow:inset 0 0 0 1px var(--bt-q-edge);font:inherit;font-size:12px;color:var(--bt-ink-2);cursor:pointer;transition:background-color .12s ease,color .12s ease}
 .bt-learning-more:hover{background:var(--bt-hover);color:var(--bt-ink)}
 .bt-learning-more:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
-.bt-learning-why{margin:0;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
+.bt-learning-why,.bt-learning-where{margin:0;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
+.bt-learning-note{margin:0;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--bt-star) 12%,transparent);font-size:12px;line-height:17px;color:var(--bt-ink)}
 .bt-learning-btn{flex:none;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 16px;border:0;border-radius:999px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:background-color .12s ease,opacity .12s ease,${spring(SPRING_TAP, "scale")}}
 .bt-learning-btn svg{width:15px;height:15px}
 .bt-learning-decline{background:transparent;box-shadow:inset 0 0 0 1px var(--bt-line-2);color:var(--bt-ink)}

@@ -182,7 +182,12 @@ function GeneralPage({ roster, actions, run, dsh }) {
       h(SetRow, { label: t('Bring up related memory') },
         h(Switch, { label: t('Bring up related memory'), on: prefs.memoryAutoRecall !== false, onChange: memoryAutoRecall => run(actions.setPrefs({ memoryAutoRecall })) })),
       MEMORY_SIZES.map(({ scope, label, size }) => h(SetRow, { key: scope, label: t(label) },
-        h(MemorySize, { label: t(label), value: prefs.memoryLimits?.[scope] ?? size, save: value => run(actions.setPrefs({ memoryLimits: { [scope]: value } })) })))),
+        h(MemorySize, { label: t(label), value: prefs.memoryLimits?.[scope] ?? size, save: value => run(actions.setPrefs({ memoryLimits: { [scope]: value } })) }))),
+      // The idle review of recent work (learning.js). The host config can take either away.
+      roster.learningAvailable?.skills ? h(SetRow, { key: 'learn-skills', label: t('Propose skills from work'), hint: t('When the team is idle, a review of recent work may propose a skill in a Bot\'s chat for you to approve. Bots on a local or remote agent get none: team skills do not reach them.') },
+        h(Switch, { label: t('Propose skills from work'), on: prefs.learnSkills !== false, onChange: learnSkills => run(actions.setPrefs({ learnSkills })) })) : null,
+      roster.learningAvailable?.agentsMd ? h(SetRow, { key: 'learn-agents', label: t('Propose AGENTS.md changes'), hint: t('The same review may propose changes to the AGENTS.md of a project folder the Bots worked in.') },
+        h(Switch, { label: t('Propose AGENTS.md changes'), on: prefs.learnAgentsMd !== false, onChange: learnAgentsMd => run(actions.setPrefs({ learnAgentsMd })) })) : null),
     // Settings opens in Agent mode too; there the way goes back to Bot mode.
     actions.setSurface ? h(SetSection, { key: 'mode', title: t('Mode') },
       actions.surfaceMode?.() === 'agent'
