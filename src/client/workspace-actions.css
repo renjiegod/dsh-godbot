@@ -27,23 +27,6 @@
   color: var(--bt-ink);
 }
 .gb-workspace-actions .gb-schedule-shortcut:hover { background: var(--bt-active); }
-.gb-workspace-actions:not([data-rail]) .gb-schedule-shortcut {
-  flex: 1 1 auto;
-  min-width: 0;
-  width: auto;
-  justify-content: flex-start;
-  gap: 7px;
-  padding-inline: 9px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
-}
-.gb-schedule-shortcut > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 .gb-workspace-actions[data-rail] {
   flex-direction: column;
   padding-block: 0 4px;
