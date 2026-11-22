@@ -4,7 +4,9 @@
 // reads what was said since the last pass and asks whether it taught a skill worth
 // keeping or a lasting project rule. Most work teaches nothing, so most passes
 // propose nothing. A proposal waits as a card in the Bot's chat until approved, and
-// declined changes are remembered so the same idea does not come back.
+// declined changes are remembered so the same idea does not come back. The Bot is
+// told about the cards of its chat (learningContext), and a Bot on a local or remote
+// agent gets no skill proposals: team skills never reach it.
 import { createHash, randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { access, mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
@@ -293,6 +295,58 @@ export function skillProblem(proposal, { skills, learned, limit = LEARNING.learn
 }
 
 // ---------------------------------------------------------------------------
+// What a Bot is told about the cards in its chat. The review runs apart from the
+// conversation and the window draws its cards, so a Bot asked about a card would
+// otherwise know nothing of it. The text follows the cards of the Bot's current chat
+// part as the user sees them: waiting ones in full, answered ones by how they ended.
+
+const SETTLED_TOLD = 5
+const SKILL_HOME = "the team's shared capabilities (Settings → Capabilities) and attached to you. A saved skill is not a file: there is no SKILL.md or folder on disk to point to"
+
+const indented = text => String(text ?? '').split(/\r?\n/).map(line => `    ${line}`).join('\n')
+
+function editLine(edit) {
+  const why = edit.why ? ` (why: ${edit.why})` : ''
+  if (edit.op === 'add') return `add ${JSON.stringify(edit.text)} ${edit.after ? `after the line ${JSON.stringify(edit.after)}` : 'at the end'}${why}`
+  if (edit.op === 'remove') return `remove ${JSON.stringify(edit.old)}${why}`
+  return `replace ${JSON.stringify(edit.old)} with ${JSON.stringify(edit.text)}${why}`
+}
+
+function toldLines(entry, outcome, outside) {
+  if (entry.kind === 'agents') {
+    const file = entry.path ?? join(entry.folder, 'AGENTS.md')
+    if (outcome === 'approved') return [`- A change to ${file}: approved, and the file was updated.`]
+    if (outcome === 'declined') return [`- A change to ${file}: declined; the file is unchanged.`]
+    return [`- A change to ${file}, waiting for the user's answer. If approved, the file is rewritten in place with these edits:`, ...(entry.edits ?? []).map(edit => `  - ${editLine(edit)}`)]
+  }
+  const what = entry.action === 'update' ? `An update to your learned skill "${entry.name}"` : `A new skill "${entry.name}"`
+  if (outcome === 'approved') return [`- ${what}: approved. It is saved in ${SKILL_HOME}.`]
+  if (outcome === 'declined') return [`- ${what}: declined. Nothing was saved, and the review does not propose it again unless later work shows something new.`]
+  return [
+    `- ${what}, waiting for the user's answer.`,
+    `  When to use it: ${entry.description}`,
+    ...(entry.why ? [`  Why it was proposed: ${entry.why}`] : []),
+    outside === undefined
+      ? `  If approved, it is saved in ${SKILL_HOME}.`
+      : `  You run on ${outside}, which does not read team skills, so approving it would change nothing for you. The card says so and lets the user only decline it.`,
+    '  Its text:',
+    indented(entry.content),
+  ]
+}
+
+// `waiting`: proposals still open; `settled`: the answered ones of this chat part, oldest
+// first; `outside`: what the Bot runs on when team skills do not reach it.
+export function learningContext({ waiting = [], settled = [], outside, settledMax = SETTLED_TOLD } = {}) {
+  if (waiting.length === 0 && settled.length === 0) return ''
+  return [
+    '## Learning cards in this chat',
+    'A background review of your recent work, run apart from this conversation, proposed the changes below. The user sees each one as a card in this chat and approves or declines it there; you cannot answer a card yourself, and nothing changes until the user approves.',
+    ...waiting.flatMap(entry => toldLines(entry, undefined, outside)),
+    ...settled.slice(-settledMax).flatMap(entry => toldLines(entry, entry.outcome, outside)),
+  ].join('\n')
+}
+
+// ---------------------------------------------------------------------------
 
 export function install(rt) {
   const { ctx, config, home, state } = rt
@@ -300,8 +354,26 @@ export function install(rt) {
   const on = config.learning !== false && config.memory !== false
   const view = () => ({})
   if (!on) {
-    Object.assign(rt, { learningView: view, learningSettledView: view, learningEndpoint: async () => { throw new Error('Learning is turned off on this host') }, learningRun: async () => 0 })
+    Object.assign(rt, { learningView: view, learningSettledView: view, learningEndpoint: async () => { throw new Error('Learning is turned off on this host') }, learningRun: async () => 0, learningAvailable: { skills: false, agentsMd: false } })
     return
+  }
+  // The team's switches (settings → General → Memory); the host config still overrides them.
+  const skillsOn = () => state.prefs?.learnSkills !== false
+  const agentsOn = () => config.agentsMd !== false && state.prefs?.learnAgentsMd !== false
+  // Team skills reach only a Bot on one of Godbot's own models: capabilities.js mounts them
+  // into the DSH agent loop, and a local agent CLI or a remote agent never loads them.
+  // 'local' or 'remote' for a Bot they do not reach.
+  const outsideOf = (bot) => {
+    const engine = bot === undefined ? undefined : rt.engineOfBot?.(bot)
+    if (engine === undefined || engine === 'model') return undefined
+    return rt.isRemoteAgentRef?.(bot.model ?? bot.appliedModel) === true ? 'remote' : 'local'
+  }
+  const runsOn = (bot) => {
+    const outside = outsideOf(bot)
+    if (outside === 'remote') return 'a remote agent'
+    if (outside !== 'local') return undefined
+    const name = rt.engineNameOf?.(bot.model ?? bot.appliedModel)
+    return typeof name === 'string' && !name.startsWith('the model ') ? `${name}, a local agent` : 'a local agent'
   }
 
   const root = join(home, 'learning')
@@ -360,6 +432,7 @@ export function install(rt) {
     started.delete(id)
     const botId = rt.chatOwners.get(id)
     if (since === undefined || botId === undefined || Date.now() - since < settings.minTurnMs) return
+    if (!skillsOn() && !agentsOn()) return
     const pending = data().pending
     pending[botId] = [...new Set([...(pending[botId] ?? []), id])]
     noted.set(id, (noted.get(id) ?? 0) + 1)
@@ -552,13 +625,15 @@ export function install(rt) {
           for (const sessionId of sessions) read.push({ sessionId, ...await linesSince(sessionId) })
           if (stopped) return made
           const lines = read.flatMap(entry => entry.lines)
-          const proposal = lines.length === 0 ? undefined : await reviewSkill(bot, lines)
+          // A skill for a Bot it would not reach is no proposal: the chat still feeds
+          // the AGENTS.md review, which changes a file every agent reads.
+          const proposal = lines.length === 0 || !skillsOn() || outsideOf(bot) !== undefined ? undefined : await reviewSkill(bot, lines)
           if (stopped) return made
           if (proposal !== undefined) {
             store.proposals[proposal.id] = proposal
             made += 1
           }
-          if (config.agentsMd !== false) {
+          if (agentsOn()) {
             for (const entry of read) {
               try {
                 const agent = await rt.resolveAgent(entry.sessionId)
@@ -583,7 +658,7 @@ export function install(rt) {
           continue
         }
       }
-      if (config.agentsMd !== false) {
+      if (agentsOn()) {
         for (const [folder, group] of Object.entries(store.agentsPending)) {
           if (stopped) break
           let bot = rt.botOf(group.botId)
@@ -646,7 +721,7 @@ export function install(rt) {
     if (stopped) return false
     const store = data()
     const hasPending = Object.values(store.pending).some(sessions => sessions.length > 0)
-      || (config.agentsMd !== false && Object.values(store.agentsPending).some(queue => queue.records?.length > 0))
+      || (agentsOn() && Object.values(store.agentsPending).some(queue => queue.records?.length > 0))
     if (!hasPending || rt.readOnly() !== undefined) return false
     if (Object.keys(rt.workView()).length > 0 || Date.now() - lastActivity < settings.idleMs) return false
     return store.lastRun === undefined || Date.now() - store.lastRun >= settings.intervalMs
@@ -736,6 +811,7 @@ export function install(rt) {
   async function applySkill(proposal) {
     const bot = rt.botOf(proposal.botId)
     if (bot === undefined) throw new Error('The Bot that learned this skill is gone')
+    if (outsideOf(bot) !== undefined) throw new Error(`${bot.name} runs on ${runsOn(bot)}, which does not read team skills. Decline this proposal, or move the Bot back to one of Godbot's models first.`)
     const current = skillsOf()[proposal.name]
     const store = data()
     if (proposal.action === 'create') {
@@ -775,10 +851,14 @@ export function install(rt) {
     await persist()
   }
 
-  // Per Bot, its proposals waiting for the user.
+  // Per Bot, its proposals waiting for the user. A skill its Bot would not read carries
+  // `unreachable` ('local' or 'remote'): its card says so and offers only Decline.
   const learningView = () => {
     const byBot = {}
-    for (const entry of Object.values(data().proposals)) (byBot[entry.botId] ??= []).push(entry)
+    for (const entry of Object.values(data().proposals)) {
+      const outside = entry.kind === 'agents' ? undefined : outsideOf(rt.botOf(entry.botId))
+      ;(byBot[entry.botId] ??= []).push(outside === undefined ? entry : { ...entry, unreachable: outside })
+    }
     return byBot
   }
   // Per Bot, the answered proposals of its current chat part.
@@ -803,9 +883,33 @@ export function install(rt) {
     return result
   }
 
+  // The Bot's own current chat part is where its cards show, so that is where it is told
+  // about them: a runtime-context snapshot, which DSH renews whenever the text changes
+  // and the local agent adapter folds into the CLI's next prompt.
+  const toldIn = (sessionId) => {
+    if (typeof sessionId !== 'string') return ''
+    const botId = rt.chatOwners?.get(sessionId)
+    const bot = botId === undefined ? undefined : rt.botOf(botId)
+    if (bot === undefined || rt.chatOf(bot.id) !== sessionId) return ''
+    const store = data()
+    const waiting = Object.values(store.proposals).filter(entry => entry.botId === bot.id).sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
+    const settled = Object.values(store.settled).filter(entry => entry.botId === bot.id && entry.sessionId === sessionId).sort((a, b) => (a.settledAt ?? 0) - (b.settledAt ?? 0))
+    return learningContext({ waiting, settled, outside: runsOn(bot) })
+  }
+  if (typeof ctx.systemPrompt?.context === 'function') {
+    ctx.effect(() => ctx.systemPrompt.context({
+      name: 'godbot-learning',
+      order: 700,
+      // A skill's text may hold `{{…}}` of its own.
+      interpolate: false,
+      text: context => toldIn(context?.agent?.id),
+    }), 'godbot: learning context')
+  }
+
   async function proposeBrowserSkill(recording) {
     const bot = rt.botOf(recording.botId)
     if (!bot) throw new Error('没有这段示范对应的 Bot')
+    if (outsideOf(bot) !== undefined) throw new Error('这个 Bot 跑在本地或远程 Agent 上，读不到团队技能。先把它换回 Godbot 的模型，再整理成 Skill')
     const previous = [
       ...Object.values(data().proposals), ...Object.values(data().settled),
     ].find(entry => entry.demonstration?.id === recording.id)
@@ -823,5 +927,9 @@ export function install(rt) {
     return { proposalId: proposal.id, existing: false }
   }
 
-  Object.assign(rt, { learningView, learningSettledView, learningEndpoint, learningRun: run, proposeBrowserSkill })
+  Object.assign(rt, {
+    learningView, learningSettledView, learningEndpoint, learningRun: run, proposeBrowserSkill,
+    // Which switches the host config leaves to the team.
+    learningAvailable: { skills: true, agentsMd: config.agentsMd !== false },
+  })
 }

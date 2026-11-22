@@ -9,9 +9,26 @@ import { spring, SPRING_TAP } from './motion.js'
 // One entry per proposal still waiting for another try, kept across remounts.
 const failedAnswers = new Map()
 
+// Where an approved skill goes, in the card's words: the team's capability library, not a
+// file. `undefined` when the card has nothing to say about it.
+function skillHome(proposal, botName) {
+  if (proposal.kind === 'agents' || proposal.outcome === 'declined' || proposal.unreachable !== undefined) return undefined
+  return proposal.outcome === 'approved'
+    ? t('Saved in the team\'s shared capabilities (Settings → Capabilities) and attached to {name}.', { name: botName })
+    : t('If approved, it is saved in the team\'s shared capabilities (Settings → Capabilities) and attached to {name}. It is not a file on disk.', { name: botName })
+}
+
+// A waiting skill its Bot would not read (`unreachable` from the host): why, instead of Approve.
+function unreachableNote(proposal, botName) {
+  if (proposal.kind === 'agents' || proposal.outcome !== undefined) return undefined
+  if (proposal.unreachable === 'local') return t('{name} runs on a local agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot\'s models first.', { name: botName })
+  if (proposal.unreachable === 'remote') return t('{name} runs on a remote agent, which does not read team skills, so approving this would change nothing. Decline it, or move {name} back to one of Godbot\'s models first.', { name: botName })
+  return undefined
+}
+
 // `proposal.outcome` set: an answered card, read-only and folded to one row (what
 // it was, how it ended, its name); the row opens the change.
-function ProposalCard({ proposal, initialError = '', onFailure, onResolved, actions }) {
+function ProposalCard({ proposal, botName, initialError = '', onFailure, onResolved, actions }) {
   const outcome = proposal.outcome
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(initialError)
@@ -35,6 +52,8 @@ function ProposalCard({ proposal, initialError = '', onFailure, onResolved, acti
   }
   const update = proposal.action === 'update'
   const agents = proposal.kind === 'agents'
+  const home = skillHome(proposal, botName)
+  const note = unreachableNote(proposal, botName)
   const rows = useMemo(() => lineDiff(update ? proposal.previous?.content : '', proposal.content), [update, proposal.previous?.content, proposal.content])
   const change = agents
     ? [
@@ -45,9 +64,11 @@ function ProposalCard({ proposal, initialError = '', onFailure, onResolved, acti
       ...proposal.edits.map((edit, index) => edit.why ? h('p', { className: 'bt-learning-why', key: `why-${index}` }, edit.why) : null),
     ]
     : [
-      h(FileBox, { key: 'file', name: 'SKILL.md', path: `skills/${proposal.name}`, state: update ? 'Updated' : 'Added', blocks: [rows] }),
+      // A skill is saved in the team's library, not as a file: no file name or path here.
+      h(FileBox, { key: 'file', name: t('Skill instructions'), state: update ? 'Updated' : 'Added', blocks: [rows] }),
       proposal.why ? h('p', { className: 'bt-learning-why', key: 'why' }, proposal.why) : null,
       proposal.demonstration ? h('p', { className: 'bt-learning-why', key: 'demo' }, '浏览器示范 · ' + proposal.demonstration.goal + ' · ' + proposal.demonstration.stepCount + ' 步') : null,
+      home ? h('p', { className: 'bt-learning-where', key: 'where' }, home) : null,
     ]
   const kind = t(agents ? 'AGENTS.md update' : update ? 'Skill update' : 'New skill')
   if (outcome) {
@@ -65,8 +86,9 @@ function ProposalCard({ proposal, initialError = '', onFailure, onResolved, acti
       ? h(ProposalHead, { titleId, icon: PencilIcon, title: kind })
       : h(ProposalHead, { titleId, title: proposal.name, kind, detail: proposal.description, oldDetail }),
     change,
+    note ? h('p', { className: 'bt-learning-note', role: 'note' }, note) : null,
     error ? h('div', { className: 'bt-learning-error', role: 'alert' }, error) : null,
-    h(ProposalFoot, { busy, answer }))
+    h(ProposalFoot, { busy, answer, approvable: note === undefined }))
 }
 
 function ProposalHead({ titleId, icon = MemoryIcon, title, kind, detail, oldDetail }) {
@@ -80,11 +102,11 @@ function ProposalHead({ titleId, icon = MemoryIcon, title, kind, detail, oldDeta
     h('span', { className: 'bt-q-badge bt-learning-status' }, h('span', { className: 'bt-learning-dot', 'aria-hidden': true }), t('Awaiting approval')))
 }
 
-function ProposalFoot({ busy, answer }) {
+function ProposalFoot({ busy, answer, approvable }) {
   return h('div', { className: 'bt-q-foot bt-learning-foot' },
     h('button', { type: 'button', className: 'bt-learning-btn bt-learning-decline', disabled: busy, onClick: () => answer(false) }, t('Decline')),
-    h('button', { type: 'button', className: 'bt-learning-btn bt-learning-approve', disabled: busy, onClick: () => answer(true) },
-      h(CheckIcon), t('Approve')))
+    approvable ? h('button', { type: 'button', className: 'bt-learning-btn bt-learning-approve', disabled: busy, onClick: () => answer(true) },
+      h(CheckIcon), t('Approve')) : null)
 }
 
 const COLLAPSE_ROWS = 8
@@ -160,6 +182,7 @@ function LearningProposals({ turn, dock, sessionId, useRoster, actions }) {
   return h('div', { className: dock ? 'bt-learning-stack bt-learning-dock' : 'bt-learning-stack' }, cards.map(proposal => h('div', { className: 'bt-q-inline', key: proposal.id },
     h(ProposalCard, {
       proposal,
+      botName: bot.name,
       initialError: failed[proposal.id]?.error ?? failedAnswers.get(proposal.id)?.error,
       onFailure,
       onResolved,
@@ -212,7 +235,8 @@ export const LEARNING_CSS = `
 .bt-learning-more{height:24px;padding:0 10px;border:0;border-radius:999px;background:var(--bt-card);box-shadow:inset 0 0 0 1px var(--bt-q-edge);font:inherit;font-size:12px;color:var(--bt-ink-2);cursor:pointer;transition:background-color .12s ease,color .12s ease}
 .bt-learning-more:hover{background:var(--bt-hover);color:var(--bt-ink)}
 .bt-learning-more:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
-.bt-learning-why{margin:0;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
+.bt-learning-why,.bt-learning-where{margin:0;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
+.bt-learning-note{margin:0;padding:8px 12px;border-radius:10px;background:color-mix(in srgb,var(--bt-star) 12%,transparent);font-size:12px;line-height:17px;color:var(--bt-ink)}
 .bt-learning-btn{flex:none;display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 16px;border:0;border-radius:999px;font:inherit;font-size:14px;font-weight:500;cursor:pointer;transition:background-color .12s ease,opacity .12s ease,${spring(SPRING_TAP, 'scale')}}
 .bt-learning-btn svg{width:15px;height:15px}
 .bt-learning-decline{background:transparent;box-shadow:inset 0 0 0 1px var(--bt-line-2);color:var(--bt-ink)}

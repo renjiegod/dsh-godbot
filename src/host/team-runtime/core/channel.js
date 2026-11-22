@@ -149,6 +149,8 @@ export function install(rt) {
     browser: rt.browserEnabled,
     // False when config.memory turns memory off: no Memory row or panel.
     memory: rt.memoryEnabled !== false,
+    // Which learning switches the host config leaves to the team (settings → General → Memory).
+    learningAvailable: rt.learningAvailable ?? { skills: false, agentsMd: false },
     // Set while another dsh host holds the team (store.js): why this one cannot change it.
     readOnly: rt.readOnly() ?? null,
     // IM connections (settings → IM): one per chat-app bot the user added.
@@ -283,6 +285,13 @@ export function install(rt) {
     if (body.memoryAutoRecall !== undefined) {
       if (body.memoryAutoRecall === false) state.prefs.memoryAutoRecall = false
       else delete state.prefs.memoryAutoRecall
+    }
+    // Whether the idle review of recent work proposes skills, and AGENTS.md changes.
+    // Proposals already waiting stay until answered.
+    for (const key of ['learnSkills', 'learnAgentsMd']) {
+      if (body[key] === undefined) continue
+      if (body[key] === false) state.prefs[key] = false
+      else delete state.prefs[key]
     }
     if (body.memoryLimits !== undefined) {
       const sizes = Object.entries(body.memoryLimits ?? {}).filter(([scope, size]) => MEMORY_LIMIT_SCOPES.has(scope) && Number.isInteger(size) && size >= MEMORY_LIMIT_MIN && size <= MEMORY_LIMIT_MAX)
