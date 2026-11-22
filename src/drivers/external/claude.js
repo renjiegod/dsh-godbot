@@ -1,12 +1,13 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 // The Claude Code engine: one process per session, stream-json both ways.
 // stdin takes user/control JSON messages; stdout streams the assistant's
-// events until a `result` ends the turn.
+// events until the `result` of the turn that ran the prompt ends it.
 import { ClaudeControlSession, configureClaude, describeClaude } from './claude-settings.js'
 import { claudeUsageFrame } from './claude-usage-data.js'
 import { randomUUID } from 'node:crypto'
 import { cleanEnv, findEngineExecutable, spawnAgent } from './discover.js'
 import { claudeToolResult } from './tool-results.js'
+import { ClaudeTurns } from './claude-turns.js'
 
 // Claude Code tools that only read; the rest may change files or run something.
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead'])
@@ -39,7 +40,7 @@ export class ClaudeEngine {
   }
 
   steer(session, text, {commandId} = {}) {
-    return session.prompt(Array.isArray(text) ? text : [{ type: 'text', text }], commandId)
+    return session.prompt(Array.isArray(text) ? text : [{ type: 'text', text }], commandId, { steer: true })
   }
 
   cancel(session) {
@@ -75,9 +76,16 @@ class ClaudeSession extends ClaudeControlSession {
     this.waiters = []
     this.dead = false
     this.idWaiters = []
+    this.turns = new ClaudeTurns()
+  }
+
+  // A prompt is still unanswered. A turn the CLI started by itself does not count.
+  get running() {
+    return this.turns.busy
   }
 
   emit(event) {
+    event = this.turns.tag(event)
     const waiter = this.waiters.shift()
     if (waiter !== undefined) waiter(event)
     else this.events.push(event)
@@ -181,6 +189,8 @@ class ClaudeSession extends ClaudeControlSession {
   onLine(line) {
     let event
     try { event = JSON.parse(line) } catch { return }
+    const due = this.turns.observe(event)
+    if (due !== undefined) this.emit({ type: 'done', reason: 'stop', turnId: due })
     switch (event?.type) {
       case 'system':
         if (event.subtype === 'init') {
@@ -301,19 +311,39 @@ class ClaudeSession extends ClaudeControlSession {
           const size = (models.find(([name]) => name === this.model) ?? models.toSorted((a, b) => (b[1]?.contextWindow ?? 0) - (a[1]?.contextWindow ?? 0))[0])?.[1]?.contextWindow
           if (typeof size === 'number' && size > 0) this.emit({ type: 'context', size })
         }
-        this.running = false
-        if (this.interruptPending && (event.result === 'interrupted' || event.subtype === 'interrupted' || event.stop_reason === 'interrupted' || this.interruptAcknowledged)) {
-          this.interruptPending = undefined
-          this.interruptAcknowledged = false
-          this.emit({type:'done',reason:'interrupted'})
-          break
-        }
-        this.interruptPending = undefined
-        this.emit(event.subtype === 'success' || event.is_error !== true
-          ? { type: 'done', reason: 'stop', usage: usageOf(event.usage) }
-          : { type: 'error', error: new Error(event.result ?? 'the agent failed') })
+        this.settle(event)
         break
       default: break
+    }
+  }
+
+  // A `result` ends the prompt its turn answered. One for a turn the CLI started by
+  // itself ends nothing; one that leaves a queued steer waiting only counts usage.
+  settle(event) {
+    const answer = this.turns.settle(event.origin)
+    if (answer === undefined) {
+      this.emit({ type: 'background', of: 'result' })
+      return
+    }
+    const { turn, finished } = answer
+    const interrupted = this.interruptPending !== undefined && (event.result === 'interrupted' || event.subtype === 'interrupted' ||
+      event.stop_reason === 'interrupted' || this.interruptAcknowledged)
+    this.interruptPending = undefined
+    this.interruptAcknowledged = false
+    const failed = !interrupted && event.subtype !== 'success' && event.is_error === true
+    const usage = usageOf(event.usage)
+    // An interrupted prompt ends here even if a steer still waits behind it.
+    if (interrupted && !finished.includes(turn)) finished.push(turn)
+    if (!finished.includes(turn)) {
+      if (failed) this.emit({ type: 'error', error: new Error(event.result ?? 'the agent failed'), turnId: turn })
+      else if (usage !== undefined) this.emit({ type: 'usage', usage, turnId: turn })
+    }
+    for (const id of finished) {
+      if (id !== turn) this.emit({ type: 'done', reason: 'stop', turnId: id })
+      else if (interrupted) this.emit({ type: 'done', reason: 'interrupted', turnId: id })
+      else this.emit(failed
+        ? { type: 'error', error: new Error(event.result ?? 'the agent failed'), turnId: id }
+        : { type: 'done', reason: 'stop', usage, turnId: id })
     }
   }
 
@@ -325,16 +355,18 @@ class ClaudeSession extends ClaudeControlSession {
     return new Promise(resolve => { this.idWaiters.push(resolve) })
   }
 
-  prompt(blocks, commandId) {
-    this.running = true
+  // Resolves to the prompt (turn) the message belongs to once it is written: a steer
+  // joins the prompt that is still running.
+  prompt(blocks, commandId, { steer = false } = {}) {
     const uuid = randomUUID()
+    const turn = this.turns.write(uuid, steer)
     this.sentIds ??= new Map()
     this.sentIds.set(uuid, commandId)
-    return this.write({ type: 'user', uuid, message: { role: 'user', content: claudeContent(blocks) } })
+    return this.write({ type: 'user', uuid, message: { role: 'user', content: claudeContent(blocks) } }).then(() => turn)
   }
 
   async steer(thread, input) {
-    this.prompt(Array.isArray(input) ? input : [{ type: 'text', text: input }])
+    this.prompt(Array.isArray(input) ? input : [{ type: 'text', text: input }], undefined, { steer: true })
   }
 
   // `/compact` in stream-json runs the CLI's own compaction and ends with a result.
