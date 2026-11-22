@@ -1,8 +1,10 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 // The Claude Code engine: one process per session, stream-json both ways.
 // stdin takes user/control JSON messages; stdout streams the assistant's
-// events until a `result` ends the turn.
+// events until the `result` of the turn that ran the prompt ends it.
+import { randomUUID } from 'node:crypto'
 import { cleanEnv, findEngineExecutable, spawnAgent } from '../../../../drivers/external/discover.js'
+import { ClaudeTurns } from '../../../../drivers/external/claude-turns.js'
 
 // Claude Code tools that only read; the rest may change files or run something.
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead'])
@@ -35,7 +37,7 @@ export class ClaudeEngine {
   }
 
   steer(session, text) {
-    return session.prompt([{ type: 'text', text }])
+    return session.prompt([{ type: 'text', text }], { steer: true })
   }
 
   cancel(session) {
@@ -70,9 +72,16 @@ class ClaudeSession {
     this.waiters = []
     this.dead = false
     this.idWaiters = []
+    this.turns = new ClaudeTurns()
+  }
+
+  // A prompt is still unanswered. A turn the CLI started by itself does not count.
+  get running() {
+    return this.turns.busy
   }
 
   emit(event) {
+    event = this.turns.tag(event)
     const waiter = this.waiters.shift()
     if (waiter !== undefined) waiter(event)
     else this.events.push(event)
@@ -176,6 +185,8 @@ class ClaudeSession {
   onLine(line) {
     let event
     try { event = JSON.parse(line) } catch { return }
+    const due = this.turns.observe(event)
+    if (due !== undefined) this.emit({ type: 'done', reason: 'stop', turnId: due })
     switch (event?.type) {
       case 'system':
         if (event.subtype === 'init') {
@@ -234,12 +245,32 @@ class ClaudeSession {
           const size = (models.find(([name]) => name === this.model) ?? models.toSorted((a, b) => (b[1]?.contextWindow ?? 0) - (a[1]?.contextWindow ?? 0))[0])?.[1]?.contextWindow
           if (typeof size === 'number' && size > 0) this.emit({ type: 'context', size })
         }
-        this.running = false
-        this.emit(event.subtype === 'success' || event.is_error !== true
-          ? { type: 'done', reason: 'stop', usage: usageOf(event.usage) }
-          : { type: 'error', error: new Error(event.result ?? 'the agent failed') })
+        this.settle(event)
         break
       default: break
+    }
+  }
+
+  // A `result` ends the prompt its turn answered. One for a turn the CLI started by
+  // itself ends nothing; one that leaves a queued steer waiting only counts usage.
+  settle(event) {
+    const answer = this.turns.settle(event.origin)
+    if (answer === undefined) {
+      this.emit({ type: 'background', of: 'result' })
+      return
+    }
+    const { turn, finished } = answer
+    const failed = event.subtype !== 'success' && event.is_error === true
+    const usage = usageOf(event.usage)
+    if (!finished.includes(turn)) {
+      if (failed) this.emit({ type: 'error', error: new Error(event.result ?? 'the agent failed'), turnId: turn })
+      else if (usage !== undefined) this.emit({ type: 'usage', usage, turnId: turn })
+    }
+    for (const id of finished) {
+      if (id !== turn) this.emit({ type: 'done', reason: 'stop', turnId: id })
+      else this.emit(failed
+        ? { type: 'error', error: new Error(event.result ?? 'the agent failed'), turnId: id }
+        : { type: 'done', reason: 'stop', usage, turnId: id })
     }
   }
 
@@ -251,14 +282,17 @@ class ClaudeSession {
     return new Promise(resolve => { this.idWaiters.push(resolve) })
   }
 
-  prompt(blocks) {
-    this.running = true
-    this.write({ type: 'user', message: { role: 'user', content: claudeContent(blocks) } })
-    return Promise.resolve()
+  // Resolves to the prompt (turn) the message belongs to: a steer joins the prompt
+  // that is still running.
+  prompt(blocks, { steer = false } = {}) {
+    const uuid = randomUUID()
+    const turn = this.turns.write(uuid, steer)
+    this.write({ type: 'user', uuid, message: { role: 'user', content: claudeContent(blocks) } })
+    return Promise.resolve(turn)
   }
 
   async steer(thread, input) {
-    this.prompt(Array.isArray(input) ? input : [{ type: 'text', text: input }])
+    this.prompt(Array.isArray(input) ? input : [{ type: 'text', text: input }], { steer: true })
   }
 
   // `/compact` in stream-json runs the CLI's own compaction and ends with a result.

@@ -330,6 +330,10 @@ export async function openExternal({ kind, cwd, resumeId, onEvent, mcp, config =
           emit({ type: 'accepted', turnId, nativeTurnId: id })
           for (const event of turn.early) receive(event)
           turn.early.length = 0
+        } else if (kind === 'claude' && active === turn && id) {
+          // Claude names the prompt as it writes it: a turn the CLI ran by itself, or
+          // an earlier prompt's late end, carries another name and answers nothing here.
+          turn.native = id
         }
         return { status: kind === 'codex' ? 'accepted' : 'written' }
       } catch (error) {
