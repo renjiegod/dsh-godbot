@@ -232,18 +232,35 @@ function Computers({ client, close }) {
   }
   async function start(mode, reconnect = false) {
     await work(async (still) => {
-      if (reconnect) {
-        const hello = await local('connect', { id })
-        if (!still()) return
+      const account = current.current.hello?.account
+      const params = { mode, requestId: uuid() }
+      const open = () => local('rpc', { id, method: 'session.open', params, reportConnectionRequired: true })
+      async function reconnectHost() {
+        update({ hello: null, recovery: { mode, reason: 'disconnected' } })
+        let hello
+        try {
+          hello = await local('connect', { id })
+        } catch (error) {
+          if (still() && unpaired(message(error))) update({ recovery: { unpaired: true } })
+          throw error
+        }
+        if (!still()) return false
         update({ hello, recovery: null })
         void refresh().catch(() => {})
-        if (!hello[mode]) return
+        // If the shell account changed, show the new account for confirmation.
+        return hello[mode] && (mode !== 'terminal' || hello.account === account)
       }
-      const session = await local('rpc', {
-        id: current.current.target.id,
-        method: 'session.open',
-        params: { mode, requestId: uuid() },
-      })
+      if (reconnect && !(await reconnectHost())) return
+      let result = await open()
+      if (!reconnect && result.connectionRequired && still()) {
+        if (!(await reconnectHost())) return
+        result = await open()
+      }
+      if (result.connectionRequired) {
+        if (still()) update({ hello: null, recovery: { mode, reason: 'disconnected' }, status: m('Connection lost') })
+        return
+      }
+      const { session } = result
       if (!still()) {
         await local('rpc', { id, method: 'session.close', params: { sessionId: session.sessionId } }).catch(
           () => {},

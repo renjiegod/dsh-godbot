@@ -30181,7 +30181,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.21";
+var version = "0.2.0-rc.22";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -61168,47 +61168,244 @@ var labels5 = {
     "Shell terminé · code {code}",
     "Shell beendet · Status {code}"
   ],
-  "Earlier output was truncated": ["较早的输出已截断"],
-  "Get a new offer on the computer": ["请在目标电脑上生成新的配对链接"],
+  "Earlier output was truncated": [
+    "较早的输出已截断",
+    "以前の出力の一部は省略されました",
+    "이전 출력의 일부가 생략되었습니다",
+    "Se ha truncado parte de la salida anterior",
+    "Une partie de la sortie précédente a été tronquée",
+    "Ein Teil der früheren Ausgabe wurde gekürzt"
+  ],
+  "Get a new offer on the computer": [
+    "请在目标电脑上生成新的配对链接",
+    "接続先で新しいペアリングリンクを作成してください",
+    "대상 컴퓨터에서 새 페어링 링크를 만드세요",
+    "Genera un nuevo enlace de emparejamiento en el equipo",
+    "Générez un nouveau lien d’association sur l’ordinateur.",
+    "Auf dem Computer einen neuen Kopplungslink erstellen"
+  ],
   "To revoke this controller, remove it from Paired controllers on the computer.": [
-    "如需撤销本控制端的权限，请在电脑的“已配对控制端”中移除它。"
+    "如需撤销本控制端的权限，请在电脑的“已配对控制端”中移除它。",
+    "この端末のアクセスを取り消すには、接続先の「ペアリング済みの端末」から削除してください。",
+    "이 기기의 접근 권한을 취소하려면 컴퓨터의 페어링된 제어 기기 목록에서 삭제하세요.",
+    "Para revocar el acceso de este dispositivo, elimínalo de la lista de dispositivos emparejados en el equipo.",
+    "Pour révoquer l’accès de cet appareil, retirez-le de la liste des appareils associés sur l’ordinateur.",
+    "Um diesem Gerät den Zugriff zu entziehen, entfernen Sie es auf dem Computer aus der Liste der gekoppelten Steuergeräte."
   ],
-  "End the shell as {account} on {name} and switch computers?": ["结束 {name} 上 {account} 的终端并切换电脑？"],
-  "Allow Accessibility on {name} to control the desktop.": ["在 {name} 上允许“辅助功能”后即可控制桌面。"],
-  "Access ended by the computer": ["电脑已结束访问"],
-  "Request declined on the computer": ["电脑端已拒绝请求"],
-  "Sharing paused for a private prompt": ["正在显示隐私提示，共享已暂停"],
-  "Connection lost": ["连接已断开"],
-  "Saved computers": ["已保存的电脑"],
-  "Check availability": ["检查可用性"],
-  "Check again": ["重新检查"],
-  "Pair again": ["重新配对"],
-  "Retry desktop": ["重试桌面连接"],
-  "Back to computer": ["返回电脑"],
-  "Last connected": ["上次连接"],
-  "Available at last check": ["上次检查时可用"],
-  "Connecting to {name}…": ["正在连接 {name}…"],
-  "Not available": ["暂无数据"],
-  Transport: ["连接方式"],
-  Resolution: ["分辨率"],
-  "Frame rate": ["帧率"],
-  "Round-trip time": ["往返时间"],
-  Codec: ["编解码器"],
-  "Waiting for TURN credentials from the computer": ["正在等待电脑获取 TURN 中继凭据"],
+  "End the shell as {account} on {name} and switch computers?": [
+    "结束 {name} 上 {account} 的终端并切换电脑？",
+    "{name} 上の {account} のシェルを終了し、別のコンピューターに切り替えますか？",
+    "{name}에서 {account} 계정의 셸을 종료하고 다른 컴퓨터로 전환할까요?",
+    "¿Cerrar la consola de {account} en {name} y cambiar de equipo?",
+    "Fermer le terminal de {account} sur {name} et changer d’ordinateur ?",
+    "Shell von {account} auf {name} beenden und den Computer wechseln?"
+  ],
+  "Allow Accessibility on {name} to control the desktop.": [
+    "在 {name} 上允许“辅助功能”后即可控制桌面。",
+    "デスクトップを操作するには、{name} で「アクセシビリティ」を許可してください。",
+    "데스크톱을 제어하려면 {name}에서 손쉬운 사용 권한을 허용하세요.",
+    "Para controlar el escritorio, concede el permiso de Accesibilidad en {name}.",
+    "Pour contrôler le bureau, autorisez l’accès dans les réglages Accessibilité sur {name}.",
+    "Zur Steuerung des Desktops auf {name} den Zugriff unter „Bedienungshilfen“ erlauben."
+  ],
+  "Access ended by the computer": [
+    "电脑已结束访问",
+    "接続先がアクセスを終了しました",
+    "대상 컴퓨터에서 접근을 종료했습니다",
+    "El equipo ha finalizado el acceso",
+    "L’ordinateur a mis fin à l’accès",
+    "Der Computer hat den Zugriff beendet"
+  ],
+  "Request declined on the computer": [
+    "电脑端已拒绝请求",
+    "接続先でリクエストが拒否されました",
+    "대상 컴퓨터에서 요청을 거절했습니다",
+    "Se ha rechazado la solicitud en el equipo",
+    "La demande a été refusée sur l’ordinateur",
+    "Die Anfrage wurde auf dem Computer abgelehnt"
+  ],
+  "Sharing paused for a private prompt": [
+    "正在显示隐私提示，共享已暂停",
+    "保護されたダイアログの表示中は共有を一時停止します",
+    "보호된 대화상자가 열려 공유가 일시 중지되었습니다",
+    "Uso compartido en pausa mientras se muestra un diálogo privado",
+    "Partage suspendu pendant l’affichage d’une boîte de dialogue privée",
+    "Freigabe wegen eines geschützten Dialogs pausiert"
+  ],
+  "Connection lost": [
+    "连接已断开",
+    "接続が切れました",
+    "연결이 끊어졌습니다",
+    "Se ha perdido la conexión",
+    "Connexion perdue",
+    "Verbindung unterbrochen"
+  ],
+  "Saved computers": [
+    "已保存的电脑",
+    "保存済みのコンピューター",
+    "저장된 컴퓨터",
+    "Equipos guardados",
+    "Ordinateurs enregistrés",
+    "Gespeicherte Computer"
+  ],
+  "Check availability": [
+    "检查可用性",
+    "接続できるか確認",
+    "연결 가능 여부 확인",
+    "Comprobar disponibilidad",
+    "Vérifier la disponibilité",
+    "Verfügbarkeit prüfen"
+  ],
+  "Check again": ["重新检查", "再確認", "다시 확인", "Volver a comprobar", "Vérifier à nouveau", "Erneut prüfen"],
+  "Pair again": [
+    "重新配对",
+    "もう一度ペアリング",
+    "다시 페어링",
+    "Volver a emparejar",
+    "Associer à nouveau",
+    "Erneut koppeln"
+  ],
+  "Retry desktop": [
+    "重试桌面连接",
+    "デスクトップに再接続",
+    "데스크톱에 다시 연결",
+    "Volver a conectar al escritorio",
+    "Reconnecter le bureau",
+    "Desktop erneut verbinden"
+  ],
+  "Back to computer": [
+    "返回电脑",
+    "コンピューターに戻る",
+    "컴퓨터로 돌아가기",
+    "Volver al equipo",
+    "Revenir à l’ordinateur",
+    "Zurück zum Computer"
+  ],
+  "Last connected": [
+    "上次连接",
+    "最終接続",
+    "마지막 연결",
+    "Última conexión",
+    "Dernière connexion",
+    "Zuletzt verbunden"
+  ],
+  "Available at last check": [
+    "上次检查时可用",
+    "前回の確認時は接続可能",
+    "마지막 확인 시 연결 가능",
+    "Disponible en la última comprobación",
+    "Disponible lors de la dernière vérification",
+    "Bei der letzten Prüfung erreichbar"
+  ],
+  "Connecting to {name}…": [
+    "正在连接 {name}…",
+    "{name} に接続中…",
+    "{name}에 연결 중…",
+    "Conectando con {name}…",
+    "Connexion à {name}…",
+    "Verbindung mit {name} wird hergestellt…"
+  ],
+  "Not available": ["暂无数据", "データなし", "정보 없음", "Sin datos", "Indisponible", "Nicht verfügbar"],
+  Transport: ["连接方式", "通信方式", "전송 방식", "Transporte", "Mode de transport", "Transportweg"],
+  Resolution: ["分辨率", "解像度", "해상도", "Resolución", "Résolution", "Auflösung"],
+  "Frame rate": ["帧率", "フレームレート", "프레임 속도", "Fotogramas por segundo", "Fréquence d’images", "Bildrate"],
+  "Video bitrate": [
+    "视频码率",
+    "映像ビットレート",
+    "영상 비트레이트",
+    "Tasa de bits de vídeo",
+    "Débit vidéo",
+    "Video-Bitrate"
+  ],
+  "Dropped frames": [
+    "丢弃的帧",
+    "ドロップフレーム数",
+    "드롭된 프레임",
+    "Fotogramas descartados",
+    "Images perdues",
+    "Verworfene Frames"
+  ],
+  "Round-trip time": [
+    "往返时间",
+    "往復時間",
+    "왕복 시간",
+    "Tiempo de ida y vuelta",
+    "Temps aller-retour",
+    "Umlaufzeit"
+  ],
+  Codec: ["编解码器", "コーデック", "코덱", "Códec", "Codec", "Codec"],
+  "Waiting for TURN credentials from the computer": [
+    "正在等待电脑获取 TURN 中继凭据",
+    "接続先からの TURN 認証情報を待っています",
+    "컴퓨터에서 TURN 인증 정보를 보내기를 기다리는 중입니다",
+    "Esperando las credenciales TURN del equipo",
+    "En attente des identifiants TURN de l’ordinateur",
+    "Warten auf TURN-Zugangsdaten vom Computer"
+  ],
   "TURN is unavailable. Configure TURN on the computer or turn off Require TURN.": [
-    "TURN 中继不可用。请在电脑上配置 TURN，或取消“桌面视频仅使用 TURN 中继”。"
+    "TURN 中继不可用。请在电脑上配置 TURN，或取消“桌面视频仅使用 TURN 中继”。",
+    "TURN を利用できません。接続先で TURN を設定するか、映像に TURN を必須とする設定をオフにしてください。",
+    "TURN을 사용할 수 없습니다. 컴퓨터에서 TURN을 설정하거나 데스크톱 영상에 TURN을 필수로 사용하는 옵션을 끄세요.",
+    "TURN no está disponible. Configura TURN en el equipo o desactiva el requisito de usar TURN para el vídeo.",
+    "TURN est indisponible. Configurez TURN sur l’ordinateur ou désactivez son utilisation obligatoire pour la vidéo.",
+    "TURN ist nicht verfügbar. Konfigurieren Sie TURN auf dem Computer oder deaktivieren Sie die TURN-Pflicht für das Desktopvideo."
   ],
-  "Send shortcut": ["发送快捷键"],
+  "Send shortcut": [
+    "发送快捷键",
+    "ショートカットを送信",
+    "단축키 보내기",
+    "Enviar atajo de teclado",
+    "Envoyer un raccourci clavier",
+    "Tastenkürzel senden"
+  ],
   "Approve keyboard and pointer sharing in the system dialog on the computer": [
-    "请在电脑上的系统对话框中允许共享键盘和指针。"
+    "请在电脑上的系统对话框中允许共享键盘和指针。",
+    "接続先のシステムダイアログでキーボードとポインターの共有を許可してください",
+    "대상 컴퓨터의 시스템 대화상자에서 키보드와 포인터 공유를 허용하세요",
+    "Autoriza el uso del teclado y del puntero en el diálogo del sistema del equipo",
+    "Autorisez le partage du clavier et du pointeur dans la boîte de dialogue système de l’ordinateur",
+    "Tastatur und Zeiger im Systemdialog auf dem Computer freigeben"
   ],
-  "Control declined on the computer. You can keep viewing.": ["电脑端已拒绝控制请求，你仍可查看桌面。"],
+  "Control declined on the computer. You can keep viewing.": [
+    "电脑端已拒绝控制请求，你仍可查看桌面。",
+    "接続先で操作が拒否されました。引き続き画面を表示できます。",
+    "대상 컴퓨터에서 제어를 거절했습니다. 화면은 계속 볼 수 있습니다.",
+    "El equipo ha rechazado el control. Puedes seguir viendo el escritorio.",
+    "Le contrôle a été refusé sur l’ordinateur. Vous pouvez continuer à voir le bureau.",
+    "Die Steuerung wurde auf dem Computer abgelehnt. Der Desktop bleibt sichtbar."
+  ],
   "Click the desktop to operate it. Escape or Ctrl+Alt+Space returns to the toolbar.": [
-    "点击桌面开始操作，按 Esc 或 Ctrl+Alt+空格键返回工具栏。"
+    "点击桌面开始操作，按 Esc 或 Ctrl+Alt+空格键返回工具栏。",
+    "デスクトップをクリックすると操作できます。Esc または Ctrl+Alt+スペースでツールバーに戻ります。",
+    "데스크톱을 클릭해 제어하세요. Esc 또는 Ctrl+Alt+스페이스를 누르면 도구 모음으로 돌아갑니다.",
+    "Haz clic en el escritorio para controlarlo. Pulsa Esc o Ctrl+Alt+Espacio para volver a la barra de herramientas.",
+    "Cliquez sur le bureau pour le contrôler. Appuyez sur Échap ou Ctrl+Alt+Espace pour revenir à la barre d’outils.",
+    "Zum Bedienen auf den Desktop klicken. Esc oder Strg+Alt+Leertaste führt zur Symbolleiste zurück."
   ],
-  "Select a screen on the Linux computer": ["请在 Linux 电脑上选择要共享的屏幕"],
-  "End this shell and open the desktop?": ["结束终端并打开桌面？"],
-  "Switch to a shell as {account} on {name}?": ["结束桌面会话并以 {account} 身份在 {name} 上打开终端？"],
+  "Select a screen on the Linux computer": [
+    "请在 Linux 电脑上选择要共享的屏幕",
+    "Linux コンピューターで共有する画面を選択してください",
+    "Linux 컴퓨터에서 공유할 화면을 선택하세요",
+    "Selecciona una pantalla en el equipo Linux",
+    "Sélectionnez un écran sur l’ordinateur Linux",
+    "Auf dem Linux-Computer einen Bildschirm auswählen"
+  ],
+  "End this shell and open the desktop?": [
+    "结束终端并打开桌面？",
+    "このシェルを終了してデスクトップを開きますか？",
+    "이 셸을 종료하고 데스크톱을 열까요?",
+    "¿Cerrar esta consola y abrir el escritorio?",
+    "Fermer ce terminal et ouvrir le bureau ?",
+    "Diese Shell beenden und den Desktop öffnen?"
+  ],
+  "Switch to a shell as {account} on {name}?": [
+    "结束桌面会话并以 {account} 身份在 {name} 上打开终端？",
+    "{name} 上の {account} のシェルに切り替えますか？",
+    "{name}에서 {account} 계정의 셸로 전환할까요?",
+    "¿Cambiar a una consola de {account} en {name}?",
+    "Passer au terminal de {account} sur {name} ?",
+    "Zur Shell von {account} auf {name} wechseln?"
+  ],
   "Stream quality": ["画质", "画質", "스트림 품질", "Calidad de vídeo", "Qualité vidéo", "Streamqualität"],
   Balanced: ["均衡", "標準", "균형", "Equilibrada", "Équilibrée", "Ausgewogen"],
   "Bandwidth saver": [
@@ -61441,33 +61638,379 @@ var labels5 = {
     "Oublier {name} sur ce contrôleur ?",
     "{name} auf diesem Controller entfernen?"
   ],
-  "Waiting for input approval on the computer": ["正在等待目标电脑批准控制请求"],
-  "Session ended when this tab went into the background": ["标签页已转入后台，会话已结束"],
-  "Disconnect and close Remote computers?": ["断开连接并关闭远程电脑？"],
-  "End this session and pair another computer?": ["结束当前会话并配对另一台电脑？"],
-  "End this session and switch computers?": ["结束当前会话并切换电脑？"],
-  "Compare this fingerprint on the computer: ": ["请与电脑上显示的指纹核对："],
+  "Waiting for input approval on the computer": [
+    "正在等待目标电脑批准控制请求",
+    "接続先での操作の許可を待っています",
+    "대상 컴퓨터에서 입력을 허용하기를 기다리는 중입니다",
+    "Esperando que el equipo autorice el teclado y el puntero",
+    "En attente de l’autorisation du clavier et du pointeur sur l’ordinateur",
+    "Warten auf Eingabefreigabe am Computer"
+  ],
+  "Session ended when this tab went into the background": [
+    "标签页已转入后台，会话已结束",
+    "タブがバックグラウンドになったため、セッションを終了しました",
+    "이 탭이 백그라운드로 전환되어 세션이 종료되었습니다",
+    "La sesión terminó cuando esta pestaña pasó a segundo plano",
+    "La session a pris fin lorsque cet onglet est passé en arrière-plan",
+    "Die Sitzung wurde beendet, als dieser Tab in den Hintergrund wechselte"
+  ],
+  "Disconnect and close Remote computers?": [
+    "断开连接并关闭远程电脑？",
+    "切断して「リモートコンピューター」を閉じますか？",
+    "연결을 끊고 원격 컴퓨터를 닫을까요?",
+    "¿Desconectar y cerrar Equipos remotos?",
+    "Se déconnecter et fermer Ordinateurs distants ?",
+    "Verbindung trennen und „Remotecomputer“ schließen?"
+  ],
+  "End this session and pair another computer?": [
+    "结束当前会话并配对另一台电脑？",
+    "このセッションを終了し、別のコンピューターをペアリングしますか？",
+    "이 세션을 종료하고 다른 컴퓨터를 페어링할까요?",
+    "¿Finalizar esta sesión y emparejar otro equipo?",
+    "Terminer cette session et associer un autre ordinateur ?",
+    "Diese Sitzung beenden und einen anderen Computer koppeln?"
+  ],
+  "End this session and switch computers?": [
+    "结束当前会话并切换电脑？",
+    "このセッションを終了して別のコンピューターに切り替えますか？",
+    "이 세션을 종료하고 다른 컴퓨터로 전환할까요?",
+    "¿Finalizar esta sesión y cambiar de equipo?",
+    "Terminer cette session et changer d’ordinateur ?",
+    "Diese Sitzung beenden und den Computer wechseln?"
+  ],
+  "Compare this fingerprint on the computer: ": [
+    "请与电脑上显示的指纹核对：",
+    "接続先に表示された指紋と照合してください：",
+    "컴퓨터에 표시된 지문과 비교하세요: ",
+    "Compara esta huella con la que aparece en el equipo: ",
+    "Comparez cette empreinte à celle affichée sur l’ordinateur : ",
+    "Mit dem Fingerabdruck auf dem Computer vergleichen: "
+  ],
   "Create a pairing offer in Godbot Computer Host on the target, then paste it here.": [
-    "请在目标电脑的 Godbot Computer Host 生成配对链接，并粘贴到这里。"
+    "请在目标电脑的 Godbot Computer Host 生成配对链接，并粘贴到这里。",
+    "接続先の Godbot Computer Host でペアリングリンクを作成し、ここに貼り付けてください。",
+    "대상 컴퓨터의 Godbot Computer Host에서 페어링 링크를 만든 다음 여기에 붙여넣으세요.",
+    "Crea un enlace de emparejamiento en Godbot Computer Host en el equipo de destino y pégalo aquí.",
+    "Créez un lien d’association dans Godbot Computer Host sur l’ordinateur distant, puis collez-le ici.",
+    "Erstellen Sie in Godbot Computer Host auf dem Zielcomputer einen Kopplungslink und fügen Sie ihn hier ein."
   ],
   "View a desktop or open a terminal on a paired Mac or Linux computer.": [
-    "在配对的 Mac 或 Linux 电脑上查看桌面或打开终端。"
+    "在配对的 Mac 或 Linux 电脑上查看桌面或打开终端。",
+    "ペアリング済みの Mac または Linux コンピューターで、デスクトップを表示したりターミナルを開いたりできます。",
+    "페어링된 Mac 또는 Linux 컴퓨터의 데스크톱을 보거나 터미널을 열 수 있습니다.",
+    "Ve el escritorio o abre un terminal en un Mac o equipo Linux emparejado.",
+    "Affichez le bureau ou ouvrez un terminal sur un Mac ou un ordinateur Linux associé.",
+    "Auf einem gekoppelten Mac oder Linux-Computer den Desktop anzeigen oder ein Terminal öffnen."
   ],
-  "Check availability to see the modes supported by this host.": ["连接后可查看这台电脑支持的会话。"],
-  "Terminal access is unavailable.": ["终端不可用。"],
-  "Interactive shell as {account}": ["以 {account} 身份使用交互终端"],
+  "Check availability to see the modes supported by this host.": [
+    "连接后可查看这台电脑支持的会话。",
+    "接続先で使える機能を確認してください。",
+    "연결 가능 여부를 확인하면 이 컴퓨터에서 지원하는 모드를 볼 수 있습니다.",
+    "Comprueba la disponibilidad para ver qué modos admite el equipo.",
+    "Vérifiez la disponibilité pour voir les modes pris en charge par cet ordinateur.",
+    "Verfügbarkeit prüfen, um die unterstützten Sitzungsarten zu sehen."
+  ],
+  "Terminal access is unavailable.": [
+    "终端不可用。",
+    "ターミナルにアクセスできません。",
+    "터미널에 접근할 수 없습니다.",
+    "El terminal no está disponible.",
+    "L’accès au terminal est indisponible.",
+    "Der Terminalzugriff ist nicht verfügbar."
+  ],
+  "Interactive shell as {account}": [
+    "以 {account} 身份使用交互终端",
+    "{account} の対話型シェル",
+    "{account} 계정의 대화형 셸",
+    "Consola interactiva de {account}",
+    "Terminal interactif de {account}",
+    "Interaktive Shell als {account}"
+  ],
   "View the selected display. Request keyboard and pointer access during the session.": [
-    "查看所选显示器，需要操作时可申请键盘和鼠标权限。"
+    "查看所选显示器，需要操作时可申请键盘和鼠标权限。",
+    "選んだ画面を表示します。セッション中にキーボードとポインターの操作をリクエストできます。",
+    "선택한 화면을 봅니다. 세션 중에 키보드와 포인터 제어를 요청할 수 있습니다.",
+    "Ve la pantalla seleccionada. Durante la sesión puedes solicitar el control del teclado y del puntero.",
+    "Affichez l’écran choisi. Vous pourrez demander le contrôle du clavier et du pointeur pendant la session.",
+    "Den ausgewählten Bildschirm ansehen. Tastatur- und Zeigersteuerung können während der Sitzung angefordert werden."
   ],
-  "Waiting for connection statistics": ["正在获取连接统计"],
-  "Connecting to display…": ["正在连接显示器…"],
-  "Host fingerprint": ["电脑指纹"],
-  "Saved computer": ["已保存的电脑"],
-  "Session ended": ["会话已结束"],
-  "Request canceled": ["请求已取消"],
-  "The target has not granted OS input permission": ["目标电脑尚未授予系统输入权限"],
-  "Remote desktop": ["远程桌面"],
-  "Remote terminal": ["远程终端"]
+  "Waiting for connection statistics": [
+    "正在获取连接统计",
+    "接続統計を待っています",
+    "연결 통계를 기다리는 중입니다",
+    "Esperando estadísticas de conexión",
+    "En attente des statistiques de connexion",
+    "Warten auf Verbindungsstatistiken"
+  ],
+  "Connecting to display…": [
+    "正在连接显示器…",
+    "画面に接続中…",
+    "화면에 연결 중…",
+    "Conectando con la pantalla…",
+    "Connexion à l’écran…",
+    "Verbindung zum Bildschirm wird hergestellt…"
+  ],
+  "Host fingerprint": [
+    "电脑指纹",
+    "接続先の指紋",
+    "호스트 지문",
+    "Huella del equipo",
+    "Empreinte de l’ordinateur",
+    "Fingerabdruck des Hosts"
+  ],
+  "Saved computer": [
+    "已保存的电脑",
+    "保存済みのコンピューター",
+    "저장된 컴퓨터",
+    "Equipo guardado",
+    "Ordinateur enregistré",
+    "Gespeicherter Computer"
+  ],
+  "Session ended": [
+    "会话已结束",
+    "セッションが終了しました",
+    "세션이 종료되었습니다",
+    "Sesión finalizada",
+    "Session terminée",
+    "Sitzung beendet"
+  ],
+  "Request canceled": [
+    "请求已取消",
+    "リクエストをキャンセルしました",
+    "요청이 취소되었습니다",
+    "Solicitud cancelada",
+    "Demande annulée",
+    "Anfrage abgebrochen"
+  ],
+  "The target has not granted OS input permission": [
+    "目标电脑尚未授予系统输入权限",
+    "接続先の OS で入力操作が許可されていません",
+    "대상 컴퓨터의 운영체제에서 입력 권한을 허용하지 않았습니다",
+    "El sistema del equipo de destino no ha concedido permiso para controlar el teclado y el puntero",
+    "Le système de l’ordinateur distant n’a pas autorisé le contrôle du clavier et du pointeur",
+    "Das Betriebssystem auf dem Zielcomputer hat die Eingabesteuerung nicht freigegeben"
+  ],
+  "Remote desktop": [
+    "远程桌面",
+    "リモートデスクトップ",
+    "원격 데스크톱",
+    "Escritorio remoto",
+    "Bureau distant",
+    "Remotedesktop"
+  ],
+  "Remote terminal": [
+    "远程终端",
+    "リモートターミナル",
+    "원격 터미널",
+    "Terminal remoto",
+    "Terminal distant",
+    "Remote-Terminal"
+  ],
+  Direct: ["直连", "直接接続", "직접 연결", "Conexión directa", "Connexion directe", "Direktverbindung"],
+  "TURN relay": ["TURN 中继", "TURN リレー", "TURN 릴레이", "Retransmisión TURN", "Relais TURN", "TURN-Relay"],
+  Display: ["显示器", "画面", "화면", "Pantalla", "Écran", "Bildschirm"],
+  Zoom: ["缩放", "拡大率", "확대/축소", "Ampliación", "Zoom", "Zoomstufe"],
+  Reconnect: ["重新连接", "再接続", "다시 연결", "Volver a conectar", "Se reconnecter", "Erneut verbinden"],
+  "Computer locked": [
+    "电脑已锁定",
+    "コンピューターがロックされました",
+    "컴퓨터가 잠겼습니다",
+    "Equipo bloqueado",
+    "Ordinateur verrouillé",
+    "Computer gesperrt"
+  ],
+  "Display disconnected": [
+    "显示器已断开",
+    "画面の接続が切れました",
+    "화면 연결이 끊어졌습니다",
+    "Pantalla desconectada",
+    "Écran déconnecté",
+    "Bildschirm getrennt"
+  ],
+  "Access denied by the computer": [
+    "电脑已拒绝访问",
+    "接続先がアクセスを拒否しました",
+    "대상 컴퓨터에서 접근을 거부했습니다",
+    "El equipo ha denegado el acceso",
+    "L’ordinateur a refusé l’accès",
+    "Der Computer hat den Zugriff verweigert"
+  ],
+  "No graphical display is available": [
+    "没有可用的图形显示器",
+    "利用できる画面がありません",
+    "사용 가능한 화면이 없습니다",
+    "No hay ninguna pantalla disponible",
+    "Aucun écran disponible",
+    "Kein Bildschirm verfügbar"
+  ],
+  "The host did not deliver a desktop frame": [
+    "电脑未传回桌面画面",
+    "接続先からデスクトップの映像が届きませんでした",
+    "호스트에서 데스크톱 영상을 받지 못했습니다",
+    "El equipo no ha enviado ninguna imagen del escritorio",
+    "L’ordinateur n’a envoyé aucune image du bureau",
+    "Der Computer hat kein Desktopbild gesendet"
+  ],
+  "Terminal input acknowledgement mismatch": [
+    "终端输入的确认序号不匹配",
+    "ターミナル入力の確認番号が一致しません",
+    "터미널 입력 확인 번호가 일치하지 않습니다",
+    "No coincide el número de confirmación de la entrada del terminal",
+    "Le numéro de confirmation de la saisie du terminal ne correspond pas",
+    "Die Bestätigungsnummer der Terminaleingabe stimmt nicht überein"
+  ],
+  "Desktop locked or display changed": [
+    "桌面已锁定或显示器已更改",
+    "デスクトップがロックされたか、画面が変更されました",
+    "데스크톱이 잠겼거나 화면이 변경되었습니다",
+    "El escritorio se ha bloqueado o la pantalla ha cambiado",
+    "Le bureau a été verrouillé ou l’écran a changé",
+    "Der Desktop wurde gesperrt oder der Bildschirm wurde geändert"
+  ],
+  "Sharing ended because the desktop is locked, protected, or unavailable": [
+    "桌面已锁定、受保护或不可用，共享已结束",
+    "デスクトップがロックされているか、保護されているか、利用できないため、共有を終了しました",
+    "데스크톱이 잠겨 있거나 보호되어 있거나 사용할 수 없어 공유가 종료되었습니다",
+    "El uso compartido ha terminado porque el escritorio está bloqueado, protegido o no disponible",
+    "Le partage a pris fin car le bureau est verrouillé, protégé ou indisponible",
+    "Die Freigabe wurde beendet, weil der Desktop gesperrt, geschützt oder nicht verfügbar ist"
+  ],
+  "Display sharing was suspended": [
+    "屏幕共享已暂停",
+    "画面共有が一時停止されました",
+    "화면 공유가 일시 중지되었습니다",
+    "Se ha suspendido el uso compartido de la pantalla",
+    "Le partage d’écran a été suspendu",
+    "Die Bildschirmfreigabe wurde unterbrochen"
+  ],
+  "Graphical session changed": [
+    "图形会话已更改",
+    "グラフィカルセッションが変わりました",
+    "그래픽 세션이 변경되었습니다",
+    "La sesión gráfica ha cambiado",
+    "La session graphique a changé",
+    "Die grafische Sitzung hat sich geändert"
+  ],
+  "Screen capture stopped": [
+    "屏幕捕获已停止",
+    "画面収録が停止しました",
+    "화면 캡처가 중지되었습니다",
+    "Se ha detenido la captura de pantalla",
+    "La capture d’écran s’est arrêtée",
+    "Die Bildschirmaufnahme wurde beendet"
+  ],
+  "Screen capture could not start": [
+    "无法开始屏幕捕获",
+    "画面収録を開始できませんでした",
+    "화면 캡처를 시작할 수 없습니다",
+    "No se ha podido iniciar la captura de pantalla",
+    "Impossible de démarrer la capture d’écran",
+    "Die Bildschirmaufnahme konnte nicht gestartet werden"
+  ],
+  "Screen Recording permission or an unlocked graphical session is required": [
+    "需要屏幕录制权限或已解锁的图形会话",
+    "画面収録の許可、またはロックが解除されたグラフィカルセッションが必要です",
+    "화면 기록 권한 또는 잠금이 해제된 그래픽 세션이 필요합니다",
+    "Se necesita permiso de grabación de pantalla o una sesión gráfica desbloqueada",
+    "Une autorisation d’enregistrement de l’écran ou une session graphique déverrouillée est nécessaire",
+    "Eine Berechtigung zur Bildschirmaufnahme oder eine entsperrte grafische Sitzung ist erforderlich"
+  ],
+  "Stopped on target": [
+    "已在目标电脑上停止",
+    "接続先で停止しました",
+    "대상 컴퓨터에서 중지했습니다",
+    "Detenido en el equipo de destino",
+    "Arrêté sur l’ordinateur distant",
+    "Am Zielcomputer beendet"
+  ],
+  "Display geometry changed": [
+    "显示器的位置或尺寸已更改",
+    "画面の位置またはサイズが変わりました",
+    "화면 위치 또는 크기가 변경되었습니다",
+    "Ha cambiado la posición o el tamaño de la pantalla",
+    "La position ou la taille de l’écran a changé",
+    "Position oder Größe des Bildschirms haben sich geändert"
+  ],
+  "Display geometry changed before sharing": [
+    "开始共享前显示器的位置或尺寸已更改",
+    "共有を始める前に画面の位置またはサイズが変わりました",
+    "공유하기 전에 화면 위치 또는 크기가 변경되었습니다",
+    "La posición o el tamaño de la pantalla ha cambiado antes de iniciar el uso compartido",
+    "La position ou la taille de l’écran a changé avant le partage",
+    "Position oder Größe des Bildschirms haben sich vor der Freigabe geändert"
+  ],
+  "Display geometry is unavailable": [
+    "无法获取显示器的位置或尺寸",
+    "画面の位置とサイズを取得できません",
+    "화면의 위치와 크기를 확인할 수 없습니다",
+    "No se puede determinar la posición o el tamaño de la pantalla",
+    "La position ou la taille de l’écran est indisponible",
+    "Position oder Größe des Bildschirms können nicht ermittelt werden"
+  ],
+  "Display layout changed": [
+    "显示器布局已更改",
+    "画面の配置が変わりました",
+    "화면 배치가 변경되었습니다",
+    "Ha cambiado la disposición de las pantallas",
+    "La disposition des écrans a changé",
+    "Die Bildschirmanordnung hat sich geändert"
+  ],
+  "Display stream ended": [
+    "屏幕视频流已结束",
+    "画面の映像配信が終了しました",
+    "화면 영상 전송이 종료되었습니다",
+    "La transmisión de la pantalla ha terminado",
+    "La diffusion de l’écran a pris fin",
+    "Die Bildschirmübertragung wurde beendet"
+  ],
+  "The approved display is no longer available": [
+    "已获准共享的显示器不再可用",
+    "共有を許可した画面は利用できなくなりました",
+    "공유를 허용한 화면을 더 이상 사용할 수 없습니다",
+    "La pantalla que se autorizó compartir ya no está disponible",
+    "L’écran dont le partage a été autorisé n’est plus disponible",
+    "Der zur Freigabe genehmigte Bildschirm ist nicht mehr verfügbar"
+  ],
+  "Linux screen capture failed": [
+    "Linux 屏幕捕获失败",
+    "Linux の画面をキャプチャできませんでした",
+    "Linux 화면을 캡처하지 못했습니다",
+    "Ha fallado la captura de pantalla en Linux",
+    "La capture d’écran sous Linux a échoué",
+    "Die Bildschirmaufnahme unter Linux ist fehlgeschlagen"
+  ],
+  "Portal sharing stopped": [
+    "系统已停止屏幕共享",
+    "システムのポータルで画面共有が停止しました",
+    "시스템 포털에서 화면 공유가 중지되었습니다",
+    "El portal del sistema ha detenido el uso compartido de la pantalla",
+    "Le portail système a arrêté le partage d’écran",
+    "Das Systemportal hat die Bildschirmfreigabe beendet"
+  ],
+  "Capture reader closed": [
+    "屏幕捕获读取端已关闭",
+    "画面キャプチャの読み取りが終了しました",
+    "화면 캡처 읽기가 종료되었습니다",
+    "Se ha cerrado el lector de captura de pantalla",
+    "Le lecteur de la capture d’écran s’est fermé",
+    "Das Lesen der Bildschirmaufnahme wurde beendet"
+  ],
+  "Coordinator disconnected": [
+    "与协调进程的连接已断开",
+    "接続を管理するプロセスとの通信が切れました",
+    "연결을 관리하는 프로세스와의 연결이 끊어졌습니다",
+    "Se ha perdido la conexión con el proceso que coordina la sesión",
+    "La connexion au processus qui coordonne la session a été interrompue",
+    "Die Verbindung zur Sitzungsverwaltung wurde getrennt"
+  ],
+  "Session closed": [
+    "会话已关闭",
+    "セッションが閉じられました",
+    "세션이 닫혔습니다",
+    "Sesión cerrada",
+    "Session fermée",
+    "Sitzung geschlossen"
+  ]
 };
 function m(key, args = {}) {
   const lang = language().toLowerCase(), index = locales.indexOf(lang.split("-")[0]);
@@ -61678,7 +62221,7 @@ function MachineDesktop({
     mediaPeer.current = pc;
     decoded.current = false;
     const gen = ++generation.current, localCandidates = [], remoteCandidates = [];
-    let live = true, offered = false, hasAnswer = false, tail = Promise.resolve(), cursor = 0, firstFrameTimer, frameCallback;
+    let live = true, offered = false, hasAnswer = false, tail = Promise.resolve(), cursor = 0, firstFrameTimer, frameCallback, previousVideo;
     setMedia(display.id === "portal" ? "Select a screen on the Linux computer" : "Connecting to display…");
     setPath(null);
     setZoom(1);
@@ -61767,10 +62310,18 @@ function MachineDesktop({
         const relay = [pair.localCandidateId, pair.remoteCandidateId].some(
           (id) => stats.get(id)?.candidateType === "relay"
         );
+        const elapsed = video2?.timestamp - previousVideo?.timestamp;
+        const received = video2?.bytesReceived - previousVideo?.bytesReceived;
+        const sameStream = video2?.id && video2.id === previousVideo?.id;
+        const kbps = sameStream && Number.isFinite(elapsed) && elapsed > 0 && Number.isFinite(received) && received >= 0 ? Math.round(received * 8 / elapsed) : void 0;
+        if (!sameStream || elapsed > 0) previousVideo = video2;
+        const drops = video2?.framesDropped;
         setPath({
           Transport: relay ? "TURN relay" : "Direct",
           Resolution: video2?.frameWidth && video2.frameWidth + " × " + video2.frameHeight,
           "Frame rate": Number.isFinite(video2?.framesPerSecond) && video2.framesPerSecond + " fps",
+          "Video bitrate": kbps === void 0 ? void 0 : kbps + " kbps",
+          "Dropped frames": Number.isSafeInteger(drops) && drops >= 0 ? String(drops) : void 0,
           "Round-trip time": Number.isFinite(pair.currentRoundTripTime) && Math.round(pair.currentRoundTripTime * 1e3) + " ms",
           Codec: stats.get(video2?.codecId)?.mimeType
         });
@@ -61945,10 +62496,22 @@ function MachineDesktop({
       (0, import_react97.createElement)(
         "dl",
         { className: "gb-machine-stats" },
-        ...["Transport", "Resolution", "Frame rate", "Round-trip time", "Codec"].flatMap((label) => [
-          (0, import_react97.createElement)("dt", { key: label }, m(label)),
-          (0, import_react97.createElement)("dd", { key: label + "-value" }, path2?.[label] || m("Not available"))
-        ])
+        ...[
+          "Transport",
+          "Resolution",
+          "Frame rate",
+          "Video bitrate",
+          "Dropped frames",
+          "Round-trip time",
+          "Codec"
+        ].flatMap((label) => {
+          const value = path2?.[label];
+          const displayValue = label === "Transport" && value ? m(value) : value;
+          return [
+            (0, import_react97.createElement)("dt", { key: label }, m(label)),
+            (0, import_react97.createElement)("dd", { key: label + "-value" }, displayValue || m("Not available"))
+          ];
+        })
       ),
       (0, import_react97.createElement)(
         "label",
@@ -62236,19 +62799,35 @@ function Computers({ client, close }) {
   }
   async function start(mode, reconnect = false) {
     await work(async (still) => {
-      if (reconnect) {
-        const hello2 = await local("connect", { id });
-        if (!still()) return;
+      const account = current2.current.hello?.account;
+      const params = { mode, requestId: uuid() };
+      const open = () => local("rpc", { id, method: "session.open", params, reportConnectionRequired: true });
+      async function reconnectHost() {
+        update({ hello: null, recovery: { mode, reason: "disconnected" } });
+        let hello2;
+        try {
+          hello2 = await local("connect", { id });
+        } catch (error) {
+          if (still() && unpaired(message(error))) update({ recovery: { unpaired: true } });
+          throw error;
+        }
+        if (!still()) return false;
         update({ hello: hello2, recovery: null });
         void refresh().catch(() => {
         });
-        if (!hello2[mode]) return;
+        return hello2[mode] && (mode !== "terminal" || hello2.account === account);
       }
-      const session2 = await local("rpc", {
-        id: current2.current.target.id,
-        method: "session.open",
-        params: { mode, requestId: uuid() }
-      });
+      if (reconnect && !await reconnectHost()) return;
+      let result = await open();
+      if (!reconnect && result.connectionRequired && still()) {
+        if (!await reconnectHost()) return;
+        result = await open();
+      }
+      if (result.connectionRequired) {
+        if (still()) update({ hello: null, recovery: { mode, reason: "disconnected" }, status: m("Connection lost") });
+        return;
+      }
+      const { session: session2 } = result;
       if (!still()) {
         await local("rpc", { id, method: "session.close", params: { sessionId: session2.sessionId } }).catch(
           () => {

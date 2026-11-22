@@ -81,7 +81,8 @@ export function MachineDesktop({
       tail = Promise.resolve(),
       cursor = 0,
       firstFrameTimer,
-      frameCallback
+      frameCallback,
+      previousVideo
     setMedia(display.id === 'portal' ? 'Select a screen on the Linux computer' : 'Connecting to display…')
     setPath(null)
     setZoom(1)
@@ -174,10 +175,21 @@ export function MachineDesktop({
         const relay = [pair.localCandidateId, pair.remoteCandidateId].some(
           (id) => stats.get(id)?.candidateType === 'relay',
         )
+        const elapsed = video?.timestamp - previousVideo?.timestamp
+        const received = video?.bytesReceived - previousVideo?.bytesReceived
+        const sameStream = video?.id && video.id === previousVideo?.id
+        const kbps =
+          sameStream && Number.isFinite(elapsed) && elapsed > 0 && Number.isFinite(received) && received >= 0
+            ? Math.round((received * 8) / elapsed)
+            : undefined
+        if (!sameStream || elapsed > 0) previousVideo = video
+        const drops = video?.framesDropped
         setPath({
           Transport: relay ? 'TURN relay' : 'Direct',
           Resolution: video?.frameWidth && video.frameWidth + ' × ' + video.frameHeight,
           'Frame rate': Number.isFinite(video?.framesPerSecond) && video.framesPerSecond + ' fps',
+          'Video bitrate': kbps === undefined ? undefined : kbps + ' kbps',
+          'Dropped frames': Number.isSafeInteger(drops) && drops >= 0 ? String(drops) : undefined,
           'Round-trip time':
             Number.isFinite(pair.currentRoundTripTime) && Math.round(pair.currentRoundTripTime * 1000) + ' ms',
           Codec: stats.get(video?.codecId)?.mimeType,
@@ -374,10 +386,16 @@ export function MachineDesktop({
         h(
           'dl',
           { className: 'gb-machine-stats' },
-          ...['Transport', 'Resolution', 'Frame rate', 'Round-trip time', 'Codec'].flatMap((label) => [
-            h('dt', { key: label }, m(label)),
-            h('dd', { key: label + '-value' }, path?.[label] || m('Not available')),
-          ]),
+          ...[
+            'Transport', 'Resolution', 'Frame rate', 'Video bitrate', 'Dropped frames', 'Round-trip time', 'Codec',
+          ].flatMap((label) => {
+            const value = path?.[label]
+            const displayValue = label === 'Transport' && value ? m(value) : value
+            return [
+              h('dt', { key: label }, m(label)),
+              h('dd', { key: label + '-value' }, displayValue || m('Not available')),
+            ]
+          }),
         ),
         h(
           'label',

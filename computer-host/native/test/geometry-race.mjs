@@ -30,6 +30,7 @@ test('rejects a layout change between probe and native stream readiness', async 
     '#!/usr/bin/env node\n' +
       `
 const fs=require('node:fs')
+if (process.argv[2]==='launch') process.argv.splice(2,1)
 if (process.argv[2]==='probe') {
   console.log(JSON.stringify({available:true,control:true,displays:[{id:'7',name:'Monitor',width:800,height:600,revision:104}]}))
 } else {
@@ -43,7 +44,7 @@ if (process.argv[2]==='probe') {
   process.env.GODBOT_DESKTOP_RUNTIME = root
   process.env.GODBOT_DESKTOP_FFMPEG = rtc
   await assert.rejects(
-    createDesktopAdapter().start({
+    createDesktopAdapter({ directory: root }).start({
       sessionId: 'geometry-test',
       displayId: '7',
     }),

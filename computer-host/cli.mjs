@@ -13,6 +13,8 @@ const help = `Godbot Computer Host
   godbot-computer pair [--qr | --out FILE]
   godbot-computer grant DEVICE_ID terminal|desktop.view|desktop.control
   godbot-computer ungrant DEVICE_ID SCOPE
+  godbot-computer remember-portal DEVICE_ID desktop.view|desktop.control
+  godbot-computer forget-portal DEVICE_ID desktop.view|desktop.control
   godbot-computer approve|deny|stop SESSION_ID
   godbot-computer revoke DEVICE_ID
   godbot-computer install-service [--relay URL] [--name NAME] [--headless]
@@ -20,6 +22,9 @@ const help = `Godbot Computer Host
 
 --home DIRECTORY selects the host identity and local control socket.
 --headless starts a terminal-only host. --no-prompts uses local CLI decisions.
+On Wayland, remember-portal lets this controller reuse a screen you select in
+the local system picker. Grant the matching desktop scope first. View and
+control each have their own setting. Use forget-portal to clear one setting.
 A shell grant runs a real interactive shell as the current OS user.`
 
 async function main() {
