@@ -15,12 +15,16 @@
 // Where DSH reloads plugins in place (its `hmr` service), the install goes through
 // DSH's own CLI, `dsh plugin --profile <name> add` (what install-local runs), not
 // the plugin manager in this process: that one imports the new version here at
-// once, into a process that has already resolved Godbot's dependencies. When pnpm
-// moves one of them during the install (a dedupe), the old path stays cached, the
-// import fails, and Godbot stops until DSH restarts. The CLI leaves the running
-// version alone; the next start loads the new one in a fresh process. Where the CLI
-// cannot be found the plugin manager still installs, and a release that lands in
-// the profile but does not start in place is reported as waiting for that restart.
+// once. DSH keeps the module resolutions this process made until it publishes a
+// changed runtime resolution, so when pnpm moves a copy of one of Godbot's
+// dependencies during the install (a dedupe) and that table stays the same, the
+// new version still opens the old path, its import fails, and Godbot stops. The CLI
+// leaves the running version alone; the next start loads the new one in a fresh
+// process. Where the CLI cannot be found the plugin manager still installs. A
+// release that lands in the profile but does not start in place is started again:
+// DSH publishes its resolution afresh and the bundle is enabled again, which imports
+// the new version from the current layout. If that fails too, the release waits for
+// the next DSH start.
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
@@ -64,6 +68,30 @@ export const cleanVersion = value => VERSION.exec(String(value ?? '').trim())?.[
  */
 const landed = (result, version) => result?.application === 'failed' && result.changed === true
   && result.stage === 'enable' && cleanVersion(result.version) === version
+
+/**
+ * Start a release the plugin manager installed but could not start in place (see the top
+ * of this file and https://github.com/deepseek-ai/deepseek-harness/discussions/14056).
+ * Publishing DSH's runtime resolution again drops the module resolutions it kept, and
+ * enabling the bundle again imports the new version from the current layout. The bundle
+ * stays selected throughout, so a failure here changes nothing the next start reads.
+ * @param service DSH's plugin manager.
+ * @param packages DSH's `pluginPackages` service, taken before the install stopped this host.
+ * @param reloads DSH's `hmr` service, which serializes the publication with its reloads.
+ * @returns null once the bundle runs again, else why it does not.
+ */
+async function startInPlace(service, packages, reloads) {
+  if (typeof packages?.refresh !== 'function') return 'DSH cannot publish its module resolution again here'
+  if (typeof service?.setBundleEnabled !== 'function') return 'the plugin manager cannot enable bundles'
+  try {
+    await (typeof reloads?.runExclusive === 'function' ? reloads.runExclusive(() => packages.refresh()) : packages.refresh())
+  } catch (error) {
+    return `publishing the module resolution failed: ${error?.message ?? error}`
+  }
+  const on = await Promise.resolve(service.setBundleEnabled(PKG.name, true)).catch(error => ({ error: { code: error?.message ?? String(error) } }))
+  if (on?.application === 'applied' && !on.error) return null
+  return `enabling ${PKG.name} answered ${on?.error?.diagnostic ?? on?.error?.code ?? on?.application ?? 'nothing'}`
+}
 
 /**
  * How the profile installed this package, from the plugin manager's `source` spec:
@@ -626,6 +654,9 @@ export function install(rt) {
       return
     }
     const options = chosen.registry ? { registry: chosen.registry } : {}
+    // Taken now: the install can stop this host, and with it the context that finds them.
+    const packages = ctx.get?.('pluginPackages')
+    const reloads = ctx.get?.('hmr')
     void Promise.resolve()
       .then(() => service.installBundle(chosen.spec, options))
       .then(async (result) => {
@@ -681,11 +712,15 @@ export function install(rt) {
           throw Object.assign(error instanceof Error ? error : new Error(String(error)), { reported: true })
         }
       })
-      .then((result) => {
+      .then(async (result) => {
         if (landed(result, chosen.version)) {
           // DSH reloaded the plugin in place and the new version did not start: the
-          // old one is already stopped, and the next DSH start runs the new one.
-          note('godbot: Godbot %s is installed but did not start in this DSH; restart DSH to use it: %s', chosen.version, result.error?.diagnostic ?? result.error?.code)
+          // old one is already stopped. Start the new one again; failing that, the next
+          // DSH start runs it. Either way the note stays for the start that runs it.
+          const why = result.error?.diagnostic ?? result.error?.code
+          const retry = await startInPlace(service, packages, reloads)
+          if (retry === null) note('godbot: Godbot %s did not start in place (%s); it started after DSH published its module resolution again', chosen.version, why)
+          else note('godbot: Godbot %s is installed but did not start in this DSH; restart DSH to use it: %s; starting it again: %s', chosen.version, why, retry)
           installed(chosen.version)
           return
         }

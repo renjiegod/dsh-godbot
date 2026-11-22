@@ -502,14 +502,16 @@ test('a release DSH\'s CLI could not install leaves the running version in place
   assert.equal(existsSync(join(other.home, 'update.json')), false)
 })
 
+const DIAGNOSTIC = 'dsh: warning: 1 entry did not activate\ngodbot (dsh-godbot): failed to import: Error: ENOENT: no such file or directory, open \'node_modules/openid-client/node_modules/jose/dist/webapi/jwe/compact/decrypt.js\''
+// What the plugin manager answers when the package landed in the profile but its import failed in place.
+const notStarted = () => ({ stage: 'enable', target: PKG.name, bundle: PKG.name, version: NEXT, changed: true, application: 'failed', error: { code: 'operation-error', diagnostic: DIAGNOSTIC } })
+const restartNote = warnings => warnings.find(([template]) => template.includes('restart DSH to use it'))
+
 test('a release the plugin manager installed but could not start in place waits for the next DSH start', async () => {
   const next = release(NEXT)
-  const diagnostic = 'dsh: warning: 1 entry did not activate\ngodbot (dsh-godbot): failed to import: Error: ENOENT: no such file or directory, open \'node_modules/openid-client/node_modules/jose/dist/webapi/jwe/compact/decrypt.js\''
   // DSH reloads in place, but its CLI cannot be found: the plugin manager in this process installs.
-  const h = harness({
-    releases: [next], hmr: true,
-    install: () => ({ stage: 'enable', target: PKG.name, bundle: PKG.name, version: NEXT, changed: true, application: 'failed', error: { code: 'operation-error', diagnostic } }),
-  })
+  // This DSH offers no pluginPackages service to publish its resolution again with.
+  const h = harness({ releases: [next], hmr: true, install: notStarted })
   await installWhenIdle(h)
   assert.equal(h.installs.length, 1)
   const view = h.rt.updateView()
@@ -517,6 +519,7 @@ test('a release the plugin manager installed but could not start in place waits 
   const marker = JSON.parse(readFileSync(join(h.home, 'update.json'), 'utf8'))
   assert.deepEqual([marker.from, marker.to, marker.error], [PKG.version, NEXT, undefined])
   assert.ok(h.warnings.some(([template]) => template.includes('did not start in this DSH')))
+  assert.equal(restartNote(h.warnings).at(-1), 'DSH cannot publish its module resolution again here')
 
   // A run that failed before the package landed was undone: nothing waits for a restart.
   const refused = harness({
@@ -526,4 +529,57 @@ test('a release the plugin manager installed but could not start in place waits 
   await installWhenIdle(refused)
   assert.equal(refused.rt.updateView().phase, 'failed')
   assert.equal(existsSync(join(refused.home, 'update.json')), false)
+})
+
+test('a release that did not start in place starts after DSH publishes its module resolution again', async () => {
+  const next = release(NEXT)
+  const steps = []
+  const h = harness({ releases: [next], hmr: true, install: notStarted })
+  // The publication runs serialized with DSH's reloads; enabling the bundle again imports the new version.
+  h.services.hmr = { runExclusive: async (operation) => { steps.push('exclusive'); return operation() } }
+  h.services.pluginPackages = { refresh: async () => { steps.push('refresh') } }
+  h.manager.setBundleEnabled = async (name, enabled) => {
+    steps.push(['enable', name, enabled])
+    return { stage: 'enable', target: name, enabled, changed: false, application: 'applied', warnings: [] }
+  }
+  await installWhenIdle(h)
+  assert.equal(h.installs.length, 1)
+  assert.deepEqual(steps, ['exclusive', 'refresh', ['enable', PKG.name, true]])
+  const started = h.warnings.find(([template]) => template.includes('started after DSH published its module resolution again'))
+  assert.deepEqual(started.slice(1), [NEXT, DIAGNOSTIC])
+  assert.equal(restartNote(h.warnings), undefined)
+  // The new version's first start reads the note and reports the update.
+  const marker = JSON.parse(readFileSync(join(h.home, 'update.json'), 'utf8'))
+  assert.deepEqual([marker.from, marker.to, marker.error], [PKG.version, NEXT, undefined])
+  assert.deepEqual([h.rt.updateView().phase, h.rt.updateView().installed], ['installed', NEXT])
+})
+
+test('a release that does not start again in place still waits for the next DSH start, its bundle untouched', async () => {
+  const next = release(NEXT)
+  // DSH refuses to publish the resolution: the bundle is not enabled again.
+  const refused = harness({ releases: [next], hmr: true, install: notStarted })
+  const enabled = []
+  refused.services.pluginPackages = { refresh: async () => { throw new Error('profile resolution: replacing "jose" requires a process restart') } }
+  refused.manager.setBundleEnabled = async (...args) => { enabled.push(args); return { application: 'applied' } }
+  await installWhenIdle(refused)
+  assert.deepEqual(enabled, [])
+  assert.equal(restartNote(refused.warnings).at(-1), 'publishing the module resolution failed: profile resolution: replacing "jose" requires a process restart')
+  assert.deepEqual([refused.rt.updateView().phase, refused.rt.updateView().installed], ['installed', NEXT])
+  assert.equal(existsSync(join(refused.home, 'update.json')), true)
+
+  // Enabling the bundle again does not start it either.
+  const stuck = harness({ releases: [next], hmr: true, install: notStarted })
+  stuck.services.pluginPackages = { refresh: async () => {} }
+  stuck.manager.setBundleEnabled = async name => ({ stage: 'enable', target: name, changed: false, application: 'failed', error: { code: 'operation-error', diagnostic: 'dsh: warning: 1 entry did not activate' } })
+  await installWhenIdle(stuck)
+  assert.equal(restartNote(stuck.warnings).at(-1), `enabling ${PKG.name} answered dsh: warning: 1 entry did not activate`)
+  assert.deepEqual([stuck.rt.updateView().phase, stuck.rt.updateView().installed], ['installed', NEXT])
+  assert.equal(existsSync(join(stuck.home, 'update.json')), true)
+
+  // A plugin manager that throws is reported the same way.
+  const thrown = harness({ releases: [next], hmr: true, install: notStarted })
+  thrown.services.pluginPackages = { refresh: async () => {} }
+  thrown.manager.setBundleEnabled = async () => { throw new Error('lock wait timed out') }
+  await installWhenIdle(thrown)
+  assert.equal(restartNote(thrown.warnings).at(-1), `enabling ${PKG.name} answered lock wait timed out`)
 })
