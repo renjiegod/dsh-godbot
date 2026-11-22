@@ -3,17 +3,28 @@
 // installed from — the npm registry, a GitHub tag for a versioned git install, or
 // the repository's GitHub releases for a packed archive (what
 // scripts/install-local.mjs installs, and every update after it) — and reinstall
-// it through DSH's plugin manager. A linked or local checkout is never offered one.
+// it through DSH. A linked or local checkout is never offered one.
 //
 // The host also looks by itself, on a clock, the way magpie's updater does:
 // at start and every six hours. A release archive is fetched and verified as soon
 // as it is found, so installing is local. With automatic updates on, the archive
 // is installed once Godbot has been idle for a while (no turn running, no native
 // terminal open); otherwise the sidebar and About offer it. A new version runs
-// from the next DSH start, or at once where DSH reloads plugins in place.
+// from the next DSH start.
+//
+// Where DSH reloads plugins in place (its `hmr` service), the install goes through
+// DSH's own CLI, `dsh plugin --profile <name> add` (what install-local runs), not
+// the plugin manager in this process: that one imports the new version here at
+// once, into a process that has already resolved Godbot's dependencies. When pnpm
+// moves one of them during the install (a dedupe), the old path stays cached, the
+// import fails, and Godbot stops until DSH restarts. The CLI leaves the running
+// version alone; the next start loads the new one in a fresh process. Where the CLI
+// cannot be found the plugin manager still installs, and a release that lands in
+// the profile but does not start in place is reported as waiting for that restart.
+import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join, resolve } from 'node:path'
 import {
   archiveManifest, compatibility, createNet, defaultArchiveDir, downloadArchive, dropPartials, newer, newestRelease, releasesApi,
 } from './update-release.js'
@@ -33,15 +44,26 @@ const STARTUP_DELAY_MS = 15_000
 export const AUTO_CHECK_MS = 6 * 60 * 60_000
 export const RETRY_MS = 30 * 60_000
 export const IDLE_MS = 2 * 60_000
+// How long DSH's CLI may take to install a release before the update counts as failed.
+export const INSTALL_TIMEOUT_MS = 20 * 60_000
 const TICK_MS = 60_000
 // auto: check, download and install when idle; notify: check and download, install
 // on a click; off: only a click on Check for updates asks.
 export const UPDATE_MODES = ['auto', 'notify', 'off']
 const VERSION = /^v?(\d+\.\d+\.\d+(?:-[\w.]+)?)(?:\+[\w.]+)?$/
 const APP_BOOT = '@deepseek-ai/dsh-app-boot'
+const DSH_CLI = '@deepseek-ai/dsh'
 
 /** A release version without its `v` and build metadata, or null. */
 export const cleanVersion = value => VERSION.exec(String(value ?? '').trim())?.[1] ?? null
+
+/**
+ * Whether the plugin manager put `version` into the profile and then could not start
+ * it: once pnpm has finished it answers `failed` from the enable stage without undoing
+ * the profile, so that version runs from the next DSH start.
+ */
+const landed = (result, version) => result?.application === 'failed' && result.changed === true
+  && result.stage === 'enable' && cleanVersion(result.version) === version
 
 /**
  * How the profile installed this package, from the plugin manager's `source` spec:
@@ -111,6 +133,61 @@ export function profileDependencies(ctx) {
   try {
     return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).dependencies ?? {}
   } catch { return null }
+}
+
+/**
+ * How to install into this profile without loading the new version into the running
+ * process: DSH's own `dsh plugin --profile <name>`, run by the node running DSH. Only
+ * where DSH reloads plugins in place (see the top of this file); null elsewhere, and
+ * where the CLI or this profile's place below DSH_HOME cannot be confirmed.
+ */
+export function profileCommand(ctx) {
+  if (ctx.get?.('hmr') === undefined) return null
+  const { name, dir, home, installAnchor } = ctx.get?.('profileContext') ?? {}
+  if (![name, dir, home, installAnchor].every(value => typeof value === 'string' && value !== '')) return null
+  // The desktop app manages its own profile, and the CLI refuses it while the app runs.
+  if (name.toLowerCase() === 'desktop') return null
+  try {
+    const manifest = JSON.parse(readFileSync(installAnchor, 'utf8'))
+    const bin = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.dsh
+    if (manifest.name !== DSH_CLI || typeof bin !== 'string') return null
+    const cli = resolve(dirname(installAnchor), bin)
+    // The CLI finds a profile by name below DSH_HOME; it has to be the one running here.
+    if (!existsSync(cli) || realpathSync(join(home, 'profiles', name)) !== realpathSync(dir)) return null
+    return { command: process.execPath, args: [cli, 'plugin', '--profile', name], cwd: dir, env: { ...process.env, DSH_HOME: home } }
+  } catch { return null }
+}
+
+// Run a command to its end, keeping the tail of what it printed for a failure message.
+function runCommand(spawnProcess, { command, args, cwd, env }, timeoutMs) {
+  return new Promise((done) => {
+    let output = ''
+    const keep = (chunk) => { output = `${output}${chunk}`.slice(-4000) }
+    let child
+    try {
+      child = spawnProcess(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+    } catch (error) {
+      done({ code: null, output: String(error?.message ?? error) })
+      return
+    }
+    let settled = false
+    const timer = setTimeout(() => {
+      keep(`\nstopped after ${Math.round(timeoutMs / 60_000)} minutes`)
+      child.kill?.()
+    }, timeoutMs)
+    timer.unref?.()
+    const finish = (code, error) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      if (error !== undefined) keep(`\n${error?.message ?? error}`)
+      done({ code, output })
+    }
+    child.stdout?.on?.('data', keep)
+    child.stderr?.on?.('data', keep)
+    child.once?.('error', error => finish(null, error))
+    child.once?.('close', code => finish(code))
+  })
 }
 
 /**
@@ -190,6 +267,7 @@ export function install(rt) {
   const { ctx, config } = rt
   const enabled = updatesEnabled(config)
   const manager = () => ctx.get?.('pluginManager')
+  const spawnProcess = rt.updateSpawn ?? spawn
   const userAgent = `${PKG.name}/${PKG.version}`
   const net = rt.updateNet ?? createNet({ userAgent, timeoutMs: FETCH_TIMEOUT_MS })
   const archiveDir = typeof config.updateArchiveDir === 'string' && config.updateArchiveDir !== '' ? config.updateArchiveDir : defaultArchiveDir()
@@ -477,26 +555,44 @@ export function install(rt) {
     if (target === null) throw new Error('No Godbot update is available')
     if (blocked !== null) throw new Error(blockedText(blocked))
     const service = manager()
-    if (typeof service?.installBundle !== 'function') throw new Error('The DSH plugin manager is not available in this profile')
+    // DSH's CLI where the plugin manager would reload this plugin in place; the plugin manager elsewhere.
+    const command = profileCommand(ctx)
+    if (command === null && typeof service?.installBundle !== 'function') throw new Error('The DSH plugin manager is not available in this profile')
     if (target.asset !== undefined && target.archive === undefined) {
       // A click before the download finished (or after it failed) fetches it first
       // and installs it once it is verified.
       const chosen = target
       if (status.phase === 'failed') Object.assign(status, { phase: 'idle', error: null })
       void prepare({ force: true }).then(() => {
-        if (target === chosen && chosen.archive !== undefined && status.phase === 'ready') begin(chosen, auto, service)
+        if (target === chosen && chosen.archive !== undefined && status.phase === 'ready') begin(chosen, auto, service, command)
       })
       return view()
     }
-    begin(target, auto, service)
+    begin(target, auto, service, command)
     return view()
   }
 
-  function begin(chosen, auto, service) {
+  // DSH's CLI installs into the profile and leaves this process on the running version.
+  async function installWithCli(chosen, command) {
+    const args = [...command.args, 'add', '--save-exact', chosen.spec, ...(chosen.registry ? [`--registry=${chosen.registry}`] : [])]
+    const { code, output } = await runCommand(spawnProcess, { ...command, args }, INSTALL_TIMEOUT_MS)
+    if (code !== 0) {
+      const tail = output.trim().slice(-400)
+      throw new Error(`dsh plugin add ${code === null ? 'did not finish' : `exited ${code}`}${tail ? `: ${tail}` : ''}`)
+    }
+    // The profile now names the verified archive; anything else is not what was checked.
+    if (chosen.archive !== undefined) {
+      const saved = profileDependencies(ctx)?.[PKG.name]
+      if (typeof saved !== 'string' || basename(saved) !== basename(chosen.archive)) {
+        throw new Error(`dsh plugin add left ${PKG.name} at ${saved ?? 'no version'}, not ${basename(chosen.archive)}`)
+      }
+    }
+  }
+
+  function begin(chosen, auto, service, command) {
     Object.assign(status, { phase: 'installing', error: null })
     waiting = null
     idleSince = 0
-    const options = chosen.registry ? { registry: chosen.registry } : {}
     // Removing or replacing this bundle disposes our context before the promise
     // answers, so the continuation uses plain fs for the note and a guarded logger.
     const note = (template, ...args) => { try { rt.warn(template, ...args) } catch { /* our context is disposed */ } }
@@ -511,9 +607,25 @@ export function install(rt) {
     }
     // A refused install leaves this version running, with nothing for a later start to report.
     const unmark = () => { if (markerPath !== null) try { unlinkSync(markerPath) } catch { /* already gone */ } }
-    // Written before the plugin manager can reload this plugin in place: the new
-    // version's first start reads it.
+    // Written before the install can reload this plugin in place: the new version's
+    // first start reads it.
     mark()
+    // The note stays: the start that runs the new version reports it.
+    const installed = version => Object.assign(status, { phase: 'installed', installed: cleanVersion(version) ?? chosen.version })
+    const failed = (error) => {
+      if (!error?.reported) unmark()
+      if (auto) autoSkip = chosen.version
+      note('godbot: update to %s failed: %s', chosen.version, error?.message ?? error)
+      Object.assign(status, { phase: 'failed', error: String(error?.message ?? error).slice(0, 600) })
+    }
+    if (command !== null) {
+      void installWithCli(chosen, command).then(() => {
+        installed(chosen.version)
+        note('godbot: Godbot %s is installed; it runs from the next DSH start', chosen.version)
+      }, failed)
+      return
+    }
+    const options = chosen.registry ? { registry: chosen.registry } : {}
     void Promise.resolve()
       .then(() => service.installBundle(chosen.spec, options))
       .then(async (result) => {
@@ -553,6 +665,9 @@ export function install(rt) {
         }
         try {
           const again = await service.installBundle(chosen.spec, options)
+          // Installed but not started in place: the next start runs it, so the old
+          // version is not put back over it.
+          if (landed(again, chosen.version)) return again
           // A failure also arrives as an application state with no error; the
           // result check below rejects every one of those, so restore sees the
           // same failures it does.
@@ -567,22 +682,23 @@ export function install(rt) {
         }
       })
       .then((result) => {
+        if (landed(result, chosen.version)) {
+          // DSH reloaded the plugin in place and the new version did not start: the
+          // old one is already stopped, and the next DSH start runs the new one.
+          note('godbot: Godbot %s is installed but did not start in this DSH; restart DSH to use it: %s', chosen.version, result.error?.diagnostic ?? result.error?.code)
+          installed(chosen.version)
+          return
+        }
         if (result?.error || !['applied', 'restart-required'].includes(result?.application)) {
-          // A direct install that failed restored the profile: the running version
-          // stays, and nothing is left for a later start to report. A removal that
-          // went wrong already wrote what happened into the note.
+          // A direct install that failed before the package landed restored the
+          // profile: the running version stays, and nothing is left for a later start
+          // to report. A removal that went wrong already wrote what happened into the note.
           if (!result?.reported) unmark()
           throw Object.assign(new Error(result?.error?.diagnostic ?? result?.error?.code ?? `install ${result?.application ?? 'failed'}`), { reported: true })
         }
-        // The note stays: the start that runs the new version reports it.
-        Object.assign(status, { phase: 'installed', installed: cleanVersion(result.version) ?? chosen.version })
+        installed(result.version)
       })
-      .catch((error) => {
-        if (!error?.reported) unmark()
-        if (auto) autoSkip = chosen.version
-        note('godbot: update to %s failed: %s', chosen.version, error?.message ?? error)
-        Object.assign(status, { phase: 'failed', error: String(error?.message ?? error).slice(0, 600) })
-      })
+      .catch(failed)
   }
 
   function blockedText(problem) {
