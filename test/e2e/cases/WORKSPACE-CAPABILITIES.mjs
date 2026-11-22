@@ -253,6 +253,7 @@ async function exerciseRemote(host, ci, fixture) {
     return run && current?.status === 'reported' && current
   }, 'remote Agent reported back to a manually assigned task')
   assert.match(dispatched.evidence, /REMOTE-ANSWER-/)
+  await openBotChat(host, bot)
   const openHistory = page.getByRole('button', { name: '查看会话执行记录', exact: true })
   await openHistory.click()
   const activity = page.locator('details').filter({ has: page.getByText('远程 Agent 事件', { exact: true }) })
