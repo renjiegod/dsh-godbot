@@ -15,7 +15,7 @@ import { SPRING_GLIDE, SPRING_POP, SPRING_SHAPE, SPRING_TAP, stepMenuFocus, useL
 import { hostText, t } from './i18n.js'
 import { clientErrors } from './diagnostics.js'
 import { showsDshRow } from './dsh-offer.js'
-import { downloadText, readyText, sentences } from './about.js'
+import { downloadText, readyText, RestartDshButton, sentences } from './about.js'
 import { quietly } from './diagnostics.js'
 import { frameLayout, dragColumn, RAIL_WIDTH, FALLBACK_SIDEBAR_WIDTH, userSidebarToggle } from './frame-layout.js'
 import { chatRoom, dshCollapsed } from './frame-watch.js'
@@ -915,12 +915,14 @@ function UpdateNotice({ wide, useUpdate, actions }) {
         : dshPhase === 'installed' ? t('Restart DSH to start using DSH {version}.', { version: dsh.installed ?? dsh.verified })
           : pending ?? (update?.available ? t('Godbot {version} is available', { version: update.latest })
             : t('DSH {version} is available', { version: dsh?.verified }))
-  const summary = phase === 'failed' || error ? t('Godbot update failed')
+  const summary = update?.restart?.pending ? t('Restarting DSH…')
+    : phase === 'failed' || error ? t('Godbot update failed')
     : dshPhase === 'failed' || dshError ? t('DSH update failed')
       : phase === 'ready' ? t('Godbot {version} is ready to install', { version: update.latest })
         : label
   const message = error || (phase === 'failed' ? update.error : '')
   const dshMessage = dshError || (dshPhase === 'failed' ? dsh?.error : '')
+  const restartControl = h(RestartDshButton, { update, actions, className: 'bt-update-go' })
   const dshText = dshPhase === 'installed'
     ? t('Restart DSH to start using DSH {version}.', { version: dsh.installed ?? dsh.verified })
     : dsh?.available === false && dsh?.blockedBy
@@ -950,7 +952,7 @@ function UpdateNotice({ wide, useUpdate, actions }) {
         message ? h('div', { className: 'bt-update-error', role: 'alert' }, t('The update did not finish: {reason}', { reason: message })) : null,
         h('div', { className: 'bt-update-actions' },
           update.notesUrl ? h('a', { className: 'bt-update-notes', href: update.notesUrl, target: '_blank', rel: 'noopener noreferrer' }, t("What's new")) : null,
-          phase === 'installed' || phase === 'updated' ? null : h('button', {
+          phase === 'installed' ? restartControl : phase === 'updated' ? null : h('button', {
             type: 'button', className: 'bt-update-go', disabled: phase === 'installing', onClick: start,
           }, phase === 'installing' ? t('Updating…') : phase === 'failed' ? t('Try again') : phase === 'downloading' ? t('Install when downloaded') : t('Update')))) : null,
       dshRow ? h('div', { className: 'bt-update-dsh' },
@@ -962,10 +964,11 @@ function UpdateNotice({ wide, useUpdate, actions }) {
             ? h('button', { type: 'button', className: 'bt-update-go', onClick: () => void actions.openAppUpdates(dsh.verified).catch(() => {}) }, t('Open updates'))
             : null)
             : !dsh.available && dshPhase === 'idle' ? null
-              : dshPhase === 'installed' ? null
+              : dshPhase === 'installed' ? phase === 'installed' ? null : restartControl
                 : h('button', {
                   type: 'button', className: 'bt-update-go', disabled: dshPhase === 'installing', onClick: startDsh,
-                }, dshPhase === 'installing' ? t('Updating…') : dshPhase === 'failed' ? t('Try again') : t('Update')))) : null), document.body) : null)
+                }, dshPhase === 'installing' ? t('Updating…') : dshPhase === 'failed' ? t('Try again') : t('Update')))) : null,
+      update?.restart?.error ? h('div', { className: 'bt-update-error', role: 'alert' }, update.restart.error) : null), document.body) : null)
 }
 
 // Account seat of the Settings trigger: the visible label stays for assistive tech only.

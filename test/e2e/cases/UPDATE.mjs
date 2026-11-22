@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { readFile, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { findExecutable } from '../../../src/drivers/external/discover.js'
@@ -68,8 +68,12 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     assert.ok(existsSync(archive), 'the verified archive is kept where install-local keeps its own')
 
     // The sidebar advertises the ready release before Settings is opened.
-    await openFullTeam(host)
+    const mainBot = await openFullTeam(host)
     const { page } = host
+    const earlyRestart = await page.evaluate(async () => (await fetch('api/godbot/team', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: 'update-restart' }),
+    })).json())
+    assert.equal(earlyRestart.error?.code, 'bot/refused', 'restart requires an installed update')
     const readyLabel = new RegExp(`^Godbot ${version.replaceAll('.', '\\.')} (可以安装|is ready to install)$`, 'u')
     const notice = page.locator('.bt-leftcol[data-left=open]').getByRole('button', { name: readyLabel })
     await notice.getByText(readyLabel).waitFor()
@@ -116,20 +120,43 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     const dependency = JSON.parse(readFileSync(manifest, 'utf8')).dependencies?.['dsh-godbot']
     assert.ok(dependency?.endsWith(archive), `the profile installs ${dependency}`)
     assert.equal((await host.snapshot()).buildId, candidate.buildId)
-    // The sidebar (and the details, while open) ask for the restart.
+    await assert.rejects(host.bot('update-restart'), /Unknown endpoint update-restart/u, 'only the authenticated browser route can restart DSH')
     const v = version.replaceAll('.', '\\.')
-    await page.getByText(new RegExp(`^(Godbot ${v} 已安装，重启 DSH 后生效|Godbot ${v} is installed\\. Restart DSH to use it\\.|重启 DSH 后开始使用 Godbot ${v}。|Restart DSH to start using Godbot ${v}\\.)$`, 'u')).first().waitFor()
+    const installedLabel = new RegExp('^Godbot ' + v + ' (已安装，重启 DSH 后生效|is installed\\. Restart DSH to use it\\.)$', 'u')
+    const installedNotice = page.getByRole('button', { name: installedLabel })
+    if (await installedNotice.getAttribute('aria-expanded') === 'false') await installedNotice.click()
+    const restartLabel = /^(重启 DSH|Restart DSH)$/u
+    const sidebarRestart = details.getByRole('button', { name: restartLabel })
+    await sidebarRestart.waitFor()
+    await details.evaluate(panel => Promise.all(panel.getAnimations().map(animation => animation.finished)))
     await host.capture('update-installed')
     note('update-installed', { from: candidate.version, to: version, phase: installed.phase, running: installed.current, dependency })
 
-    // The next start is a new process: the release loads there.
-    await rm(trap)
-    await host.restart()
+    await page.keyboard.press('Escape')
+    await details.waitFor({ state: 'hidden' })
+    await openSettingsPage(host, /^(关于 Godbot|About Godbot)$/u)
+    await page.locator('.bt-settings-layer').getByRole('button', { name: restartLabel }).waitFor()
+    await page.locator('button.bt-settings-close:visible').click()
+    await installedNotice.click()
+
+    // Leave the trap in place. Only a new DSH with a fresh environment can load the release.
+    const before = await host.bot('hello')
+    await Promise.all([
+      page.waitForEvent('domcontentloaded', { timeout: 90_000 }),
+      sidebarRestart.click(),
+      details.getByRole('button', { name: /^(正在重启 DSH…|Restarting DSH…)$/u }).waitFor(),
+    ])
+    assert.equal(new URL(page.url()).origin, host.url)
     const after = await host.bot('update-check', { fresh: false })
     assert.equal(after.current, version)
     assert.equal(after.phase, 'updated')
     assert.equal(after.available, false)
-    note('update-running', { version: after.current, phase: after.phase, asked: [...new Set(asked)] })
+    assert.equal((await host.snapshot()).buildId, next.buildId)
+    assert.notEqual((await host.bot('hello')).boot, before.boot)
+    assert.equal((await host.bot('state')).mainBotId, mainBot, 'the restarted browser still uses the same profile')
+    await page.getByRole('button', { name: new RegExp('^Godbot ' + v + ' (已安装。|is installed\\.)$', 'u') }).waitFor()
+    await host.capture('update-restarted')
+    note('update-running', { version: after.current, phase: after.phase, buildId: next.buildId, automaticBrowserReload: true, asked: [...new Set(asked)] })
   } finally {
     await new Promise(resolve => server.close(resolve))
   }
