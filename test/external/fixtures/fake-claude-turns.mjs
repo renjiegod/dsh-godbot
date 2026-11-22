@@ -4,8 +4,9 @@
 // - resuming a session id that starts with "orphan-": before the first prompt runs,
 //   a task-notification turn for the task the previous process left running, which
 //   ends at once with a result of its own (num_turns 0, origin task-notification);
-// - "BACKGROUND": the reply starts a background task, which ends a moment later and
-//   wakes the model into a turn of its own;
+// - "BACKGROUND": the reply starts a background task, which ends a moment later (or
+//   after "BACKGROUND <ms>") and wakes the model into a turn of its own
+//   ("BACKGROUND SLOW": that turn streams slowly);
 // - "TASK <ms>": the reply starts a background task reported the way Claude Code does
 //   (background_tasks_changed with every live task, task_started, task_updated,
 //   task_notification) that ends <ms> later and wakes the model; without <ms> it never
@@ -85,9 +86,9 @@ async function turnFor({ uuid, text }) {
     result()
     lifecycle(uuid, 'completed')
     setTimeout(() => {
-      wakeups.push({ text: 'autonomous: the background task finished' })
+      wakeups.push({ text: 'autonomous: the background task finished', pause: text.includes('SLOW') ? 40 : 0 })
       void pump()
-    }, 30)
+    }, Number(/BACKGROUND (\d+)/u.exec(text)?.[1] ?? 30))
     return
   }
   if (text.includes('MERGE')) {
@@ -115,11 +116,11 @@ async function turnFor({ uuid, text }) {
   lifecycle(uuid, 'completed')
 }
 
-async function wakeupFor({ text, notified = false }) {
+async function wakeupFor({ text, pause = 0, notified = false }) {
   if (!notified) notification('Background command finished')
   init()
   requesting()
-  await say(text)
+  await say(text, pause)
   result({ origin: { kind: 'task-notification', producer: 'session-task' } })
 }
 

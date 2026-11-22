@@ -849,6 +849,9 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
       if (source.role === 'retry' || source.retried === true) return h('div', { className: 'bt-event' }, t('Asked to make the tool call it wrote as text'))
       // The repair card's Retry: the user's message is not sent again, nor is the note to the Bot.
       if (source.role === 'continue') return h('div', { className: 'bt-event' }, t('Went on after the failed turn'))
+      // The Bot's agent CLI went on by itself (a background task it started ended, a
+      // Monitor fired): what it said follows as the Bot's reply.
+      if (source.role === 'background') return h('div', { className: 'bt-event' }, t('A background task reported back'))
       const run = relayed ? commRunOf(
         order.split(',').filter(Boolean).map(Number),
         Object.fromEntries(peers.split(',').filter(Boolean).map(pair => [Number(pair.slice(0, pair.indexOf(':'))), pair.slice(pair.indexOf(':') + 1)])),

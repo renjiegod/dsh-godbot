@@ -937,6 +937,7 @@ export const KO = {
   'Profile updated': '프로필 업데이트됨',
   'Asked to make the tool call it wrote as text': '도구 호출을 텍스트로 작성하여 다시 호출하도록 요청했습니다',
   'Went on after the failed turn': '이전 차례 실패 후 작업을 이어서 진행했습니다',
+  'A background task reported back': '백그라운드 작업에서 소식이 왔습니다',
   'A Bot': 'Bot',
   '{name} is waiting for your approval': '{name}이(가) 승인을 기다리는 중',
   '{first} and {second} are waiting for your approval': '{first}, {second}이(가) 승인을 기다리는 중',

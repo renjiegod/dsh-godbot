@@ -40,6 +40,12 @@ export const ROOM_REPLY_TIMEOUT_MS = 240_000
 // Lines a member writes less than this apart while it works reach its group together.
 export const ROOM_STEP_GAP_MS = 30_000
 export const SOURCE_KIND = 'bot'
+// The role of the message that opens a turn to show what a Bot's agent CLI said by
+// itself (a background task it started ended, a Monitor fired). The local agent adapter
+// answers that turn with the CLI's own words; the note never reaches the CLI, and is
+// there for whoever reads the conversation back (a replay, a handoff).
+export const BACKGROUND_ROLE = 'background'
+export const BACKGROUND_NOTE = '[Background turn · something you left running reported back, and you went on by yourself; what you said follows]'
 // The fixed reply that opens a fresh conversation part; it is never shown or sent on.
 export const HANDOFF_ACK = 'Noted. I have my handoff note and carry on from here.'
 // A result that arrives after the user gave up waiting for it: it settled once

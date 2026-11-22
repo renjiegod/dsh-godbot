@@ -958,6 +958,7 @@ const ZH = {
   'Profile updated': '资料已更新',
   'Asked to make the tool call it wrote as text': '工具调用被写成了文字，已让它重新调用',
   'Went on after the failed turn': '上一轮失败后，已让它接着做',
+  'A background task reported back': '后台任务有了新消息',
   'A Bot': '一个 Bot',
   '{name} is waiting for your approval': '{name} 等你批准',
   '{first} and {second} are waiting for your approval': '{first}、{second} 等你批准',

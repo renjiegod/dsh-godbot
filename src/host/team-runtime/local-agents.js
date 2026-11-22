@@ -288,7 +288,9 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
       return tools
     }, ({ name, arguments: args, callId }) => {
       const tool = live.tools().find(entry => entry.name === name)
-      if (live.dead || live.state === 'idle' || !tool) {
+      // A turn the CLI runs by itself may call before the Session turn that shows it
+      // starts; that turn hands the call to the loop, which checks it like any other.
+      if (live.dead || (live.state === 'idle' && live.background === undefined) || !tool) {
         return Promise.resolve({ text: '该工具未获当前会话授权。', isError: true })
       }
       const dshCallId = 'godbot-' + callId
@@ -593,6 +595,9 @@ export function install(rt) {
       void rt.save().catch(() => {})
     },
     recordUsage: entry => rt.recordUsage?.(entry),
+    // What a Bot's CLI says by itself shows in a turn of its own (delivery.js); sandbox
+    // parts get this with the rest of these deps.
+    onBackground: (sessionId, background) => rt.deliverBackground?.(sessionId, background) ?? false,
     // A change that rides along with the next save: the CLI reports its context on
     // every model call.
     patchRecord: (sessionId, patch) => {

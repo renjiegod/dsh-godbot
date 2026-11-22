@@ -37,13 +37,14 @@ test('a turn the CLI starts by itself is background activity, idle or ahead of a
   turns.observe(lifecycle('p1', 'completed'))
   // A background task ends while nothing waits.
   turns.observe({ type: 'system', subtype: 'status', status: 'requesting' })
-  assert.deepEqual(turns.tag({ type: 'text', text: 'the task finished' }), { type: 'background', of: 'text' })
+  // Its output answers no prompt, and comes whole for the turn that shows it.
+  assert.deepEqual(turns.tag({ type: 'text', text: 'the task finished' }), { type: 'background', of: 'text', event: { type: 'text', text: 'the task finished' } })
   assert.deepEqual(turns.tag({ type: 'context', used: 9 }), { type: 'context', used: 9 })
   assert.equal(turns.settle(taskOrigin), undefined)
   // Another one runs when a prompt arrives: the prompt waits behind it.
   turns.write('p2')
   turns.observe(lifecycle('p2', 'queued'))
-  assert.deepEqual(turns.tag({ type: 'tool', name: 'Bash' }), { type: 'background', of: 'tool' })
+  assert.deepEqual(turns.tag({ type: 'tool', name: 'Bash' }), { type: 'background', of: 'tool', event: { type: 'tool', name: 'Bash' } })
   assert.equal(turns.settle(taskOrigin), undefined)
   turns.observe(lifecycle('p2', 'started'))
   assert.equal(turns.tag({ type: 'text', text: 'answer' }).turnId, 'p2')
@@ -104,7 +105,7 @@ test('without lifecycle reports a result answers everything written since the pr
   turns.write('p1')
   assert.equal(turns.tag({ type: 'text', text: 'ok' }).turnId, 'p1')
   assert.deepEqual(turns.settle(undefined), { turn: 'p1', finished: ['p1'] })
-  assert.deepEqual(turns.tag({ type: 'text', text: 'later' }), { type: 'background', of: 'text' })
+  assert.deepEqual(turns.tag({ type: 'text', text: 'later' }), { type: 'background', of: 'text', event: { type: 'text', text: 'later' } })
   assert.equal(turns.settle(undefined), undefined)
 })
 
@@ -146,8 +147,10 @@ test('the team Claude engine keeps a self-started turn and a queued steer out of
   assert.equal(textOf(started), 'started a background task')
   // The task ends and wakes the model while no prompt waits.
   const woke = await drain(session, event => event.type === 'background' && event.of === 'result')
-  assert.ok(woke.some(event => event.type === 'background' && event.of === 'text'))
   assert.ok(!woke.some(event => ['text', 'done'].includes(event.type)))
+  // What it says comes whole for the turn that shows it, and its end brings the usage.
+  assert.equal(woke.filter(event => event.type === 'background' && event.of === 'text').map(event => event.event.text).join(''), 'autonomous: the background task finished')
+  assert.deepEqual(woke.at(-1).usage, { inputTokens: 3, outputTokens: 2 })
   assert.equal(session.running, false)
 
   const next = await engine.prompt(session, [{ type: 'text', text: 'next' }])

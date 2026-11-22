@@ -99,11 +99,11 @@ export class ClaudeTurns {
     return this.reported || this.messages.size === 0 ? undefined : this.latest
   }
 
-  // Output carries the prompt it answers. A turn nobody sent becomes activity that
-  // keeps the process in use and answers nothing.
+  // Output carries the prompt it answers. Output of a turn nobody sent comes wrapped as
+  // background: it answers no prompt, and the adapter shows it as a reply of its own.
   tag(event) {
     if (!OUTPUT.has(event?.type)) return event
     const turn = this.owner()
-    return turn === undefined ? { type: 'background', of: event.type } : { ...event, turnId: turn }
+    return turn === undefined ? { type: 'background', of: event.type, event } : { ...event, turnId: turn }
   }
 }
