@@ -196,7 +196,7 @@ export function apply(ctx, godbot) {
   const pull = async () => {
     const order = ++pulls
     const known = roster.getSnapshot()
-    const value = await call('state', { since: known.revision, models: known.modelsKey ?? '', live: liveKey, locale: language() })
+    const value = await call('state', { since: known.revision, models: known.modelsKey ?? '', live: liveKey, locale: language(), sessionOrder: true })
     if (order < applied) return
     applied = order
     const prevLiveKey = liveKey
@@ -672,6 +672,12 @@ export function apply(ctx, godbot) {
   const actions = {
     godbot,
     ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
+    // Reopening an archived part can clear the shell's main view. Reserve the exact
+    // destination before asking the Host to switch, then open it once it is live.
+    openPart: (botId, sessionId, running = false) => sessionSelection.open(sessionId, (target) => {
+      ui.set(state => ({ ...state, readOnlyPart: running ? target : null }))
+      show(target)
+    }, () => after(call('bot-open-part', { botId, sessionId }))),
     // The follow starts before the ask: DSH can clear the view before the answer lands.
     newPart: async (botId) => {
       const follow = followFreshPart(botId, partFor(botId))
