@@ -30130,7 +30130,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.14";
+var version = "0.2.0-rc.15";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
