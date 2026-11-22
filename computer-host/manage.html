@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>
+    Godbot · Host access
+  </title>
+  <style nonce="__NONCE__">
+    :root {
+      color-scheme: light dark;
+      font: 16px system-ui;
+      color: light-dark(#282723, #edf1e9);
+      background: light-dark(#faf9f5, #1f201d);
+    }
+    body {
+      max-width: 780px;
+      margin: 48px auto;
+      padding: 0 20px;
+    }
+    header,
+    article,
+    .bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    article {
+      flex-wrap: wrap;
+      padding: 14px 0;
+      border-top: 1px solid #8885;
+    }
+    h1 {
+      margin: 5px 0;
+      font-size: clamp(26px, 4vw, 39px);
+      letter-spacing: -1.5px;
+    }
+    h2 {
+      font-size: 19px;
+    }
+    h3 {
+      font-size: 16px;
+      margin: 0;
+    }
+    small,
+    p {
+      color: light-dark(#595a53, #c7c9c0);
+      line-height: 1.5;
+    }
+    section {
+      padding: 20px 24px;
+      margin: 18px 0;
+      border: 1px solid #8885;
+      border-radius: 14px;
+      background: light-dark(#fff, #292b27);
+    }
+    button {
+      font: inherit;
+      padding: 9px 14px;
+      min-height: 42px;
+      cursor: pointer;
+      border-radius: 8px;
+      background: transparent;
+      color: inherit;
+      border: 1px solid #8887;
+    }
+    button:focus-visible,
+    input:focus-visible {
+      outline: 3px solid #bd613f;
+    }
+    .primary {
+      background: #db8b6c;
+      color: #19150f;
+      border: 0;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      flex-wrap: wrap;
+    }
+    .field {
+      margin: 6px 0;
+    }
+    .field input {
+      margin-right: 6px;
+    }
+    code {
+      user-select: all;
+      font-size: 12px;
+      overflow-wrap: anywhere;
+    }
+    dialog {
+      max-width: min(480px, 90vw);
+      border-radius: 15px;
+      border: 1px solid #8886;
+      padding: 22px;
+    }
+    dialog::backdrop {
+      background: #10181088;
+    }
+    dialog img {
+      display: block;
+      width: min(230px, 70vw);
+      height: auto;
+      margin: 8px auto;
+    }
+    #error {
+      overflow-wrap: anywhere;
+    }
+    #cover {
+      font-size: 22px;
+      margin: 16vh 0;
+    }
+  </style>
+  <div id="cover" role="status">Opening local settings…</div>
+  <main id="panel" hidden>
+    <header>
+      <div>
+        <small>Godbot Computer Host</small>
+        <h1 id="name">Host access</h1>
+      </div>
+      <button id="exit">Close settings</button>
+    </header>
+    <p>Desktop sharing is paused while you manage access here.</p>
+    <section>
+      <div class="bar">
+        <h2>Paired controllers</h2>
+        <button class="primary" id="pair">Pair controller</button>
+      </div>
+      <div id="controllers"></div>
+    </section>
+    <section>
+      <h2>Session requests and active sessions</h2>
+      <div id="sessions"></div>
+    </section>
+    <p id="error" role="status"></p>
+  </main>
+  <dialog id="prompt">
+    <h2 id="title"></h2>
+    <div id="body"></div>
+    <div class="controls" id="buttons"></div>
+  </dialog>
+  <script nonce="__NONCE__">
+    'use strict'
+    const $ = (s) => document.querySelector(s),
+      ui = $('#panel'),
+      cover = $('#cover'),
+      dialog = $('#prompt')
+    let windowKey,
+      timer,
+      refreshTimer,
+      active = false,
+      acting = false,
+      expires = 0,
+      pairTimer,
+      seen = ''
+    function node(tag, t) {
+      const e = document.createElement(tag)
+      if (t !== undefined) e.textContent = t
+      return e
+    }
+    function btn(label, fn) {
+      const e = node('button', label)
+      e.onclick = async () => {
+        try {
+          await fn()
+        } catch (err) {
+          $('#error').textContent = err.message
+        }
+      }
+      return e
+    }
+    async function call(action, args = [], key) {
+      const r = await fetch('/action', {
+        method: 'POST',
+        credentials: 'omit',
+        keepalive: action === 'exit',
+        headers: { 'Content-Type': 'application/json', ...(windowKey ? { 'X-Godbot-Window': windowKey } : {}) },
+        body: JSON.stringify({ action, args, key }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw Error(data.error || 'This settings window has closed')
+      return data
+    }
+    function blank(text) {
+      active = false
+      clearInterval(timer)
+      clearInterval(refreshTimer)
+      clearTimeout(pairTimer)
+      dialog.close()
+      $('#body').replaceChildren()
+      ui.hidden = true
+      cover.hidden = false
+      cover.textContent = text
+    }
+    function modal(title, body, buttons) {
+      $('#title').textContent = title
+      $('#body').replaceChildren(...body)
+      $('#buttons').replaceChildren(...buttons)
+      if (!dialog.open) dialog.showModal()
+    }
+    function ask(title, fn) {
+      modal(
+        title,
+        [],
+        [
+          btn('Cancel', () => dialog.close()),
+          btn('Continue', async () => {
+            dialog.close()
+            await fn()
+          }),
+        ],
+      )
+    }
+    async function refresh() {
+      if (!active || acting || dialog.open) return
+      const [devices, sessions] = await Promise.all([call('controllers'), call('sessions')])
+      if (!active || dialog.open) return
+      const stamp = JSON.stringify([
+        devices,
+        sessions.map((s) => [s.sessionId, s.mode, s.state, s.controlPending, s.control]),
+      ])
+      if (stamp === seen) return
+      seen = stamp
+      $('#controllers').replaceChildren(
+        ...devices.map((d) => {
+          const row = node('article'),
+            who = node('div')
+          who.append(
+            node('h3', d.name || d.deviceId),
+            node(
+              'small',
+              d.fingerprint + (d.lastSeen ? ' · Last connected ' + new Date(d.lastSeen).toLocaleString() : ''),
+            ),
+          )
+          row.append(who)
+          const perms = node('div')
+          perms.className = 'controls'
+          for (const [scope, label] of [
+            ['desktop.view', 'View desktop'],
+            ['desktop.control', 'Control desktop'],
+            ['terminal', 'Terminal'],
+          ]) {
+            const l = node('label')
+            l.className = 'field'
+            const ck = node('input')
+            ck.type = 'checkbox'
+            ck.checked = d.grants.includes(scope)
+            ck.onclick = (e) => {
+              e.preventDefault()
+              const add = !d.grants.includes(scope)
+              ask((add ? 'Remember ' : 'Remove ') + label + ' access for ' + d.name + '?', async () => {
+                await call(add ? 'grant' : 'ungrant', [d.deviceId, scope])
+                seen = ''
+                await refresh()
+              })
+            }
+            l.append(ck, document.createTextNode(label))
+            perms.append(l)
+          }
+          perms.append(
+            btn('Revoke', () =>
+              ask('Revoke ' + d.name + ' and end its sessions?', async () => {
+                await call('revoke', [d.deviceId])
+                seen = ''
+                await refresh()
+              }),
+            ),
+          )
+          row.append(perms)
+          return row
+        }),
+      )
+      if (!devices.length)
+        $('#controllers').append(node('p', 'Pair this computer with your Android app or local dsh web.'))
+      $('#sessions').replaceChildren(
+        ...sessions.map((s) => {
+          const row = node('article')
+          row.append(
+            node('strong', (s.controller || s.deviceId) + ' · ' + s.mode),
+            node('small', s.controlPending ? 'Requesting control' : s.state),
+          )
+          if (s.state === 'pending' || s.controlPending) {
+            row.append(
+              btn('Allow once', () =>
+                ask('Approve this request and close settings?', async () => {
+                  blank('Settings closed.')
+                  await call('approve', [s.sessionId])
+                }),
+              ),
+              btn('Decline', async () => {
+                await call('deny', [s.sessionId])
+                await refresh()
+              }),
+            )
+          } else
+            row.append(
+              btn('Stop session', async () => {
+                await call('stop', [s.sessionId])
+                await refresh()
+              }),
+            )
+          return row
+        }),
+      )
+      if (!sessions.length) $('#sessions').append(node('p', 'No active sessions.'))
+    }
+    $('#pair').onclick = async () => {
+      try {
+        acting = true
+        const p = await call('pair')
+        if (!active) return
+        const img = node('img')
+        img.alt = 'Single-use pairing QR code'
+        img.src = p.qr
+        const field = node('code', p.uri)
+        modal(
+          'Pair a controller',
+          [img, node('p', 'Scan on Android or paste this single-use offer in dsh web.'), field],
+          [btn('Done', () => dialog.close())],
+        )
+        pairTimer = setTimeout(
+          () => {
+            if (dialog.open) dialog.close()
+          },
+          Math.max(0, p.expiresAt - Date.now()),
+        )
+      } catch (e) {
+        $('#error').textContent = e.message
+      } finally {
+        acting = false
+      }
+    }
+    dialog.addEventListener('close', () => {
+      if (pairTimer && active) void call('cancel-pair').catch(() => {})
+      $('#body').replaceChildren()
+      clearTimeout(pairTimer)
+      pairTimer = undefined
+      seen = ''
+      void refresh().catch(() => {})
+    })
+    async function exit() {
+      blank('Settings closed.')
+      void call('exit').catch(() => {})
+    }
+    $('#exit').onclick = exit
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && active) void exit()
+    })
+    window.addEventListener('pagehide', () => {
+      if (active) void exit()
+    })
+    ;(async () => {
+      const key = location.hash.slice(1)
+      history.replaceState(null, '', '/')
+      windowKey = (await call('enter', [], key)).windowKey
+      const status = await call('status')
+      active = true
+      expires = Date.now() + 4500
+      cover.hidden = true
+      ui.hidden = false
+      $('#name').textContent = status.name || 'Host access'
+      await refresh()
+      timer = setInterval(async () => {
+        if (Date.now() > expires) {
+          blank('Open settings again on the host.')
+          return
+        }
+        try {
+          await call('heartbeat')
+          expires = Date.now() + 4500
+        } catch {
+          blank('Settings closed.')
+        }
+      }, 1200)
+      refreshTimer = setInterval(
+        () =>
+          void refresh().catch((e) => {
+            $('#error').textContent = e.message
+          }),
+        1600,
+      )
+    })().catch(() => blank('Open settings again on the host.'))
+  </script>
+</html>

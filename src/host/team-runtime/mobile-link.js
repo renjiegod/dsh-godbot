@@ -174,7 +174,7 @@ function randomId() {
 
 // ../../node_modules/@noble/hashes/esm/cryptoNode.js
 import * as nc from "node:crypto";
-var crypto = nc && typeof nc === "object" && "webcrypto" in nc ? nc.webcrypto : nc && typeof nc === "object" && "randomBytes" in nc ? nc : void 0;
+var crypto2 = nc && typeof nc === "object" && "webcrypto" in nc ? nc.webcrypto : nc && typeof nc === "object" && "randomBytes" in nc ? nc : void 0;
 
 // ../../node_modules/@noble/hashes/esm/utils.js
 /*! noble-hashes - MIT License (c) 2022 Paul Miller (paulmillr.com) */
@@ -298,11 +298,11 @@ function createHasher(hashCons) {
   return hashC;
 }
 function randomBytes(bytesLength = 32) {
-  if (crypto && typeof crypto.getRandomValues === "function") {
-    return crypto.getRandomValues(new Uint8Array(bytesLength));
+  if (crypto2 && typeof crypto2.getRandomValues === "function") {
+    return crypto2.getRandomValues(new Uint8Array(bytesLength));
   }
-  if (crypto && typeof crypto.randomBytes === "function") {
-    return Uint8Array.from(crypto.randomBytes(bytesLength));
+  if (crypto2 && typeof crypto2.randomBytes === "function") {
+    return Uint8Array.from(crypto2.randomBytes(bytesLength));
   }
   throw new Error("crypto.getRandomValues must be defined");
 }
@@ -2437,7 +2437,7 @@ var sha2562 = sha256;
 
 // ../../node_modules/@noble/ciphers/esm/cryptoNode.js
 import * as nc2 from "node:crypto";
-var crypto2 = nc2 && typeof nc2 === "object" && "webcrypto" in nc2 ? nc2.webcrypto : nc2 && typeof nc2 === "object" && "randomBytes" in nc2 ? nc2 : void 0;
+var crypto3 = nc2 && typeof nc2 === "object" && "webcrypto" in nc2 ? nc2.webcrypto : nc2 && typeof nc2 === "object" && "randomBytes" in nc2 ? nc2 : void 0;
 
 // ../../node_modules/@noble/ciphers/esm/utils.js
 /*! noble-ciphers - MIT License (c) 2023 Paul Miller (paulmillr.com) */
@@ -2598,11 +2598,11 @@ function copyBytes2(bytes) {
 
 // ../../node_modules/@noble/ciphers/esm/webcrypto.js
 function randomBytes2(bytesLength = 32) {
-  if (crypto2 && typeof crypto2.getRandomValues === "function") {
-    return crypto2.getRandomValues(new Uint8Array(bytesLength));
+  if (crypto3 && typeof crypto3.getRandomValues === "function") {
+    return crypto3.getRandomValues(new Uint8Array(bytesLength));
   }
-  if (crypto2 && typeof crypto2.randomBytes === "function") {
-    return Uint8Array.from(crypto2.randomBytes(bytesLength));
+  if (crypto3 && typeof crypto3.randomBytes === "function") {
+    return Uint8Array.from(crypto3.randomBytes(bytesLength));
   }
   throw new Error("crypto.getRandomValues must be defined");
 }
@@ -7540,6 +7540,12 @@ function checkHello(value) {
   return hello;
 }
 function pairingUri(offer) {
+  return offerUri(offer, "pair");
+}
+function machinePairingUri(offer) {
+  return offerUri(offer, "computer-pair");
+}
+function offerUri(offer, kind) {
   const query = new URLSearchParams({
     v: "1",
     server: offer.server,
@@ -7548,11 +7554,22 @@ function pairingUri(offer) {
     code: offer.code,
     name: offer.name
   });
-  return `${PAIRING_SCHEME}//pair?${query}`;
+  return `${PAIRING_SCHEME}//${kind}?${query}`;
 }
 function parsePairingUri(uri) {
+  return parseOffer(uri, "pair", PAIRING_SCHEMES);
+}
+function parseMachinePairingUri(uri) {
+  const offer = parseOffer(uri, "computer-pair", [PAIRING_SCHEME]);
+  const server = new URL(offer.server);
+  if (server.username || server.password || server.hash || server.search || server.protocol === "ws:" && !["127.0.0.1", "localhost", "[::1]"].includes(server.hostname)) {
+    throw new Error("A computer requires a secure relay or a loopback development relay.");
+  }
+  return offer;
+}
+function parseOffer(uri, kind, schemes) {
   const url = new URL(uri);
-  if (!PAIRING_SCHEMES.includes(url.protocol) || url.host !== "pair" || url.searchParams.get("v") !== "1") {
+  if (!schemes.includes(url.protocol) || url.host !== kind || url.searchParams.get("v") !== "1") {
     throw new Error("Invalid phone pairing code.");
   }
   const field = (name) => {
@@ -7969,6 +7986,7 @@ var HostLink = class {
     }
     const { identity } = this.options;
     this.tunnels.set(connectionId, {
+      tunnelId: crypto.randomUUID(),
       connectionId,
       deviceId: clientDeviceId,
       identityKey: clientIdentityKey,
@@ -8034,7 +8052,7 @@ var HostLink = class {
       const controller = new AbortController();
       tunnel.calls.set(requestId, controller);
       try {
-        const result = await this.options.handle(method, params, { deviceId: tunnel.deviceId, signal: controller.signal });
+        const result = await this.options.handle(method, params, { deviceId: tunnel.deviceId, tunnelId: tunnel.tunnelId, signal: controller.signal });
         reply = createMessage("rpc.response", { requestId, result: result ?? null });
       } catch (error) {
         const code = typeof error?.code === "string" ? error.code : "HOST_ERROR";
@@ -8071,7 +8089,10 @@ var HostLink = class {
   dropTunnel(tunnel, code) {
     if (this.tunnels.get(tunnel.connectionId) !== tunnel) return;
     this.tunnels.delete(tunnel.connectionId);
-    if (tunnel.stage === "ready") this.options.onReadyCount?.(this.connectedDevices().length);
+    if (tunnel.stage === "ready") {
+      this.options.onReadyCount?.(this.connectedDevices().length);
+      this.options.onTunnelClosed?.(tunnel.deviceId, tunnel.tunnelId);
+    }
     for (const controller of tunnel.calls.values()) controller.abort(new Error("The phone link closed."));
     tunnel.calls.clear();
     tunnel.noise.destroy();
@@ -9413,8 +9434,10 @@ export {
   generatePushKey,
   identityFingerprint,
   isPushKey,
+  machinePairingUri,
   messageTypes,
   pairingUri,
+  parseMachinePairingUri,
   parsePairingUri,
   randomToken,
   toBase64Url,

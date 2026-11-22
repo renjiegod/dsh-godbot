@@ -1,0 +1,401 @@
+.gb-modal:has(.gb-machines) {
+  width: min(1200px, 96vw);
+  max-width: 96vw;
+  color: var(--bt-ink);
+  background: var(--bt-main);
+  border: 1px solid var(--bt-line-2);
+}
+.gb-modal:has(.gb-machines) .gb-modal-body {
+  padding: 0;
+  overflow: auto;
+}
+.gb-machines {
+  --gb-machine-control-line: color-mix(in srgb, var(--bt-ink) 62%, var(--bt-card));
+  display: grid;
+  grid-template-columns: minmax(165px, 22%) minmax(0, 1fr);
+  min-height: min(64vh, 600px);
+  color: var(--bt-ink);
+  font: var(--bt-font);
+}
+.gb-machines h3 {
+  font-size: clamp(21px, 2.1vw, 32px);
+  font-weight: 650;
+  line-height: 1.15;
+  margin: 0;
+}
+.gb-machines h4 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+.gb-machines p {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.gb-machines button,
+.gb-machines select {
+  min-height: 38px;
+  cursor: pointer;
+  color: inherit;
+  background: var(--bt-card);
+  border: 1px solid var(--gb-machine-control-line);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+}
+.gb-machines button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.gb-machines button:focus-visible,
+.gb-machines select:focus-visible,
+.gb-machines input:focus-visible {
+  outline: 2px solid var(--bt-ink);
+  outline-offset: 2px;
+}
+.gb-machine-list {
+  background: var(--bt-sidebar);
+  padding: 17px 12px;
+  border-inline-end: 1px solid var(--bt-line);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow: auto;
+}
+.gb-machine-wide-nav {
+  display: grid;
+  min-height: 0;
+}
+.gb-machine-compact-nav {
+  display: none;
+}
+.gb-machine-drawer {
+  position: fixed;
+  inset: auto 0 0;
+  width: min(100%, 42rem);
+  max-height: 75dvh;
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+  border: 1px solid var(--bt-line-2);
+  border-radius: 16px 16px 0 0;
+  color: var(--bt-ink);
+  background: var(--bt-sidebar);
+  overflow: auto;
+}
+.gb-machine-drawer::backdrop {
+  background: #10171266;
+}
+.gb-machine-drawer .gb-machine-list {
+  border: 0;
+}
+.gb-machine-list > button span {
+  min-width: 0;
+}
+.gb-machine-list-title,
+.gb-machine-title,
+.gb-machine-bar,
+.gb-machine-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gb-machine-list-title {
+  padding: 0 4px 10px;
+}
+.gb-machine-list > button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: start;
+  background: transparent;
+  border-color: transparent;
+  overflow-wrap: anywhere;
+}
+.gb-machine-list > button.selected {
+  background: var(--bt-card);
+  border-color: var(--bt-accent);
+}
+.gb-machines small {
+  display: block;
+  color: color-mix(in srgb, var(--bt-ink) 78%, var(--bt-card));
+  margin-top: 4px;
+  font-size: 12px;
+}
+.gb-machine-work {
+  padding: clamp(14px, 2.5vw, 32px);
+  min-width: 0;
+}
+.gb-machine-empty,
+.gb-machine-form,
+.gb-machine-ready {
+  margin: 20px 0;
+  padding: clamp(15px, 2vw, 25px);
+  border: 1px solid var(--bt-line);
+  border-radius: 14px;
+  background: var(--bt-card);
+}
+.gb-machine-empty {
+  text-align: center;
+}
+.gb-machine-empty > .gb-icon {
+  margin: 12px auto;
+}
+.gb-machines .gb-machine-primary {
+  background: var(--bt-accent);
+  color: var(--bt-accent-ink);
+  font-weight: 620;
+  border: 1px solid transparent;
+}
+.gb-machine-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(185px, 100%), 1fr));
+  gap: 12px;
+}
+.gb-machine-cards > div {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  border: 1px solid var(--bt-line);
+  border-radius: 12px;
+  padding: 16px;
+}
+.gb-machine-cards p {
+  min-height: 40px;
+  margin: 0;
+}
+.gb-machine-cards h4 {
+  margin: 0;
+}
+.gb-machines details,
+.gb-machine-desktop,
+.gb-machine-term {
+  margin-top: 16px;
+}
+.gb-machines summary {
+  cursor: pointer;
+}
+.gb-machine-form input,
+.gb-machine-desktop input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  margin: 5px 0 12px;
+  color: inherit;
+  background: var(--bt-card);
+  border: 1px solid var(--gb-machine-control-line);
+  border-radius: 8px;
+  padding: 8px;
+}
+.gb-machine-confirm,
+.gb-machine-status {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bt-bubble);
+  margin-bottom: 14px;
+  overflow-wrap: anywhere;
+}
+.gb-machine-confirm p {
+  margin-top: 0;
+}
+.gb-machine-confirm button {
+  margin-right: 8px;
+}
+.gb-machine-desktop {
+  background: #181d1b;
+  color: #f3f3f0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.gb-machine-desktop .gb-machine-bar {
+  padding: 8px 12px;
+}
+.gb-machine-desktop .gb-machine-bar button,
+.gb-machine-desktop select {
+  background: #323934;
+  color: #f3f3f0;
+  border-color: #90998f;
+}
+.gb-machine-desktop :is(button, select, input):focus-visible,
+.gb-machine-term .gb-machine-jump:focus-visible {
+  outline-color: #f2ad82;
+}
+.gb-machine-bar strong {
+  margin-inline-end: auto;
+}
+.gb-machine-video-window {
+  height: min(47vh, 540px);
+  background: #070a08;
+  overflow: auto;
+  position: relative;
+}
+.gb-machine-video-window video {
+  display: block;
+  object-fit: contain;
+  outline-offset: -3px;
+  touch-action: none;
+}
+.gb-machine-video-window video:focus-visible {
+  outline: 3px solid #f2ad82;
+}
+.gb-machine-desktop:fullscreen {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: 0;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  overflow: auto;
+}
+.gb-machine-desktop:fullscreen .gb-machine-video-window {
+  flex: 1 0 25vh;
+  min-height: 0;
+  height: auto;
+}
+.gb-machine-desktop form,
+.gb-machine-desktop > p {
+  padding: 0 12px;
+}
+.gb-machine-term {
+  position: relative;
+  background: #171c1a;
+  border-radius: 10px;
+  padding: 10px;
+}
+.gb-machine-term .gb-machine-jump {
+  position: absolute;
+  right: 22px;
+  bottom: 12px;
+}
+.gb-machine-term-box {
+  height: clamp(200px, 46vh, 540px);
+}
+.gb-machine-term-box .xterm {
+  height: 100%;
+}
+@media (max-width: 720px) {
+  .gb-machines {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+  .gb-machine-wide-nav {
+    display: none;
+  }
+  .gb-machine-compact-nav {
+    display: block;
+    padding: 8px 12px 0;
+  }
+  .gb-machines button,
+  .gb-machines select {
+    min-height: 44px;
+  }
+  .gb-machine-work {
+    padding: 12px;
+  }
+  .gb-machine-video-window {
+    height: 35vh;
+  }
+  .gb-machine-cards p {
+    min-height: 0;
+  }
+}
+
+.gb-machine-desktop form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.gb-machine-desktop form input {
+  margin: 0;
+  background: #252c27;
+  border-color: #90998f;
+  color: #f4f6ed;
+}
+.gb-machine-desktop .gb-machine-send-text {
+  color: #eee;
+  background: #323934;
+  white-space: nowrap;
+}
+.gb-machine-desktop .gb-machine-bar .gb-machine-primary {
+  background: var(--bt-accent);
+  color: var(--bt-accent-ink);
+}
+.gb-machine-desktop .gb-machine-bar > strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.gb-machine-desktop .gb-machine-bar > strong::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #84cf97;
+}
+.gb-machine-desktop > p {
+  color: #c4d0c7;
+}
+.gb-machine-desktop > p[role='status'] {
+  color: #ffd39c;
+}
+
+.gb-machine-details {
+  padding: 0 12px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.gb-machine-details p {
+  margin: 0;
+  color: #d7e0d8;
+}
+.gb-machine-stats {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 0;
+}
+.gb-machine-stats dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.gb-machine-details label {
+  font-size: 13px;
+}
+
+.gb-machine-confirm {
+  max-width: min(440px, 90vw);
+  padding: 20px;
+  border: 1px solid var(--bt-line-2);
+  border-radius: 12px;
+  background: var(--bt-card);
+  color: var(--bt-ink);
+  box-shadow: 0 12px 40px #0003;
+  margin: auto;
+}
+.gb-machine-confirm::backdrop {
+  background: #10171266;
+}
+.gb-machine-modes {
+  display: inline-flex;
+  margin: 12px 0 0;
+  border: 1px solid var(--bt-line-2);
+  padding: 2px;
+  gap: 2px;
+  border-radius: 9px;
+}
+.gb-machine-modes button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+}
+.gb-machine-modes button[aria-pressed='true'] {
+  background: var(--bt-bubble);
+  font-weight: 640;
+}

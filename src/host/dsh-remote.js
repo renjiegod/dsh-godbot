@@ -35,6 +35,10 @@ export function createGodbotRemote(service) {
       requireOwner(this.ctx.invocation)
       return service.claudeStats(target)
     }
+    async machine(request) {
+      requireOwner(this.ctx.invocation)
+      return service.machine(request, this.ctx.invocation.peer, this.ctx.invocation.signal)
+    }
     async terminalStatus(request) {
       requireOwner(this.ctx.invocation)
       return service.terminalStatus(request)
@@ -67,7 +71,7 @@ export function createGodbotRemote(service) {
       return service.dispatch(request)
     }
   }
-  for (const name of ['snapshot', 'slashCommands', 'claudeStats', 'claudeReportSession', 'terminalStatus', 'terminalOpen', 'terminalRead', 'terminalWrite', 'terminalResize', 'terminalClose', 'dispatch']) {
+  for (const name of ['snapshot', 'machine', 'slashCommands', 'claudeStats', 'claudeReportSession', 'terminalStatus', 'terminalOpen', 'terminalRead', 'terminalWrite', 'terminalResize', 'terminalClose', 'dispatch']) {
     Remote(GodbotRemote.prototype[name], {
       kind: 'method', name, static: false, private: false, metadata: {},
       addInitializer: initialize => initializers.push(initialize),

@@ -119,6 +119,11 @@ export function createClient(connection) {
     return result.value
   }
   return {
+    machine: (request, signal) => {
+      const chooser = request.method === 'desktop.requestControl' ||
+        (request.method === 'desktop.signal' && request.params?.signal?.type === 'offer')
+      return call('machine', { request }, signal ?? (chooser ? AbortSignal.timeout(120000) : undefined))
+    },
     terminalStatus: request => call('terminalStatus', { request }),
     terminalOpen: request => call('terminalOpen', { request }),
     terminalRead: (request, signal) => call('terminalRead', { request }, signal),

@@ -36,7 +36,7 @@ __export(index_exports, {
   inject: () => inject2
 });
 module.exports = __toCommonJS(index_exports);
-var import_react112 = require("react");
+var import_react116 = require("react");
 
 // src/client/workspace-controls.css
 var workspace_controls_default = `/* Base controls. Every selector sits wholly inside :where(), so it has zero
@@ -505,6 +505,10 @@ function createClient(connection) {
     return result.value;
   }
   return {
+    machine: (request, signal) => {
+      const chooser = request.method === "desktop.requestControl" || request.method === "desktop.signal" && request.params?.signal?.type === "offer";
+      return call3("machine", { request }, signal ?? (chooser ? AbortSignal.timeout(12e4) : void 0));
+    },
     terminalStatus: (request) => call3("terminalStatus", { request }),
     terminalOpen: (request) => call3("terminalOpen", { request }),
     terminalRead: (request, signal) => call3("terminalRead", { request }, signal),
@@ -568,7 +572,7 @@ function evidenceSummary(value, maximum = 95) {
 }
 
 // src/client/team-surface.js
-var import_react111 = require("react");
+var import_react115 = require("react");
 
 // src/client/team-ui/desktop-bridge.js
 function desktopBridge() {
@@ -15093,14 +15097,14 @@ function installLocale(locale) {
 function t(key, params) {
   return bound ? bound(key, params) : fill(key, params);
 }
-function hostText(message) {
+function hostText(message2) {
   const lang = resolveLangKey(language());
-  if (lang === "en") return message;
-  if (Object.hasOwn(ZH, message)) return t(message);
+  if (lang === "en") return message2;
+  if (Object.hasOwn(ZH, message2)) return t(message2);
   for (const [pattern, template] of HOST_ERROR_TABLE[lang] ?? []) {
-    if (pattern.test(message)) return message.replace(pattern, template);
+    if (pattern.test(message2)) return message2.replace(pattern, template);
   }
-  return message;
+  return message2;
 }
 function language() {
   const active = service?.getLocale?.().active;
@@ -15130,9 +15134,9 @@ function noteClientError(where, error) {
     if (noted.has(error)) return;
     noted.add(error);
   }
-  const message = String(error?.message ?? error ?? "error").slice(0, 300);
+  const message2 = String(error?.message ?? error ?? "error").slice(0, 300);
   const code = typeof error?.code === "string" ? error.code : void 0;
-  const text = `${where}: ${message}`;
+  const text = `${where}: ${message2}`;
   const now = Date.now();
   const last = entries.at(-1);
   if (last && last.text === text && now - last.time < REPEAT_MS) {
@@ -15176,8 +15180,8 @@ var FAILURES = {
   SESSION_RESET: "Its group conversation could not open, so it starts a new one next time"
 };
 var knownFailure = (code) => Object.hasOwn(FAILURES, code ?? "") ? t(FAILURES[code]) : void 0;
-function failureLabel(code, message) {
-  return knownFailure(code) ?? (message || code || t("Unknown error"));
+function failureLabel(code, message2) {
+  return knownFailure(code) ?? (message2 || code || t("Unknown error"));
 }
 var URL_LIMIT = 7e3;
 var WHAT_MAX = 2e3;
@@ -15221,8 +15225,8 @@ var call = async (endpoint, payload, signal) => {
   const result = await response.json();
   if (!result.ok) {
     const code = result.error?.code ?? "bot/error";
-    const message = hostText(result.error?.message ?? "Request failed");
-    const error = Object.assign(new Error(code === "bot/internal" ? `${message} ${t("Settings → Feedback has the details.")}` : message), { code });
+    const message2 = hostText(result.error?.message ?? "Request failed");
+    const error = Object.assign(new Error(code === "bot/internal" ? `${message2} ${t("Settings → Feedback has the details.")}` : message2), { code });
     if (!REFUSALS.has(code)) {
       noteClientError(endpoint, Object.assign(new Error(result.error?.message ?? "Request failed"), { code }));
       markNoted(error);
@@ -15341,8 +15345,8 @@ function bodyOf(def, paint, flat = false) {
     return "";
   }
 }
-var eyeMarkup = ([cx, cy, w, h110, tilt]) => `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><rect class="bt-eye" x="${-w / 2}" y="${-h110 / 2}" width="${w}" height="${h110}" rx="${w / 2}"/></g>`;
-var happyEyeMarkup = ([cx, cy, w, h110, tilt]) => `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><path class="bt-eye-happy" opacity="0" d="M${-w * 0.62} ${h110 * 0.14}Q0 ${-h110 * 0.42} ${w * 0.62} ${h110 * 0.14}" fill="none" stroke="#000" stroke-width="${w * 0.5}" stroke-linecap="round"/></g>`;
+var eyeMarkup = ([cx, cy, w, h114, tilt]) => `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><rect class="bt-eye" x="${-w / 2}" y="${-h114 / 2}" width="${w}" height="${h114}" rx="${w / 2}"/></g>`;
+var happyEyeMarkup = ([cx, cy, w, h114, tilt]) => `<g transform="translate(${cx} ${cy}) rotate(${tilt})"><path class="bt-eye-happy" opacity="0" d="M${-w * 0.62} ${h114 * 0.14}Q0 ${-h114 * 0.42} ${w * 0.62} ${h114 * 0.14}" fill="none" stroke="#000" stroke-width="${w * 0.5}" stroke-linecap="round"/></g>`;
 var maskBox = (size) => `maskUnits="userSpaceOnUse" x="${-size}" y="${-size}" width="${size * 3}" height="${size * 3}"`;
 var holes = (def, eyes) => `<rect x="${-def.size}" y="${-def.size}" width="${def.size * 3}" height="${def.size * 3}" fill="#fff"/>${eyes}`;
 var MASK_ID = "%MASK%";
@@ -15378,8 +15382,8 @@ function maskOf(shape) {
 var DEFAULT_MASK = maskOf(FALLBACK_SHAPE);
 
 // src/client/team-ui/sources.js
-function createSource(initial) {
-  let value = initial;
+function createSource(initial2) {
+  let value = initial2;
   const listeners3 = /* @__PURE__ */ new Set();
   return {
     getSnapshot: () => value,
@@ -15892,7 +15896,7 @@ function registerTheme(id, theme) {
 }
 var allThemes = () => ({ ...THEMES, ...customThemes });
 var MESSAGE_WIDTH = { min: 50, max: 100, step: 5 };
-var percent = (value, initial) => Number.isInteger(value) && value >= MESSAGE_WIDTH.min && value <= MESSAGE_WIDTH.max ? value : initial;
+var percent = (value, initial2) => Number.isInteger(value) && value >= MESSAGE_WIDTH.min && value <= MESSAGE_WIDTH.max ? value : initial2;
 var layoutOf = (prefs) => prefs?.layout === "flat" ? "flat" : "bubble";
 var effectsOf = (prefs) => prefs?.effects === "reduced" || prefs?.effects === "off" ? prefs.effects : "full";
 var thinkingShown = (prefs) => prefs?.thinking === true;
@@ -15996,9 +16000,9 @@ function nameProblem(name) {
   if (USER_NAMES.includes(text.toLowerCase())) return `"${text}" stands for the user in a chat, so it cannot be a Bot name`;
   return void 0;
 }
-function referenceSpans(text, labels5 = []) {
+function referenceSpans(text, labels6 = []) {
   const spans = [];
-  for (const label of [...labels5].sort((a, b2) => b2.length - a.length)) {
+  for (const label of [...labels6].sort((a, b2) => b2.length - a.length)) {
     const mention = `@${label}`;
     for (let at2 = text.indexOf(mention); at2 !== -1; at2 = text.indexOf(mention, at2 + 1)) {
       const end = at2 + mention.length;
@@ -16329,12 +16333,12 @@ function liveSprings(apply3) {
     const dt2 = Math.min(0.5, Math.max(1e-3, (now - last) / 1e3));
     last = now;
     const steps = Math.ceil(dt2 * 240);
-    const h110 = dt2 / steps;
+    const h114 = dt2 / steps;
     let moving = false;
     for (const [key, value] of values) {
       for (let index = 0; index < steps; index += 1) {
-        value.v += (-value.k * (value.x - value.to) - value.c * value.v) * h110;
-        value.x += value.v * h110;
+        value.v += (-value.k * (value.x - value.to) - value.c * value.v) * h114;
+        value.x += value.v * h114;
       }
       if (Math.abs(value.x - value.to) < 0.05 && Math.abs(value.v) < 1) {
         value.x = value.to;
@@ -20663,8 +20667,8 @@ var CONSTANTS = /* @__PURE__ */ new Map([["true", true], ["false", false]]);
 var MAX_NESTING = 64;
 var FormulaError = class extends Error {
 };
-var fail = (message) => {
-  throw new FormulaError(message);
+var fail = (message2) => {
+  throw new FormulaError(message2);
 };
 function num(value) {
   if (typeof value === "number") return value;
@@ -21226,7 +21230,7 @@ function checkChoice(node, path2, ctx) {
   const idError = checkInputId(node, path2, ctx);
   if (idError !== void 0) return idError;
   if (!Array.isArray(node.options) || node.options.length === 0) return `${path2}.options: expected a non-empty array of { label, value }`;
-  const labels5 = /* @__PURE__ */ new Set();
+  const labels6 = /* @__PURE__ */ new Set();
   const values = /* @__PURE__ */ new Set();
   for (let index = 0; index < node.options.length; index += 1) {
     const option3 = node.options[index];
@@ -21236,8 +21240,8 @@ function checkChoice(node, path2, ctx) {
       if (key !== "label" && key !== "value") return `${at2}.${key}: unknown property ${quoted(key)}; allowed: label, value`;
     }
     if (typeof option3.label !== "string" || option3.label.trim() === "") return `${at2}.label: expected a non-empty string`;
-    if (labels5.has(option3.label)) return `${at2}.label: duplicate label ${quoted(option3.label)}`;
-    labels5.add(option3.label);
+    if (labels6.has(option3.label)) return `${at2}.label: duplicate label ${quoted(option3.label)}`;
+    labels6.add(option3.label);
     const value = option3.value ?? option3.label;
     if (!isScalar(value)) return `${at2}.value: expected a string, a number or true/false`;
     if (values.has(value)) return `${at2}.value: duplicate value ${quoted(value)}`;
@@ -21261,7 +21265,7 @@ function checkOptions(node, path2, ctx) {
   if (node.multi !== void 0 && typeof node.multi !== "boolean") return `${path2}.multi: expected a boolean`;
   if (!Array.isArray(node.options)) return `${path2}.options: expected an array of 1 to ${MAX_OPTIONS} options`;
   if (node.options.length < 1 || node.options.length > MAX_OPTIONS) return `${path2}.options: expected 1 to ${MAX_OPTIONS} options; got ${node.options.length}`;
-  const labels5 = /* @__PURE__ */ new Set();
+  const labels6 = /* @__PURE__ */ new Set();
   for (let index = 0; index < node.options.length; index += 1) {
     const option3 = node.options[index];
     const at2 = `${path2}.options[${index}]`;
@@ -21270,8 +21274,8 @@ function checkOptions(node, path2, ctx) {
       if (key !== "label" && key !== "description") return `${at2}.${key}: unknown property ${quoted(key)}; allowed: label, description`;
     }
     if (typeof option3.label !== "string" || option3.label.trim() === "") return `${at2}.label: expected a non-empty string`;
-    if (labels5.has(option3.label)) return `${at2}.label: duplicate label ${quoted(option3.label)}`;
-    labels5.add(option3.label);
+    if (labels6.has(option3.label)) return `${at2}.label: duplicate label ${quoted(option3.label)}`;
+    labels6.add(option3.label);
     if (option3.description !== void 0 && typeof option3.description !== "string") return `${at2}.description: expected a string`;
   }
   return void 0;
@@ -21597,8 +21601,8 @@ function donut({ categories, series }, width, active, hover) {
   });
   return { parts, height: size, size, points, total, values, categories };
 }
-function useWidth(box, initial) {
-  const [width, setWidth] = (0, import_react15.useState)(initial);
+function useWidth(box, initial2) {
+  const [width, setWidth] = (0, import_react15.useState)(initial2);
   (0, import_react15.useLayoutEffect)(() => {
     const node = box.current;
     if (!node || typeof ResizeObserver !== "function") return void 0;
@@ -24192,7 +24196,7 @@ function useAnchoredMenu() {
   const [anchor, setAnchor] = (0, import_react22.useState)(null);
   const [place, setPlace] = (0, import_react22.useState)(null);
   const [shownPlace, leaving] = useLinger(place, MENU_EXIT_MS);
-  const button4 = (0, import_react22.useRef)(null);
+  const button5 = (0, import_react22.useRef)(null);
   const menu = (0, import_react22.useRef)(null);
   const tick = useViewport();
   const close = () => {
@@ -24202,15 +24206,15 @@ function useAnchoredMenu() {
   (0, import_react22.useEffect)(() => {
     if (place === null) return void 0;
     const onDown = (event) => {
-      if (menu.current?.contains(event.target) || button4.current?.contains(event.target)) return;
+      if (menu.current?.contains(event.target) || button5.current?.contains(event.target)) return;
       close();
     };
     const onKey = (event) => {
-      if (stepMenuFocus(menu.current, event, button4.current)) return;
+      if (stepMenuFocus(menu.current, event, button5.current)) return;
       if (event.key === "Escape") {
         event.stopPropagation();
         close();
-        button4.current?.focus();
+        button5.current?.focus();
       }
     };
     const onScroll = (event) => {
@@ -24227,19 +24231,19 @@ function useAnchoredMenu() {
   }, [place]);
   const open = () => setAnchor({});
   (0, import_react22.useLayoutEffect)(() => {
-    if (anchor === null || !button4.current) return;
-    const rect = button4.current.getBoundingClientRect();
+    if (anchor === null || !button5.current) return;
+    const rect = button5.current.getBoundingClientRect();
     const width = Math.max(240, rect.width);
     const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
     const below = viewBottom() - rect.bottom;
     setPlace(below >= 260 || below >= rect.top ? { left, width, top: rect.bottom + 4, maxHeight: below - 16, "--bt-origin": "top right" } : { left, width, bottom: viewBottom() - rect.top + 4, maxHeight: rect.top - 16, "--bt-origin": "bottom right" });
   }, [anchor, tick]);
-  return { isOpen: place !== null, shownPlace, leaving, button: button4, menu, open, close };
+  return { isOpen: place !== null, shownPlace, leaving, button: button5, menu, open, close };
 }
 function useInlineMenu() {
   const [isOpen, setOpen] = (0, import_react22.useState)(false);
   const root = (0, import_react22.useRef)(null);
-  const button4 = (0, import_react22.useRef)(null);
+  const button5 = (0, import_react22.useRef)(null);
   const menu = (0, import_react22.useRef)(null);
   const close = () => setOpen(false);
   (0, import_react22.useEffect)(() => {
@@ -24248,11 +24252,11 @@ function useInlineMenu() {
       if (!root.current?.contains(event.target)) close();
     };
     const onKey = (event) => {
-      if (stepMenuFocus(menu.current, event, button4.current)) return;
+      if (stepMenuFocus(menu.current, event, button5.current)) return;
       if (event.key === "Escape") {
         event.stopPropagation();
         close();
-        button4.current?.focus();
+        button5.current?.focus();
       }
     };
     window.addEventListener("mousedown", onDown);
@@ -24262,7 +24266,7 @@ function useInlineMenu() {
       window.removeEventListener("keydown", onKey, true);
     };
   }, [isOpen]);
-  return { isOpen, root, button: button4, menu, open: () => setOpen(true), close };
+  return { isOpen, root, button: button5, menu, open: () => setOpen(true), close };
 }
 function Collapse({ open, children }) {
   const [shown] = useLinger(open, SPRING_SHAPE.duration);
@@ -24331,12 +24335,12 @@ function useModelPicker({ bot, roster, actions, run: run2, onPick, onPickEffort,
     chooseEffort: (effort) => onPickEffort ? onPickEffort(effort) : run2(actions.updateBot(bot.id, { effort: effort ?? null }))
   };
 }
-var modelTrigger = (picker, { wide, button: button4, isOpen, onClick }) => {
+var modelTrigger = (picker, { wide, button: button5, isOpen, onClick }) => {
   const { shown, models, withEfforts, effortLabel } = picker;
   return (0, import_react22.createElement)(
     "button",
     {
-      ref: button4,
+      ref: button5,
       type: "button",
       className: "bt-model-trigger",
       "data-wide": wide || void 0,
@@ -24375,7 +24379,7 @@ function ModelMenu(props) {
   return props.inline ? (0, import_react22.createElement)(InlineModelMenu, props) : (0, import_react22.createElement)(PopupModelMenu, props);
 }
 function PopupModelMenu({ bot, roster, actions, run: run2, wide = false, onPick, onPickEffort, withEfforts = true }) {
-  const { isOpen, shownPlace, leaving, button: button4, menu, open, close } = useAnchoredMenu();
+  const { isOpen, shownPlace, leaving, button: button5, menu, open, close } = useAnchoredMenu();
   const picker = useModelPicker({ bot, roster, actions, run: run2, onPick, onPickEffort, withEfforts });
   const { manage, hasEfforts } = picker;
   const toggle = () => {
@@ -24393,7 +24397,7 @@ function PopupModelMenu({ bot, roster, actions, run: run2, wide = false, onPick,
   return (0, import_react22.createElement)(
     import_react22.Fragment,
     null,
-    modelTrigger(picker, { wide, button: button4, isOpen, onClick: toggle }),
+    modelTrigger(picker, { wide, button: button5, isOpen, onClick: toggle }),
     shownPlace ? (0, import_react_dom.createPortal)((0, import_react22.createElement)(
       "div",
       { ref: menu, className: `bt-menu bt-model-menu${shownPlace.bottom !== void 0 ? " bt-menu-up" : ""}`, role: "menu", "aria-label": modelMenuLabel(bot), style: shownPlace, "data-leaving": leaving || void 0 },
@@ -24409,7 +24413,7 @@ function PopupModelMenu({ bot, roster, actions, run: run2, wide = false, onPick,
   );
 }
 function InlineModelMenu({ bot, roster, actions, run: run2, wide = false, onPick, onPickEffort, withEfforts = true }) {
-  const { isOpen, root, button: button4, menu, open, close } = useInlineMenu();
+  const { isOpen, root, button: button5, menu, open, close } = useInlineMenu();
   const picker = useModelPicker({ bot, roster, actions, run: run2, onPick, onPickEffort, withEfforts });
   const { manage, hasEfforts } = picker;
   const toggle = () => {
@@ -24422,13 +24426,13 @@ function InlineModelMenu({ bot, roster, actions, run: run2, wide = false, onPick
   };
   const pick2 = (ref) => {
     close();
-    button4.current?.focus();
+    button5.current?.focus();
     picker.choose(ref);
   };
   return (0, import_react22.createElement)(
     "div",
     { ref: root, className: "bt-model-inline" },
-    modelTrigger(picker, { wide, button: button4, isOpen, onClick: toggle }),
+    modelTrigger(picker, { wide, button: button5, isOpen, onClick: toggle }),
     (0, import_react22.createElement)(
       Collapse,
       { open: isOpen },
@@ -24678,7 +24682,7 @@ var import_react_dom2 = require("react-dom");
 var folderName = (path2) => String(path2).replace(/[\\/]+$/, "").split(/[\\/]/).pop() || String(path2);
 var Tick = ({ on: on2 }) => (0, import_react23.createElement)("span", { className: "bt-model-tick", "aria-hidden": true }, on2 ? (0, import_react23.createElement)(CheckIcon) : null);
 function FolderMenu({ value, group = false, team = false, actions, run: run2, onPick, wide = false, disabled = false }) {
-  const { isOpen, shownPlace, leaving, button: button4, menu, open, close } = useAnchoredMenu();
+  const { isOpen, shownPlace, leaving, button: button5, menu, open, close } = useAnchoredMenu();
   const [info, setInfo] = (0, import_react23.useState)(null);
   const [view, setView] = (0, import_react23.useState)("list");
   const [draft, setDraft] = (0, import_react23.useState)("");
@@ -24785,7 +24789,7 @@ function FolderMenu({ value, group = false, team = false, actions, run: run2, on
     (0, import_react23.createElement)(
       "button",
       {
-        ref: button4,
+        ref: button5,
         type: "button",
         className: "bt-model-trigger",
         "data-wide": wide || void 0,
@@ -25871,13 +25875,13 @@ function MemoryDialog({ owner, actions, leaving = false }) {
     window.addEventListener("scroll", onScroll, true);
     return () => window.removeEventListener("scroll", onScroll, true);
   }, [moveOpen]);
-  const openMove = (entry, button4) => {
-    if (moveOpen && moveAnchor.current === button4) {
+  const openMove = (entry, button5) => {
+    if (moveOpen && moveAnchor.current === button5) {
       setMoveOpen(false);
       return;
     }
-    moveAnchor.current = button4;
-    const rect = button4.getBoundingClientRect();
+    moveAnchor.current = button5;
+    const rect = button5.getBoundingClientRect();
     const below = window.innerHeight - rect.bottom - MOVE_MENU_GAP;
     const above = rect.top - MOVE_MENU_GAP;
     const right = Math.max(MOVE_MENU_GAP, window.innerWidth - rect.right);
@@ -26822,12 +26826,12 @@ function ConnectorRow({ connector, actions }) {
     if (connector.auth?.kind === "oauth") return connector.auth.client?.id || !connector.auth.token ? signIn() : setForm("token");
     return void 0;
   };
-  const button4 = (label, onClick) => (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick }, label);
+  const button5 = (label, onClick) => (0, import_react30.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick }, label);
   let actionsNode = null;
   if (pending || form) actionsNode = null;
-  else if (connector.state === "needs-sign-in") actionsNode = [button4(t("Sign in again"), signIn), button4(t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)))];
-  else if (connector.state === "error") actionsNode = [button4(t("Try again"), () => void run2(actions.connectorRetry(connector.id))), button4(connector.custom ? t("Remove") : t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)))];
-  else if (on2) actionsNode = button4(connector.custom ? t("Remove") : t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)));
+  else if (connector.state === "needs-sign-in") actionsNode = [button5(t("Sign in again"), signIn), button5(t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)))];
+  else if (connector.state === "error") actionsNode = [button5(t("Try again"), () => void run2(actions.connectorRetry(connector.id))), button5(connector.custom ? t("Remove") : t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)))];
+  else if (on2) actionsNode = button5(connector.custom ? t("Remove") : t("Disconnect"), () => void run2(actions.connectorDisconnect(connector.id)));
   else {
     actionsNode = [
       connector.auth?.kind === "oauth" && connector.auth.token === true && connector.auth.client?.id ? (0, import_react30.createElement)("button", { key: "token", type: "button", className: "bt-connector-link", disabled: busy, onClick: () => setForm("token") }, t("Use a token instead")) : null,
@@ -30177,7 +30181,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.19";
+var version = "0.2.0-rc.20";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -31554,14 +31558,14 @@ function UpdateNotice({ wide, useUpdate, actions }) {
   const [box, setBox] = (0, import_react39.useState)(null);
   const [error, setError] = (0, import_react39.useState)("");
   const [dshError, setDshError] = (0, import_react39.useState)("");
-  const button4 = (0, import_react39.useRef)(null);
+  const button5 = (0, import_react39.useRef)(null);
   const focusDetails = (0, import_react39.useCallback)((node) => {
     node?.focus({ preventScroll: true });
   }, []);
   (0, import_react39.useEffect)(() => {
     if (!open) return void 0;
     const onDown = (event) => {
-      if (event.target instanceof Element && (event.target.closest(".bt-update-pop") || button4.current?.contains(event.target))) return;
+      if (event.target instanceof Element && (event.target.closest(".bt-update-pop") || button5.current?.contains(event.target))) return;
       setOpen(false);
     };
     const onKey = (event) => {
@@ -31569,7 +31573,7 @@ function UpdateNotice({ wide, useUpdate, actions }) {
       event.preventDefault();
       event.stopPropagation();
       setOpen(false);
-      button4.current?.focus();
+      button5.current?.focus();
     };
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey, true);
@@ -31585,7 +31589,7 @@ function UpdateNotice({ wide, useUpdate, actions }) {
   const tick = useViewport();
   (0, import_react39.useLayoutEffect)(() => {
     if (!open) return;
-    const rect = button4.current?.getBoundingClientRect();
+    const rect = button5.current?.getBoundingClientRect();
     if (rect) setBox({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: rect.bottom + 6 });
   }, [open, tick]);
   if (!update?.available && !dshRow && phase === "idle" && dshPhase === "idle") return null;
@@ -31602,7 +31606,7 @@ function UpdateNotice({ wide, useUpdate, actions }) {
   };
   const label = phase === "installing" ? t("Updating Godbot…") : dshPhase === "installing" ? t("Updating DSH…") : phase === "installed" ? t("Godbot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is installed.", { version: update.installed ?? update.latest }) : dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : pending ?? (update?.available ? t("Godbot {version} is available", { version: update.latest }) : t("DSH {version} is available", { version: dsh?.verified }));
   const summary = phase === "failed" || error ? t("Godbot update failed") : dshPhase === "failed" || dshError ? t("DSH update failed") : phase === "ready" ? t("Godbot {version} is ready to install", { version: update.latest }) : label;
-  const message = error || (phase === "failed" ? update.error : "");
+  const message2 = error || (phase === "failed" ? update.error : "");
   const dshMessage = dshError || (dshPhase === "failed" ? dsh?.error : "");
   const dshText = dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : dsh?.available === false && dsh?.blockedBy ? t("Update Godbot {version} first.", { version: dsh.blockedBy }) : t("You have {version}.", { version: dsh?.current });
   return (0, import_react39.createElement)(
@@ -31611,7 +31615,7 @@ function UpdateNotice({ wide, useUpdate, actions }) {
     (0, import_react39.createElement)(
       "button",
       {
-        ref: button4,
+        ref: button5,
         type: "button",
         className: wide ? "bt-update bt-update-notice" : "bt-round bt-update",
         "data-phase": cloudPhase,
@@ -31642,7 +31646,7 @@ function UpdateNotice({ wide, useUpdate, actions }) {
         null,
         (0, import_react39.createElement)("div", { className: "bt-update-title" }, phase === "installed" || phase === "updated" ? t("Update installed") : t("Godbot {version}", { version: update.latest })),
         (0, import_react39.createElement)("div", { className: "bt-update-text" }, phase === "installed" ? t("Restart DSH to start using Godbot {version}.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is installed.", { version: update.installed ?? update.latest }) : pending ? sentences(pending, t("You have {version}.", { version: update.current })) : t("You have {version}.", { version: update.current })),
-        message ? (0, import_react39.createElement)("div", { className: "bt-update-error", role: "alert" }, t("The update did not finish: {reason}", { reason: message })) : null,
+        message2 ? (0, import_react39.createElement)("div", { className: "bt-update-error", role: "alert" }, t("The update did not finish: {reason}", { reason: message2 })) : null,
         (0, import_react39.createElement)(
           "div",
           { className: "bt-update-actions" },
@@ -31708,7 +31712,7 @@ function AccountLauncher({ seat = true, settingsOpen, actions }) {
     return () => actions.seatAccount(false);
   }, [seat]);
   const [box, setBox] = (0, import_react39.useState)(null);
-  const button4 = (0, import_react39.useRef)(null);
+  const button5 = (0, import_react39.useRef)(null);
   const menuRef = (0, import_react39.useRef)(null);
   (0, import_react39.useEffect)(() => {
     if (settingsOpen) setOpen(false);
@@ -31716,15 +31720,15 @@ function AccountLauncher({ seat = true, settingsOpen, actions }) {
   (0, import_react39.useEffect)(() => {
     if (!open) return void 0;
     const onDown = (event) => {
-      if (event.target instanceof Element && (event.target.closest(".bt-account-menu") || button4.current?.contains(event.target))) return;
+      if (event.target instanceof Element && (event.target.closest(".bt-account-menu") || button5.current?.contains(event.target))) return;
       setOpen(false);
     };
     const onKey = (event) => {
-      if (stepMenuFocus(menuRef.current, event, button4.current)) return;
+      if (stepMenuFocus(menuRef.current, event, button5.current)) return;
       if (event.key === "Escape") {
         event.stopPropagation();
         setOpen(false);
-        button4.current?.focus();
+        button5.current?.focus();
       }
     };
     window.addEventListener("mousedown", onDown);
@@ -31773,7 +31777,7 @@ function AccountLauncher({ seat = true, settingsOpen, actions }) {
   };
   const tick = useViewport();
   const anchor = () => {
-    const rect = button4.current?.getBoundingClientRect();
+    const rect = button5.current?.getBoundingClientRect();
     if (rect) setBox({ left: rect.left, bottom: viewBottom() - rect.top + 5 });
   };
   (0, import_react39.useLayoutEffect)(() => {
@@ -31807,7 +31811,7 @@ function AccountLauncher({ seat = true, settingsOpen, actions }) {
     null,
     (0, import_react39.createElement)(
       "button",
-      { ref: button4, type: "button", className: "bt-account", "aria-label": t("Account"), "aria-haspopup": "menu", "aria-expanded": open, onClick: toggle },
+      { ref: button5, type: "button", className: "bt-account", "aria-label": t("Account"), "aria-haspopup": "menu", "aria-expanded": open, onClick: toggle },
       (0, import_react39.createElement)("span", { className: "bt-you", "aria-hidden": true }, (0, import_react39.createElement)(GearIcon))
     ),
     open && box ? (0, import_react_dom6.createPortal)((0, import_react39.createElement)(
@@ -32907,8 +32911,8 @@ function ownerFace(owner, roster) {
   return { kind: "other", name: t("Other"), sub: "", paint: "var(--bt-us-rest)", glyph: (size) => glyphBox(size, ChatsIcon) };
 }
 function kindLabel(kind, botFocus) {
-  const labels5 = { chat: botFocus ? t("Own chat") : t("Conversations"), group: t("Group chats"), compaction: t("Compaction and handoff"), image: t("Image reading"), memory: t("Memory"), "session-title": t("Titles"), btw: t("Side chat"), side: t("Side chat"), other: t("Other") };
-  return labels5[kind] ?? kind;
+  const labels6 = { chat: botFocus ? t("Own chat") : t("Conversations"), group: t("Group chats"), compaction: t("Compaction and handoff"), image: t("Image reading"), memory: t("Memory"), "session-title": t("Titles"), btw: t("Side chat"), side: t("Side chat"), other: t("Other") };
+  return labels6[kind] ?? kind;
 }
 function Tabs({ label, value, options, onChange, boxRef }) {
   const names = options.map(([, text]) => text).join("\n");
@@ -35838,7 +35842,7 @@ function stateText(conn, status) {
 var Dot = ({ state }) => (0, import_react47.createElement)("span", { className: "bt-im-dot", "data-state": state, "aria-hidden": true });
 var Tick2 = ({ on: on2 }) => (0, import_react47.createElement)("span", { className: "bt-model-tick", "aria-hidden": true }, on2 ? (0, import_react47.createElement)(CheckIcon) : null);
 function TargetMenu({ value, roster, rooms = false, label, onPick, disabled = false }) {
-  const { isOpen, shownPlace, leaving, button: button4, menu, open, close } = useAnchoredMenu();
+  const { isOpen, shownPlace, leaving, button: button5, menu, open, close } = useAnchoredMenu();
   const bot = value?.botId !== void 0 ? roster.bots.find((entry) => entry.id === value.botId) : void 0;
   const room2 = value?.roomId !== void 0 ? roster.rooms.find((entry) => entry.id === value.roomId) : void 0;
   const pick2 = (next) => {
@@ -35851,7 +35855,7 @@ function TargetMenu({ value, roster, rooms = false, label, onPick, disabled = fa
     null,
     (0, import_react47.createElement)(
       "button",
-      { ref: button4, type: "button", className: "bt-model-trigger bt-im-target", "aria-haspopup": "menu", "aria-expanded": isOpen, "aria-label": label, disabled, onClick: () => isOpen ? close() : open() },
+      { ref: button5, type: "button", className: "bt-model-trigger bt-im-target", "aria-haspopup": "menu", "aria-expanded": isOpen, "aria-label": label, disabled, onClick: () => isOpen ? close() : open() },
       shown,
       (0, import_react47.createElement)("span", { className: "bt-model-name" }, bot?.name ?? room2?.name ?? t("Not bound")),
       (0, import_react47.createElement)(Caret)
@@ -37070,10 +37074,10 @@ var CUSTOM_PREFIX2 = `${ROUTE_PREFIX}acp-`;
 
 // src/client/team-ui/agent-form.js
 var import_react50 = require("react");
-function AgentForm({ initial, submit: submit2, close }) {
-  const [name, setName] = (0, import_react50.useState)(initial?.name ?? "");
-  const [command, setCommand] = (0, import_react50.useState)(initial?.command ?? "");
-  const [args, setArgs] = (0, import_react50.useState)((initial?.args ?? []).join(" "));
+function AgentForm({ initial: initial2, submit: submit2, close }) {
+  const [name, setName] = (0, import_react50.useState)(initial2?.name ?? "");
+  const [command, setCommand] = (0, import_react50.useState)(initial2?.command ?? "");
+  const [args, setArgs] = (0, import_react50.useState)((initial2?.args ?? []).join(" "));
   const [error, setError] = (0, import_react50.useState)("");
   const save = () => {
     const payload = { name, command, args: args.split(/\s+/).filter(Boolean) };
@@ -38163,8 +38167,8 @@ var DIALOG_EXIT_MS = 160;
 var RECOVERY_CONFIRMATION_MS = 2e3;
 var CONNECTING_MIN_VISIBLE_MS = 800;
 var BUSY_PHASES = /* @__PURE__ */ new Set(["checking", "downloading", "verifying", "installing"]);
-function snapshotStore(initial) {
-  let value = initial;
+function snapshotStore(initial2) {
+  let value = initial2;
   const listeners3 = /* @__PURE__ */ new Set();
   return {
     getSnapshot: () => value,
@@ -39189,7 +39193,7 @@ var import_react59 = require("react");
 var import_react_dom10 = require("react-dom");
 
 // src/client/team-ui/enter-steer.js
-var steerable = (input2) => input2 !== void 0 && input2.phase === "plain" && input2.draft.trim() === "" && input2.attachmentIds.length === 0 && input2.queue.some((message) => message.source?.kind === "user");
+var steerable = (input2) => input2 !== void 0 && input2.phase === "plain" && input2.draft.trim() === "" && input2.attachmentIds.length === 0 && input2.queue.some((message2) => message2.source?.kind === "user");
 var enterSteers = (event, input2) => event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey && !event.getModifierState?.("AltGraph") && !event.isComposing && event.keyCode !== 229 && !event.repeat && steerable(input2);
 var steerQueued = async (session) => {
   try {
@@ -39334,7 +39338,7 @@ function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions })
   const roster = useRoster((value) => value);
   const [open, setOpen] = (0, import_react59.useState)(null);
   const [shown, leaving] = useLinger(open, 120);
-  const button4 = (0, import_react59.useRef)(null);
+  const button5 = (0, import_react59.useRef)(null);
   const menu = (0, import_react59.useRef)(null);
   const tick = useViewport();
   const inputNow = (0, import_react59.useRef)(void 0);
@@ -39345,10 +39349,10 @@ function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions })
   (0, import_react59.useEffect)(() => {
     if (!open) return void 0;
     const onDown = (event) => {
-      if (![button4.current, menu.current].some((node) => node?.contains(event.target))) setOpen(null);
+      if (![button5.current, menu.current].some((node) => node?.contains(event.target))) setOpen(null);
     };
     const onKey = (event) => {
-      if (stepMenuFocus(menu.current, event, button4.current)) return;
+      if (stepMenuFocus(menu.current, event, button5.current)) return;
       if (event.key === "Escape") {
         event.stopPropagation();
         setOpen(null);
@@ -39362,7 +39366,7 @@ function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions })
     };
   }, [open]);
   (0, import_react59.useEffect)(() => {
-    const card = button4.current?.closest("[data-composer-card]");
+    const card = button5.current?.closest("[data-composer-card]");
     if (!ready || card === null || card === void 0) return void 0;
     card.style.setProperty("--bt-placeholder", JSON.stringify(t("Press Enter to steer queued messages")));
     return () => card.style.removeProperty("--bt-placeholder");
@@ -39373,7 +39377,7 @@ function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions })
       if (steering || event.defaultPrevented || open) return;
       const target2 = event.target;
       if (typeof target2?.closest !== "function") return;
-      const card = button4.current?.closest("[data-composer-card]");
+      const card = button5.current?.closest("[data-composer-card]");
       if (card === null || card === void 0 || target2.closest("[data-composer-card]") !== card) return;
       if (target2.closest("[contenteditable=true]") === null) return;
       if (target2.closest("[data-composer-composing]")) return;
@@ -39390,13 +39394,13 @@ function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions })
     return () => window.removeEventListener("keydown", onKey, true);
   }, [open, sessionId]);
   const place = (0, import_react59.useMemo)(() => {
-    if (!shown || !button4.current) return null;
-    const rect = button4.current.getBoundingClientRect();
+    if (!shown || !button5.current) return null;
+    const rect = button5.current.getBoundingClientRect();
     return { left: rect.left, bottom: viewBottom() - rect.top + 8 };
   }, [shown, open, tick]);
   const target = roster.byId?.[sessionId]?.id ?? roster.roomsById?.[sessionId]?.id;
   if (sessionId === void 0 || target === void 0) return null;
-  const fileInput = () => button4.current?.closest("[data-composer-card]")?.querySelector("input[type=file]");
+  const fileInput = () => button5.current?.closest("[data-composer-card]")?.querySelector("input[type=file]");
   const toggle = () => {
     if (open) {
       setOpen(null);
@@ -39426,7 +39430,7 @@ function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions })
     import_react59.Fragment,
     null,
     (0, import_react59.createElement)("button", {
-      ref: button4,
+      ref: button5,
       type: "button",
       className: "bt-plus",
       "aria-label": t("Add"),
@@ -40339,7 +40343,7 @@ function FailureCell({ node, sessionId, useRoster, useTurnClock, actions }) {
       setError(hostText(failure?.message ?? String(failure)));
     });
   };
-  const button4 = (fix, primary) => {
+  const button5 = (fix, primary) => {
     const className = primary ? "bt-send bt-fail-go" : "bt-soft bt-soft-sm";
     if (fix === "top-up") {
       return (0, import_react62.createElement)("a", { key: fix, className: `${className} bt-fail-link`, href: data.code === "ACCOUNT_QUOTA" ? topUp : TOP_UP_URL, target: "_blank", rel: "noopener noreferrer" }, FIX_LABELS[fix]());
@@ -40348,7 +40352,7 @@ function FailureCell({ node, sessionId, useRoster, useTurnClock, actions }) {
     return (0, import_react62.createElement)("button", { key: fix, type: "button", className, "aria-expanded": toggles ? keying : void 0, onClick: () => runs[fix]() }, FIX_LABELS[fix](signedIn));
   };
   const retryButton = (primary) => (0, import_react62.createElement)("button", { key: "retry", type: "button", className: primary ? "bt-send bt-fail-go" : "bt-soft bt-soft-sm", disabled: retry !== "idle", onClick: resume }, retry === "idle" ? t("Retry") : t("Retrying…"));
-  const row2 = retryFirst ? [retryButton(true), ...fixes.map((fix) => button4(fix, false))] : [...fixes.map((fix, index) => button4(fix, index === 0)), retrying ? retryButton(false) : null];
+  const row2 = retryFirst ? [retryButton(true), ...fixes.map((fix) => button5(fix, false))] : [...fixes.map((fix, index) => button5(fix, index === 0)), retrying ? retryButton(false) : null];
   if (!row2.some(Boolean)) return settled();
   return (0, import_react62.createElement)(
     "div",
@@ -40824,14 +40828,14 @@ function composerLabels(root) {
     return item.querySelector("[title]")?.getAttribute("title") ?? "";
   });
 }
-function pasteLinks(blocks, ids, labels5) {
-  if (labels5.length !== ids.length) return [];
+function pasteLinks(blocks, ids, labels6) {
+  if (labels6.length !== ids.length) return [];
   const taken = /* @__PURE__ */ new Set();
   for (const block of blocks) if (block.attachmentId !== null) taken.add(block.attachmentId);
   const links = [];
   for (const block of blocks) {
     if (block.attachmentId !== null || !block.name) continue;
-    const index = labels5.findIndex((label, i) => label === block.name && !taken.has(ids[i]));
+    const index = labels6.findIndex((label, i) => label === block.name && !taken.has(ids[i]));
     if (index === -1) continue;
     taken.add(ids[index]);
     links.push({ blockId: block.id, attachmentId: ids[index] });
@@ -40984,7 +40988,7 @@ function NewChat({ mode, sectionId = null, paneLeft, roster, actions }) {
   const [picked, setPicked] = (0, import_react66.useState)([]);
   const [group, setGroup] = (0, import_react66.useState)(mode === "group");
   const [admin, setAdmin] = (0, import_react66.useState)(null);
-  const [message, setMessage] = (0, import_react66.useState)("");
+  const [message2, setMessage] = (0, import_react66.useState)("");
   const [pasted, setPasted] = (0, import_react66.useState)(null);
   const [busy, setBusy] = (0, import_react66.useState)(false);
   const [error, setError] = (0, import_react66.useState)("");
@@ -40992,7 +40996,7 @@ function NewChat({ mode, sectionId = null, paneLeft, roster, actions }) {
   const [draft, setDraft] = (0, import_react66.useState)(mode === "create" ? { name: "", fromList: false, sectionId } : null);
   const inputRef = (0, import_react66.useRef)(null);
   const messageRef = (0, import_react66.useRef)(null);
-  const draftText = () => `${message}${pasted?.text ?? ""}`;
+  const draftText = () => `${message2}${pasted?.text ?? ""}`;
   const close = () => actions.closeOverlay();
   useEscape(close);
   const wanted = query.trim().toLowerCase();
@@ -41230,7 +41234,7 @@ ${listed}`, { axis: "y", ...QUICK_EDGES });
           (0, import_react66.createElement)("textarea", {
             ref: messageRef,
             rows: 1,
-            value: message,
+            value: message2,
             placeholder,
             "aria-label": placeholder,
             onChange: (event) => setMessage(event.target.value),
@@ -43081,14 +43085,14 @@ function PanelMenu({ items, className, "aria-label": label, title: title2 = labe
   const [open, setOpen] = (0, import_react73.useState)(false);
   const [shown, leaving] = useLinger(open, 120);
   const wrap = (0, import_react73.useRef)(null);
-  const button4 = (0, import_react73.useRef)(null);
+  const button5 = (0, import_react73.useRef)(null);
   (0, import_react73.useEffect)(() => {
     if (!open) return void 0;
     const onDown = (event) => {
       if (wrap.current && !wrap.current.contains(event.target)) setOpen(false);
     };
     const onKey = (event) => {
-      if (stepMenuFocus(wrap.current, event, button4.current)) return;
+      if (stepMenuFocus(wrap.current, event, button5.current)) return;
       if (event.key !== "Escape") return;
       event.stopPropagation();
       setOpen(false);
@@ -43105,7 +43109,7 @@ function PanelMenu({ items, className, "aria-label": label, title: title2 = labe
     "span",
     { className: "bt-pmenu", ref: wrap },
     (0, import_react73.createElement)("button", {
-      ref: button4,
+      ref: button5,
       type: "button",
       className,
       "aria-label": label,
@@ -45559,9 +45563,9 @@ function ReadOnlyDock({ sessionId, useUi, useRoster, actions }) {
       }
     };
     const onClick = (event) => {
-      const button4 = event.target?.closest?.("button");
-      if (button4 === null || button4 === void 0) return;
-      if (/send|发送/i.test(button4.getAttribute("aria-label") ?? "")) {
+      const button5 = event.target?.closest?.("button");
+      if (button5 === null || button5 === void 0) return;
+      if (/send|发送/i.test(button5.getAttribute("aria-label") ?? "")) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
@@ -47797,9 +47801,9 @@ function reportSessionUsage(entries2, seq, messageId) {
   if (!Number.isInteger(seq) || !Array.isArray(entries2)) return;
   const entry = entries2.findLast((item) => item.type === "event" && item.event.seq === seq);
   if (entry?.event.type !== "assistant/message") return;
-  const message = entry.event.data?.message;
-  if (messageId && message?.id !== messageId || message?.source?.provider !== "local-claude-code") return null;
-  return message.source.replayState?.response?.godbotClaudeSessionUsage;
+  const message2 = entry.event.data?.message;
+  if (messageId && message2?.id !== messageId || message2?.source?.provider !== "local-claude-code") return null;
+  return message2.source.replayState?.response?.godbotClaudeSessionUsage;
 }
 
 // src/client/native-command-report.js
@@ -47829,10 +47833,10 @@ function recommendations(line, period, unknown, flattened = false) {
   const lead = line.slice(0, matches2[0].index).trim();
   if (lead) unknown.push(lead);
   for (let i = 0; i < matches2.length; i++) {
-    const m = matches2[i];
-    const body = line.slice(m.index + m[0].length, matches2[i + 1]?.index).trim();
+    const m2 = matches2[i];
+    const body = line.slice(m2.index + m2[0].length, matches2[i + 1]?.index).trim();
     const [label, ...detail] = body.split(/\s+·\s+/u);
-    period.recommendations.push({ percent: Number(m[1]), label, detail: detail.join(" · ") });
+    period.recommendations.push({ percent: Number(m2[1]), label, detail: detail.join(" · ") });
   }
 }
 function tableValues(text, table, unknown) {
@@ -48212,13 +48216,13 @@ function ShareTable({ label, items, more }) {
     )
   );
 }
-function ReportTabs({ id, title: title2, labels: labels5, active, onSelect, className }) {
+function ReportTabs({ id, title: title2, labels: labels6, active, onSelect, className }) {
   function navigate(event, index) {
     let next;
-    if (event.key === "ArrowLeft") next = (index - 1 + labels5.length) % labels5.length;
-    else if (event.key === "ArrowRight") next = (index + 1) % labels5.length;
+    if (event.key === "ArrowLeft") next = (index - 1 + labels6.length) % labels6.length;
+    else if (event.key === "ArrowRight") next = (index + 1) % labels6.length;
     else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = labels5.length - 1;
+    else if (event.key === "End") next = labels6.length - 1;
     else return;
     event.preventDefault();
     event.stopPropagation();
@@ -48228,7 +48232,7 @@ function ReportTabs({ id, title: title2, labels: labels5, active, onSelect, clas
   return (0, import_react81.createElement)(
     "div",
     { className, role: "tablist", "aria-label": title2 },
-    labels5.map((label, i) => (0, import_react81.createElement)("button", {
+    labels6.map((label, i) => (0, import_react81.createElement)("button", {
       type: "button",
       role: "tab",
       key: label,
@@ -48485,23 +48489,23 @@ var tr = class {
   decode(t2, e) {
     let i = t2.length;
     if (!i) return 0;
-    let r = 0, n, o2, l, a, u = 0, h110 = 0;
+    let r = 0, n, o2, l, a, u = 0, h114 = 0;
     if (this.interim[0]) {
       let _2 = false, p = this.interim[0];
       p &= (p & 224) === 192 ? 31 : (p & 240) === 224 ? 15 : 7;
-      let m = 0, f;
-      for (; (f = this.interim[++m] & 63) && m < 4; ) p <<= 6, p |= f;
-      let A = (this.interim[0] & 224) === 192 ? 2 : (this.interim[0] & 240) === 224 ? 3 : 4, R = A - m;
-      for (; h110 < R; ) {
-        if (h110 >= i) return 0;
-        if (f = t2[h110++], (f & 192) !== 128) {
-          h110--, _2 = true;
+      let m2 = 0, f;
+      for (; (f = this.interim[++m2] & 63) && m2 < 4; ) p <<= 6, p |= f;
+      let A = (this.interim[0] & 224) === 192 ? 2 : (this.interim[0] & 240) === 224 ? 3 : 4, R = A - m2;
+      for (; h114 < R; ) {
+        if (h114 >= i) return 0;
+        if (f = t2[h114++], (f & 192) !== 128) {
+          h114--, _2 = true;
           break;
-        } else this.interim[m++] = f, p <<= 6, p |= f & 63;
+        } else this.interim[m2++] = f, p <<= 6, p |= f & 63;
       }
-      _2 || (A === 2 ? p < 128 ? h110-- : e[r++] = p : A === 3 ? p < 2048 || p >= 55296 && p <= 57343 || p === 65279 || (e[r++] = p) : p < 65536 || p > 1114111 || (e[r++] = p)), this.interim.fill(0);
+      _2 || (A === 2 ? p < 128 ? h114-- : e[r++] = p : A === 3 ? p < 2048 || p >= 55296 && p <= 57343 || p === 65279 || (e[r++] = p) : p < 65536 || p > 1114111 || (e[r++] = p)), this.interim.fill(0);
     }
-    let c = i - 4, d = h110;
+    let c = i - 4, d = h114;
     for (; d < i; ) {
       for (; d < c && !((n = t2[d]) & 128) && !((o2 = t2[d + 1]) & 128) && !((l = t2[d + 2]) & 128) && !((a = t2[d + 3]) & 128); ) e[r++] = n, e[r++] = o2, e[r++] = l, e[r++] = a, d += 4;
       if (n = t2[d++], n < 128) e[r++] = n;
@@ -48811,26 +48815,26 @@ var wt = class {
       e(void 0);
       return;
     }
-    let r = [], n = this._optionsService.rawOptions.linkHandler, o2 = new q(), l = i.getTrimmedLength(), a = -1, u = -1, h110 = false;
+    let r = [], n = this._optionsService.rawOptions.linkHandler, o2 = new q(), l = i.getTrimmedLength(), a = -1, u = -1, h114 = false;
     for (let c = 0; c < l; c++) if (!(u === -1 && !i.hasContent(c))) {
       if (i.loadCell(c, o2), o2.hasExtendedAttrs() && o2.extended.urlId) if (u === -1) {
         u = c, a = o2.extended.urlId;
         continue;
-      } else h110 = o2.extended.urlId !== a;
-      else u !== -1 && (h110 = true);
-      if (h110 || u !== -1 && c === l - 1) {
+      } else h114 = o2.extended.urlId !== a;
+      else u !== -1 && (h114 = true);
+      if (h114 || u !== -1 && c === l - 1) {
         let d = this._oscLinkService.getLinkData(a)?.uri;
         if (d) {
-          let _2 = { start: { x: u + 1, y: t2 }, end: { x: c + (!h110 && c === l - 1 ? 1 : 0), y: t2 } }, p = false;
+          let _2 = { start: { x: u + 1, y: t2 }, end: { x: c + (!h114 && c === l - 1 ? 1 : 0), y: t2 } }, p = false;
           if (!n?.allowNonHttpProtocols) try {
-            let m = new URL(d);
-            ["http:", "https:"].includes(m.protocol) || (p = true);
+            let m2 = new URL(d);
+            ["http:", "https:"].includes(m2.protocol) || (p = true);
           } catch {
             p = true;
           }
-          p || r.push({ text: d, range: _2, activate: (m, f) => n ? n.activate(m, f, _2) : Ol(m, f), hover: (m, f) => n?.hover?.(m, f, _2), leave: (m, f) => n?.leave?.(m, f, _2) });
+          p || r.push({ text: d, range: _2, activate: (m2, f) => n ? n.activate(m2, f, _2) : Ol(m2, f), hover: (m2, f) => n?.hover?.(m2, f, _2), leave: (m2, f) => n?.leave?.(m2, f, _2) });
         }
-        h110 = false, o2.hasExtendedAttrs() && o2.extended.urlId ? (u = c, a = o2.extended.urlId) : (u = -1, a = -1);
+        h114 = false, o2.hasExtendedAttrs() && o2.extended.urlId ? (u = c, a = o2.extended.urlId) : (u = -1, a = -1);
       }
     }
     e(r);
@@ -49142,10 +49146,10 @@ var zn;
     return false;
   }
   O.some = u;
-  function h110(I, k) {
+  function h114(I, k) {
     for (let P of I) if (k(P)) return P;
   }
-  O.find = h110;
+  O.find = h114;
   function* c(I, k) {
     for (let P of I) k(P) && (yield P);
   }
@@ -49164,12 +49168,12 @@ var zn;
     for (let k of I) yield* k;
   }
   O.concat = p;
-  function m(I, k, P) {
+  function m2(I, k, P) {
     let oe = P;
     for (let Me of I) oe = k(oe, Me);
     return oe;
   }
-  O.reduce = m;
+  O.reduce = m2;
   function* f(I, k, P = I.length) {
     for (k < 0 && (k += I.length), P < 0 ? P += I.length : P > I.length && (P = I.length); k < P; k++) yield I[k];
   }
@@ -49235,44 +49239,44 @@ var hr = class hr2 {
     else {
       let a = /* @__PURE__ */ new Map(), u = [...this.livingDisposables.values()].filter((c) => c.source !== null && !this.getRootParent(c, a).isSingleton);
       if (u.length === 0) return;
-      let h110 = new Set(u.map((c) => c.value));
-      if (i = u.filter((c) => !(c.parent && h110.has(c.parent))), i.length === 0) throw new Error("There are cyclic diposable chains!");
+      let h114 = new Set(u.map((c) => c.value));
+      if (i = u.filter((c) => !(c.parent && h114.has(c.parent))), i.length === 0) throw new Error("There are cyclic diposable chains!");
     }
     if (!i) return;
     function r(a) {
       function u(c, d) {
         for (; c.length > 0 && d.some((_2) => typeof _2 == "string" ? _2 === c[0] : c[0].match(_2)); ) c.shift();
       }
-      let h110 = a.source.split(`
+      let h114 = a.source.split(`
 `).map((c) => c.trim().replace("at ", "")).filter((c) => c !== "");
-      return u(h110, ["Error", /^trackDisposable \(.*\)$/, /^DisposableTracker.trackDisposable \(.*\)$/]), h110.reverse();
+      return u(h114, ["Error", /^trackDisposable \(.*\)$/, /^DisposableTracker.trackDisposable \(.*\)$/]), h114.reverse();
     }
     let n = new ur();
     for (let a of i) {
       let u = r(a);
-      for (let h110 = 0; h110 <= u.length; h110++) n.add(u.slice(0, h110).join(`
+      for (let h114 = 0; h114 <= u.length; h114++) n.add(u.slice(0, h114).join(`
 `), a);
     }
     i.sort(no((a) => a.idx, so));
     let o2 = "", l = 0;
     for (let a of i.slice(0, t2)) {
       l++;
-      let u = r(a), h110 = [];
+      let u = r(a), h114 = [];
       for (let c = 0; c < u.length; c++) {
         let d = u[c];
         d = `(shared with ${n.get(u.slice(0, c + 1).join(`
 `)).size}/${i.length} leaks) at ${d}`;
         let p = n.get(u.slice(0, c).join(`
-`)), m = co([...p].map((f) => r(f)[c]), (f) => f);
-        delete m[u[c]];
-        for (let [f, A] of Object.entries(m)) h110.unshift(`    - stacktraces of ${A.length} other leaks continue with ${f}`);
-        h110.unshift(d);
+`)), m2 = co([...p].map((f) => r(f)[c]), (f) => f);
+        delete m2[u[c]];
+        for (let [f, A] of Object.entries(m2)) h114.unshift(`    - stacktraces of ${A.length} other leaks continue with ${f}`);
+        h114.unshift(d);
       }
       o2 += `
 
 
 ==================== Leaking disposable ${l}/${i.length}: ${a.value.constructor.name} ====================
-${h110.join(`
+${h114.join(`
 `)}
 ============================================================
 
@@ -49547,17 +49551,17 @@ var $;
   }
   Qe.once = i;
   function r(y, T, g) {
-    return h110((w, E = null, x) => y((N) => w.call(E, T(N)), null, x), g);
+    return h114((w, E = null, x) => y((N) => w.call(E, T(N)), null, x), g);
   }
   Qe.map = r;
   function n(y, T, g) {
-    return h110((w, E = null, x) => y((N) => {
+    return h114((w, E = null, x) => y((N) => {
       T(N), w.call(E, N);
     }, null, x), g);
   }
   Qe.forEach = n;
   function o2(y, T, g) {
-    return h110((w, E = null, x) => y((N) => T(N) && w.call(E, N), null, x), g);
+    return h114((w, E = null, x) => y((N) => T(N) && w.call(E, N), null, x), g);
   }
   Qe.filter = o2;
   function l(y) {
@@ -49576,7 +49580,7 @@ var $;
     return r(y, (x) => (E = T(E, x), E), w);
   }
   Qe.reduce = u;
-  function h110(y, T) {
+  function h114(y, T) {
     let g, w = { onWillAddFirstListener() {
       g = y(E.fire, E);
     }, onDidRemoveLastListener() {
@@ -49619,10 +49623,10 @@ var $;
     }, g);
   }
   Qe.latch = p;
-  function m(y, T, g) {
+  function m2(y, T, g) {
     return [Qe.filter(y, T, g), Qe.filter(y, (w) => !T(w), g)];
   }
-  Qe.split = m;
+  Qe.split = m2;
   function f(y, T = false, g = [], w) {
     let E = g.slice(), x = y((te) => {
       E ? E.push(te) : Z.fire(te);
@@ -49890,8 +49894,8 @@ var v = class {
       if (this._leakageMon && this._size > this._leakageMon.threshold ** 2) {
         let a = `[${this._leakageMon.name}] REFUSES to accept new listeners because it exceeded its threshold by far (${this._size} vs ${this._leakageMon.threshold})`;
         console.warn(a);
-        let u = this._leakageMon.getMostFrequentStack() ?? ["UNKNOWN stack", -1], h110 = new Yn(`${a}. HINT: Stack shows most frequent listener (${u[1]}-times)`, u[0]);
-        return (this._options?.onListenerError || Lt)(h110), D.None;
+        let u = this._leakageMon.getMostFrequentStack() ?? ["UNKNOWN stack", -1], h114 = new Yn(`${a}. HINT: Stack shows most frequent listener (${u[1]}-times)`, u[0]);
+        return (this._options?.onListenerError || Lt)(h114), D.None;
       }
       if (this._disposed) return D.None;
       e && (t2 = t2.bind(e));
@@ -50667,8 +50671,8 @@ var Cr = class Cr2 {
     let t2 = Cr2._bigBlock32, e = this._buffDV;
     for (let c = 0; c < 64; c += 4) t2.setUint32(c, e.getUint32(c, false), false);
     for (let c = 64; c < 320; c += 4) t2.setUint32(c, rs(t2.getUint32(c - 12, false) ^ t2.getUint32(c - 32, false) ^ t2.getUint32(c - 56, false) ^ t2.getUint32(c - 64, false), 1), false);
-    let i = this._h0, r = this._h1, n = this._h2, o2 = this._h3, l = this._h4, a, u, h110;
-    for (let c = 0; c < 80; c++) c < 20 ? (a = r & n | ~r & o2, u = 1518500249) : c < 40 ? (a = r ^ n ^ o2, u = 1859775393) : c < 60 ? (a = r & n | r & o2 | n & o2, u = 2400959708) : (a = r ^ n ^ o2, u = 3395469782), h110 = rs(i, 5) + a + l + u + t2.getUint32(c * 4, false) & 4294967295, l = o2, o2 = n, n = rs(r, 30), r = i, i = h110;
+    let i = this._h0, r = this._h1, n = this._h2, o2 = this._h3, l = this._h4, a, u, h114;
+    for (let c = 0; c < 80; c++) c < 20 ? (a = r & n | ~r & o2, u = 1518500249) : c < 40 ? (a = r ^ n ^ o2, u = 1859775393) : c < 60 ? (a = r & n | r & o2 | n & o2, u = 2400959708) : (a = r ^ n ^ o2, u = 3395469782), h114 = rs(i, 5) + a + l + u + t2.getUint32(c * 4, false) & 4294967295, l = o2, o2 = n, n = rs(r, 30), r = i, i = h114;
     this._h0 = this._h0 + i & 4294967295, this._h1 = this._h1 + r & 4294967295, this._h2 = this._h2 + n & 4294967295, this._h3 = this._h3 + o2 & 4294967295, this._h4 = this._h4 + l & 4294967295;
   }
 };
@@ -50768,13 +50772,13 @@ var Di = class {
     i.set(n, false);
   };
   mt = (n, o2, l = 0) => {
-    let a = Oo(n), u = new Di(o2, l), h110 = s15.get(a);
-    return h110 || (h110 = [], s15.set(a, h110)), h110.push(u), e.get(a) || (e.set(a, true), n.requestAnimationFrame(() => r(a))), u;
+    let a = Oo(n), u = new Di(o2, l), h114 = s15.get(a);
+    return h114 || (h114 = [], s15.set(a, h114)), h114.push(u), e.get(a) || (e.set(a, true), n.requestAnimationFrame(() => r(a))), u;
   }, wa = (n, o2, l) => {
     let a = Oo(n);
     if (i.get(a)) {
-      let u = new Di(o2, l), h110 = t2.get(a);
-      return h110 || (h110 = [], t2.set(a, h110)), h110.push(u), u;
+      let u = new Di(o2, l), h114 = t2.get(a);
+      return h114 || (h114 = [], t2.set(a, h114)), h114.push(u), u;
     } else return mt(n, o2, l);
   };
 })();
@@ -51090,16 +51094,16 @@ var Q = class Q2 extends D {
         console.warn("move of an UNKNOWN touch", a);
         continue;
       }
-      let u = this.activeTouches[a.identifier], h110 = Date.now() - u.initialTimeStamp;
-      if (h110 < Q2.HOLD_DELAY && Math.abs(u.initialPageX - Se(u.rollingPageX)) < 30 && Math.abs(u.initialPageY - Se(u.rollingPageY)) < 30) {
+      let u = this.activeTouches[a.identifier], h114 = Date.now() - u.initialTimeStamp;
+      if (h114 < Q2.HOLD_DELAY && Math.abs(u.initialPageX - Se(u.rollingPageX)) < 30 && Math.abs(u.initialPageY - Se(u.rollingPageY)) < 30) {
         let c = this.newGestureEvent(He.Tap, u.initialTarget);
         c.pageX = Se(u.rollingPageX), c.pageY = Se(u.rollingPageY), this.dispatchEvent(c);
-      } else if (h110 >= Q2.HOLD_DELAY && Math.abs(u.initialPageX - Se(u.rollingPageX)) < 30 && Math.abs(u.initialPageY - Se(u.rollingPageY)) < 30) {
+      } else if (h114 >= Q2.HOLD_DELAY && Math.abs(u.initialPageX - Se(u.rollingPageX)) < 30 && Math.abs(u.initialPageY - Se(u.rollingPageY)) < 30) {
         let c = this.newGestureEvent(He.Contextmenu, u.initialTarget);
         c.pageX = Se(u.rollingPageX), c.pageY = Se(u.rollingPageY), this.dispatchEvent(c);
       } else if (n === 1) {
-        let c = Se(u.rollingPageX), d = Se(u.rollingPageY), _2 = Se(u.rollingTimestamps) - u.rollingTimestamps[0], p = c - u.rollingPageX[0], m = d - u.rollingPageY[0], f = [...this.targets].filter((A) => u.initialTarget instanceof Node && A.contains(u.initialTarget));
-        this.inertia(e, f, r, Math.abs(p) / _2, p > 0 ? 1 : -1, c, Math.abs(m) / _2, m > 0 ? 1 : -1, d);
+        let c = Se(u.rollingPageX), d = Se(u.rollingPageY), _2 = Se(u.rollingTimestamps) - u.rollingTimestamps[0], p = c - u.rollingPageX[0], m2 = d - u.rollingPageY[0], f = [...this.targets].filter((A) => u.initialTarget instanceof Node && A.contains(u.initialTarget));
+        this.inertia(e, f, r, Math.abs(p) / _2, p > 0 ? 1 : -1, c, Math.abs(m2) / _2, m2 > 0 ? 1 : -1, d);
       }
       this.dispatchEvent(this.newGestureEvent(He.End, u.initialTarget)), delete this.activeTouches[a.identifier];
     }
@@ -51126,12 +51130,12 @@ var Q = class Q2 extends D {
       for (let [r, n] of i) n.dispatchEvent(e), this.dispatched = true;
     }
   }
-  inertia(e, i, r, n, o2, l, a, u, h110) {
+  inertia(e, i, r, n, o2, l, a, u, h114) {
     this.handle = mt(e, () => {
-      let c = Date.now(), d = c - r, _2 = 0, p = 0, m = true;
-      n += Q2.SCROLL_FRICTION * d, a += Q2.SCROLL_FRICTION * d, n > 0 && (m = false, _2 = o2 * n * d), a > 0 && (m = false, p = u * a * d);
+      let c = Date.now(), d = c - r, _2 = 0, p = 0, m2 = true;
+      n += Q2.SCROLL_FRICTION * d, a += Q2.SCROLL_FRICTION * d, n > 0 && (m2 = false, _2 = o2 * n * d), a > 0 && (m2 = false, p = u * a * d);
       let f = this.newGestureEvent(He.Change);
-      f.translationX = _2, f.translationY = p, i.forEach((A) => A.dispatchEvent(f)), m || this.inertia(e, i, c, n, o2, l + _2, a, u, h110 + p);
+      f.translationX = _2, f.translationY = p, i.forEach((A) => A.dispatchEvent(f)), m2 || this.inertia(e, i, c, n, o2, l + _2, a, u, h114 + p);
     });
   }
   onTouchMove(e) {
@@ -51498,8 +51502,8 @@ var Kt = class s11 {
   static _computeValues(t2, e, i, r, n) {
     let o2 = Math.max(0, i - t2), l = Math.max(0, o2 - 2 * e), a = r > 0 && r > i;
     if (!a) return { computedAvailableSize: Math.round(o2), computedIsNeeded: a, computedSliderSize: Math.round(l), computedSliderRatio: 0, computedSliderPosition: 0 };
-    let u = Math.round(Math.max(20, Math.floor(i * l / r))), h110 = (l - u) / (r - i), c = n * h110;
-    return { computedAvailableSize: Math.round(o2), computedIsNeeded: a, computedSliderSize: Math.round(u), computedSliderRatio: h110, computedSliderPosition: Math.round(c) };
+    let u = Math.round(Math.max(20, Math.floor(i * l / r))), h114 = (l - u) / (r - i), c = n * h114;
+    return { computedAvailableSize: Math.round(o2), computedIsNeeded: a, computedSliderSize: Math.round(u), computedSliderRatio: h114, computedSliderPosition: Math.round(c) };
   }
   _refreshComputedValues() {
     let t2 = s11._computeValues(this._oppositeScrollbarSize, this._arrowSize, this._visibleSize, this._scrollSize, this._scrollPosition);
@@ -51646,8 +51650,8 @@ var zr = class zr2 {
     if (Math.abs(t2.deltaX) > 0 && Math.abs(t2.deltaY) > 0) return 1;
     let i = 0.5;
     if ((!this._isAlmostInt(t2.deltaX) || !this._isAlmostInt(t2.deltaY)) && (i += 0.25), e) {
-      let r = Math.abs(t2.deltaX), n = Math.abs(t2.deltaY), o2 = Math.abs(e.deltaX), l = Math.abs(e.deltaY), a = Math.max(Math.min(r, o2), 1), u = Math.max(Math.min(n, l), 1), h110 = Math.max(r, o2), c = Math.max(n, l);
-      h110 % a === 0 && c % u === 0 && (i -= 0.5);
+      let r = Math.abs(t2.deltaX), n = Math.abs(t2.deltaY), o2 = Math.abs(e.deltaX), l = Math.abs(e.deltaY), a = Math.max(Math.min(r, o2), 1), u = Math.max(Math.min(n, l), 1), h114 = Math.max(r, o2), c = Math.max(n, l);
+      h114 % a === 0 && c % u === 0 && (i -= 0.5);
     }
     return Math.min(Math.max(i, 0), 1);
   }
@@ -51721,16 +51725,16 @@ var ds = class extends lt {
       this._options.scrollPredominantAxis && (this._options.scrollYToX && l + o2 === 0 ? l = o2 = 0 : Math.abs(o2) >= Math.abs(l) ? l = 0 : o2 = 0), this._options.flipAxes && ([o2, l] = [l, o2]);
       let a = !Te && e.browserEvent && e.browserEvent.shiftKey;
       (this._options.scrollYToX || a) && !l && (l = o2, o2 = 0), e.browserEvent && e.browserEvent.altKey && (l = l * this._options.fastScrollSensitivity, o2 = o2 * this._options.fastScrollSensitivity);
-      let u = this._scrollable.getFutureScrollPosition(), h110 = {};
+      let u = this._scrollable.getFutureScrollPosition(), h114 = {};
       if (o2) {
         let c = Ko * o2, d = u.scrollTop - (c < 0 ? Math.floor(c) : Math.ceil(c));
-        this._verticalScrollbar.writeScrollPosition(h110, d);
+        this._verticalScrollbar.writeScrollPosition(h114, d);
       }
       if (l) {
         let c = Ko * l, d = u.scrollLeft - (c < 0 ? Math.floor(c) : Math.ceil(c));
-        this._horizontalScrollbar.writeScrollPosition(h110, d);
+        this._horizontalScrollbar.writeScrollPosition(h114, d);
       }
-      h110 = this._scrollable.validateScrollPosition(h110), (u.scrollLeft !== h110.scrollLeft || u.scrollTop !== h110.scrollTop) && (zo && this._options.mouseWheelSmoothScroll && i.isPhysicalMouseWheel() ? this._scrollable.setScrollPositionSmooth(h110) : this._scrollable.setScrollPositionNow(h110), r = true);
+      h114 = this._scrollable.validateScrollPosition(h114), (u.scrollLeft !== h114.scrollLeft || u.scrollTop !== h114.scrollTop) && (zo && this._options.mouseWheelSmoothScroll && i.isPhysicalMouseWheel() ? this._scrollable.setScrollPositionSmooth(h114) : this._scrollable.setScrollPositionNow(h114), r = true);
     }
     let n = r;
     !n && this._options.alwaysConsumeMouseWheel && (n = true), !n && this._options.consumeMouseWheelIfScrollbarIsNeeded && (this._verticalScrollbar.isNeeded() || this._horizontalScrollbar.isNeeded()) && (n = true), n && (e.preventDefault(), e.stopPropagation());
@@ -51796,10 +51800,10 @@ var zt = class extends D {
     this._isSyncing = false;
     this._isHandlingScroll = false;
     this._suppressOnScrollHandler = false;
-    let h110 = this._register(new Ri({ forceIntegerValues: false, smoothScrollDuration: this._optionsService.rawOptions.smoothScrollDuration, scheduleAtNextAnimationFrame: (c) => mt(n.window, c) }));
+    let h114 = this._register(new Ri({ forceIntegerValues: false, smoothScrollDuration: this._optionsService.rawOptions.smoothScrollDuration, scheduleAtNextAnimationFrame: (c) => mt(n.window, c) }));
     this._register(this._optionsService.onSpecificOptionChange("smoothScrollDuration", () => {
-      h110.setSmoothScrollDuration(this._optionsService.rawOptions.smoothScrollDuration);
-    })), this._scrollableElement = this._register(new Kr(i, { vertical: 1, horizontal: 2, useShadows: false, mouseWheelSmoothScroll: true, ...this._getChangeOptions() }, h110)), this._register(this._optionsService.onMultipleOptionChange(["scrollSensitivity", "fastScrollSensitivity", "overviewRuler"], () => this._scrollableElement.updateOptions(this._getChangeOptions()))), this._register(o2.onProtocolChange((c) => {
+      h114.setSmoothScrollDuration(this._optionsService.rawOptions.smoothScrollDuration);
+    })), this._scrollableElement = this._register(new Kr(i, { vertical: 1, horizontal: 2, useShadows: false, mouseWheelSmoothScroll: true, ...this._getChangeOptions() }, h114)), this._register(this._optionsService.onMultipleOptionChange(["scrollSensitivity", "fastScrollSensitivity", "overviewRuler"], () => this._scrollableElement.updateOptions(this._getChangeOptions()))), this._register(o2.onProtocolChange((c) => {
       this._scrollableElement.updateOptions({ handleMouseWheel: !(c & 16) });
     })), this._scrollableElement.setScrollDimensions({ height: 0, scrollHeight: 0 }), this._register($.runAndSubscribe(l.onChangeColors, () => {
       this._scrollableElement.getDomNode().style.backgroundColor = l.colors.background.css;
@@ -51954,8 +51958,8 @@ var bt = class extends D {
     this._shouldUpdateAnchor = true;
     this._lastKnownBufferLength = 0;
     this._canvas = this._coreBrowserService.mainDocument.createElement("canvas"), this._canvas.classList.add("xterm-decoration-overview-ruler"), this._refreshCanvasDimensions(), this._viewportElement.parentElement?.insertBefore(this._canvas, this._viewportElement), this._register(C(() => this._canvas?.remove()));
-    let h110 = this._canvas.getContext("2d");
-    if (h110) this._ctx = h110;
+    let h114 = this._canvas.getContext("2d");
+    if (h114) this._ctx = h114;
     else throw new Error("Ctx cannot be null");
     this._register(this._decorationService.onDecorationRegistered(() => this._queueRefresh(void 0, true))), this._register(this._decorationService.onDecorationRemoved(() => this._queueRefresh(void 0, true))), this._register(this._renderService.onRenderedViewportChange(() => this._queueRefresh())), this._register(this._bufferService.buffers.onBufferActivate(() => {
       this._canvas.style.display = this._bufferService.buffer === this._bufferService.buffers.alt ? "none" : "block";
@@ -52105,8 +52109,8 @@ var U;
 ((l) => {
   function s15(a, u) {
     if (J = (u.rgba & 255) / 255, J === 1) return { css: u.css, rgba: u.rgba };
-    let h110 = u.rgba >> 24 & 255, c = u.rgba >> 16 & 255, d = u.rgba >> 8 & 255, _2 = a.rgba >> 24 & 255, p = a.rgba >> 16 & 255, m = a.rgba >> 8 & 255;
-    ue = _2 + Math.round((h110 - _2) * J), he = p + Math.round((c - p) * J), de = m + Math.round((d - m) * J);
+    let h114 = u.rgba >> 24 & 255, c = u.rgba >> 16 & 255, d = u.rgba >> 8 & 255, _2 = a.rgba >> 24 & 255, p = a.rgba >> 16 & 255, m2 = a.rgba >> 8 & 255;
+    ue = _2 + Math.round((h114 - _2) * J), he = p + Math.round((c - p) * J), de = m2 + Math.round((d - m2) * J);
     let f = j.toCss(ue, he, de), A = j.toRgba(ue, he, de);
     return { css: f, rgba: A };
   }
@@ -52115,8 +52119,8 @@ var U;
     return (a.rgba & 255) === 255;
   }
   l.isOpaque = t2;
-  function e(a, u, h110) {
-    let c = $r.ensureContrastRatio(a.rgba, u.rgba, h110);
+  function e(a, u, h114) {
+    let c = $r.ensureContrastRatio(a.rgba, u.rgba, h114);
     if (c) return j.toColor(c >> 24 & 255, c >> 16 & 255, c >> 8 & 255);
   }
   l.ensureContrastRatio = e;
@@ -52175,8 +52179,8 @@ var ve;
   }
   e.relativeLuminance = s15;
   function t2(i, r, n) {
-    let o2 = i / 255, l = r / 255, a = n / 255, u = o2 <= 0.03928 ? o2 / 12.92 : Math.pow((o2 + 0.055) / 1.055, 2.4), h110 = l <= 0.03928 ? l / 12.92 : Math.pow((l + 0.055) / 1.055, 2.4), c = a <= 0.03928 ? a / 12.92 : Math.pow((a + 0.055) / 1.055, 2.4);
-    return u * 0.2126 + h110 * 0.7152 + c * 0.0722;
+    let o2 = i / 255, l = r / 255, a = n / 255, u = o2 <= 0.03928 ? o2 / 12.92 : Math.pow((o2 + 0.055) / 1.055, 2.4), h114 = l <= 0.03928 ? l / 12.92 : Math.pow((l + 0.055) / 1.055, 2.4), c = a <= 0.03928 ? a / 12.92 : Math.pow((a + 0.055) / 1.055, 2.4);
+    return u * 0.2126 + h114 * 0.7152 + c * 0.0722;
   }
   e.relativeLuminance2 = t2;
 })(ve ||= {});
@@ -52184,39 +52188,39 @@ var $r;
 ((n) => {
   function s15(o2, l) {
     if (J = (l & 255) / 255, J === 1) return l;
-    let a = l >> 24 & 255, u = l >> 16 & 255, h110 = l >> 8 & 255, c = o2 >> 24 & 255, d = o2 >> 16 & 255, _2 = o2 >> 8 & 255;
-    return ue = c + Math.round((a - c) * J), he = d + Math.round((u - d) * J), de = _2 + Math.round((h110 - _2) * J), j.toRgba(ue, he, de);
+    let a = l >> 24 & 255, u = l >> 16 & 255, h114 = l >> 8 & 255, c = o2 >> 24 & 255, d = o2 >> 16 & 255, _2 = o2 >> 8 & 255;
+    return ue = c + Math.round((a - c) * J), he = d + Math.round((u - d) * J), de = _2 + Math.round((h114 - _2) * J), j.toRgba(ue, he, de);
   }
   n.blend = s15;
   function t2(o2, l, a) {
-    let u = ve.relativeLuminance(o2 >> 8), h110 = ve.relativeLuminance(l >> 8);
-    if (Xe(u, h110) < a) {
-      if (h110 < u) {
-        let p = e(o2, l, a), m = Xe(u, ve.relativeLuminance(p >> 8));
-        if (m < a) {
+    let u = ve.relativeLuminance(o2 >> 8), h114 = ve.relativeLuminance(l >> 8);
+    if (Xe(u, h114) < a) {
+      if (h114 < u) {
+        let p = e(o2, l, a), m2 = Xe(u, ve.relativeLuminance(p >> 8));
+        if (m2 < a) {
           let f = i(o2, l, a), A = Xe(u, ve.relativeLuminance(f >> 8));
-          return m > A ? p : f;
+          return m2 > A ? p : f;
         }
         return p;
       }
       let d = i(o2, l, a), _2 = Xe(u, ve.relativeLuminance(d >> 8));
       if (_2 < a) {
-        let p = e(o2, l, a), m = Xe(u, ve.relativeLuminance(p >> 8));
-        return _2 > m ? d : p;
+        let p = e(o2, l, a), m2 = Xe(u, ve.relativeLuminance(p >> 8));
+        return _2 > m2 ? d : p;
       }
       return d;
     }
   }
   n.ensureContrastRatio = t2;
   function e(o2, l, a) {
-    let u = o2 >> 24 & 255, h110 = o2 >> 16 & 255, c = o2 >> 8 & 255, d = l >> 24 & 255, _2 = l >> 16 & 255, p = l >> 8 & 255, m = Xe(ve.relativeLuminance2(d, _2, p), ve.relativeLuminance2(u, h110, c));
-    for (; m < a && (d > 0 || _2 > 0 || p > 0); ) d -= Math.max(0, Math.ceil(d * 0.1)), _2 -= Math.max(0, Math.ceil(_2 * 0.1)), p -= Math.max(0, Math.ceil(p * 0.1)), m = Xe(ve.relativeLuminance2(d, _2, p), ve.relativeLuminance2(u, h110, c));
+    let u = o2 >> 24 & 255, h114 = o2 >> 16 & 255, c = o2 >> 8 & 255, d = l >> 24 & 255, _2 = l >> 16 & 255, p = l >> 8 & 255, m2 = Xe(ve.relativeLuminance2(d, _2, p), ve.relativeLuminance2(u, h114, c));
+    for (; m2 < a && (d > 0 || _2 > 0 || p > 0); ) d -= Math.max(0, Math.ceil(d * 0.1)), _2 -= Math.max(0, Math.ceil(_2 * 0.1)), p -= Math.max(0, Math.ceil(p * 0.1)), m2 = Xe(ve.relativeLuminance2(d, _2, p), ve.relativeLuminance2(u, h114, c));
     return (d << 24 | _2 << 16 | p << 8 | 255) >>> 0;
   }
   n.reduceLuminance = e;
   function i(o2, l, a) {
-    let u = o2 >> 24 & 255, h110 = o2 >> 16 & 255, c = o2 >> 8 & 255, d = l >> 24 & 255, _2 = l >> 16 & 255, p = l >> 8 & 255, m = Xe(ve.relativeLuminance2(d, _2, p), ve.relativeLuminance2(u, h110, c));
-    for (; m < a && (d < 255 || _2 < 255 || p < 255); ) d = Math.min(255, d + Math.ceil((255 - d) * 0.1)), _2 = Math.min(255, _2 + Math.ceil((255 - _2) * 0.1)), p = Math.min(255, p + Math.ceil((255 - p) * 0.1)), m = Xe(ve.relativeLuminance2(d, _2, p), ve.relativeLuminance2(u, h110, c));
+    let u = o2 >> 24 & 255, h114 = o2 >> 16 & 255, c = o2 >> 8 & 255, d = l >> 24 & 255, _2 = l >> 16 & 255, p = l >> 8 & 255, m2 = Xe(ve.relativeLuminance2(d, _2, p), ve.relativeLuminance2(u, h114, c));
+    for (; m2 < a && (d < 255 || _2 < 255 || p < 255); ) d = Math.min(255, d + Math.ceil((255 - d) * 0.1)), _2 = Math.min(255, _2 + Math.ceil((255 - _2) * 0.1)), p = Math.min(255, p + Math.ceil((255 - p) * 0.1)), m2 = Xe(ve.relativeLuminance2(d, _2, p), ve.relativeLuminance2(u, h114, c));
     return (d << 24 | _2 << 16 | p << 8 | 255) >>> 0;
   }
   n.increaseLuminance = i;
@@ -52278,19 +52282,19 @@ var ct = class {
     let e = this._bufferService.buffer.lines.get(t2);
     if (!e || e.length === 0) return [];
     let i = [], r = e.translateToString(true), n = 0, o2 = 0, l = 0, a = e.getFg(0), u = e.getBg(0);
-    for (let h110 = 0; h110 < e.getTrimmedLength(); h110++) if (e.loadCell(h110, this._workCell), this._workCell.getWidth() !== 0) {
+    for (let h114 = 0; h114 < e.getTrimmedLength(); h114++) if (e.loadCell(h114, this._workCell), this._workCell.getWidth() !== 0) {
       if (this._workCell.fg !== a || this._workCell.bg !== u) {
-        if (h110 - n > 1) {
+        if (h114 - n > 1) {
           let c = this._getJoinedRanges(r, l, o2, e, n);
           for (let d = 0; d < c.length; d++) i.push(c[d]);
         }
-        n = h110, l = o2, a = this._workCell.fg, u = this._workCell.bg;
+        n = h114, l = o2, a = this._workCell.fg, u = this._workCell.bg;
       }
       o2 += this._workCell.getChars().length || we.length;
     }
     if (this._bufferService.cols - n > 1) {
-      let h110 = this._getJoinedRanges(r, l, o2, e, n);
-      for (let c = 0; c < h110.length; c++) i.push(h110[c]);
+      let h114 = this._getJoinedRanges(r, l, o2, e, n);
+      for (let c = 0; c < h114.length; c++) i.push(h114[c]);
     }
     return i;
   }
@@ -52303,7 +52307,7 @@ var ct = class {
     }
     for (let a = 1; a < this._characterJoiners.length; a++) try {
       let u = this._characterJoiners[a].handler(o2);
-      for (let h110 = 0; h110 < u.length; h110++) ct._mergeRanges(l, u[h110]);
+      for (let h114 = 0; h114 < u.length; h114++) ct._mergeRanges(l, u[h114]);
     } catch (u) {
       console.error(u);
     }
@@ -52313,13 +52317,13 @@ var ct = class {
     let r = 0, n = false, o2 = 0, l = t2[r];
     if (l) {
       for (let a = i; a < this._bufferService.cols; a++) {
-        let u = e.getWidth(a), h110 = e.getString(a).length || we.length;
+        let u = e.getWidth(a), h114 = e.getString(a).length || we.length;
         if (u !== 0) {
           if (!n && l[0] <= o2 && (l[0] = a, n = true), l[1] <= o2) {
             if (l[1] = a, l = t2[++r], !l) break;
             l[0] <= o2 ? (l[0] = a, n = true) : n = false;
           }
-          o2 += h110;
+          o2 += h114;
         }
       }
       l && (l[1] = this._bufferService.cols);
@@ -52375,11 +52379,11 @@ var Vt = class {
   handleSelectionChanged(t2, e, i) {
     this._selectionStart = t2, this._selectionEnd = e, this._columnSelectMode = i;
   }
-  createRow(t2, e, i, r, n, o2, l, a, u, h110, c) {
-    let d = [], _2 = this._characterJoinerService.getJoinedCharacters(e), p = this._themeService.colors, m = t2.getNoBgTrimmedLength();
-    i && m < o2 + 1 && (m = o2 + 1);
-    let f, A = 0, R = "", O = 0, I = 0, k = 0, P = 0, oe = false, Me = 0, Pe = false, Ke = 0, di = 0, V = [], Qe = h110 !== -1 && c !== -1;
-    for (let y = 0; y < m; y++) {
+  createRow(t2, e, i, r, n, o2, l, a, u, h114, c) {
+    let d = [], _2 = this._characterJoinerService.getJoinedCharacters(e), p = this._themeService.colors, m2 = t2.getNoBgTrimmedLength();
+    i && m2 < o2 + 1 && (m2 = o2 + 1);
+    let f, A = 0, R = "", O = 0, I = 0, k = 0, P = 0, oe = false, Me = 0, Pe = false, Ke = 0, di = 0, V = [], Qe = h114 !== -1 && c !== -1;
+    for (let y = 0; y < m2; y++) {
       t2.loadCell(y, this._workCell);
       let T = this._workCell.getWidth();
       if (T === 0) continue;
@@ -52389,7 +52393,7 @@ var Vt = class {
         for (O = W[0] + 1; O < W[1]; O++) w &&= An === this._isCellInSelection(O, e);
         w &&= !i || o2 < W[0] || o2 >= W[1], w ? (g = true, x = new Vr(this._workCell, t2.translateToString(true, W[0], W[1]), W[1] - W[0]), E = W[1] - 1, T = x.getWidth()) : di = W[1];
       }
-      let N = this._isCellInSelection(y, e), Z = i && y === o2, te = Qe && y >= h110 && y <= c, Oe = false;
+      let N = this._isCellInSelection(y, e), Z = i && y === o2, te = Qe && y >= h114 && y <= c, Oe = false;
       this._decorationService.forEachDecorationAtCell(y, e, void 0, (W) => {
         Oe = true;
       });
@@ -52572,7 +52576,7 @@ var ki = "xterm-focus";
 var Xr = "xterm-selection";
 var Na = 1;
 var Yt = class extends D {
-  constructor(e, i, r, n, o2, l, a, u, h110, c, d, _2, p, m) {
+  constructor(e, i, r, n, o2, l, a, u, h114, c, d, _2, p, m2) {
     super();
     this._terminal = e;
     this._document = i;
@@ -52581,12 +52585,12 @@ var Yt = class extends D {
     this._viewportElement = o2;
     this._helperContainer = l;
     this._linkifier2 = a;
-    this._charSizeService = h110;
+    this._charSizeService = h114;
     this._optionsService = c;
     this._bufferService = d;
     this._coreService = _2;
     this._coreBrowserService = p;
-    this._themeService = m;
+    this._themeService = m2;
     this._terminalClass = Na++;
     this._rowElements = [];
     this._selectionRenderModel = Yo();
@@ -52642,11 +52646,11 @@ var Yt = class extends D {
     if (this._selectionContainer.replaceChildren(), this._rowFactory.handleSelectionChanged(e, i, r), this.renderRows(0, this._bufferService.rows - 1), !e || !i || (this._selectionRenderModel.update(this._terminal, e, i, r), !this._selectionRenderModel.hasSelection)) return;
     let n = this._selectionRenderModel.viewportStartRow, o2 = this._selectionRenderModel.viewportEndRow, l = this._selectionRenderModel.viewportCappedStartRow, a = this._selectionRenderModel.viewportCappedEndRow, u = this._document.createDocumentFragment();
     if (r) {
-      let h110 = e[0] > i[0];
-      u.appendChild(this._createSelectionElement(l, h110 ? i[0] : e[0], h110 ? e[0] : i[0], a - l + 1));
+      let h114 = e[0] > i[0];
+      u.appendChild(this._createSelectionElement(l, h114 ? i[0] : e[0], h114 ? e[0] : i[0], a - l + 1));
     } else {
-      let h110 = n === l ? e[0] : 0, c = l === o2 ? i[0] : this._bufferService.cols;
-      u.appendChild(this._createSelectionElement(l, h110, c));
+      let h114 = n === l ? e[0] : 0, c = l === o2 ? i[0] : this._bufferService.cols;
+      u.appendChild(this._createSelectionElement(l, h114, c));
       let d = a - l - 1;
       if (u.appendChild(this._createSelectionElement(l + 1, 0, this._bufferService.cols, d)), l !== a) {
         let _2 = o2 === a ? i[0] : this._bufferService.cols;
@@ -52669,8 +52673,8 @@ var Yt = class extends D {
   }
   renderRows(e, i) {
     let r = this._bufferService.buffer, n = r.ybase + r.y, o2 = Math.min(r.x, this._bufferService.cols - 1), l = this._coreService.decPrivateModes.cursorBlink ?? this._optionsService.rawOptions.cursorBlink, a = this._coreService.decPrivateModes.cursorStyle ?? this._optionsService.rawOptions.cursorStyle, u = this._optionsService.rawOptions.cursorInactiveStyle;
-    for (let h110 = e; h110 <= i; h110++) {
-      let c = h110 + r.ydisp, d = this._rowElements[h110], _2 = r.lines.get(c);
+    for (let h114 = e; h114 <= i; h114++) {
+      let c = h114 + r.ydisp, d = this._rowElements[h114], _2 = r.lines.get(c);
       if (!d || !_2) break;
       d.replaceChildren(...this._rowFactory.createRow(_2, c, c === n, a, u, o2, l, this.dimensions.css.cell.width, this._widthCache, -1, -1));
     }
@@ -52688,11 +52692,11 @@ var Yt = class extends D {
     r < 0 && (e = 0), n < 0 && (i = 0);
     let a = this._bufferService.rows - 1;
     r = Math.max(Math.min(r, a), 0), n = Math.max(Math.min(n, a), 0), o2 = Math.min(o2, this._bufferService.cols);
-    let u = this._bufferService.buffer, h110 = u.ybase + u.y, c = Math.min(u.x, o2 - 1), d = this._optionsService.rawOptions.cursorBlink, _2 = this._optionsService.rawOptions.cursorStyle, p = this._optionsService.rawOptions.cursorInactiveStyle;
-    for (let m = r; m <= n; ++m) {
-      let f = m + u.ydisp, A = this._rowElements[m], R = u.lines.get(f);
+    let u = this._bufferService.buffer, h114 = u.ybase + u.y, c = Math.min(u.x, o2 - 1), d = this._optionsService.rawOptions.cursorBlink, _2 = this._optionsService.rawOptions.cursorStyle, p = this._optionsService.rawOptions.cursorInactiveStyle;
+    for (let m2 = r; m2 <= n; ++m2) {
+      let f = m2 + u.ydisp, A = this._rowElements[m2], R = u.lines.get(f);
       if (!A || !R) break;
-      A.replaceChildren(...this._rowFactory.createRow(R, f, f === h110, _2, p, c, d, this.dimensions.css.cell.width, this._widthCache, l ? m === r ? e : 0 : -1, l ? (m === n ? i : o2) - 1 : -1));
+      A.replaceChildren(...this._rowFactory.createRow(R, f, f === h114, _2, p, c, d, this.dimensions.css.cell.width, this._widthCache, l ? m2 === r ? e : 0 : -1, l ? (m2 === n ? i : o2) - 1 : -1));
     }
   }
 };
@@ -52956,7 +52960,7 @@ var nn = class {
   }
 };
 var Qt = class extends D {
-  constructor(e, i, r, n, o2, l, a, u, h110) {
+  constructor(e, i, r, n, o2, l, a, u, h114) {
     super();
     this._rowCount = e;
     this._optionsService = r;
@@ -52983,7 +52987,7 @@ var Qt = class extends D {
     this.onRefreshRequest = this._onRefreshRequest.event;
     this._renderDebouncer = new en((c, d) => this._renderRows(c, d), this._coreBrowserService), this._register(this._renderDebouncer), this._syncOutputHandler = new xs(this._coreBrowserService, this._coreService, () => this._fullRefresh()), this._register(C(() => this._syncOutputHandler.dispose())), this._register(this._coreBrowserService.onDprChange(() => this.handleDevicePixelRatioChange())), this._register(a.onResize(() => this._fullRefresh())), this._register(a.buffers.onBufferActivate(() => this._renderer.value?.clear())), this._register(this._optionsService.onOptionChange(() => this._handleOptionsChanged())), this._register(this._charSizeService.onCharSizeChange(() => this.handleCharSizeChanged())), this._register(l.onDecorationRegistered(() => this._fullRefresh())), this._register(l.onDecorationRemoved(() => this._fullRefresh())), this._register(this._optionsService.onMultipleOptionChange(["customGlyphs", "drawBoldTextInBrightColors", "letterSpacing", "lineHeight", "fontFamily", "fontSize", "fontWeight", "fontWeightBold", "minimumContrastRatio", "rescaleOverlappingGlyphs"], () => {
       this.clear(), this.handleResize(a.cols, a.rows), this._fullRefresh();
-    })), this._register(this._optionsService.onMultipleOptionChange(["cursorBlink", "cursorStyle"], () => this.refreshRows(a.buffer.y, a.buffer.y, true))), this._register(h110.onChangeColors(() => this._fullRefresh())), this._registerIntersectionObserver(this._coreBrowserService.window, i), this._register(this._coreBrowserService.onWindowChange((c) => this._registerIntersectionObserver(c, i)));
+    })), this._register(this._optionsService.onMultipleOptionChange(["cursorBlink", "cursorStyle"], () => this.refreshRows(a.buffer.y, a.buffer.y, true))), this._register(h114.onChangeColors(() => this._fullRefresh())), this._registerIntersectionObserver(this._coreBrowserService.window, i), this._register(this._coreBrowserService.onWindowChange((c) => this._registerIntersectionObserver(c, i)));
   }
   get dimensions() {
     return this._renderer.value.dimensions;
@@ -53199,7 +53203,7 @@ var Xa = 500;
 var Za = " ";
 var Ja = new RegExp(Za, "g");
 var ei = class extends D {
-  constructor(e, i, r, n, o2, l, a, u, h110) {
+  constructor(e, i, r, n, o2, l, a, u, h114) {
     super();
     this._element = e;
     this._screenElement = i;
@@ -53209,7 +53213,7 @@ var ei = class extends D {
     this._mouseService = l;
     this._optionsService = a;
     this._renderService = u;
-    this._coreBrowserService = h110;
+    this._coreBrowserService = h114;
     this._dragScrollAmount = 0;
     this._enabled = true;
     this._workCell = new q();
@@ -53260,15 +53264,15 @@ var ei = class extends D {
       if (e[0] === i[0]) return "";
       let l = e[0] < i[0] ? e[0] : i[0], a = e[0] < i[0] ? i[0] : e[0];
       for (let u = e[1]; u <= i[1]; u++) {
-        let h110 = r.translateBufferLineToString(u, true, l, a);
-        n.push(h110);
+        let h114 = r.translateBufferLineToString(u, true, l, a);
+        n.push(h114);
       }
     } else {
       let l = e[1] === i[1] ? i[0] : void 0;
       n.push(r.translateBufferLineToString(e[1], true, e[0], l));
       for (let a = e[1] + 1; a <= i[1] - 1; a++) {
-        let u = r.lines.get(a), h110 = r.translateBufferLineToString(a, true);
-        u?.isWrapped ? n[n.length - 1] += h110 : n.push(h110);
+        let u = r.lines.get(a), h114 = r.translateBufferLineToString(a, true);
+        u?.isWrapped ? n[n.length - 1] += h114 : n.push(h114);
       }
       if (e[1] !== i[1]) {
         let a = r.lines.get(i[1]), u = r.translateBufferLineToString(i[1], true, 0, i[0]);
@@ -53425,28 +53429,28 @@ var ei = class extends D {
     if (e[0] >= this._bufferService.cols) return;
     let o2 = this._bufferService.buffer, l = o2.lines.get(e[1]);
     if (!l) return;
-    let a = o2.translateBufferLineToString(e[1], false), u = this._convertViewportColToCharacterIndex(l, e[0]), h110 = u, c = e[0] - u, d = 0, _2 = 0, p = 0, m = 0;
+    let a = o2.translateBufferLineToString(e[1], false), u = this._convertViewportColToCharacterIndex(l, e[0]), h114 = u, c = e[0] - u, d = 0, _2 = 0, p = 0, m2 = 0;
     if (a.charAt(u) === " ") {
       for (; u > 0 && a.charAt(u - 1) === " "; ) u--;
-      for (; h110 < a.length && a.charAt(h110 + 1) === " "; ) h110++;
+      for (; h114 < a.length && a.charAt(h114 + 1) === " "; ) h114++;
     } else {
       let R = e[0], O = e[0];
       l.getWidth(R) === 0 && (d++, R--), l.getWidth(O) === 2 && (_2++, O++);
       let I = l.getString(O).length;
-      for (I > 1 && (m += I - 1, h110 += I - 1); R > 0 && u > 0 && !this._isCharWordSeparator(l.loadCell(R - 1, this._workCell)); ) {
+      for (I > 1 && (m2 += I - 1, h114 += I - 1); R > 0 && u > 0 && !this._isCharWordSeparator(l.loadCell(R - 1, this._workCell)); ) {
         l.loadCell(R - 1, this._workCell);
         let k = this._workCell.getChars().length;
         this._workCell.getWidth() === 0 ? (d++, R--) : k > 1 && (p += k - 1, u -= k - 1), u--, R--;
       }
-      for (; O < l.length && h110 + 1 < a.length && !this._isCharWordSeparator(l.loadCell(O + 1, this._workCell)); ) {
+      for (; O < l.length && h114 + 1 < a.length && !this._isCharWordSeparator(l.loadCell(O + 1, this._workCell)); ) {
         l.loadCell(O + 1, this._workCell);
         let k = this._workCell.getChars().length;
-        this._workCell.getWidth() === 2 ? (_2++, O++) : k > 1 && (m += k - 1, h110 += k - 1), h110++, O++;
+        this._workCell.getWidth() === 2 ? (_2++, O++) : k > 1 && (m2 += k - 1, h114 += k - 1), h114++, O++;
       }
     }
-    h110++;
-    let f = u + c - d + p, A = Math.min(this._bufferService.cols, h110 - u + d + _2 - p - m);
-    if (!(!i && a.slice(u, h110).trim() === "")) {
+    h114++;
+    let f = u + c - d + p, A = Math.min(this._bufferService.cols, h114 - u + d + _2 - p - m2);
+    if (!(!i && a.slice(u, h114).trim() === "")) {
       if (r && f === 0 && l.getCodePoint(0) !== 32) {
         let R = o2.lines.get(e[1] - 1);
         if (R && l.isWrapped && R.getCodePoint(this._bufferService.cols - 1) !== 32) {
@@ -53941,21 +53945,21 @@ function sl(s15, t2, e, i, r, n) {
   for (let l = 0; l < s15.length - 1; l++) {
     let a = l, u = s15.get(++a);
     if (!u.isWrapped) continue;
-    let h110 = [s15.get(l)];
-    for (; a < s15.length && u.isWrapped; ) h110.push(u), u = s15.get(++a);
+    let h114 = [s15.get(l)];
+    for (; a < s15.length && u.isWrapped; ) h114.push(u), u = s15.get(++a);
     if (!n && i >= l && i < a) {
-      l += h110.length - 1;
+      l += h114.length - 1;
       continue;
     }
-    let c = 0, d = ri(h110, c, t2), _2 = 1, p = 0;
-    for (; _2 < h110.length; ) {
-      let f = ri(h110, _2, t2), A = f - p, R = e - d, O = Math.min(A, R);
-      h110[c].copyCellsFrom(h110[_2], p, d, O, false), d += O, d === e && (c++, d = 0), p += O, p === f && (_2++, p = 0), d === 0 && c !== 0 && h110[c - 1].getWidth(e - 1) === 2 && (h110[c].copyCellsFrom(h110[c - 1], e - 1, d++, 1, false), h110[c - 1].setCell(e - 1, r));
+    let c = 0, d = ri(h114, c, t2), _2 = 1, p = 0;
+    for (; _2 < h114.length; ) {
+      let f = ri(h114, _2, t2), A = f - p, R = e - d, O = Math.min(A, R);
+      h114[c].copyCellsFrom(h114[_2], p, d, O, false), d += O, d === e && (c++, d = 0), p += O, p === f && (_2++, p = 0), d === 0 && c !== 0 && h114[c - 1].getWidth(e - 1) === 2 && (h114[c].copyCellsFrom(h114[c - 1], e - 1, d++, 1, false), h114[c - 1].setCell(e - 1, r));
     }
-    h110[c].replaceCells(d, e, r);
-    let m = 0;
-    for (let f = h110.length - 1; f > 0 && (f > c || h110[f].getTrimmedLength() === 0); f--) m++;
-    m > 0 && (o2.push(l + h110.length - m), o2.push(m)), l += h110.length - 1;
+    h114[c].replaceCells(d, e, r);
+    let m2 = 0;
+    for (let f = h114.length - 1; f > 0 && (f > c || h114[f].getTrimmedLength() === 0); f--) m2++;
+    m2 > 0 && (o2.push(l + h114.length - m2), o2.push(m2)), l += h114.length - 1;
   }
   return o2;
 }
@@ -53985,8 +53989,8 @@ function al(s15, t2, e) {
     n > a && (n -= a, o2++);
     let u = s15[o2].getWidth(n - 1) === 2;
     u && n--;
-    let h110 = u ? e - 1 : e;
-    i.push(h110), l += h110;
+    let h114 = u ? e - 1 : e;
+    i.push(h114), l += h114;
   }
   return i;
 }
@@ -54138,7 +54142,7 @@ var $i = class {
         let I = this.ybase + this.y;
         if (I >= l && I < l + u.length) continue;
       }
-      let h110 = u[u.length - 1].getTrimmedLength(), c = al(u, this._cols, t2), d = c.length - u.length, _2;
+      let h114 = u[u.length - 1].getTrimmedLength(), c = al(u, this._cols, t2), d = c.length - u.length, _2;
       this.ybase === 0 && this.y !== this.lines.length - 1 ? _2 = Math.max(0, this.y - this.lines.maxLength + d) : _2 = Math.max(0, this.lines.length - this.lines.maxLength + d);
       let p = [];
       for (let I = 0; I < d; I++) {
@@ -54146,13 +54150,13 @@ var $i = class {
         p.push(k);
       }
       p.length > 0 && (n.push({ start: l + u.length + o2, newLines: p }), o2 += p.length), u.push(...p);
-      let m = c.length - 1, f = c[m];
-      f === 0 && (m--, f = c[m]);
-      let A = u.length - d - 1, R = h110;
+      let m2 = c.length - 1, f = c[m2];
+      f === 0 && (m2--, f = c[m2]);
+      let A = u.length - d - 1, R = h114;
       for (; A >= 0; ) {
         let I = Math.min(R, f);
-        if (u[m] === void 0) break;
-        if (u[m].copyCellsFrom(u[A], R - I, f - I, I, true), f -= I, f === 0 && (m--, f = c[m]), R -= I, R === 0) {
+        if (u[m2] === void 0) break;
+        if (u[m2].copyCellsFrom(u[A], R - I, f - I, I, true), f -= I, f === 0 && (m2--, f = c[m2]), R -= I, R === 0) {
           A--;
           let k = Math.max(A, 0);
           R = ri(u, k, this._cols);
@@ -54166,17 +54170,17 @@ var $i = class {
     if (n.length > 0) {
       let l = [], a = [];
       for (let f = 0; f < this.lines.length; f++) a.push(this.lines.get(f));
-      let u = this.lines.length, h110 = u - 1, c = 0, d = n[c];
+      let u = this.lines.length, h114 = u - 1, c = 0, d = n[c];
       this.lines.length = Math.min(this.lines.maxLength, this.lines.length + o2);
       let _2 = 0;
-      for (let f = Math.min(this.lines.maxLength - 1, u + o2 - 1); f >= 0; f--) if (d && d.start > h110 + _2) {
+      for (let f = Math.min(this.lines.maxLength - 1, u + o2 - 1); f >= 0; f--) if (d && d.start > h114 + _2) {
         for (let A = d.newLines.length - 1; A >= 0; A--) this.lines.set(f--, d.newLines[A]);
-        f++, l.push({ index: h110 + 1, amount: d.newLines.length }), _2 += d.newLines.length, d = n[++c];
-      } else this.lines.set(f, a[h110--]);
+        f++, l.push({ index: h114 + 1, amount: d.newLines.length }), _2 += d.newLines.length, d = n[++c];
+      } else this.lines.set(f, a[h114--]);
       let p = 0;
       for (let f = l.length - 1; f >= 0; f--) l[f].index += p, this.lines.onInsertEmitter.fire(l[f]), p += l[f].amount;
-      let m = Math.max(0, u + o2 - this.lines.maxLength);
-      m > 0 && this.lines.onTrimEmitter.fire(m);
+      let m2 = Math.max(0, u + o2 - this.lines.maxLength);
+      m2 > 0 && this.lines.onTrimEmitter.fire(m2);
     }
   }
   translateBufferLineToString(t2, e, i = 0, r) {
@@ -55006,17 +55010,17 @@ var bn = class extends D {
     if (this._parseStack.state) if (this._parseStack.state === 2) this._parseStack.state = 0, l = this._parseStack.chunkPos + 1;
     else {
       if (r === void 0 || this._parseStack.state === 1) throw this._parseStack.state = 1, new Error("improper continuation due to previous async handler, giving up parsing");
-      let u = this._parseStack.handlers, h110 = this._parseStack.handlerPos - 1;
+      let u = this._parseStack.handlers, h114 = this._parseStack.handlerPos - 1;
       switch (this._parseStack.state) {
         case 3:
-          if (r === false && h110 > -1) {
-            for (; h110 >= 0 && (a = u[h110](this._params), a !== true); h110--) if (a instanceof Promise) return this._parseStack.handlerPos = h110, a;
+          if (r === false && h114 > -1) {
+            for (; h114 >= 0 && (a = u[h114](this._params), a !== true); h114--) if (a instanceof Promise) return this._parseStack.handlerPos = h114, a;
           }
           this._parseStack.handlers = [];
           break;
         case 4:
-          if (r === false && h110 > -1) {
-            for (; h110 >= 0 && (a = u[h110](), a !== true); h110--) if (a instanceof Promise) return this._parseStack.handlerPos = h110, a;
+          if (r === false && h114 > -1) {
+            for (; h114 >= 0 && (a = u[h114](), a !== true); h114--) if (a instanceof Promise) return this._parseStack.handlerPos = h114, a;
           }
           this._parseStack.handlers = [];
           break;
@@ -55034,21 +55038,21 @@ var bn = class extends D {
     for (let u = l; u < i; ++u) {
       switch (n = e[u], o2 = this._transitions.table[this.currentState << 8 | (n < 160 ? n : ke)], o2 >> 4) {
         case 2:
-          for (let m = u + 1; ; ++m) {
-            if (m >= i || (n = e[m]) < 32 || n > 126 && n < ke) {
-              this._printHandler(e, u, m), u = m - 1;
+          for (let m2 = u + 1; ; ++m2) {
+            if (m2 >= i || (n = e[m2]) < 32 || n > 126 && n < ke) {
+              this._printHandler(e, u, m2), u = m2 - 1;
               break;
             }
-            if (++m >= i || (n = e[m]) < 32 || n > 126 && n < ke) {
-              this._printHandler(e, u, m), u = m - 1;
+            if (++m2 >= i || (n = e[m2]) < 32 || n > 126 && n < ke) {
+              this._printHandler(e, u, m2), u = m2 - 1;
               break;
             }
-            if (++m >= i || (n = e[m]) < 32 || n > 126 && n < ke) {
-              this._printHandler(e, u, m), u = m - 1;
+            if (++m2 >= i || (n = e[m2]) < 32 || n > 126 && n < ke) {
+              this._printHandler(e, u, m2), u = m2 - 1;
               break;
             }
-            if (++m >= i || (n = e[m]) < 32 || n > 126 && n < ke) {
-              this._printHandler(e, u, m), u = m - 1;
+            if (++m2 >= i || (n = e[m2]) < 32 || n > 126 && n < ke) {
+              this._printHandler(e, u, m2), u = m2 - 1;
               break;
             }
           }
@@ -55096,8 +55100,8 @@ var bn = class extends D {
           this._dcsParser.hook(this._collect << 8 | n, this._params);
           break;
         case 13:
-          for (let m = u + 1; ; ++m) if (m >= i || (n = e[m]) === 24 || n === 26 || n === 27 || n > 127 && n < ke) {
-            this._dcsParser.put(e, u, m), u = m - 1;
+          for (let m2 = u + 1; ; ++m2) if (m2 >= i || (n = e[m2]) === 24 || n === 26 || n === 27 || n > 127 && n < ke) {
+            this._dcsParser.put(e, u, m2), u = m2 - 1;
             break;
           }
           break;
@@ -55109,8 +55113,8 @@ var bn = class extends D {
           this._oscParser.start();
           break;
         case 5:
-          for (let m = u + 1; ; m++) if (m >= i || (n = e[m]) < 32 || n > 127 && n < ke) {
-            this._oscParser.put(e, u, m), u = m - 1;
+          for (let m2 = u + 1; ; m2++) if (m2 >= i || (n = e[m2]) < 32 || n > 127 && n < ke) {
+            this._oscParser.put(e, u, m2), u = m2 - 1;
             break;
           }
           break;
@@ -55217,7 +55221,7 @@ function bl(s15, t2) {
 var vl = 5e3;
 var gl = 0;
 var vn = class extends D {
-  constructor(e, i, r, n, o2, l, a, u, h110 = new bn()) {
+  constructor(e, i, r, n, o2, l, a, u, h114 = new bn()) {
     super();
     this._bufferService = e;
     this._charsetService = i;
@@ -55227,7 +55231,7 @@ var vn = class extends D {
     this._oscLinkService = l;
     this._coreMouseService = a;
     this._unicodeService = u;
-    this._parser = h110;
+    this._parser = h114;
     this._parseBuffer = new Uint32Array(4096);
     this._stringDecoder = new er();
     this._utf8Decoder = new tr();
@@ -55309,15 +55313,15 @@ var vn = class extends D {
       if (r = this._parser.parse(this._parseBuffer, c)) return this._preserveStack(n, o2, c, 0), this._logSlowResolvingAsync(r), r;
     }
     (this._activeBuffer.x !== n || this._activeBuffer.y !== o2) && this._onCursorMove.fire();
-    let u = this._dirtyRowTracker.end + (this._bufferService.buffer.ybase - this._bufferService.buffer.ydisp), h110 = this._dirtyRowTracker.start + (this._bufferService.buffer.ybase - this._bufferService.buffer.ydisp);
-    h110 < this._bufferService.rows && this._onRequestRefreshRows.fire({ start: Math.min(h110, this._bufferService.rows - 1), end: Math.min(u, this._bufferService.rows - 1) });
+    let u = this._dirtyRowTracker.end + (this._bufferService.buffer.ybase - this._bufferService.buffer.ydisp), h114 = this._dirtyRowTracker.start + (this._bufferService.buffer.ybase - this._bufferService.buffer.ydisp);
+    h114 < this._bufferService.rows && this._onRequestRefreshRows.fire({ start: Math.min(h114, this._bufferService.rows - 1), end: Math.min(u, this._bufferService.rows - 1) });
   }
   print(e, i, r) {
-    let n, o2, l = this._charsetService.charset, a = this._optionsService.rawOptions.screenReaderMode, u = this._bufferService.cols, h110 = this._coreService.decPrivateModes.wraparound, c = this._coreService.modes.insertMode, d = this._curAttrData, _2 = this._activeBuffer.lines.get(this._activeBuffer.ybase + this._activeBuffer.y);
+    let n, o2, l = this._charsetService.charset, a = this._optionsService.rawOptions.screenReaderMode, u = this._bufferService.cols, h114 = this._coreService.decPrivateModes.wraparound, c = this._coreService.modes.insertMode, d = this._curAttrData, _2 = this._activeBuffer.lines.get(this._activeBuffer.ybase + this._activeBuffer.y);
     this._dirtyRowTracker.markDirty(this._activeBuffer.y), this._activeBuffer.x && r - i > 0 && _2.getWidth(this._activeBuffer.x - 1) === 2 && _2.setCellFromCodepoint(this._activeBuffer.x - 1, 0, 1, d);
     let p = this._parser.precedingJoinState;
-    for (let m = i; m < r; ++m) {
-      if (n = e[m], n < 127 && l) {
+    for (let m2 = i; m2 < r; ++m2) {
+      if (n = e[m2], n < 127 && l) {
         let O = l[String.fromCharCode(n)];
         O && (n = O.charCodeAt(0));
       }
@@ -55325,7 +55329,7 @@ var vn = class extends D {
       o2 = Ae.extractWidth(f);
       let A = Ae.extractShouldJoin(f), R = A ? Ae.extractWidth(p) : 0;
       if (p = f, a && this._onA11yChar.fire(Ce(n)), this._getCurrentLinkId() && this._oscLinkService.addLineToLink(this._getCurrentLinkId(), this._activeBuffer.ybase + this._activeBuffer.y), this._activeBuffer.x + o2 - R > u) {
-        if (h110) {
+        if (h114) {
           let O = _2, I = this._activeBuffer.x - R;
           for (this._activeBuffer.x = R, this._activeBuffer.y++, this._activeBuffer.y === this._activeBuffer.scrollBottom + 1 ? (this._activeBuffer.y--, this._bufferService.scroll(this._eraseAttrData(), true)) : (this._activeBuffer.y >= this._bufferService.rows && (this._activeBuffer.y = this._bufferService.rows - 1), this._activeBuffer.lines.get(this._activeBuffer.ybase + this._activeBuffer.y).isWrapped = true), _2 = this._activeBuffer.lines.get(this._activeBuffer.ybase + this._activeBuffer.y), R > 0 && _2 instanceof Ze && _2.copyCellsFrom(O, I, 0, R, false); I < u; ) O.setCellFromCodepoint(I++, 0, 1, d);
         } else if (this._activeBuffer.x = u - 1, o2 === 2) continue;
@@ -55582,13 +55586,13 @@ var vn = class extends D {
   repeatPrecedingCharacter(e) {
     let i = this._parser.precedingJoinState;
     if (!i) return true;
-    let r = e.params[0] || 1, n = Ae.extractWidth(i), o2 = this._activeBuffer.x - n, a = this._activeBuffer.lines.get(this._activeBuffer.ybase + this._activeBuffer.y).getString(o2), u = new Uint32Array(a.length * r), h110 = 0;
+    let r = e.params[0] || 1, n = Ae.extractWidth(i), o2 = this._activeBuffer.x - n, a = this._activeBuffer.lines.get(this._activeBuffer.ybase + this._activeBuffer.y).getString(o2), u = new Uint32Array(a.length * r), h114 = 0;
     for (let d = 0; d < a.length; ) {
       let _2 = a.codePointAt(d) || 0;
-      u[h110++] = _2, d += _2 > 65535 ? 2 : 1;
+      u[h114++] = _2, d += _2 > 65535 ? 2 : 1;
     }
-    let c = h110;
-    for (let d = 1; d < r; ++d) u.copyWithin(c, 0, h110), c += h110;
+    let c = h114;
+    for (let d = 1; d < r; ++d) u.copyWithin(c, 0, h114), c += h114;
     return this.print(u, 0, c), true;
   }
   sendDeviceAttributesPrimary(e) {
@@ -55763,8 +55767,8 @@ var vn = class extends D {
   requestMode(e, i) {
     let r;
     ((P) => (P[P.NOT_RECOGNIZED = 0] = "NOT_RECOGNIZED", P[P.SET = 1] = "SET", P[P.RESET = 2] = "RESET", P[P.PERMANENTLY_SET = 3] = "PERMANENTLY_SET", P[P.PERMANENTLY_RESET = 4] = "PERMANENTLY_RESET"))(r ||= {});
-    let n = this._coreService.decPrivateModes, { activeProtocol: o2, activeEncoding: l } = this._coreMouseService, a = this._coreService, { buffers: u, cols: h110 } = this._bufferService, { active: c, alt: d } = u, _2 = this._optionsService.rawOptions, p = (A, R) => (a.triggerDataEvent(`${b.ESC}[${i ? "" : "?"}${A};${R}$y`), true), m = (A) => A ? 1 : 2, f = e.params[0];
-    return i ? f === 2 ? p(f, 4) : f === 4 ? p(f, m(a.modes.insertMode)) : f === 12 ? p(f, 3) : f === 20 ? p(f, m(_2.convertEol)) : p(f, 0) : f === 1 ? p(f, m(n.applicationCursorKeys)) : f === 3 ? p(f, _2.windowOptions.setWinLines ? h110 === 80 ? 2 : h110 === 132 ? 1 : 0 : 0) : f === 6 ? p(f, m(n.origin)) : f === 7 ? p(f, m(n.wraparound)) : f === 8 ? p(f, 3) : f === 9 ? p(f, m(o2 === "X10")) : f === 12 ? p(f, m(_2.cursorBlink)) : f === 25 ? p(f, m(!a.isCursorHidden)) : f === 45 ? p(f, m(n.reverseWraparound)) : f === 66 ? p(f, m(n.applicationKeypad)) : f === 67 ? p(f, 4) : f === 1e3 ? p(f, m(o2 === "VT200")) : f === 1002 ? p(f, m(o2 === "DRAG")) : f === 1003 ? p(f, m(o2 === "ANY")) : f === 1004 ? p(f, m(n.sendFocus)) : f === 1005 ? p(f, 4) : f === 1006 ? p(f, m(l === "SGR")) : f === 1015 ? p(f, 4) : f === 1016 ? p(f, m(l === "SGR_PIXELS")) : f === 1048 ? p(f, 1) : f === 47 || f === 1047 || f === 1049 ? p(f, m(c === d)) : f === 2004 ? p(f, m(n.bracketedPasteMode)) : f === 2026 ? p(f, m(n.synchronizedOutput)) : p(f, 0);
+    let n = this._coreService.decPrivateModes, { activeProtocol: o2, activeEncoding: l } = this._coreMouseService, a = this._coreService, { buffers: u, cols: h114 } = this._bufferService, { active: c, alt: d } = u, _2 = this._optionsService.rawOptions, p = (A, R) => (a.triggerDataEvent(`${b.ESC}[${i ? "" : "?"}${A};${R}$y`), true), m2 = (A) => A ? 1 : 2, f = e.params[0];
+    return i ? f === 2 ? p(f, 4) : f === 4 ? p(f, m2(a.modes.insertMode)) : f === 12 ? p(f, 3) : f === 20 ? p(f, m2(_2.convertEol)) : p(f, 0) : f === 1 ? p(f, m2(n.applicationCursorKeys)) : f === 3 ? p(f, _2.windowOptions.setWinLines ? h114 === 80 ? 2 : h114 === 132 ? 1 : 0 : 0) : f === 6 ? p(f, m2(n.origin)) : f === 7 ? p(f, m2(n.wraparound)) : f === 8 ? p(f, 3) : f === 9 ? p(f, m2(o2 === "X10")) : f === 12 ? p(f, m2(_2.cursorBlink)) : f === 25 ? p(f, m2(!a.isCursorHidden)) : f === 45 ? p(f, m2(n.reverseWraparound)) : f === 66 ? p(f, m2(n.applicationKeypad)) : f === 67 ? p(f, 4) : f === 1e3 ? p(f, m2(o2 === "VT200")) : f === 1002 ? p(f, m2(o2 === "DRAG")) : f === 1003 ? p(f, m2(o2 === "ANY")) : f === 1004 ? p(f, m2(n.sendFocus)) : f === 1005 ? p(f, 4) : f === 1006 ? p(f, m2(l === "SGR")) : f === 1015 ? p(f, 4) : f === 1016 ? p(f, m2(l === "SGR_PIXELS")) : f === 1048 ? p(f, 1) : f === 47 || f === 1047 || f === 1049 ? p(f, m2(c === d)) : f === 2004 ? p(f, m2(n.bracketedPasteMode)) : f === 2026 ? p(f, m2(n.synchronizedOutput)) : p(f, 0);
   }
   _updateAttrColor(e, i, r, n, o2) {
     return i === 2 ? (e |= 50331648, e &= -16777216, e |= De.fromColorRGB([r, n, o2])) : i === 5 && (e &= -50331904, e |= 33554432 | r & 255), e;
@@ -56558,8 +56562,8 @@ var Tt = class extends D {
   _renderRows(e, i) {
     let r = this._terminal.buffer, n = r.lines.length.toString();
     for (let o2 = e; o2 <= i; o2++) {
-      let l = r.lines.get(r.ydisp + o2), a = [], u = l?.translateToString(true, void 0, void 0, a) || "", h110 = (r.ydisp + o2 + 1).toString(), c = this._rowElements[o2];
-      c && (u.length === 0 ? (c.textContent = " ", this._rowColumns.set(c, [0, 1])) : (c.textContent = u, this._rowColumns.set(c, a)), c.setAttribute("aria-posinset", h110), c.setAttribute("aria-setsize", n), this._alignRowWidth(c));
+      let l = r.lines.get(r.ydisp + o2), a = [], u = l?.translateToString(true, void 0, void 0, a) || "", h114 = (r.ydisp + o2 + 1).toString(), c = this._rowElements[o2];
+      c && (u.length === 0 ? (c.textContent = " ", this._rowColumns.set(c, [0, 1])) : (c.textContent = u, this._rowColumns.set(c, a)), c.setAttribute("aria-posinset", h114), c.setAttribute("aria-setsize", n), this._alignRowWidth(c));
     }
     this._announceCharacters();
   }
@@ -56571,11 +56575,11 @@ var Tt = class extends D {
     if (o2 === l || e.relatedTarget !== n) return;
     let a, u;
     if (i === 0 ? (a = r, u = this._rowElements.pop(), this._rowContainer.removeChild(u)) : (a = this._rowElements.shift(), u = r, this._rowContainer.removeChild(a)), a.removeEventListener("focus", this._topBoundaryFocusListener), u.removeEventListener("focus", this._bottomBoundaryFocusListener), i === 0) {
-      let h110 = this._createAccessibilityTreeNode();
-      this._rowElements.unshift(h110), this._rowContainer.insertAdjacentElement("afterbegin", h110);
+      let h114 = this._createAccessibilityTreeNode();
+      this._rowElements.unshift(h114), this._rowContainer.insertAdjacentElement("afterbegin", h114);
     } else {
-      let h110 = this._createAccessibilityTreeNode();
-      this._rowElements.push(h110), this._rowContainer.appendChild(h110);
+      let h114 = this._createAccessibilityTreeNode();
+      this._rowElements.push(h114), this._rowContainer.appendChild(h114);
     }
     this._rowElements[0].addEventListener("focus", this._topBoundaryFocusListener), this._rowElements[this._rowElements.length - 1].addEventListener("focus", this._bottomBoundaryFocusListener), this._terminal.scrollLines(i === 0 ? -1 : 1), this._rowElements[i === 0 ? 1 : this._rowElements.length - 2].focus(), e.preventDefault(), e.stopImmediatePropagation();
   }
@@ -56595,12 +56599,12 @@ var Tt = class extends D {
     if ((i.node.compareDocumentPosition(r.node) & Node.DOCUMENT_POSITION_PRECEDING || i.node === r.node && i.offset > r.offset) && ([i, r] = [r, i]), i.node.compareDocumentPosition(this._rowElements[0]) & (Node.DOCUMENT_POSITION_CONTAINED_BY | Node.DOCUMENT_POSITION_FOLLOWING) && (i = { node: this._rowElements[0].childNodes[0], offset: 0 }), !this._rowContainer.contains(i.node)) return;
     let n = this._rowElements.slice(-1)[0];
     if (r.node.compareDocumentPosition(n) & (Node.DOCUMENT_POSITION_CONTAINED_BY | Node.DOCUMENT_POSITION_PRECEDING) && (r = { node: n, offset: n.textContent?.length ?? 0 }), !this._rowContainer.contains(r.node)) return;
-    let o2 = ({ node: u, offset: h110 }) => {
+    let o2 = ({ node: u, offset: h114 }) => {
       let c = u instanceof Text ? u.parentNode : u, d = parseInt(c?.getAttribute("aria-posinset"), 10) - 1;
       if (isNaN(d)) return console.warn("row is invalid. Race condition?"), null;
       let _2 = this._rowColumns.get(c);
       if (!_2) return console.warn("columns is null. Race condition?"), null;
-      let p = h110 < _2.length ? _2[h110] : _2.slice(-1)[0] + 1;
+      let p = h114 < _2.length ? _2[h114] : _2.slice(-1)[0] + 1;
       return p >= this._terminal.cols && (++d, p = 0), { row: d, column: p };
     }, l = o2(i), a = o2(r);
     if (!(!l || !a)) {
@@ -56701,8 +56705,8 @@ var hi = class extends D {
     for (let n = 0; n < i.size; n++) {
       let o2 = i.get(n);
       if (o2) for (let l = 0; l < o2.length; l++) {
-        let a = o2[l], u = a.link.range.start.y < e ? 0 : a.link.range.start.x, h110 = a.link.range.end.y > e ? this._bufferService.cols : a.link.range.end.x;
-        for (let c = u; c <= h110; c++) {
+        let a = o2[l], u = a.link.range.start.y < e ? 0 : a.link.range.start.x, h114 = a.link.range.end.y > e ? this._bufferService.cols : a.link.range.end.x;
+        for (let c = u; c <= h114; c++) {
           if (r.has(c)) {
             o2.splice(l--, 1);
             break;
@@ -56946,27 +56950,27 @@ var yn = class extends Sn {
     function r(l) {
       let a = e._mouseService.getMouseReportCoords(l, e.screenElement);
       if (!a) return false;
-      let u, h110;
+      let u, h114;
       switch (l.overrideType || l.type) {
         case "mousemove":
-          h110 = 32, l.buttons === void 0 ? (u = 3, l.button !== void 0 && (u = l.button < 3 ? l.button : 3)) : u = l.buttons & 1 ? 0 : l.buttons & 4 ? 1 : l.buttons & 2 ? 2 : 3;
+          h114 = 32, l.buttons === void 0 ? (u = 3, l.button !== void 0 && (u = l.button < 3 ? l.button : 3)) : u = l.buttons & 1 ? 0 : l.buttons & 4 ? 1 : l.buttons & 2 ? 2 : 3;
           break;
         case "mouseup":
-          h110 = 0, u = l.button < 3 ? l.button : 3;
+          h114 = 0, u = l.button < 3 ? l.button : 3;
           break;
         case "mousedown":
-          h110 = 1, u = l.button < 3 ? l.button : 3;
+          h114 = 1, u = l.button < 3 ? l.button : 3;
           break;
         case "wheel":
           if (e._customWheelEventHandler && e._customWheelEventHandler(l) === false) return false;
           let c = l.deltaY;
           if (c === 0 || e.coreMouseService.consumeWheelEvent(l, e._renderService?.dimensions?.device?.cell?.height, e._coreBrowserService?.dpr) === 0) return false;
-          h110 = c < 0 ? 0 : 1, u = 4;
+          h114 = c < 0 ? 0 : 1, u = 4;
           break;
         default:
           return false;
       }
-      return h110 === void 0 || u === void 0 || u > 4 ? false : e.coreMouseService.triggerMouseEvent({ col: a.col, row: a.row, x: a.x, y: a.y, button: u, action: h110, ctrl: l.ctrlKey, alt: l.altKey, shift: l.shiftKey });
+      return h114 === void 0 || u === void 0 || u > 4 ? false : e.coreMouseService.triggerMouseEvent({ col: a.col, row: a.row, x: a.x, y: a.y, button: u, action: h114, ctrl: l.ctrlKey, alt: l.altKey, shift: l.shiftKey });
     }
     let n = { mouseup: null, wheel: null, mousedrag: null, mousemove: null }, o2 = { mouseup: (l) => (r(l), l.buttons || (this._document.removeEventListener("mouseup", n.mouseup), n.mousedrag && this._document.removeEventListener("mousemove", n.mousedrag)), this.cancel(l)), wheel: (l) => (r(l), this.cancel(l, true)), mousedrag: (l) => {
       l.buttons && r(l);
@@ -56983,8 +56987,8 @@ var yn = class extends Sn {
         if (!this.buffer.hasScrollback) {
           if (l.deltaY === 0) return false;
           if (e.coreMouseService.consumeWheelEvent(l, e._renderService?.dimensions?.device?.cell?.height, e._coreBrowserService?.dpr) === 0) return this.cancel(l, true);
-          let h110 = b.ESC + (this.coreService.decPrivateModes.applicationCursorKeys ? "O" : "[") + (l.deltaY < 0 ? "A" : "B");
-          return this.coreService.triggerDataEvent(h110, true), this.cancel(l, true);
+          let h114 = b.ESC + (this.coreService.decPrivateModes.applicationCursorKeys ? "O" : "[") + (l.deltaY < 0 ? "A" : "B");
+          return this.coreService.triggerDataEvent(h114, true), this.cancel(l, true);
         }
       }
     }, { passive: false }));
@@ -57529,7 +57533,7 @@ var o = class {
     if (!this._terminal || !this._terminal.element || !this._terminal.element.parentElement) return;
     let t2 = this._terminal._core._renderService.dimensions;
     if (t2.css.cell.width === 0 || t2.css.cell.height === 0) return;
-    let s15 = this._terminal.options.scrollback === 0 ? 0 : this._terminal.options.overviewRuler?.width || 14, r = window.getComputedStyle(this._terminal.element.parentElement), l = parseInt(r.getPropertyValue("height")), a = Math.max(0, parseInt(r.getPropertyValue("width"))), i = window.getComputedStyle(this._terminal.element), n = { top: parseInt(i.getPropertyValue("padding-top")), bottom: parseInt(i.getPropertyValue("padding-bottom")), right: parseInt(i.getPropertyValue("padding-right")), left: parseInt(i.getPropertyValue("padding-left")) }, m = n.top + n.bottom, d = n.right + n.left, c = l - m, p = a - d - s15;
+    let s15 = this._terminal.options.scrollback === 0 ? 0 : this._terminal.options.overviewRuler?.width || 14, r = window.getComputedStyle(this._terminal.element.parentElement), l = parseInt(r.getPropertyValue("height")), a = Math.max(0, parseInt(r.getPropertyValue("width"))), i = window.getComputedStyle(this._terminal.element), n = { top: parseInt(i.getPropertyValue("padding-top")), bottom: parseInt(i.getPropertyValue("padding-bottom")), right: parseInt(i.getPropertyValue("padding-right")), left: parseInt(i.getPropertyValue("padding-left")) }, m2 = n.top + n.bottom, d = n.right + n.left, c = l - m2, p = a - d - s15;
     return { cols: Math.max(h80, Math.floor(p / t2.css.cell.width)), rows: Math.max(_, Math.floor(c / t2.css.cell.height)) };
   }
 };
@@ -58612,11 +58616,11 @@ function BoundHistory({ client, terminalId, active }) {
     "details",
     { className: "gb-native-history", open: true },
     (0, import_react83.createElement)("summary", null, (result.source === "native" ? "绑定的原生会话记录" : "绑定的 Bot 聊天记录") + "（" + result.messages.length + "）"),
-    (0, import_react83.createElement)("div", { className: "gb-native-messages" }, result.messages.map((message) => (0, import_react83.createElement)(
+    (0, import_react83.createElement)("div", { className: "gb-native-messages" }, result.messages.map((message2) => (0, import_react83.createElement)(
       "article",
-      { className: "gb-native-message", "data-role": message.role, key: message.id },
-      (0, import_react83.createElement)("small", null, message.role === "user" ? "你" : "Agent"),
-      message.role === "user" ? (0, import_react83.createElement)("p", null, message.text) : (0, import_react83.createElement)(import_dsh_client_ui_primitives5.MarkdownText, { text: message.text, labels: markdownLabels, variant: "compact" })
+      { className: "gb-native-message", "data-role": message2.role, key: message2.id },
+      (0, import_react83.createElement)("small", null, message2.role === "user" ? "你" : "Agent"),
+      message2.role === "user" ? (0, import_react83.createElement)("p", null, message2.text) : (0, import_react83.createElement)(import_dsh_client_ui_primitives5.MarkdownText, { text: message2.text, labels: markdownLabels, variant: "compact" })
     )))
   );
 }
@@ -59365,7 +59369,7 @@ function LocalDetail({ row: row2, period }) {
     row2?.models?.some((model) => model.periods?.[period]?.reports || model.periods?.[period]?.unreported) && (0, import_react86.createElement)("details", null, (0, import_react86.createElement)("summary", null, "按模型查看"), (0, import_react86.createElement)(
       "ul",
       { className: "gb-pr-model-totals" },
-      row2.models.filter((m) => m.periods?.[period]?.reports || m.periods?.[period]?.unreported).map((model) => (0, import_react86.createElement)("li", { key: model.model }, (0, import_react86.createElement)("span", null, model.model || "未标记模型"), (0, import_react86.createElement)(Count, { totals: model.periods[period] })))
+      row2.models.filter((m2) => m2.periods?.[period]?.reports || m2.periods?.[period]?.unreported).map((model) => (0, import_react86.createElement)("li", { key: model.model }, (0, import_react86.createElement)("span", null, model.model || "未标记模型"), (0, import_react86.createElement)(Count, { totals: model.periods[period] })))
     ))
   );
 }
@@ -59615,7 +59619,7 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
   const caption = account.local ? "本机" : account.slotName;
   const status = signInLabels[identity2.status] ?? "尚未核验";
   const act = (verb, args) => change("provider-account-" + verb, { kind, accountId: account.id, ...args });
-  const button4 = (action2, label, onClick, disabled) => (0, import_react87.createElement)(Button2, { "data-account-action": action2, disabled: busy || readOnly || disabled, onClick }, label);
+  const button5 = (action2, label, onClick, disabled) => (0, import_react87.createElement)(Button2, { "data-account-action": action2, disabled: busy || readOnly || disabled, onClick }, label);
   return (0, import_react87.createElement)(
     "article",
     { className: "gb-pr-account", "data-account-id": account.id ?? "local", "data-account-default": String(current2) },
@@ -59632,13 +59636,13 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
           account.local && !available && "本机未检测到 CLI"
         ].filter(Boolean).join(" · "))
       ),
-      current2 ? (0, import_react87.createElement)("span", { className: "gb-pr-default" }, "默认账号") : button4("default", "设为默认", () => act("default"), !available)
+      current2 ? (0, import_react87.createElement)("span", { className: "gb-pr-default" }, "默认账号") : button5("default", "设为默认", () => act("default"), !available)
     ),
     (0, import_react87.createElement)(
       "div",
       { className: "gb-pr-actions" },
-      button4("check", "核验身份", () => act("check"), !available),
-      identity2.status !== "signed-in" && button4("login", "登录", async () => {
+      button5("check", "核验身份", () => act("check"), !available),
+      identity2.status !== "signed-in" && button5("login", "登录", async () => {
         const answer = await act("login", { open: true });
         if (answer) setLogin(answer);
       }, !available)
@@ -59655,19 +59659,19 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
         (0, import_react87.createElement)(
           "div",
           { className: "gb-pr-actions" },
-          button4("login-command", "查看登录命令", async () => {
+          button5("login-command", "查看登录命令", async () => {
             const answer = await act("login");
             if (answer) setLogin(answer);
           }, !available),
-          identity2.status === "signed-in" && button4("login", "重新登录", async () => {
+          identity2.status === "signed-in" && button5("login", "重新登录", async () => {
             const answer = await act("login", { open: true });
             if (answer) setLogin(answer);
           }, !available),
-          !editing && button4("edit", "编辑名称", () => {
+          !editing && button5("edit", "编辑名称", () => {
             setAlias(account.customName ?? "");
             setEditing(true);
           }),
-          !account.local && !removing && button4("remove", "移出账号列表", () => setRemoving(true))
+          !account.local && !removing && button5("remove", "移出账号列表", () => setRemoving(true))
         ),
         removing && (0, import_react87.createElement)(
           "div",
@@ -59676,7 +59680,7 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
           (0, import_react87.createElement)(
             "div",
             { className: "gb-pr-actions" },
-            button4("remove-confirm", "确认移出", () => act("remove")),
+            button5("remove-confirm", "确认移出", () => act("remove")),
             (0, import_react87.createElement)(Button2, { disabled: busy, onClick: () => setRemoving(false) }, "取消")
           )
         ),
@@ -60281,7 +60285,7 @@ var submit = (name, disabled) => (0, import_react91.createElement)("button", { t
 var input = (name, props = {}) => (0, import_react91.createElement)("input", { name, required: true, ...props });
 var area = (name, props = {}) => (0, import_react91.createElement)("textarea", { name, required: true, rows: 2, ...props });
 var row = (...children) => (0, import_react91.createElement)("div", { className: "gb-row" }, ...children);
-var empty = (message) => (0, import_react91.createElement)("p", { className: "gb-muted" }, message);
+var empty = (message2) => (0, import_react91.createElement)("p", { className: "gb-muted" }, message2);
 var stamp = (value) => {
   if (value == null) return "";
   const date = new Date(value);
@@ -61129,20 +61133,1542 @@ function botHome(target, last) {
 }
 
 // src/client/workspace-actions.js
+var import_react101 = require("react");
+
+// src/client/remote-computers.js
+var import_react98 = require("react");
+
+// src/client/machine-confirm.js
+var import_react95 = require("react");
+
+// src/client/machine-copy.js
+var locales = ["zh", "ja", "ko", "es", "fr", "de"];
+var labels5 = {
+  "Open new terminal": [
+    "打开新终端",
+    "新しいターミナルを開く",
+    "새 터미널 열기",
+    "Abrir otra terminal",
+    "Ouvrir un nouveau terminal",
+    "Neues Terminal öffnen"
+  ],
+  "Jump to latest": [
+    "跳到最新输出",
+    "最新の出力へ",
+    "최신 출력으로",
+    "Ir al final",
+    "Aller à la fin",
+    "Zur neuesten Ausgabe"
+  ],
+  "Shell ended · exit {code}": [
+    "终端已退出 · 退出码 {code}",
+    "シェル終了 · 終了コード {code}",
+    "셸 종료 · 종료 코드 {code}",
+    "Shell finalizado · código {code}",
+    "Shell terminé · code {code}",
+    "Shell beendet · Status {code}"
+  ],
+  "Earlier output was truncated": ["较早的输出已截断"],
+  "Get a new offer on the computer": ["请在目标电脑上生成新的配对链接"],
+  "To revoke this controller, remove it from Paired controllers on the computer.": [
+    "如需撤销本控制端的权限，请在电脑的“已配对控制端”中移除它。"
+  ],
+  "End the shell as {account} on {name} and switch computers?": ["结束 {name} 上 {account} 的终端并切换电脑？"],
+  "Allow Accessibility on {name} to control the desktop.": ["在 {name} 上允许“辅助功能”后即可控制桌面。"],
+  "Access ended by the computer": ["电脑已结束访问"],
+  "Request declined on the computer": ["电脑端已拒绝请求"],
+  "Sharing paused for a private prompt": ["正在显示隐私提示，共享已暂停"],
+  "Connection lost": ["连接已断开"],
+  "Saved computers": ["已保存的电脑"],
+  "Check availability": ["检查可用性"],
+  "Check again": ["重新检查"],
+  "Pair again": ["重新配对"],
+  "Retry desktop": ["重试桌面连接"],
+  "Back to computer": ["返回电脑"],
+  "Last connected": ["上次连接"],
+  "Available at last check": ["上次检查时可用"],
+  "Connecting to {name}…": ["正在连接 {name}…"],
+  "Not available": ["暂无数据"],
+  Transport: ["连接方式"],
+  Resolution: ["分辨率"],
+  "Frame rate": ["帧率"],
+  "Round-trip time": ["往返时间"],
+  Codec: ["编解码器"],
+  "Waiting for TURN credentials from the computer": ["正在等待电脑获取 TURN 中继凭据"],
+  "TURN is unavailable. Configure TURN on the computer or turn off Require TURN.": [
+    "TURN 中继不可用。请在电脑上配置 TURN，或取消“桌面视频仅使用 TURN 中继”。"
+  ],
+  "Send shortcut": ["发送快捷键"],
+  "Approve keyboard and pointer sharing in the system dialog on the computer": [
+    "请在电脑上的系统对话框中允许共享键盘和指针。"
+  ],
+  "Control declined on the computer. You can keep viewing.": ["电脑端已拒绝控制请求，你仍可查看桌面。"],
+  "Click the desktop to operate it. Escape or Ctrl+Alt+Space returns to the toolbar.": [
+    "点击桌面开始操作，按 Esc 或 Ctrl+Alt+空格键返回工具栏。"
+  ],
+  "Select a screen on the Linux computer": ["请在 Linux 电脑上选择要共享的屏幕"],
+  "End this shell and open the desktop?": ["结束终端并打开桌面？"],
+  "Switch to a shell as {account} on {name}?": ["结束桌面会话并以 {account} 身份在 {name} 上打开终端？"],
+  "Stream quality": ["画质", "画質", "스트림 품질", "Calidad de vídeo", "Qualité vidéo", "Streamqualität"],
+  Balanced: ["均衡", "標準", "균형", "Equilibrada", "Équilibrée", "Ausgewogen"],
+  "Bandwidth saver": [
+    "节省带宽",
+    "帯域を節約",
+    "대역폭 절약",
+    "Ahorrar ancho de banda",
+    "Économiser la bande passante",
+    "Bandbreite sparen"
+  ],
+  "Remote computers": [
+    "远程电脑",
+    "リモートコンピューター",
+    "원격 컴퓨터",
+    "Equipos remotos",
+    "Ordinateurs distants",
+    "Remotecomputer"
+  ],
+  Computers: ["电脑", "コンピューター", "컴퓨터", "Equipos", "Ordinateurs", "Computer"],
+  "Pair computer": [
+    "配对电脑",
+    "ペアリング",
+    "컴퓨터 페어링",
+    "Emparejar equipo",
+    "Associer un ordinateur",
+    "Computer koppeln"
+  ],
+  "Pair a computer": [
+    "配对电脑",
+    "コンピューターをペアリング",
+    "컴퓨터 페어링",
+    "Emparejar un equipo",
+    "Associer un ordinateur",
+    "Computer koppeln"
+  ],
+  "Review offer": [
+    "检查配对信息",
+    "内容を確認",
+    "페어링 정보 확인",
+    "Revisar solicitud",
+    "Vérifier la demande",
+    "Angebot prüfen"
+  ],
+  "Pairing offer": [
+    "配对链接",
+    "ペアリングリンク",
+    "페어링 링크",
+    "Enlace de emparejamiento",
+    "Lien d’association",
+    "Kopplungslink"
+  ],
+  "Trust this computer?": [
+    "信任这台电脑？",
+    "このコンピューターを信頼しますか？",
+    "이 컴퓨터를 신뢰할까요?",
+    "¿Confiar en este equipo?",
+    "Faire confiance à cet ordinateur ?",
+    "Diesem Computer vertrauen?"
+  ],
+  "Pair your first computer": [
+    "配对第一台电脑",
+    "最初のコンピューターをペアリング",
+    "첫 컴퓨터 페어링",
+    "Empareja tu primer equipo",
+    "Associez votre premier ordinateur",
+    "Ersten Computer koppeln"
+  ],
+  "Select a computer": [
+    "选择电脑",
+    "コンピューターを選択",
+    "컴퓨터 선택",
+    "Selecciona un equipo",
+    "Choisissez un ordinateur",
+    "Computer auswählen"
+  ],
+  Desktop: ["桌面", "デスクトップ", "데스크톱", "Escritorio", "Bureau", "Desktop"],
+  "View desktop": [
+    "查看桌面",
+    "デスクトップを見る",
+    "데스크톱 보기",
+    "Ver escritorio",
+    "Voir le bureau",
+    "Desktop ansehen"
+  ],
+  "Open terminal": [
+    "打开终端",
+    "ターミナルを開く",
+    "터미널 열기",
+    "Abrir terminal",
+    "Ouvrir le terminal",
+    "Terminal öffnen"
+  ],
+  "Available sessions": [
+    "可用会话",
+    "利用できるセッション",
+    "사용 가능한 세션",
+    "Sesiones disponibles",
+    "Sessions disponibles",
+    "Verfügbare Sitzungen"
+  ],
+  "Computer details": [
+    "电脑详情",
+    "コンピューターの詳細",
+    "컴퓨터 정보",
+    "Detalles del equipo",
+    "Détails de l’ordinateur",
+    "Computerdetails"
+  ],
+  "Forget computer": [
+    "忘记电脑",
+    "登録を解除",
+    "컴퓨터 삭제",
+    "Olvidar equipo",
+    "Oublier l’ordinateur",
+    "Computer entfernen"
+  ],
+  "Require TURN for desktop video": [
+    "桌面视频仅使用 TURN 中继",
+    "TURN 中継のみ使用",
+    "TURN 릴레이만 사용",
+    "Usar solo TURN para vídeo",
+    "Utiliser TURN uniquement pour la vidéo",
+    "Für Video nur TURN verwenden"
+  ],
+  "Request control": [
+    "请求控制",
+    "操作をリクエスト",
+    "제어 요청",
+    "Solicitar control",
+    "Demander le contrôle",
+    "Steuerung anfordern"
+  ],
+  "Release control": [
+    "交还控制权",
+    "操作を終了",
+    "제어 해제",
+    "Ceder control",
+    "Rendre le contrôle",
+    "Steuerung abgeben"
+  ],
+  "You have control": [
+    "你正在控制",
+    "操作中",
+    "제어 중",
+    "Tienes el control",
+    "Vous avez le contrôle",
+    "Sie haben die Steuerung"
+  ],
+  "View only": ["仅查看", "表示のみ", "보기 전용", "Solo lectura", "Consultation seule", "Nur ansehen"],
+  "Cancel control request": [
+    "取消控制请求",
+    "操作リクエストを取り消す",
+    "제어 요청 취소",
+    "Cancelar solicitud de control",
+    "Annuler la demande de contrôle",
+    "Steuerungsanfrage abbrechen"
+  ],
+  "Cancel request": [
+    "取消请求",
+    "リクエストを取り消す",
+    "요청 취소",
+    "Cancelar solicitud",
+    "Annuler la demande",
+    "Anfrage abbrechen"
+  ],
+  "Session details": [
+    "会话详情",
+    "セッション詳細",
+    "세션 정보",
+    "Detalles de sesión",
+    "Détails de la session",
+    "Sitzungsdetails"
+  ],
+  "Live desktop": [
+    "桌面直播",
+    "デスクトップ配信中",
+    "실시간 데스크톱",
+    "Escritorio en directo",
+    "Bureau en direct",
+    "Live-Desktop"
+  ],
+  Fullscreen: ["全屏", "全画面", "전체 화면", "Pantalla completa", "Plein écran", "Vollbild"],
+  "Exit fullscreen": [
+    "退出全屏",
+    "全画面を終了",
+    "전체 화면 종료",
+    "Salir de pantalla completa",
+    "Quitter le plein écran",
+    "Vollbild beenden"
+  ],
+  "Send text": ["发送文字", "テキストを送信", "텍스트 전송", "Enviar texto", "Envoyer le texte", "Text senden"],
+  "Send composed text": [
+    "发送输入法文字",
+    "確定したテキストを送信",
+    "입력한 텍스트 전송",
+    "Enviar texto compuesto",
+    "Envoyer le texte saisi",
+    "Eingegebenen Text senden"
+  ],
+  Fit: ["适应窗口", "画面に合わせる", "화면에 맞춤", "Ajustar", "Ajuster", "Einpassen"],
+  "No graphical session": [
+    "无图形会话",
+    "グラフィカルセッションなし",
+    "그래픽 세션 없음",
+    "Sin sesión gráfica",
+    "Aucune session graphique",
+    "Keine grafische Sitzung"
+  ],
+  "Waiting for approval on {name}": [
+    "等待 {name} 批准",
+    "{name} での承認待ち",
+    "{name} 승인 대기 중",
+    "Esperando aprobación en {name}",
+    "Approbation en attente sur {name}",
+    "Warten auf Freigabe auf {name}"
+  ],
+  "Open a shell as {account} on {name}?": [
+    "以 {account} 身份在 {name} 上打开终端？",
+    "{name} で {account} としてシェルを開きますか？",
+    "{name}에서 {account}로 셸을 열까요?",
+    "¿Abrir un shell como {account} en {name}?",
+    "Ouvrir un shell sous {account} sur {name} ?",
+    "Shell als {account} auf {name} öffnen?"
+  ],
+  "Forget {name} on this controller?": [
+    "在此控制端忘记 {name}？",
+    "この端末から {name} を削除しますか？",
+    "이 컨트롤러에서 {name}을 삭제할까요?",
+    "¿Olvidar {name} en este controlador?",
+    "Oublier {name} sur ce contrôleur ?",
+    "{name} auf diesem Controller entfernen?"
+  ],
+  "Waiting for input approval on the computer": ["正在等待目标电脑批准控制请求"],
+  "Session ended when this tab went into the background": ["标签页已转入后台，会话已结束"],
+  "Disconnect and close Remote computers?": ["断开连接并关闭远程电脑？"],
+  "End this session and pair another computer?": ["结束当前会话并配对另一台电脑？"],
+  "End this session and switch computers?": ["结束当前会话并切换电脑？"],
+  "Compare this fingerprint on the computer: ": ["请与电脑上显示的指纹核对："],
+  "Create a pairing offer in Godbot Computer Host on the target, then paste it here.": [
+    "请在目标电脑的 Godbot Computer Host 生成配对链接，并粘贴到这里。"
+  ],
+  "View a desktop or open a terminal on a paired Mac or Linux computer.": [
+    "在配对的 Mac 或 Linux 电脑上查看桌面或打开终端。"
+  ],
+  "Check availability to see the modes supported by this host.": ["连接后可查看这台电脑支持的会话。"],
+  "Terminal access is unavailable.": ["终端不可用。"],
+  "Interactive shell as {account}": ["以 {account} 身份使用交互终端"],
+  "View the selected display. Request keyboard and pointer access during the session.": [
+    "查看所选显示器，需要操作时可申请键盘和鼠标权限。"
+  ],
+  "Waiting for connection statistics": ["正在获取连接统计"],
+  "Connecting to display…": ["正在连接显示器…"],
+  "Host fingerprint": ["电脑指纹"],
+  "Saved computer": ["已保存的电脑"],
+  "Session ended": ["会话已结束"],
+  "Request canceled": ["请求已取消"],
+  "The target has not granted OS input permission": ["目标电脑尚未授予系统输入权限"],
+  "Remote desktop": ["远程桌面"],
+  "Remote terminal": ["远程终端"]
+};
+function m(key, args = {}) {
+  const lang = language().toLowerCase(), index = locales.indexOf(lang.split("-")[0]);
+  let label = labels5[key]?.[index];
+  if (!label) return t(key, args);
+  if (lang === "zh-tw" || lang === "zh-hant") label = toTraditional(label);
+  return label.replace(/\{(\w+)\}/g, (token, name) => Object.hasOwn(args, name) ? String(args[name]) : token);
+}
+
+// src/client/machine-confirm.js
+function MachineConfirmation({ text, cancel, confirm: confirm2 }) {
+  const dialog = (0, import_react95.useRef)(null);
+  (0, import_react95.useLayoutEffect)(() => {
+    const previous = document.activeElement;
+    const node = dialog.current;
+    node.showModal();
+    return () => {
+      node.close();
+      if (previous?.isConnected) previous.focus();
+    };
+  }, []);
+  return (0, import_react95.createElement)(
+    "dialog",
+    {
+      ref: dialog,
+      className: "gb-machine-confirm",
+      role: "alertdialog",
+      "aria-modal": true,
+      "aria-label": text,
+      onCancel: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        cancel();
+      }
+    },
+    (0, import_react95.createElement)("p", null, text),
+    (0, import_react95.createElement)("button", { type: "button", onClick: cancel }, m("Cancel")),
+    (0, import_react95.createElement)("button", { type: "button", className: "gb-machine-primary", onClick: confirm2 }, m("Continue"))
+  );
+}
+
+// src/client/machine-terminal.js
+var import_react96 = require("react");
+function MachineTerminal({ rpc, onEnd, onExit }) {
+  const element = (0, import_react96.useRef)(null);
+  const terminal = (0, import_react96.useRef)(null);
+  const [scrolledBack, setScrolledBack] = (0, import_react96.useState)(false);
+  (0, import_react96.useLayoutEffect)(() => {
+    const node = element.current;
+    const term = new Dl({
+      cursorBlink: true,
+      fontFamily: "ui-monospace, monospace",
+      fontSize: 14,
+      scrollback: 1500,
+      theme: { background: "#171c1a", foreground: "#ecf1e8", cursor: "#f5be7f" }
+    });
+    const fit2 = new o();
+    term.loadAddon(fit2);
+    term.open(node);
+    terminal.current = term;
+    const scrolled = term.onScroll(() => {
+      const buffer = term.buffer.active;
+      setScrolledBack(buffer.viewportY < buffer.baseY);
+    });
+    let stopped = false, sequence = 0, ready = false, sending = Promise.resolve(), cursor = 0;
+    const stopWith = (error) => {
+      if (!stopped) {
+        stopped = true;
+        onEnd(error.message || String(error));
+      }
+    };
+    const geometry = () => ({
+      cols: Math.max(2, Math.min(400, term.cols)),
+      rows: Math.max(1, Math.min(180, term.rows))
+    });
+    const observer = new ResizeObserver(() => {
+      fit2.fit();
+      if (ready && !stopped) void rpc("terminal.resize", geometry()).catch(stopWith);
+    });
+    observer.observe(node);
+    const chars = term.onData((text) => {
+      const bytes = new TextEncoder().encode(text);
+      for (let at2 = 0; at2 < bytes.length; at2 += 8192) {
+        const data = btoa(String.fromCharCode(...bytes.subarray(at2, at2 + 8192)));
+        sending = sending.then(async () => {
+          if (!ready || stopped) return;
+          const seq = ++sequence;
+          const input2 = { seq, data };
+          let answer;
+          try {
+            answer = await rpc("terminal.write", input2);
+          } catch (error) {
+            if (stopped || !/RPC_TIMEOUT|timed out/i.test(error.message)) throw error;
+            answer = await rpc("terminal.write", input2);
+          }
+          if (answer.ack !== seq) throw new Error("Terminal input acknowledgement mismatch");
+        }).catch(stopWith);
+      }
+    });
+    async function read() {
+      fit2.fit();
+      await rpc("terminal.open", geometry());
+      if (stopped) return;
+      ready = true;
+      term.focus();
+      while (!stopped) {
+        const result = await rpc("terminal.read", { cursor, waitMs: 1200 });
+        if (stopped) return;
+        if (result.truncated) term.writeln("\r\n[" + m("Earlier output was truncated") + "]");
+        if (result.data) {
+          const bytes = Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0));
+          await new Promise((resolve2) => term.write(bytes, resolve2));
+        }
+        cursor = result.cursor;
+        if (result.exited || Number.isInteger(result.exitCode)) {
+          stopped = true;
+          term.options.disableStdin = true;
+          term.options.cursorBlink = false;
+          onExit(result.exitCode);
+          return;
+        }
+      }
+    }
+    void read().catch(stopWith);
+    return () => {
+      stopped = true;
+      observer.disconnect();
+      chars.dispose();
+      scrolled.dispose();
+      terminal.current = null;
+      term.dispose();
+    };
+  }, [rpc, onEnd, onExit]);
+  return (0, import_react96.createElement)(
+    "div",
+    { className: "gb-machine-term", role: "region", "aria-label": m("Remote terminal") },
+    (0, import_react96.createElement)("style", null, xterm_default),
+    (0, import_react96.createElement)("div", { ref: element, className: "gb-machine-term-box" }),
+    scrolledBack && (0, import_react96.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "gb-machine-jump",
+        onClick: () => {
+          terminal.current?.scrollToBottom();
+          terminal.current?.focus();
+        }
+      },
+      m("Jump to latest")
+    )
+  );
+}
+
+// src/client/machine-desktop.js
 var import_react97 = require("react");
+function MachineDesktop({
+  rpc,
+  session,
+  onEnd,
+  control,
+  requestControl,
+  canControl,
+  relayOnly,
+  targetName,
+  disconnect,
+  permissionHint
+}) {
+  const video = (0, import_react97.useRef)(null), stage = (0, import_react97.useRef)(null), toolbar = (0, import_react97.useRef)(null), channel = (0, import_react97.useRef)(null), mediaPeer = (0, import_react97.useRef)(null), decoded = (0, import_react97.useRef)(false), generation = (0, import_react97.useRef)(0), allowed2 = (0, import_react97.useRef)(false);
+  const [displays, setDisplays] = (0, import_react97.useState)([]), [selected, select] = (0, import_react97.useState)(""), [media, setMedia] = (0, import_react97.useState)("Connecting to display…");
+  const [path2, setPath] = (0, import_react97.useState)(null), [zoom, setZoom] = (0, import_react97.useState)(1), [full2, setFull] = (0, import_react97.useState)(false);
+  const [details, setDetails] = (0, import_react97.useState)(false), [text, setText] = (0, import_react97.useState)(""), [quality, setQuality] = (0, import_react97.useState)("balanced");
+  allowed2.current = control;
+  (0, import_react97.useEffect)(() => {
+    let active = true;
+    rpc("desktop.displays", {}).then(({ displays: list }) => {
+      if (!active) return;
+      if (!list.length) {
+        onEnd("No graphical display is available");
+        return;
+      }
+      setDisplays(list);
+      select(list[0].id);
+    }).catch((e) => {
+      if (active) onEnd(e.message);
+    });
+    return () => {
+      active = false;
+    };
+  }, [rpc, onEnd]);
+  const display = displays.find((item) => item.id === selected);
+  (0, import_react97.useEffect)(() => {
+    if (!display) return;
+    const iceServers = session.iceServers || [];
+    const hasTURN = iceServers.some((server) => [server.urls].flat().some((url) => /^turns?:/i.test(url)));
+    if (relayOnly && !hasTURN) {
+      setMedia("Waiting for TURN credentials from the computer");
+      setPath(null);
+      const wait = setTimeout(
+        () => onEnd(m("TURN is unavailable. Configure TURN on the computer or turn off Require TURN.")),
+        12e3
+      );
+      return () => clearTimeout(wait);
+    }
+    const pc = new RTCPeerConnection({
+      iceServers,
+      iceTransportPolicy: relayOnly ? "relay" : "all"
+    }), target = video.current;
+    mediaPeer.current = pc;
+    decoded.current = false;
+    const gen = ++generation.current, localCandidates = [], remoteCandidates = [];
+    let live = true, offered = false, hasAnswer = false, tail = Promise.resolve(), cursor = 0, firstFrameTimer, frameCallback;
+    setMedia(display.id === "portal" ? "Select a screen on the Linux computer" : "Connecting to display…");
+    setPath(null);
+    setZoom(1);
+    function fail2(error) {
+      if (live) {
+        live = false;
+        decoded.current = false;
+        target.srcObject = null;
+        onEnd(error.message || String(error));
+      }
+    }
+    const signal = (signal2) => {
+      tail = tail.then(() => {
+        if (live)
+          return rpc("desktop.signal", {
+            displayId: display.id,
+            generation: gen,
+            ...signal2.type === "offer" && { quality },
+            signal: signal2
+          });
+      });
+      return tail;
+    };
+    const dc2 = pc.createDataChannel("godbot-input-v1", { ordered: true });
+    channel.current = dc2;
+    pc.addTransceiver("video", { direction: "recvonly" });
+    pc.ontrack = (e) => {
+      if (live) target.srcObject = e.streams[0] || new MediaStream([e.track]);
+    };
+    const firstFrame = () => {
+      if (!live || !target.videoWidth) return;
+      decoded.current = true;
+      clearTimeout(firstFrameTimer);
+      setMedia("Live desktop");
+    };
+    if (target.requestVideoFrameCallback) frameCallback = target.requestVideoFrameCallback(firstFrame);
+    else target.onplaying = firstFrame;
+    pc.onicecandidate = (e) => {
+      if (!live || !e.candidate) return;
+      const candidate = { type: "candidate", candidate: e.candidate.toJSON() };
+      if (offered) void signal(candidate).catch(fail2);
+      else localCandidates.push(candidate);
+    };
+    pc.onconnectionstatechange = () => {
+      if (!live) return;
+      const state = pc.connectionState;
+      if (state === "closed" || decoded.current && (state === "failed" || state === "disconnected")) {
+        fail2(new Error("Desktop connection ended"));
+      }
+    };
+    async function negotiate() {
+      await pc.setLocalDescription(await pc.createOffer());
+      if (!live) return;
+      await signal({ type: "offer", sdp: pc.localDescription.sdp });
+      if (!live) return;
+      offered = true;
+      setMedia("Connecting to display…");
+      firstFrameTimer = setTimeout(() => {
+        if (!decoded.current) fail2(new Error("The host did not deliver a desktop frame"));
+      }, 25e3);
+      for (const candidate of localCandidates) await signal(candidate);
+      while (live) {
+        const result = await rpc("desktop.poll", { generation: gen, cursor, waitMs: 1e3 });
+        if (!live) return;
+        cursor = result.cursor;
+        for (const value of result.signals) {
+          if (value.type === "answer" && !hasAnswer) {
+            await pc.setRemoteDescription({ type: "answer", sdp: value.sdp });
+            hasAnswer = true;
+            for (const candidate of remoteCandidates) await pc.addIceCandidate(candidate);
+          } else if (value.type === "candidate" && value.candidate) {
+            if (hasAnswer) await pc.addIceCandidate(value.candidate);
+            else remoteCandidates.push(value.candidate);
+          }
+        }
+      }
+    }
+    const metrics = setInterval(async () => {
+      if (pc.connectionState !== "connected") return;
+      try {
+        const stats = await pc.getStats();
+        const transport = [...stats.values()].find((x) => x.type === "transport" && x.selectedCandidatePairId);
+        const pair = stats.get(transport?.selectedCandidatePairId) || [...stats.values()].find((x) => x.type === "candidate-pair" && x.nominated && x.state === "succeeded");
+        const video2 = [...stats.values()].find((x) => x.type === "inbound-rtp" && x.kind === "video");
+        if (!live || !pair) return;
+        const relay = [pair.localCandidateId, pair.remoteCandidateId].some(
+          (id) => stats.get(id)?.candidateType === "relay"
+        );
+        setPath({
+          Transport: relay ? "TURN relay" : "Direct",
+          Resolution: video2?.frameWidth && video2.frameWidth + " × " + video2.frameHeight,
+          "Frame rate": Number.isFinite(video2?.framesPerSecond) && video2.framesPerSecond + " fps",
+          "Round-trip time": Number.isFinite(pair.currentRoundTripTime) && Math.round(pair.currentRoundTripTime * 1e3) + " ms",
+          Codec: stats.get(video2?.codecId)?.mimeType
+        });
+      } catch {
+      }
+    }, 1500);
+    void negotiate().catch(fail2);
+    return () => {
+      live = false;
+      clearInterval(metrics);
+      clearTimeout(firstFrameTimer);
+      if (frameCallback !== void 0) target.cancelVideoFrameCallback(frameCallback);
+      decoded.current = false;
+      mediaPeer.current = null;
+      dc2.close();
+      pc.close();
+      target.onplaying = null;
+      target.srcObject = null;
+      channel.current = null;
+    };
+  }, [display, rpc, onEnd, session.sessionId, session.iceGeneration, relayOnly, quality]);
+  function input2(type, data = {}) {
+    const dc2 = channel.current;
+    if (!allowed2.current || !decoded.current || mediaPeer.current?.connectionState !== "connected" || !display || dc2?.readyState !== "open")
+      return;
+    if (type === "move" && dc2.bufferedAmount > 16384) return;
+    dc2.send(JSON.stringify({ type, displayId: display.id, revision: display.revision, ...data }));
+  }
+  function point(e) {
+    const node = video.current, box = node.getBoundingClientRect();
+    if (!node.videoWidth || !box.width) return null;
+    const scale = Math.min(box.width / node.videoWidth, box.height / node.videoHeight);
+    const w = node.videoWidth * scale, h114 = node.videoHeight * scale;
+    const x = (e.clientX - box.left - (box.width - w) / 2) / w, y = (e.clientY - box.top - (box.height - h114) / 2) / h114;
+    return x >= 0 && x <= 1 && y >= 0 && y <= 1 ? { x, y } : null;
+  }
+  function pointer(e, type, down) {
+    if (!control) return;
+    if (!(type === "button" && down) && document.activeElement !== video.current) return;
+    const p = point(e);
+    if (!p) {
+      if (type === "button" && !down) input2("reset");
+      return;
+    }
+    if (type === "button" && down) {
+      e.currentTarget.focus();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    }
+    e.preventDefault();
+    input2(type, { ...p, ...type === "button" ? { button: e.button, down } : {} });
+  }
+  function key(e, down) {
+    if (!control || e.isComposing) return;
+    if (e.code === "Escape" || e.code === "Space" && e.ctrlKey && e.altKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      input2("reset");
+      toolbar.current?.focus();
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    input2("key", { code: e.code, down });
+  }
+  (0, import_react97.useEffect)(() => {
+    const node = video.current;
+    const scroll = (e) => {
+      if (!control || document.activeElement !== node) return;
+      const p = point(e);
+      if (!p) return;
+      e.preventDefault();
+      input2("wheel", { ...p, dx: e.deltaX, dy: e.deltaY });
+    };
+    const blur = () => {
+      input2("reset");
+      if (document.activeElement === node) toolbar.current?.focus();
+    };
+    node.addEventListener("wheel", scroll, { passive: false });
+    window.addEventListener("blur", blur);
+    return () => {
+      node.removeEventListener("wheel", scroll);
+      window.removeEventListener("blur", blur);
+    };
+  }, [control, display]);
+  (0, import_react97.useEffect)(() => {
+    const f = () => setFull(document.fullscreenElement === stage.current);
+    document.addEventListener("fullscreenchange", f);
+    return () => document.removeEventListener("fullscreenchange", f);
+  }, []);
+  return (0, import_react97.createElement)(
+    "section",
+    { className: "gb-machine-desktop", ref: stage },
+    (0, import_react97.createElement)(
+      "div",
+      { className: "gb-machine-bar" },
+      full2 && (0, import_react97.createElement)("strong", null, targetName),
+      (0, import_react97.createElement)("strong", { role: "status" }, m(media)),
+      (media === "Select a screen on the Linux computer" || media === "Waiting for TURN credentials from the computer") && (0, import_react97.createElement)("button", { onClick: () => onEnd(m("Request canceled")) }, m("Cancel request")),
+      (0, import_react97.createElement)(
+        "select",
+        { "aria-label": m("Display"), value: selected, onChange: (e) => select(e.target.value) },
+        displays.map((d) => (0, import_react97.createElement)("option", { key: d.id, value: d.id }, d.name))
+      ),
+      (0, import_react97.createElement)(
+        "select",
+        { "aria-label": m("Zoom"), value: zoom, onChange: (e) => setZoom(+e.target.value) },
+        [1, 1.5, 2].map((x) => (0, import_react97.createElement)("option", { key: x, value: x }, x === 1 ? m("Fit") : x + "×"))
+      ),
+      (0, import_react97.createElement)(
+        "button",
+        {
+          disabled: !document.fullscreenEnabled,
+          onClick: () => {
+            void (full2 ? document.exitFullscreen() : stage.current.requestFullscreen()).catch(() => {
+            });
+          }
+        },
+        full2 ? m("Exit fullscreen") : m("Fullscreen")
+      )
+    ),
+    (0, import_react97.createElement)(
+      "div",
+      { className: "gb-machine-video-window" },
+      (0, import_react97.createElement)("video", {
+        ref: video,
+        muted: true,
+        autoPlay: true,
+        playsInline: true,
+        tabIndex: 0,
+        "aria-label": m("Remote desktop"),
+        style: { width: zoom * 100 + "%", height: zoom * 100 + "%" },
+        onContextMenu: (e) => e.preventDefault(),
+        onPointerDown: (e) => pointer(e, "button", true),
+        onPointerUp: (e) => pointer(e, "button", false),
+        onPointerMove: (e) => pointer(e, "move"),
+        onPointerCancel: () => input2("reset"),
+        onKeyDown: (e) => key(e, true),
+        onKeyUp: (e) => key(e, false),
+        onBlur: () => input2("reset")
+      })
+    ),
+    (0, import_react97.createElement)(
+      "div",
+      { className: "gb-machine-bar" },
+      (0, import_react97.createElement)("strong", { role: "status" }, control ? m("You have control") : m("View only")),
+      (0, import_react97.createElement)("button", { ref: toolbar, onClick: () => setDetails(!details) }, m("Session details")),
+      (0, import_react97.createElement)(
+        "button",
+        {
+          className: "gb-machine-primary",
+          onClick: requestControl,
+          disabled: !control && !session.controlPending && (!canControl || media !== "Live desktop"),
+          title: !canControl ? permissionHint || m("The target has not granted OS input permission") : void 0
+        },
+        control ? m("Release control") : session.controlPending ? m("Cancel control request") : m("Request control")
+      ),
+      full2 && (0, import_react97.createElement)("button", { type: "button", onClick: disconnect }, m("Disconnect"))
+    ),
+    !canControl && (0, import_react97.createElement)("p", null, permissionHint || m("The target has not granted OS input permission")),
+    control && (0, import_react97.createElement)("p", null, m("Click the desktop to operate it. Escape or Ctrl+Alt+Space returns to the toolbar.")),
+    session.controlReason === "INPUT_DENIED" && !control && !session.controlPending && (0, import_react97.createElement)("p", { role: "status" }, m("Control declined on the computer. You can keep viewing.")),
+    session.controlPending && (0, import_react97.createElement)(
+      "p",
+      { role: "status" },
+      m(
+        session.controlPrompt === "system" ? "Approve keyboard and pointer sharing in the system dialog on the computer" : "Waiting for input approval on the computer"
+      )
+    ),
+    details && (0, import_react97.createElement)(
+      "div",
+      { className: "gb-machine-details" },
+      (0, import_react97.createElement)(
+        "dl",
+        { className: "gb-machine-stats" },
+        ...["Transport", "Resolution", "Frame rate", "Round-trip time", "Codec"].flatMap((label) => [
+          (0, import_react97.createElement)("dt", { key: label }, m(label)),
+          (0, import_react97.createElement)("dd", { key: label + "-value" }, path2?.[label] || m("Not available"))
+        ])
+      ),
+      (0, import_react97.createElement)(
+        "label",
+        null,
+        m("Stream quality"),
+        " ",
+        (0, import_react97.createElement)(
+          "select",
+          { value: quality, onChange: (e) => setQuality(e.target.value) },
+          (0, import_react97.createElement)("option", { value: "balanced" }, m("Balanced")),
+          (0, import_react97.createElement)("option", { value: "low" }, m("Bandwidth saver"))
+        )
+      )
+    ),
+    control && details && (0, import_react97.createElement)(
+      "div",
+      { className: "gb-machine-bar", role: "group", "aria-label": m("Send shortcut") },
+      (0, import_react97.createElement)("span", null, m("Send shortcut")),
+      ...[
+        ["Alt+Tab", "AltLeft", "Tab"],
+        ["Ctrl+C", "ControlLeft", "KeyC"],
+        ["⌘+Space", "MetaLeft", "Space"]
+      ].map(
+        ([label, modifier, code]) => (0, import_react97.createElement)(
+          "button",
+          {
+            key: label,
+            onClick: () => {
+              input2("key", { code: modifier, down: true });
+              input2("key", { code, down: true });
+              input2("key", { code, down: false });
+              input2("key", { code: modifier, down: false });
+            }
+          },
+          label
+        )
+      )
+    ),
+    control && (0, import_react97.createElement)(
+      "form",
+      {
+        onSubmit: (e) => {
+          e.preventDefault();
+          if (text) {
+            input2("text", { text });
+            setText("");
+          }
+        }
+      },
+      (0, import_react97.createElement)("input", {
+        "aria-label": m("Send composed text"),
+        placeholder: m("Send composed text"),
+        value: text,
+        maxLength: 1024,
+        onChange: (e) => setText(e.target.value)
+      }),
+      (0, import_react97.createElement)("button", { className: "gb-machine-send-text", disabled: !text }, m("Send text"))
+    )
+  );
+}
+
+// src/client/remote-computers.css
+var remote_computers_default = ".gb-modal:has(.gb-machines) {\n  width: min(1200px, 96vw);\n  max-width: 96vw;\n  color: var(--bt-ink);\n  background: var(--bt-main);\n  border: 1px solid var(--bt-line-2);\n}\n.gb-modal:has(.gb-machines) .gb-modal-body {\n  padding: 0;\n  overflow: auto;\n}\n.gb-machines {\n  --gb-machine-control-line: color-mix(in srgb, var(--bt-ink) 62%, var(--bt-card));\n  display: grid;\n  grid-template-columns: minmax(165px, 22%) minmax(0, 1fr);\n  min-height: min(64vh, 600px);\n  color: var(--bt-ink);\n  font: var(--bt-font);\n}\n.gb-machines h3 {\n  font-size: clamp(21px, 2.1vw, 32px);\n  font-weight: 650;\n  line-height: 1.15;\n  margin: 0;\n}\n.gb-machines h4 {\n  font-size: 17px;\n  margin: 0 0 8px;\n}\n.gb-machines p {\n  font-size: 14px;\n  line-height: 1.5;\n}\n.gb-machines button,\n.gb-machines select {\n  min-height: 38px;\n  cursor: pointer;\n  color: inherit;\n  background: var(--bt-card);\n  border: 1px solid var(--gb-machine-control-line);\n  border-radius: 8px;\n  padding: 6px 12px;\n  font: inherit;\n}\n.gb-machines button:disabled {\n  opacity: 0.55;\n  cursor: default;\n}\n.gb-machines button:focus-visible,\n.gb-machines select:focus-visible,\n.gb-machines input:focus-visible {\n  outline: 2px solid var(--bt-ink);\n  outline-offset: 2px;\n}\n.gb-machine-list {\n  background: var(--bt-sidebar);\n  padding: 17px 12px;\n  border-inline-end: 1px solid var(--bt-line);\n  display: flex;\n  flex-direction: column;\n  gap: 5px;\n  overflow: auto;\n}\n.gb-machine-wide-nav {\n  display: grid;\n  min-height: 0;\n}\n.gb-machine-compact-nav {\n  display: none;\n}\n.gb-machine-drawer {\n  position: fixed;\n  inset: auto 0 0;\n  width: min(100%, 42rem);\n  max-height: 75dvh;\n  box-sizing: border-box;\n  margin: 0 auto;\n  padding: 12px 12px max(12px, env(safe-area-inset-bottom));\n  border: 1px solid var(--bt-line-2);\n  border-radius: 16px 16px 0 0;\n  color: var(--bt-ink);\n  background: var(--bt-sidebar);\n  overflow: auto;\n}\n.gb-machine-drawer::backdrop {\n  background: #10171266;\n}\n.gb-machine-drawer .gb-machine-list {\n  border: 0;\n}\n.gb-machine-list > button span {\n  min-width: 0;\n}\n.gb-machine-list-title,\n.gb-machine-title,\n.gb-machine-bar,\n.gb-machine-buttons {\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n.gb-machine-list-title {\n  padding: 0 4px 10px;\n}\n.gb-machine-list > button {\n  display: flex;\n  align-items: center;\n  gap: 10px;\n  text-align: start;\n  background: transparent;\n  border-color: transparent;\n  overflow-wrap: anywhere;\n}\n.gb-machine-list > button.selected {\n  background: var(--bt-card);\n  border-color: var(--bt-accent);\n}\n.gb-machines small {\n  display: block;\n  color: color-mix(in srgb, var(--bt-ink) 78%, var(--bt-card));\n  margin-top: 4px;\n  font-size: 12px;\n}\n.gb-machine-work {\n  padding: clamp(14px, 2.5vw, 32px);\n  min-width: 0;\n}\n.gb-machine-empty,\n.gb-machine-form,\n.gb-machine-ready {\n  margin: 20px 0;\n  padding: clamp(15px, 2vw, 25px);\n  border: 1px solid var(--bt-line);\n  border-radius: 14px;\n  background: var(--bt-card);\n}\n.gb-machine-empty {\n  text-align: center;\n}\n.gb-machine-empty > .gb-icon {\n  margin: 12px auto;\n}\n.gb-machines .gb-machine-primary {\n  background: var(--bt-accent);\n  color: var(--bt-accent-ink);\n  font-weight: 620;\n  border: 1px solid transparent;\n}\n.gb-machine-cards {\n  display: grid;\n  grid-template-columns: repeat(auto-fit, minmax(min(185px, 100%), 1fr));\n  gap: 12px;\n}\n.gb-machine-cards > div {\n  display: grid;\n  align-content: start;\n  gap: 8px;\n  border: 1px solid var(--bt-line);\n  border-radius: 12px;\n  padding: 16px;\n}\n.gb-machine-cards p {\n  min-height: 40px;\n  margin: 0;\n}\n.gb-machine-cards h4 {\n  margin: 0;\n}\n.gb-machines details,\n.gb-machine-desktop,\n.gb-machine-term {\n  margin-top: 16px;\n}\n.gb-machines summary {\n  cursor: pointer;\n}\n.gb-machine-form input,\n.gb-machine-desktop input {\n  box-sizing: border-box;\n  width: 100%;\n  min-height: 42px;\n  margin: 5px 0 12px;\n  color: inherit;\n  background: var(--bt-card);\n  border: 1px solid var(--gb-machine-control-line);\n  border-radius: 8px;\n  padding: 8px;\n}\n.gb-machine-confirm,\n.gb-machine-status {\n  padding: 12px;\n  border-radius: 8px;\n  background: var(--bt-bubble);\n  margin-bottom: 14px;\n  overflow-wrap: anywhere;\n}\n.gb-machine-confirm p {\n  margin-top: 0;\n}\n.gb-machine-confirm button {\n  margin-right: 8px;\n}\n.gb-machine-desktop {\n  background: #181d1b;\n  color: #f3f3f0;\n  border-radius: 12px;\n  overflow: hidden;\n}\n.gb-machine-desktop .gb-machine-bar {\n  padding: 8px 12px;\n}\n.gb-machine-desktop .gb-machine-bar button,\n.gb-machine-desktop select {\n  background: #323934;\n  color: #f3f3f0;\n  border-color: #90998f;\n}\n.gb-machine-desktop :is(button, select, input):focus-visible,\n.gb-machine-term .gb-machine-jump:focus-visible {\n  outline-color: #f2ad82;\n}\n.gb-machine-bar strong {\n  margin-inline-end: auto;\n}\n.gb-machine-video-window {\n  height: min(47vh, 540px);\n  background: #070a08;\n  overflow: auto;\n  position: relative;\n}\n.gb-machine-video-window video {\n  display: block;\n  object-fit: contain;\n  outline-offset: -3px;\n  touch-action: none;\n}\n.gb-machine-video-window video:focus-visible {\n  outline: 3px solid #f2ad82;\n}\n.gb-machine-desktop:fullscreen {\n  display: flex;\n  flex-direction: column;\n  box-sizing: border-box;\n  margin: 0;\n  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)\n    env(safe-area-inset-left);\n  overflow: auto;\n}\n.gb-machine-desktop:fullscreen .gb-machine-video-window {\n  flex: 1 0 25vh;\n  min-height: 0;\n  height: auto;\n}\n.gb-machine-desktop form,\n.gb-machine-desktop > p {\n  padding: 0 12px;\n}\n.gb-machine-term {\n  position: relative;\n  background: #171c1a;\n  border-radius: 10px;\n  padding: 10px;\n}\n.gb-machine-term .gb-machine-jump {\n  position: absolute;\n  right: 22px;\n  bottom: 12px;\n}\n.gb-machine-term-box {\n  height: clamp(200px, 46vh, 540px);\n}\n.gb-machine-term-box .xterm {\n  height: 100%;\n}\n@media (max-width: 720px) {\n  .gb-machines {\n    grid-template-columns: 1fr;\n    grid-template-rows: auto 1fr;\n  }\n  .gb-machine-wide-nav {\n    display: none;\n  }\n  .gb-machine-compact-nav {\n    display: block;\n    padding: 8px 12px 0;\n  }\n  .gb-machines button,\n  .gb-machines select {\n    min-height: 44px;\n  }\n  .gb-machine-work {\n    padding: 12px;\n  }\n  .gb-machine-video-window {\n    height: 35vh;\n  }\n  .gb-machine-cards p {\n    min-height: 0;\n  }\n}\n\n.gb-machine-desktop form {\n  display: flex;\n  gap: 8px;\n  align-items: center;\n  margin-bottom: 12px;\n}\n.gb-machine-desktop form input {\n  margin: 0;\n  background: #252c27;\n  border-color: #90998f;\n  color: #f4f6ed;\n}\n.gb-machine-desktop .gb-machine-send-text {\n  color: #eee;\n  background: #323934;\n  white-space: nowrap;\n}\n.gb-machine-desktop .gb-machine-bar .gb-machine-primary {\n  background: var(--bt-accent);\n  color: var(--bt-accent-ink);\n}\n.gb-machine-desktop .gb-machine-bar > strong {\n  display: flex;\n  align-items: center;\n  gap: 7px;\n}\n.gb-machine-desktop .gb-machine-bar > strong::before {\n  content: '';\n  width: 7px;\n  height: 7px;\n  border-radius: 50%;\n  background: #84cf97;\n}\n.gb-machine-desktop > p {\n  color: #c4d0c7;\n}\n.gb-machine-desktop > p[role='status'] {\n  color: #ffd39c;\n}\n\n.gb-machine-details {\n  padding: 0 12px 12px;\n  display: flex;\n  align-items: center;\n  justify-content: space-between;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n.gb-machine-details p {\n  margin: 0;\n  color: #d7e0d8;\n}\n.gb-machine-stats {\n  display: grid;\n  grid-template-columns: auto minmax(0, 1fr);\n  gap: 3px 12px;\n  margin: 0;\n}\n.gb-machine-stats dd {\n  margin: 0;\n  overflow-wrap: anywhere;\n}\n.gb-machine-details label {\n  font-size: 13px;\n}\n\n.gb-machine-confirm {\n  max-width: min(440px, 90vw);\n  padding: 20px;\n  border: 1px solid var(--bt-line-2);\n  border-radius: 12px;\n  background: var(--bt-card);\n  color: var(--bt-ink);\n  box-shadow: 0 12px 40px #0003;\n  margin: auto;\n}\n.gb-machine-confirm::backdrop {\n  background: #10171266;\n}\n.gb-machine-modes {\n  display: inline-flex;\n  margin: 12px 0 0;\n  border: 1px solid var(--bt-line-2);\n  padding: 2px;\n  gap: 2px;\n  border-radius: 9px;\n}\n.gb-machine-modes button {\n  display: inline-flex;\n  align-items: center;\n  gap: 6px;\n  border: 0;\n  background: transparent;\n}\n.gb-machine-modes button[aria-pressed='true'] {\n  background: var(--bt-bubble);\n  font-weight: 640;\n}\n";
+
+// src/client/remote-computers.js
+var button2 = (label, fn2, options = {}) => (0, import_react98.createElement)("button", { type: "button", onClick: fn2, ...options }, label);
+var message = (e) => e?.message || String(e);
+var unpaired = (reason) => /NOT_PAIRED|DEVICE_REVOKED|not paired/i.test(reason);
+function endMessage(reason) {
+  if (unpaired(reason) || reason === "revoked") return m("Access ended by the computer");
+  if (reason === "denied") return m("Request declined on the computer");
+  if (reason === "local_management") return m("Sharing paused for a private prompt");
+  if (/^(expired|disconnected|host_stopped)$|transport closed|desktop connection ended/i.test(reason))
+    return m("Connection lost");
+  return m(reason);
+}
+var uuid = () => globalThis.crypto.randomUUID();
+var initial = {
+  machines: [],
+  target: null,
+  hello: null,
+  session: null,
+  status: "",
+  recovery: null,
+  busy: false,
+  pairing: false,
+  confirm: null
+};
+function MachineDrawer({ children, close }) {
+  const drawer = (0, import_react98.useRef)(null);
+  (0, import_react98.useLayoutEffect)(() => {
+    const node = drawer.current;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  return (0, import_react98.createElement)(
+    "dialog",
+    {
+      ref: drawer,
+      className: "gb-machine-drawer",
+      "aria-label": m("Computers"),
+      onCancel: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }
+    },
+    children,
+    button2(m("Close"), close)
+  );
+}
+function Computers({ client, close }) {
+  const [view, setView] = (0, import_react98.useState)(initial), [offer, setOffer] = (0, import_react98.useState)(""), [review, setReview] = (0, import_react98.useState)(null);
+  const [viewId] = (0, import_react98.useState)(uuid);
+  const [relayOnly, setRelayOnly] = (0, import_react98.useState)(false);
+  const [drawer, setDrawer] = (0, import_react98.useState)(false);
+  const heading2 = (0, import_react98.useRef)(null);
+  const live = (0, import_react98.useRef)(true), current2 = (0, import_react98.useRef)(view), run2 = (0, import_react98.useRef)(0);
+  const update = (0, import_react98.useCallback)((patch) => {
+    if (!live.current) return;
+    current2.current = { ...current2.current, ...patch };
+    setView(current2.current);
+  }, []);
+  const local = (0, import_react98.useCallback)(
+    (action2, params = {}) => client.machine({ viewId, action: action2, ...params }),
+    [client, viewId]
+  );
+  const refresh = (0, import_react98.useCallback)(async () => {
+    const machines = await local("list");
+    update({ machines });
+  }, [local, update]);
+  (0, import_react98.useEffect)(() => {
+    live.current = true;
+    void refresh().catch((e) => update({ status: message(e) }));
+    return () => {
+      live.current = false;
+      run2.current++;
+      void local("leave").catch(() => {
+      });
+    };
+  }, [refresh, local, update]);
+  const drop = (0, import_react98.useCallback)(
+    async (status = m("Session ended"), recovery = null) => {
+      ++run2.current;
+      const { target, session: session2 } = current2.current;
+      update({ session: null, status, recovery, confirm: null, busy: false });
+      if (session2 && session2.state !== "exited" && target)
+        await local("rpc", {
+          id: target.id,
+          method: "session.close",
+          params: { sessionId: session2.sessionId }
+        }).catch(() => {
+        });
+    },
+    [local, update]
+  );
+  (0, import_react98.useEffect)(() => {
+    const suspend = () => {
+      if (document.hidden) {
+        void drop(m("Session ended when this tab went into the background"));
+        void local("leave").catch(() => {
+        });
+        update({ hello: null, busy: false });
+      }
+    };
+    const leave = () => {
+      void local("leave").catch(() => {
+      });
+    };
+    document.addEventListener("visibilitychange", suspend);
+    window.addEventListener("pagehide", leave);
+    return () => {
+      document.removeEventListener("visibilitychange", suspend);
+      window.removeEventListener("pagehide", leave);
+    };
+  }, [drop, local, update]);
+  const id = view.target?.id, sid = view.session?.sessionId;
+  const rpc = (0, import_react98.useCallback)(
+    (method, params = {}) => local("rpc", { id, method, params: { ...params, sessionId: sid } }),
+    [local, id, sid]
+  );
+  const failed = (0, import_react98.useCallback)(
+    (reason) => {
+      if (current2.current.session?.sessionId === sid && current2.current.session.state !== "exited") {
+        const mode = current2.current.session.mode;
+        update({ hello: null });
+        void drop(endMessage(reason), { mode, reason, unpaired: unpaired(reason) });
+      }
+    },
+    [drop, sid, update]
+  );
+  const shellExited = (0, import_react98.useCallback)(
+    (exitCode) => {
+      const session2 = current2.current.session;
+      if (!session2 || session2.sessionId !== sid) return;
+      update({ session: { ...session2, state: "exited", exitCode } });
+      void rpc("session.close").catch(() => {
+      });
+    },
+    [rpc, sid, update]
+  );
+  const exited = view.session?.state === "exited";
+  (0, import_react98.useEffect)(() => {
+    if (!sid || exited) return;
+    let active = true, timer;
+    async function heartbeat() {
+      try {
+        if (document.hidden) return;
+        const status = await rpc("session.renew");
+        if (!active || current2.current.session?.state === "exited") return;
+        if (status.state === "closed" || status.state === "denied") {
+          failed(status.reason || "Access ended by the computer");
+          return;
+        }
+        if (status.state)
+          update({ session: { ...current2.current.session, ...status, controlPending: !!status.controlPending } });
+        timer = setTimeout(heartbeat, 1300);
+      } catch (e) {
+        if (active) failed(message(e));
+      }
+    }
+    timer = setTimeout(heartbeat, 900);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [sid, exited, rpc, failed, update]);
+  (0, import_react98.useEffect)(() => {
+    if (!view.pairing) heading2.current?.focus();
+  }, [id, view.pairing]);
+  async function work(fn2) {
+    if (current2.current.busy) return;
+    const token = ++run2.current;
+    const still = () => live.current && token === run2.current;
+    update({ busy: true, status: "", confirm: null });
+    try {
+      await fn2(still);
+    } catch (e) {
+      if (still()) update({ status: endMessage(message(e)) });
+    } finally {
+      if (still()) update({ busy: false });
+    }
+  }
+  async function connect(machine2) {
+    await drop("");
+    setDrawer(false);
+    update({ target: machine2, hello: null, pairing: false });
+    await work(async (still) => {
+      let hello2;
+      try {
+        hello2 = await local("connect", { id: machine2.id });
+      } catch (error) {
+        if (still() && unpaired(message(error))) update({ recovery: { unpaired: true } });
+        throw error;
+      }
+      if (still()) update({ hello: hello2 });
+      await refresh();
+    });
+  }
+  async function pair() {
+    await work(async (still) => {
+      let result;
+      try {
+        result = await local("pair", { offer });
+      } catch (error) {
+        if (still() && /NOT_PAIRED|not paired|offer expired|offer has been used/i.test(message(error))) {
+          setReview(null);
+          setOffer("");
+          throw new Error(m("Get a new offer on the computer"));
+        }
+        throw error;
+      }
+      if (!still()) return;
+      setOffer("");
+      setReview(null);
+      update({ target: result.machine, hello: result.hello, pairing: false });
+      await refresh();
+    });
+  }
+  function pairPage() {
+    setDrawer(false);
+    setOffer("");
+    setReview(null);
+    update({ pairing: true, status: "", recovery: null, confirm: null });
+  }
+  async function start(mode, reconnect = false) {
+    await work(async (still) => {
+      if (reconnect) {
+        const hello2 = await local("connect", { id });
+        if (!still()) return;
+        update({ hello: hello2, recovery: null });
+        void refresh().catch(() => {
+        });
+        if (!hello2[mode]) return;
+      }
+      const session2 = await local("rpc", {
+        id: current2.current.target.id,
+        method: "session.open",
+        params: { mode, requestId: uuid() }
+      });
+      if (!still()) {
+        await local("rpc", { id, method: "session.close", params: { sessionId: session2.sessionId } }).catch(
+          () => {
+          }
+        );
+        return;
+      }
+      if (["denied", "closed"].includes(session2.state))
+        throw new Error(session2.reason || "Access denied by the computer");
+      update({ session: session2, status: "", recovery: null });
+    });
+  }
+  function confirm2(text, fn2) {
+    update({ confirm: { text, fn: fn2 } });
+  }
+  function switchMachine(machine2) {
+    setDrawer(false);
+    if (id === machine2.id && view.hello && !view.pairing) return;
+    if (view.session && !exited)
+      confirm2(
+        view.session.mode === "terminal" ? m("End the shell as {account} on {name} and switch computers?", {
+          account: view.hello?.account,
+          name: view.target.name
+        }) : m("End this session and switch computers?"),
+        () => connect(machine2)
+      );
+    else void connect(machine2);
+  }
+  function add() {
+    setDrawer(false);
+    if (view.session && !exited)
+      confirm2(m("End this session and pair another computer?"), async () => {
+        await drop("");
+        pairPage();
+      });
+    else pairPage();
+  }
+  async function forget() {
+    await drop("");
+    await work(async (still) => {
+      await local("forget", { id });
+      if (still()) update({ target: null, hello: null });
+      await refresh();
+    });
+  }
+  async function control() {
+    await work(async (still) => {
+      const s15 = await rpc(
+        view.session.control || view.session.controlPending ? "desktop.releaseControl" : "desktop.requestControl"
+      );
+      if (still()) update({ session: { ...current2.current.session, ...s15, controlPending: !!s15.controlPending } });
+    });
+  }
+  const busy = view.busy, machine = view.machines.find((item) => item.id === id) || view.target, hello = view.hello, session = view.session;
+  function pairing() {
+    return (0, import_react98.createElement)(
+      "section",
+      { className: "gb-machine-form" },
+      (0, import_react98.createElement)("h3", null, review ? m("Trust this computer?") : m("Pair a computer")),
+      review ? (0, import_react98.createElement)(
+        import_react98.Fragment,
+        null,
+        (0, import_react98.createElement)("p", null, review.name),
+        (0, import_react98.createElement)("p", null, review.server),
+        (0, import_react98.createElement)("p", null, m("Compare this fingerprint on the computer: "), (0, import_react98.createElement)("code", null, review.fingerprint))
+      ) : (0, import_react98.createElement)(
+        import_react98.Fragment,
+        null,
+        (0, import_react98.createElement)("p", null, m("Create a pairing offer in Godbot Computer Host on the target, then paste it here.")),
+        (0, import_react98.createElement)(
+          "label",
+          null,
+          m("Pairing offer"),
+          (0, import_react98.createElement)("input", {
+            type: "password",
+            value: offer,
+            onChange: (e) => setOffer(e.target.value),
+            autoComplete: "off",
+            spellCheck: false,
+            placeholder: "godbot://computer-pair?…"
+          })
+        )
+      ),
+      (0, import_react98.createElement)(
+        "div",
+        { className: "gb-machine-buttons" },
+        button2(
+          m("Cancel"),
+          () => {
+            if (busy && review) return;
+            setOffer("");
+            setReview(null);
+            ++run2.current;
+            update({ pairing: false, status: "", busy: false });
+          },
+          { disabled: busy && !!review }
+        ),
+        button2(
+          review ? m("Pair computer") : m("Review offer"),
+          review ? pair : () => void work(async (still) => {
+            const r = await local("inspect", { offer });
+            if (still()) setReview(r);
+          }),
+          { className: "gb-machine-primary", disabled: busy || !offer.trim() }
+        )
+      )
+    );
+  }
+  function machineDetails() {
+    return (0, import_react98.createElement)(
+      "details",
+      null,
+      (0, import_react98.createElement)("summary", null, m("Computer details")),
+      (0, import_react98.createElement)("p", null, machine.server),
+      (0, import_react98.createElement)("p", null, m("Host fingerprint") + " · ", machine.fingerprint),
+      machine.lastSeen && (0, import_react98.createElement)("p", null, m("Last connected") + " · " + new Date(machine.lastSeen).toLocaleString()),
+      (0, import_react98.createElement)("p", null, m("To revoke this controller, remove it from Paired controllers on the computer.")),
+      (0, import_react98.createElement)(
+        "label",
+        null,
+        (0, import_react98.createElement)("input", { type: "checkbox", checked: relayOnly, onChange: (e) => setRelayOnly(e.target.checked) }),
+        " " + m("Require TURN for desktop video")
+      ),
+      (0, import_react98.createElement)(
+        "div",
+        null,
+        button2(
+          m("Forget computer"),
+          () => confirm2(m("Forget {name} on this controller?", { name: machine.name }), forget)
+        )
+      )
+    );
+  }
+  function sessionPane() {
+    if (!hello)
+      return (0, import_react98.createElement)(
+        "section",
+        { className: "gb-machine-empty" },
+        (0, import_react98.createElement)(
+          "p",
+          null,
+          busy ? m("Connecting to {name}…", { name: machine.name }) : m("Check availability to see the modes supported by this host.")
+        ),
+        busy ? button2(m("Cancel"), () => {
+          void drop(m("Request canceled"));
+          void local("leave").catch(() => {
+          });
+        }) : view.recovery?.unpaired ? button2(m("Pair again"), pairPage, { disabled: busy }) : view.recovery?.mode === "desktop" ? button2(m("Retry desktop"), () => start("desktop", true), { disabled: busy }) : button2(m(view.recovery ? "Reconnect" : "Check availability"), () => connect(machine), {
+          disabled: busy
+        }),
+        view.recovery?.reason && (0, import_react98.createElement)(
+          "details",
+          null,
+          (0, import_react98.createElement)("summary", null, m("Session details")),
+          (0, import_react98.createElement)("p", null, endMessage(view.recovery.reason))
+        ),
+        machineDetails()
+      );
+    if (!session)
+      return (0, import_react98.createElement)(
+        "section",
+        { className: "gb-machine-ready" },
+        (0, import_react98.createElement)("h4", null, m("Available sessions")),
+        button2(m("Check again"), () => connect(machine), { disabled: busy }),
+        (0, import_react98.createElement)(
+          "div",
+          { className: "gb-machine-cards" },
+          (0, import_react98.createElement)(
+            "div",
+            null,
+            (0, import_react98.createElement)(Icon, { name: "monitor", size: 24 }),
+            (0, import_react98.createElement)("h4", null, m("Desktop")),
+            (0, import_react98.createElement)(
+              "p",
+              null,
+              hello.desktop ? m("View the selected display. Request keyboard and pointer access during the session.") : m(hello.desktopReason || "No graphical session")
+            ),
+            button2(m("View desktop"), () => start("desktop"), {
+              disabled: busy || !hello.desktop,
+              className: "gb-machine-primary"
+            })
+          ),
+          (0, import_react98.createElement)(
+            "div",
+            null,
+            (0, import_react98.createElement)(Icon, { name: "terminal", size: 24 }),
+            (0, import_react98.createElement)("h4", null, m("Terminal")),
+            (0, import_react98.createElement)(
+              "p",
+              null,
+              hello.terminal ? m("Interactive shell as {account}", { account: hello.account }) : m("Terminal access is unavailable.")
+            ),
+            button2(
+              m("Open terminal"),
+              () => confirm2(
+                m("Open a shell as {account} on {name}?", { account: hello.account, name: machine.name }),
+                () => start("terminal")
+              ),
+              { disabled: busy || !hello.terminal }
+            )
+          )
+        ),
+        machineDetails()
+      );
+    if (session.state === "pending")
+      return (0, import_react98.createElement)(
+        "section",
+        { className: "gb-machine-empty", role: "status" },
+        (0, import_react98.createElement)("h4", null, m("Waiting for approval on {name}", { name: machine.name })),
+        button2(m("Cancel request"), () => void drop(m("Request canceled")))
+      );
+    if (session.mode === "terminal")
+      return (0, import_react98.createElement)(
+        import_react98.Fragment,
+        null,
+        (0, import_react98.createElement)(
+          "div",
+          { className: "gb-machine-bar" },
+          (0, import_react98.createElement)("strong", null, m("Terminal")),
+          (0, import_react98.createElement)("span", null, hello.account)
+        ),
+        (0, import_react98.createElement)(MachineTerminal, { key: sid, rpc, onEnd: failed, onExit: shellExited }),
+        exited && (0, import_react98.createElement)(
+          "div",
+          { className: "gb-machine-bar" },
+          (0, import_react98.createElement)(
+            "strong",
+            { role: "status" },
+            m("Shell ended · exit {code}", { code: session.exitCode ?? m("Unknown") })
+          ),
+          button2(
+            m("Open new terminal"),
+            () => confirm2(
+              m("Open a shell as {account} on {name}?", { account: hello.account, name: machine.name }),
+              () => start("terminal")
+            ),
+            { disabled: busy }
+          )
+        )
+      );
+    return (0, import_react98.createElement)(MachineDesktop, {
+      key: sid,
+      rpc,
+      session,
+      onEnd: failed,
+      control: session.control,
+      requestControl: control,
+      canControl: hello.control,
+      targetName: machine.name,
+      disconnect: () => void drop(),
+      permissionHint: hello.os === "macOS" ? m("Allow Accessibility on {name} to control the desktop.", { name: machine.name }) : null,
+      relayOnly
+    });
+  }
+  const askClose = () => {
+    if (session && !exited) confirm2(m("Disconnect and close Remote computers?"), close);
+    else close();
+  };
+  const savedList = () => (0, import_react98.createElement)(
+    "nav",
+    { className: "gb-machine-list", "aria-label": m("Saved computers") },
+    (0, import_react98.createElement)(
+      "div",
+      { className: "gb-machine-list-title" },
+      (0, import_react98.createElement)("strong", null, m("Computers")),
+      button2("+", add, { title: m("Pair computer"), "aria-label": m("Pair computer"), disabled: busy })
+    ),
+    view.machines.map((item) => {
+      const currentHello = id === item.id && !view.pairing ? hello : null;
+      const facts = currentHello || item;
+      const modes = [facts.desktop && m("Desktop"), facts.terminal && m("Terminal")].filter(Boolean);
+      const reachability = currentHello && session && !exited ? m("Connected") : item.lastSeen ? m("Last connected") + " · " + new Date(item.lastSeen).toLocaleString() : m("Check availability");
+      return (0, import_react98.createElement)(
+        "button",
+        {
+          key: item.id,
+          className: id === item.id ? "selected" : "",
+          "aria-current": id === item.id ? "true" : void 0,
+          disabled: busy,
+          onClick: () => switchMachine(item)
+        },
+        (0, import_react98.createElement)(Icon, { name: "monitor" }),
+        (0, import_react98.createElement)(
+          "span",
+          null,
+          (0, import_react98.createElement)("strong", null, item.name || item.id),
+          (0, import_react98.createElement)("small", null, [item.os, ...modes].filter(Boolean).join(" · ")),
+          (0, import_react98.createElement)("small", null, reachability)
+        )
+      );
+    })
+  );
+  return (0, import_react98.createElement)(
+    GodbotModal,
+    { title: m("Remote computers"), wide: true, close: askClose },
+    (0, import_react98.createElement)("style", null, remote_computers_default),
+    (0, import_react98.createElement)(
+      "div",
+      { className: "gb-machines" },
+      (0, import_react98.createElement)("div", { className: "gb-machine-wide-nav" }, savedList()),
+      (0, import_react98.createElement)(
+        "div",
+        { className: "gb-machine-compact-nav" },
+        button2(m("Computers"), () => setDrawer(true), {
+          "aria-expanded": drawer,
+          "aria-haspopup": "dialog"
+        })
+      ),
+      drawer && (0, import_react98.createElement)(MachineDrawer, { close: () => setDrawer(false) }, savedList()),
+      (0, import_react98.createElement)(
+        "div",
+        { className: "gb-machine-work" },
+        view.confirm && (0, import_react98.createElement)(MachineConfirmation, {
+          text: view.confirm.text,
+          cancel: () => update({ confirm: null }),
+          confirm: () => {
+            const fn2 = view.confirm.fn;
+            update({ confirm: null });
+            void fn2();
+          }
+        }),
+        view.status && (0, import_react98.createElement)("div", { className: "gb-machine-status", role: "status" }, m(view.status)),
+        view.pairing ? pairing() : !machine ? (0, import_react98.createElement)(
+          "section",
+          { className: "gb-machine-empty" },
+          (0, import_react98.createElement)(Icon, { name: "monitor", size: 36 }),
+          (0, import_react98.createElement)(
+            "h3",
+            { tabIndex: -1, ref: heading2 },
+            view.machines.length ? m("Select a computer") : m("Pair your first computer")
+          ),
+          (0, import_react98.createElement)("p", null, m("View a desktop or open a terminal on a paired Mac or Linux computer.")),
+          button2(m("Pair computer"), add, { className: "gb-machine-primary" })
+        ) : (0, import_react98.createElement)(
+          import_react98.Fragment,
+          null,
+          (0, import_react98.createElement)(
+            "div",
+            { className: "gb-machine-title" },
+            (0, import_react98.createElement)(
+              "div",
+              null,
+              (0, import_react98.createElement)("h3", { tabIndex: -1, ref: heading2 }, machine.name || m("Computer")),
+              (0, import_react98.createElement)(
+                "small",
+                null,
+                [
+                  hello?.os || machine.os,
+                  hello?.account || machine.account,
+                  hello && session && !exited ? m("Connected") : hello ? m("Available at last check") : m("Saved computer")
+                ].filter(Boolean).join(" · ")
+              )
+            ),
+            session && button2(exited ? m("Back to computer") : m("Disconnect"), () => void drop(""))
+          ),
+          session && hello && (0, import_react98.createElement)(
+            "nav",
+            { className: "gb-machine-modes", "aria-label": m("Available sessions") },
+            ["desktop", "terminal"].map(
+              (mode) => (0, import_react98.createElement)(
+                "button",
+                {
+                  key: mode,
+                  type: "button",
+                  "aria-pressed": session.mode === mode,
+                  disabled: busy || !hello[mode],
+                  onClick: () => {
+                    if (session.mode === mode) return;
+                    const title2 = mode === "terminal" ? m("Switch to a shell as {account} on {name}?", {
+                      account: hello.account,
+                      name: machine.name
+                    }) : m("End this shell and open the desktop?");
+                    confirm2(title2, async () => {
+                      await drop("");
+                      await start(mode);
+                    });
+                  }
+                },
+                (0, import_react98.createElement)(Icon, { name: mode === "terminal" ? "terminal" : "monitor", size: 15 }),
+                m(mode === "terminal" ? "Terminal" : "Desktop")
+              )
+            )
+          ),
+          sessionPane()
+        )
+      )
+    )
+  );
+}
+function RemoteComputersButton({ client }) {
+  const [open, setOpen] = (0, import_react98.useState)(false);
+  return (0, import_react98.createElement)(
+    import_react98.Fragment,
+    null,
+    button2(
+      (0, import_react98.createElement)(Icon, { name: "monitor", size: 17 }),
+      () => setOpen(true),
+      {
+        className: "gb-workspace-action",
+        title: m("Remote computers"),
+        "aria-label": m("Remote computers"),
+        "aria-haspopup": "dialog"
+      }
+    ),
+    open && (0, import_react98.createElement)(Computers, { client, close: () => setOpen(false) })
+  );
+}
 
 // src/client/workspace-inbox.js
-var import_react96 = require("react");
+var import_react100 = require("react");
 
 // src/client/team-templates.js
-var import_react95 = require("react");
+var import_react99 = require("react");
 function TeamTemplates({ client, rooms }) {
-  const [roomId, setRoom] = (0, import_react95.useState)("");
-  const [draft, setDraft] = (0, import_react95.useState)(null);
-  const [feedback, setFeedback] = (0, import_react95.useState)("");
-  const [error, setError] = (0, import_react95.useState)("");
-  const [busy, setBusy] = (0, import_react95.useState)(false);
-  const [plans, setPlans] = (0, import_react95.useState)([]);
+  const [roomId, setRoom] = (0, import_react99.useState)("");
+  const [draft, setDraft] = (0, import_react99.useState)(null);
+  const [feedback, setFeedback] = (0, import_react99.useState)("");
+  const [error, setError] = (0, import_react99.useState)("");
+  const [busy, setBusy] = (0, import_react99.useState)(false);
+  const [plans, setPlans] = (0, import_react99.useState)([]);
   const call3 = (name, fields) => client.dispatch({ action: "team-workspace.template" + name, ...fields });
   const perform = async (fn2) => {
     setBusy(true);
@@ -61182,36 +62708,36 @@ function TeamTemplates({ client, rooms }) {
     setDraft(null);
     setPlans(await call3("Plans"));
   }
-  return (0, import_react95.createElement)(
+  return (0, import_react99.createElement)(
     "details",
     { className: "gb-inbox-section", onToggle: (e) => {
       if (e.currentTarget.open) void perform(async () => setPlans(await call3("Plans")));
     } },
-    (0, import_react95.createElement)("summary", null, "团队模板"),
-    (0, import_react95.createElement)(
+    (0, import_react99.createElement)("summary", null, "团队模板"),
+    (0, import_react99.createElement)(
       "div",
       { className: "gb-inbox-section-body" },
-      (0, import_react95.createElement)(
+      (0, import_react99.createElement)(
         "div",
         { className: "gb-modal-actions gb-template-export" },
-        (0, import_react95.createElement)(
+        (0, import_react99.createElement)(
           "label",
           { className: "gb-field" },
-          (0, import_react95.createElement)("span", null, "导出范围"),
-          (0, import_react95.createElement)(
+          (0, import_react99.createElement)("span", null, "导出范围"),
+          (0, import_react99.createElement)(
             "select",
             { value: roomId, onChange: (e) => setRoom(e.target.value) },
-            (0, import_react95.createElement)("option", { value: "" }, "所有公开成员和群"),
-            rooms.map((r) => (0, import_react95.createElement)("option", { key: r.id, value: r.id }, r.name))
+            (0, import_react99.createElement)("option", { value: "" }, "所有公开成员和群"),
+            rooms.map((r) => (0, import_react99.createElement)("option", { key: r.id, value: r.id }, r.name))
           )
         ),
-        (0, import_react95.createElement)("button", { type: "button", disabled: busy, onClick: () => perform(download3) }, "导出模板")
+        (0, import_react99.createElement)("button", { type: "button", disabled: busy, onClick: () => perform(download3) }, "导出模板")
       ),
-      (0, import_react95.createElement)(
+      (0, import_react99.createElement)(
         "label",
         { className: "gb-field" },
-        (0, import_react95.createElement)("span", null, "导入团队模板"),
-        (0, import_react95.createElement)("input", {
+        (0, import_react99.createElement)("span", null, "导入团队模板"),
+        (0, import_react99.createElement)("input", {
           type: "file",
           accept: ".json",
           disabled: busy,
@@ -61222,31 +62748,31 @@ function TeamTemplates({ client, rooms }) {
           }
         })
       ),
-      draft && (0, import_react95.createElement)(
+      draft && (0, import_react99.createElement)(
         "section",
         { className: "gb-template-preview", "aria-label": "团队模板预览" },
-        (0, import_react95.createElement)("p", null, "新成员 · " + draft.data.bots.map((b2) => b2.name).join("、")),
-        (0, import_react95.createElement)("p", null, "群组 · " + (draft.data.rooms.map((r) => r.name).join("、") || "无")),
-        draft.data.bots.filter((b2) => b2.skills.length).map((b2) => (0, import_react95.createElement)("p", { key: b2.ref }, b2.name + " 的技能清单 · " + b2.skills.join("、"))),
-        draft.data.plans.map((p, i) => (0, import_react95.createElement)("p", { key: i }, "暂停计划 · " + p.title)),
-        draft.data.workflows?.map((flow, i) => (0, import_react95.createElement)(
+        (0, import_react99.createElement)("p", null, "新成员 · " + draft.data.bots.map((b2) => b2.name).join("、")),
+        (0, import_react99.createElement)("p", null, "群组 · " + (draft.data.rooms.map((r) => r.name).join("、") || "无")),
+        draft.data.bots.filter((b2) => b2.skills.length).map((b2) => (0, import_react99.createElement)("p", { key: b2.ref }, b2.name + " 的技能清单 · " + b2.skills.join("、"))),
+        draft.data.plans.map((p, i) => (0, import_react99.createElement)("p", { key: i }, "暂停计划 · " + p.title)),
+        draft.data.workflows?.map((flow, i) => (0, import_react99.createElement)(
           "p",
           { key: "flow-" + i },
           "工作流 · " + flow.name + "（" + flow.nodes.length + " 个节点）"
         )),
-        (0, import_react95.createElement)("button", { type: "button", className: "gb-modal-primary", disabled: busy, onClick: () => perform(install) }, "确认导入模板")
+        (0, import_react99.createElement)("button", { type: "button", className: "gb-modal-primary", disabled: busy, onClick: () => perform(install) }, "确认导入模板")
       ),
-      plans.map((p) => (0, import_react95.createElement)(
+      plans.map((p) => (0, import_react99.createElement)(
         "div",
         { key: p.id, className: "gb-modal-actions gb-template-plan" },
-        (0, import_react95.createElement)("span", null, p.title + " · " + ({ paused: "已暂停", enabling: "待核对", enabled: "已启用" }[p.status] ?? p.status)),
-        p.status === "paused" && (0, import_react95.createElement)("button", { type: "button", disabled: busy, onClick: () => perform(async () => {
+        (0, import_react99.createElement)("span", null, p.title + " · " + ({ paused: "已暂停", enabling: "待核对", enabled: "已启用" }[p.status] ?? p.status)),
+        p.status === "paused" && (0, import_react99.createElement)("button", { type: "button", disabled: busy, onClick: () => perform(async () => {
           await call3("Enable", { id: p.id });
           setPlans(await call3("Plans"));
         }) }, "启用计划")
       )),
-      feedback && (0, import_react95.createElement)("p", { className: "gb-modal-note", role: "status" }, feedback),
-      error && (0, import_react95.createElement)("p", { className: "gb-modal-note", role: "alert" }, error)
+      feedback && (0, import_react99.createElement)("p", { className: "gb-modal-note", role: "status" }, feedback),
+      error && (0, import_react99.createElement)("p", { className: "gb-modal-note", role: "alert" }, error)
     )
   );
 }
@@ -61254,13 +62780,13 @@ function TeamTemplates({ client, rooms }) {
 // src/client/workspace-inbox.js
 var title = "工作台收件箱";
 function Inbox({ client, close }) {
-  const mounted = (0, import_react96.useRef)(false);
-  const version2 = (0, import_react96.useRef)(0);
-  const [state, setState] = (0, import_react96.useState)(null);
-  const [error, setError] = (0, import_react96.useState)("");
-  const [loadError, setLoadError] = (0, import_react96.useState)("");
-  const [busy, setBusy] = (0, import_react96.useState)(false);
-  const reload = (0, import_react96.useCallback)(async () => {
+  const mounted = (0, import_react100.useRef)(false);
+  const version2 = (0, import_react100.useRef)(0);
+  const [state, setState] = (0, import_react100.useState)(null);
+  const [error, setError] = (0, import_react100.useState)("");
+  const [loadError, setLoadError] = (0, import_react100.useState)("");
+  const [busy, setBusy] = (0, import_react100.useState)(false);
+  const reload = (0, import_react100.useCallback)(async () => {
     const id = ++version2.current;
     try {
       const data = await client.dispatch({ action: "team-workspace.inbox" });
@@ -61272,7 +62798,7 @@ function Inbox({ client, close }) {
       if (mounted.current && version2.current === id) setLoadError(e.message);
     }
   }, [client]);
-  (0, import_react96.useEffect)(() => {
+  (0, import_react100.useEffect)(() => {
     mounted.current = true;
     let stopped = false;
     let timer;
@@ -61299,37 +62825,37 @@ function Inbox({ client, close }) {
     await reload();
     if (mounted.current) setBusy(false);
   }
-  return (0, import_react96.createElement)(
+  return (0, import_react100.createElement)(
     GodbotModal,
     { title, close },
-    (error || loadError) && (0, import_react96.createElement)("p", { className: "gb-modal-note", role: "alert" }, error || loadError),
-    !state && !loadError && (0, import_react96.createElement)("p", { className: "gb-modal-note", role: "status" }, "正在读取…"),
-    state?.rows.length === 0 && (0, import_react96.createElement)(
+    (error || loadError) && (0, import_react100.createElement)("p", { className: "gb-modal-note", role: "alert" }, error || loadError),
+    !state && !loadError && (0, import_react100.createElement)("p", { className: "gb-modal-note", role: "status" }, "正在读取…"),
+    state?.rows.length === 0 && (0, import_react100.createElement)(
       "p",
       { className: "gb-modal-note" },
-      (0, import_react96.createElement)(Icon, { name: "task", size: 17 }),
+      (0, import_react100.createElement)(Icon, { name: "task", size: 17 }),
       "当前没有待处理的审批或提问。"
     ),
-    state?.rows.map((item) => (0, import_react96.createElement)(Interaction, {
+    state?.rows.map((item) => (0, import_react100.createElement)(Interaction, {
       key: item.source + "/" + item.id,
       item,
       name: [item.team, item.label].filter(Boolean).join(" · "),
       pending: busy,
       run: (input2) => submit2({ action: "team-workspace.answer", source: item.source, sessionId: item.sessionId, id: item.id, decision: input2.decision, answer: input2.answer })
     })),
-    state && (0, import_react96.createElement)(TeamTemplates, { client, rooms: state.rooms }),
-    state?.rooms.length > 0 && (0, import_react96.createElement)(
+    state && (0, import_react100.createElement)(TeamTemplates, { client, rooms: state.rooms }),
+    state?.rooms.length > 0 && (0, import_react100.createElement)(
       "details",
       { className: "gb-inbox-section" },
-      (0, import_react96.createElement)("summary", null, "群聊自动分派"),
-      (0, import_react96.createElement)(
+      (0, import_react100.createElement)("summary", null, "群聊自动分派"),
+      (0, import_react100.createElement)(
         "div",
         { className: "gb-inbox-section-body" },
-        (0, import_react96.createElement)("p", { className: "gb-muted" }, "使用团队的 DSH 模型为普通消息选择一名成员。点名优先，判断不明确时交给管理员。"),
-        state.rooms.map((room2) => (0, import_react96.createElement)(
+        (0, import_react100.createElement)("p", { className: "gb-muted" }, "使用团队的 DSH 模型为普通消息选择一名成员。点名优先，判断不明确时交给管理员。"),
+        state.rooms.map((room2) => (0, import_react100.createElement)(
           "label",
           { key: room2.id, className: "gb-inbox-routing" },
-          (0, import_react96.createElement)("input", { type: "checkbox", checked: room2.enabled, disabled: busy, onChange: (e) => submit2({ action: "team-workspace.routing", roomId: room2.id, enabled: e.target.checked }) }),
+          (0, import_react100.createElement)("input", { type: "checkbox", checked: room2.enabled, disabled: busy, onChange: (e) => submit2({ action: "team-workspace.routing", roomId: room2.id, enabled: e.target.checked }) }),
           room2.name
         ))
       )
@@ -61337,12 +62863,12 @@ function Inbox({ client, close }) {
   );
 }
 function WorkspaceInbox({ client }) {
-  const [open, setOpen] = (0, import_react96.useState)(false);
-  return (0, import_react96.createElement)(
-    import_react96.Fragment,
+  const [open, setOpen] = (0, import_react100.useState)(false);
+  return (0, import_react100.createElement)(
+    import_react100.Fragment,
     null,
-    (0, import_react96.createElement)("button", { type: "button", className: "gb-workspace-action", title, "aria-label": title, "aria-haspopup": "dialog", onClick: () => setOpen(true) }, (0, import_react96.createElement)(Icon, { name: "inbox", size: 17 })),
-    open && (0, import_react96.createElement)(Inbox, { client, close: () => setOpen(false) })
+    (0, import_react100.createElement)("button", { type: "button", className: "gb-workspace-action", title, "aria-label": title, "aria-haspopup": "dialog", onClick: () => setOpen(true) }, (0, import_react100.createElement)(Icon, { name: "inbox", size: 17 })),
+    open && (0, import_react100.createElement)(Inbox, { client, close: () => setOpen(false) })
   );
 }
 
@@ -61352,38 +62878,39 @@ var workspace_actions_default = ".gb-workspace-actions {\n  display: flex;\n  al
 // src/client/workspace-actions.js
 function WorkspaceActions({ wide, client, onSchedules, onBack }) {
   const schedules = t("Scheduled messages");
-  return (0, import_react97.createElement)(
+  return (0, import_react101.createElement)(
     "nav",
     {
       className: "gb-workspace-actions",
       "aria-label": "Godbot 工作区",
       "data-rail": !wide || void 0
     },
-    (0, import_react97.createElement)("style", null, workspace_actions_default),
-    (0, import_react97.createElement)("button", {
+    (0, import_react101.createElement)("style", null, workspace_actions_default),
+    (0, import_react101.createElement)("button", {
       type: "button",
       className: "gb-workspace-action gb-schedule-shortcut",
       title: schedules,
       "aria-label": schedules,
       "aria-haspopup": "dialog",
       onClick: onSchedules
-    }, (0, import_react97.createElement)(Icon, { name: "clock", size: 17 }), wide && (0, import_react97.createElement)("span", null, schedules)),
-    (0, import_react97.createElement)(WorkspaceInbox, { client }),
-    (0, import_react97.createElement)("button", {
+    }, (0, import_react101.createElement)(Icon, { name: "clock", size: 17 }), wide && (0, import_react101.createElement)("span", null, schedules)),
+    (0, import_react101.createElement)(RemoteComputersButton, { client }),
+    (0, import_react101.createElement)(WorkspaceInbox, { client }),
+    (0, import_react101.createElement)("button", {
       type: "button",
       className: "gb-workspace-action",
       title: "返回 dsh",
       "aria-label": "返回 dsh",
       onClick: onBack
-    }, (0, import_react97.createElement)(Icon, { name: "back", size: 17 }))
+    }, (0, import_react101.createElement)(Icon, { name: "back", size: 17 }))
   );
 }
 
 // src/client/task-settings.js
-var import_react104 = require("react");
+var import_react108 = require("react");
 
 // src/client/usage-limits.js
-var import_react98 = require("react");
+var import_react102 = require("react");
 var limits = {
   dailyTokens: "每日 token",
   monthlyTokens: "每月 token",
@@ -61391,10 +62918,10 @@ var limits = {
   monthlyUsd: "每月估算美元"
 };
 function UsageLimits({ client, bots, models }) {
-  const [subject, setSubject] = (0, import_react98.useState)("profile");
-  const [state, setState] = (0, import_react98.useState)(null);
-  const [error, setError] = (0, import_react98.useState)("");
-  const [busy, setBusy] = (0, import_react98.useState)(false);
+  const [subject, setSubject] = (0, import_react102.useState)("profile");
+  const [state, setState] = (0, import_react102.useState)(null);
+  const [error, setError] = (0, import_react102.useState)("");
+  const [busy, setBusy] = (0, import_react102.useState)(false);
   async function load(id, settings2) {
     setBusy(true);
     setError("");
@@ -61412,14 +62939,14 @@ function UsageLimits({ client, bots, models }) {
       setBusy(false);
     }
   }
-  (0, import_react98.useEffect)(() => {
+  (0, import_react102.useEffect)(() => {
     void load("profile");
   }, [client]);
   const s15 = state?.settings;
-  return (0, import_react98.createElement)(
+  return (0, import_react102.createElement)(
     "div",
     { className: "gb-card" },
-    (0, import_react98.createElement)(
+    (0, import_react102.createElement)(
       "form",
       {
         className: "gb-form",
@@ -61430,21 +62957,21 @@ function UsageLimits({ client, bots, models }) {
       },
       field(
         "适用范围",
-        (0, import_react98.createElement)(
+        (0, import_react102.createElement)(
           "select",
           {
             name: "subject",
             defaultValue: subject,
             required: true
           },
-          (0, import_react98.createElement)("option", { value: "profile" }, "整个 profile"),
-          bots.map((bot) => (0, import_react98.createElement)("option", { key: bot.id, value: bot.id }, bot.name))
+          (0, import_react102.createElement)("option", { value: "profile" }, "整个 profile"),
+          bots.map((bot) => (0, import_react102.createElement)("option", { key: bot.id, value: bot.id }, bot.name))
         )
       ),
-      (0, import_react98.createElement)("button", { disabled: busy }, "查看用量与设置")
+      (0, import_react102.createElement)("button", { disabled: busy }, "查看用量与设置")
     ),
-    error && (0, import_react98.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    s15 && (0, import_react98.createElement)(
+    error && (0, import_react102.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    s15 && (0, import_react102.createElement)(
       "form",
       {
         key: state.subject + "-" + JSON.stringify(s15),
@@ -61456,7 +62983,7 @@ function UsageLimits({ client, bots, models }) {
             const values = { stops: fields.get("stops") };
             for (const key of Object.keys(limits)) if (fields.get(key)) values[key] = Number(fields.get(key));
             if (subject === "profile") values.rates = JSON.parse(fields.get("rates") || "{}");
-            const backup = models.find((m) => m.provider + "/" + m.model === fields.get("backup"));
+            const backup = models.find((m2) => m2.provider + "/" + m2.model === fields.get("backup"));
             if (backup) values.backup = { provider: backup.provider, model: backup.model };
             void load(subject, values);
           } catch (cause) {
@@ -61464,30 +62991,30 @@ function UsageLimits({ client, bots, models }) {
           }
         }
       },
-      (0, import_react98.createElement)(
+      (0, import_react102.createElement)(
         "p",
         null,
         "UTC 今日 " + state.daily.tokens + " token · 本月 " + state.monthly.tokens + " token · 已定价部分约 $" + state.monthly.estimatedUsd.toFixed(4)
       ),
-      (0, import_react98.createElement)(
+      (0, import_react102.createElement)(
         "p",
         null,
         "本月未定价 " + state.monthly.unpricedCalls + " 次，未报告用量 " + state.monthly.unreported + " 轮。"
       ),
-      ...(state.deferred ?? []).map((item) => (0, import_react98.createElement)("p", { key: item.id }, item.status === "unknown" ? "投递结果待核对 · " + item.sessionId : "已暂缓 · " + item.sessionId + " · " + item.limit + " · " + new Date(item.resetsAt).toLocaleString())),
+      ...(state.deferred ?? []).map((item) => (0, import_react102.createElement)("p", { key: item.id }, item.status === "unknown" ? "投递结果待核对 · " + item.sessionId : "已暂缓 · " + item.sessionId + " · " + item.limit + " · " + new Date(item.resetsAt).toLocaleString())),
       ...(state.fallback ?? []).map(
-        (hold) => (0, import_react98.createElement)(
+        (hold) => (0, import_react102.createElement)(
           "p",
           { key: hold.from },
           hold.active ? hold.from + " 额度已用尽，正在使用 " + hold.backup + "。下次尝试原模型 " + new Date(hold.until).toLocaleString() : hold.recoveredAt ? "已恢复 " + hold.from + " · " + new Date(hold.recoveredAt).toLocaleString() : "等待下一次调用核对 " + hold.from
         )
       ),
       ...Object.entries(limits).map(
-        ([key, label]) => (0, import_react98.createElement)(
+        ([key, label]) => (0, import_react102.createElement)(
           "label",
           { key, className: "gb-field" },
           label,
-          (0, import_react98.createElement)("input", {
+          (0, import_react102.createElement)("input", {
             name: key,
             type: "number",
             min: 0,
@@ -61499,44 +63026,44 @@ function UsageLimits({ client, bots, models }) {
       ),
       field(
         "达到上限时暂停",
-        (0, import_react98.createElement)(
+        (0, import_react102.createElement)(
           "select",
           { name: "stops", defaultValue: s15.stops ?? "unattended" },
-          (0, import_react98.createElement)("option", { value: "unattended" }, "无人值守的新任务"),
-          (0, import_react98.createElement)("option", { value: "all" }, "所有新任务")
+          (0, import_react102.createElement)("option", { value: "unattended" }, "无人值守的新任务"),
+          (0, import_react102.createElement)("option", { value: "all" }, "所有新任务")
         )
       ),
       subject === "profile" ? field(
         "模型估价（每百万 token 美元）",
-        (0, import_react98.createElement)("textarea", {
+        (0, import_react102.createElement)("textarea", {
           name: "rates",
           defaultValue: JSON.stringify(s15.rates ?? {}, null, 2),
           placeholder: '{"provider/model":{"input":1,"output":2}}'
         })
       ) : field(
         "确认模型额度耗尽时使用",
-        (0, import_react98.createElement)(
+        (0, import_react102.createElement)(
           "select",
           { name: "backup", defaultValue: s15.backup ? s15.backup.provider + "/" + s15.backup.model : "" },
-          (0, import_react98.createElement)("option", { value: "" }, "等待原模型恢复"),
-          ...models.filter((m) => !m.provider.startsWith("local-")).map((m) => {
-            const ref = m.provider + "/" + m.model;
-            return (0, import_react98.createElement)("option", { key: ref, value: ref }, ref);
+          (0, import_react102.createElement)("option", { value: "" }, "等待原模型恢复"),
+          ...models.filter((m2) => !m2.provider.startsWith("local-")).map((m2) => {
+            const ref = m2.provider + "/" + m2.model;
+            return (0, import_react102.createElement)("option", { key: ref, value: ref }, ref);
           })
         )
       ),
-      (0, import_react98.createElement)("button", { disabled: busy }, "保存用量策略")
+      (0, import_react102.createElement)("button", { disabled: busy }, "保存用量策略")
     )
   );
 }
 
 // src/client/automation-access.js
-var import_react99 = require("react");
+var import_react103 = require("react");
 function AutomationAccess({ client, team, members }) {
-  const [list, setList] = (0, import_react99.useState)(null);
-  const [issued, setIssued] = (0, import_react99.useState)(null);
-  const [error, setError] = (0, import_react99.useState)("");
-  const [pending, setPending] = (0, import_react99.useState)(false);
+  const [list, setList] = (0, import_react103.useState)(null);
+  const [issued, setIssued] = (0, import_react103.useState)(null);
+  const [error, setError] = (0, import_react103.useState)("");
+  const [pending, setPending] = (0, import_react103.useState)(false);
   const call3 = (action2, args = {}) => client.dispatch({ action: "automation." + action2, teamId: team.id, ...args });
   const refresh = async () => setList(await call3("list"));
   const act = async (name, args) => {
@@ -61553,7 +63080,7 @@ function AutomationAccess({ client, team, members }) {
       setPending(false);
     }
   };
-  const form = (name, makeArgs, ...children) => (0, import_react99.createElement)(
+  const form = (name, makeArgs, ...children) => (0, import_react103.createElement)(
     "form",
     {
       className: "gb-form",
@@ -61564,7 +63091,7 @@ function AutomationAccess({ client, team, members }) {
     },
     ...children
   );
-  return (0, import_react99.createElement)(
+  return (0, import_react103.createElement)(
     "details",
     {
       className: "gb-card",
@@ -61573,10 +63100,10 @@ function AutomationAccess({ client, team, members }) {
         else setIssued(null);
       }
     },
-    (0, import_react99.createElement)("summary", null, "CI 与 Webhook"),
-    (error || list?.listenError) && (0, import_react99.createElement)("p", { role: "alert", className: "gb-error" }, error || list.listenError),
-    list?.url && (0, import_react99.createElement)("p", null, "GODBOT_URL ", (0, import_react99.createElement)("code", null, list.url)),
-    (0, import_react99.createElement)("h3", null, "CI 凭据"),
+    (0, import_react103.createElement)("summary", null, "CI 与 Webhook"),
+    (error || list?.listenError) && (0, import_react103.createElement)("p", { role: "alert", className: "gb-error" }, error || list.listenError),
+    list?.url && (0, import_react103.createElement)("p", null, "GODBOT_URL ", (0, import_react103.createElement)("code", null, list.url)),
+    (0, import_react103.createElement)("h3", null, "CI 凭据"),
     form(
       "grant",
       (fields) => ({
@@ -61584,15 +63111,15 @@ function AutomationAccess({ client, team, members }) {
         scopes: fields.getAll("scope"),
         targetId: fields.get("targetId")
       }),
-      field("凭据名称", (0, import_react99.createElement)("input", { name: "name", required: true })),
+      field("凭据名称", (0, import_react103.createElement)("input", { name: "name", required: true })),
       field(
         "凭据执行目标",
-        (0, import_react99.createElement)(
+        (0, import_react103.createElement)(
           "select",
           { name: "targetId" },
-          (0, import_react99.createElement)("option", { value: "" }, "工作区任务和工作流"),
+          (0, import_react103.createElement)("option", { value: "" }, "工作区任务和工作流"),
           ...(list?.targets ?? []).map(
-            (t2) => (0, import_react99.createElement)(
+            (t2) => (0, import_react103.createElement)(
               "option",
               { key: t2.id, value: t2.id },
               (t2.id.startsWith("room/") ? "群聊 · " : "Bot · ") + t2.name
@@ -61606,30 +63133,30 @@ function AutomationAccess({ client, team, members }) {
           ["inspect", "查看与等待"],
           ["export", "导出证据"]
         ].map(
-          ([scope, label]) => (0, import_react99.createElement)(
+          ([scope, label]) => (0, import_react103.createElement)(
             "label",
             { key: scope },
-            (0, import_react99.createElement)("input", { type: "checkbox", name: "scope", value: scope, defaultChecked: true }),
+            (0, import_react103.createElement)("input", { type: "checkbox", name: "scope", value: scope, defaultChecked: true }),
             label
           )
         )
       ),
-      (0, import_react99.createElement)("button", { type: "submit", disabled: pending }, "签发凭据")
+      (0, import_react103.createElement)("button", { type: "submit", disabled: pending }, "签发凭据")
     ),
     ...(list?.grants ?? []).filter((g) => !g.revoked).map(
-      (g) => (0, import_react99.createElement)(
+      (g) => (0, import_react103.createElement)(
         "div",
         { key: g.id, className: "gb-row" },
-        (0, import_react99.createElement)("span", null, g.label + " · " + g.scopes.join(", ")),
+        (0, import_react103.createElement)("span", null, g.label + " · " + g.scopes.join(", ")),
         button("撤销", () => void act("revoke", { id: g.id }), { disabled: pending })
       )
     ),
     ...(list?.reviews ?? []).map(
-      (review) => (0, import_react99.createElement)(
+      (review) => (0, import_react103.createElement)(
         "section",
         { key: review.taskId },
-        (0, import_react99.createElement)("h4", null, review.title + " · " + review.targetId + " · R" + review.revision),
-        (0, import_react99.createElement)("pre", null, review.evidence),
+        (0, import_react103.createElement)("h4", null, review.title + " · " + review.targetId + " · R" + review.revision),
+        (0, import_react103.createElement)("pre", null, review.evidence),
         form(
           "fullReview",
           (fields) => ({
@@ -61640,42 +63167,42 @@ function AutomationAccess({ client, team, members }) {
           }),
           field(
             "处理决定",
-            (0, import_react99.createElement)(
+            (0, import_react103.createElement)(
               "select",
               { name: "decision" },
-              (0, import_react99.createElement)("option", { value: "accept" }, "验收本项结果"),
-              (0, import_react99.createElement)("option", { value: "rework" }, "退回并重新执行整次任务")
+              (0, import_react103.createElement)("option", { value: "accept" }, "验收本项结果"),
+              (0, import_react103.createElement)("option", { value: "rework" }, "退回并重新执行整次任务")
             )
           ),
-          field("验收意见", (0, import_react99.createElement)("input", { name: "evidence", required: true })),
-          (0, import_react99.createElement)("button", { type: "submit", disabled: pending }, "提交验收")
+          field("验收意见", (0, import_react103.createElement)("input", { name: "evidence", required: true })),
+          (0, import_react103.createElement)("button", { type: "submit", disabled: pending }, "提交验收")
         )
       )
     ),
     button("刷新 CI 状态", () => void refresh().catch((cause) => setError(cause.message))),
-    (0, import_react99.createElement)("h3", null, "Webhook"),
+    (0, import_react103.createElement)("h3", null, "Webhook"),
     form(
       "hook",
       (fields) => Object.fromEntries(fields),
-      field("触发器名称", (0, import_react99.createElement)("input", { name: "label", required: true })),
+      field("触发器名称", (0, import_react103.createElement)("input", { name: "label", required: true })),
       field(
         "执行成员",
-        (0, import_react99.createElement)(
+        (0, import_react103.createElement)(
           "select",
           { name: "ownerId", required: true },
-          ...members.map((m) => (0, import_react99.createElement)("option", { key: m.id, value: m.id }, m.name))
+          ...members.map((m2) => (0, import_react103.createElement)("option", { key: m2.id, value: m2.id }, m2.name))
         )
       ),
-      field("任务标题", (0, import_react99.createElement)("input", { name: "title", required: true })),
-      field("验收标准", (0, import_react99.createElement)("textarea", { name: "criteria", required: true })),
-      (0, import_react99.createElement)("button", { type: "submit", disabled: pending || !members.length }, "创建 Webhook")
+      field("任务标题", (0, import_react103.createElement)("input", { name: "title", required: true })),
+      field("验收标准", (0, import_react103.createElement)("textarea", { name: "criteria", required: true })),
+      (0, import_react103.createElement)("button", { type: "submit", disabled: pending || !members.length }, "创建 Webhook")
     ),
     ...(list?.hooks ?? []).map(
-      (hook) => (0, import_react99.createElement)(
+      (hook) => (0, import_react103.createElement)(
         "div",
         { key: hook.id, className: "gb-row" },
-        (0, import_react99.createElement)("span", null, hook.label),
-        (0, import_react99.createElement)("code", null, list.url + "/hooks/" + hook.id),
+        (0, import_react103.createElement)("span", null, hook.label),
+        (0, import_react103.createElement)("code", null, list.url + "/hooks/" + hook.id),
         button(
           hook.paused ? "恢复" : "暂停",
           () => void act("pauseHook", { id: hook.id, paused: !hook.paused }),
@@ -61683,33 +63210,33 @@ function AutomationAccess({ client, team, members }) {
         )
       )
     ),
-    (0, import_react99.createElement)("h3", null, "GitHub 公开仓库事件"),
+    (0, import_react103.createElement)("h3", null, "GitHub 公开仓库事件"),
     form(
       "githubCreate",
       (fields) => ({ ...Object.fromEntries(fields), includeLatest: fields.has("includeLatest") }),
-      field("订阅名称", (0, import_react99.createElement)("input", { name: "label", required: true })),
-      field("仓库", (0, import_react99.createElement)("input", { name: "repo", placeholder: "owner/repository", required: true })),
-      field("事件类型", (0, import_react99.createElement)("input", { name: "eventType", placeholder: "例如 PullRequestEvent，留空接收全部" })),
+      field("订阅名称", (0, import_react103.createElement)("input", { name: "label", required: true })),
+      field("仓库", (0, import_react103.createElement)("input", { name: "repo", placeholder: "owner/repository", required: true })),
+      field("事件类型", (0, import_react103.createElement)("input", { name: "eventType", placeholder: "例如 PullRequestEvent，留空接收全部" })),
       field(
         "执行成员",
-        (0, import_react99.createElement)(
+        (0, import_react103.createElement)(
           "select",
           { name: "ownerId", required: true },
-          ...members.map((m) => (0, import_react99.createElement)("option", { key: m.id, value: m.id }, m.name))
+          ...members.map((m2) => (0, import_react103.createElement)("option", { key: m2.id, value: m2.id }, m2.name))
         )
       ),
-      field("任务标题", (0, import_react99.createElement)("input", { name: "title", required: true })),
-      field("验收标准", (0, import_react99.createElement)("textarea", { name: "criteria", required: true })),
-      field("创建时处理最近一条匹配事件", (0, import_react99.createElement)("input", { type: "checkbox", name: "includeLatest" })),
-      (0, import_react99.createElement)("button", { type: "submit", disabled: pending || !members.length }, "订阅仓库")
+      field("任务标题", (0, import_react103.createElement)("input", { name: "title", required: true })),
+      field("验收标准", (0, import_react103.createElement)("textarea", { name: "criteria", required: true })),
+      field("创建时处理最近一条匹配事件", (0, import_react103.createElement)("input", { type: "checkbox", name: "includeLatest" })),
+      (0, import_react103.createElement)("button", { type: "submit", disabled: pending || !members.length }, "订阅仓库")
     ),
     ...(list?.sources ?? []).map(
-      (source) => (0, import_react99.createElement)(
+      (source) => (0, import_react103.createElement)(
         "div",
         { key: source.id, className: "gb-row" },
-        (0, import_react99.createElement)("span", null, source.label + " · " + source.repo),
-        source.issue && (0, import_react99.createElement)("span", { role: "alert", className: "gb-error" }, source.issue),
-        source.lastRunId && (0, import_react99.createElement)("code", null, source.lastRunId),
+        (0, import_react103.createElement)("span", null, source.label + " · " + source.repo),
+        source.issue && (0, import_react103.createElement)("span", { role: "alert", className: "gb-error" }, source.issue),
+        source.lastRunId && (0, import_react103.createElement)("code", null, source.lastRunId),
         button("检查事件", () => void act("githubPoll", { id: source.id }), {
           disabled: pending || source.paused
         }),
@@ -61720,23 +63247,23 @@ function AutomationAccess({ client, team, members }) {
         )
       )
     ),
-    issued && (0, import_react99.createElement)(
+    issued && (0, import_react103.createElement)(
       "div",
       { role: "status" },
-      (0, import_react99.createElement)(
+      (0, import_react103.createElement)(
         "p",
         null,
         issued.token ? "将以下凭据保存到 GODBOT_TOKEN_FILE。仅显示一次。" : "保存 Webhook 地址和签名密钥。密钥仅显示一次。"
       ),
-      (0, import_react99.createElement)("code", null, issued.url),
-      (0, import_react99.createElement)("pre", null, issued.token || issued.secret),
+      (0, import_react103.createElement)("code", null, issued.url),
+      (0, import_react103.createElement)("pre", null, issued.token || issued.secret),
       button("已保存", () => setIssued(null))
     )
   );
 }
 
 // src/client/native-routines.js
-var import_react100 = require("react");
+var import_react104 = require("react");
 var weekdays = ["一", "二", "三", "四", "五", "六", "日"];
 var kinds2 = { daily: "每天", weekly: "每周", interval: "固定间隔", once: "仅一次" };
 var states3 = { active: "已启用", paused: "已暂停", finished: "已结束" };
@@ -61763,11 +63290,11 @@ function localDate(iso) {
 }
 function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
   const original = routine?.schedule ?? {};
-  const [kind, setKind] = (0, import_react100.useState)(original.kind ?? "daily");
-  const [target, setTarget] = (0, import_react100.useState)(routine?.target ?? "member");
-  const [workflowId, setWorkflowId] = (0, import_react100.useState)(routine?.workflowId ?? "");
-  const [revision, setRevision] = (0, import_react100.useState)(routine?.workflowRevision ?? 0);
-  const [error, setError] = (0, import_react100.useState)("");
+  const [kind, setKind] = (0, import_react104.useState)(original.kind ?? "daily");
+  const [target, setTarget] = (0, import_react104.useState)(routine?.target ?? "member");
+  const [workflowId, setWorkflowId] = (0, import_react104.useState)(routine?.workflowId ?? "");
+  const [revision, setRevision] = (0, import_react104.useState)(routine?.workflowRevision ?? 0);
+  const [error, setError] = (0, import_react104.useState)("");
   const localZone3 = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const calendar = kind === "daily" || kind === "weekly";
   const latest = workflows.find((w) => w.id === workflowId);
@@ -61802,36 +63329,36 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
     const fields = target === "workflow" ? { workflowId, workflowRevision: revision } : { ownerId: data.get("ownerId"), criteria: data.get("criteria") };
     onSave({ title: data.get("title"), target, schedule, ...fields });
   }
-  return (0, import_react100.createElement)(
+  return (0, import_react104.createElement)(
     "form",
     { className: "gb-card gb-form", onSubmit: submit2, "aria-label": "自动化任务设置" },
-    (0, import_react100.createElement)("h2", null, routine ? "编辑自动化任务" : "新建自动化任务"),
-    field("任务名称", (0, import_react100.createElement)("input", { name: "title", defaultValue: routine?.title, required: true, autoFocus: true })),
-    field("执行类型", (0, import_react100.createElement)(
+    (0, import_react104.createElement)("h2", null, routine ? "编辑自动化任务" : "新建自动化任务"),
+    field("任务名称", (0, import_react104.createElement)("input", { name: "title", defaultValue: routine?.title, required: true, autoFocus: true })),
+    field("执行类型", (0, import_react104.createElement)(
       "select",
       { value: target, onChange: (e) => setTarget(e.target.value) },
       option("member", "Bot 任务"),
       option("workflow", "工作流")
     )),
-    target === "workflow" && field("工作流模板", (0, import_react100.createElement)(
+    target === "workflow" && field("工作流模板", (0, import_react104.createElement)(
       "select",
       { value: workflowId, required: true, onChange: (e) => chooseWorkflow(e.target.value) },
       option("", "选择工作流"),
       options.map((w) => option(w.id, w.name + " · v" + w.revision))
     )),
     target === "workflow" && !options.length && empty("在「设置 → 任务板」保存工作流后即可选择。"),
-    target === "workflow" && !!workflowId && field("固定版本", (0, import_react100.createElement)(
+    target === "workflow" && !!workflowId && field("固定版本", (0, import_react104.createElement)(
       "select",
       { value: revision, onChange: (e) => setRevision(Number(e.target.value)) },
       versions.map((v2) => option(String(v2), "v" + v2))
     )),
-    target === "member" && field("负责人", (0, import_react100.createElement)(
+    target === "member" && field("负责人", (0, import_react104.createElement)(
       "select",
       { name: "ownerId", defaultValue: routine?.ownerId, required: true },
-      members.map((m) => option(m.id, m.name))
+      members.map((m2) => option(m2.id, m2.name))
     )),
-    target === "member" && field("执行要求与验收条件", (0, import_react100.createElement)("textarea", { name: "criteria", rows: 3, defaultValue: routine?.criteria, required: true })),
-    field("执行频率", (0, import_react100.createElement)(
+    target === "member" && field("执行要求与验收条件", (0, import_react104.createElement)("textarea", { name: "criteria", rows: 3, defaultValue: routine?.criteria, required: true })),
+    field("执行频率", (0, import_react104.createElement)(
       "select",
       { value: kind, onChange: (e) => {
         setKind(e.target.value);
@@ -61839,14 +63366,14 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
       } },
       Object.entries(kinds2).map(([value, label]) => option(value, label))
     )),
-    kind === "once" && field("执行时间（" + localZone3 + "）", (0, import_react100.createElement)("input", {
+    kind === "once" && field("执行时间（" + localZone3 + "）", (0, import_react104.createElement)("input", {
       type: "datetime-local",
       step: 1,
       name: "at",
       defaultValue: localDate(original.at),
       required: true
     })),
-    kind === "interval" && field("间隔分钟数", (0, import_react100.createElement)("input", {
+    kind === "interval" && field("间隔分钟数", (0, import_react104.createElement)("input", {
       type: "number",
       min: 1,
       max: 525600,
@@ -61855,35 +63382,35 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
       defaultValue: original.minutes ?? 60,
       required: true
     })),
-    kind === "weekly" && (0, import_react100.createElement)(
+    kind === "weekly" && (0, import_react104.createElement)(
       "fieldset",
       { className: "gb-checks" },
-      (0, import_react100.createElement)("legend", null, "执行日"),
-      weekdays.map((label, i) => (0, import_react100.createElement)("label", { key: label }, (0, import_react100.createElement)("input", {
+      (0, import_react104.createElement)("legend", null, "执行日"),
+      weekdays.map((label, i) => (0, import_react104.createElement)("label", { key: label }, (0, import_react104.createElement)("input", {
         name: "day",
         type: "checkbox",
         value: i + 1,
         defaultChecked: (original.weekdays ?? [1]).includes(i + 1)
       }), "周" + label))
     ),
-    calendar && field("每天的执行时间", (0, import_react100.createElement)("input", { type: "time", name: "time", defaultValue: original.time ?? "09:00", required: true })),
-    calendar && field("时区", (0, import_react100.createElement)("input", { name: "timeZone", defaultValue: original.timeZone ?? localZone3, placeholder: "Asia/Taipei", required: true })),
-    error && (0, import_react100.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    row((0, import_react100.createElement)("button", { type: "submit", className: "gb-primary", disabled: busy }, "保存任务"), button("取消", onCancel, { disabled: busy }))
+    calendar && field("每天的执行时间", (0, import_react104.createElement)("input", { type: "time", name: "time", defaultValue: original.time ?? "09:00", required: true })),
+    calendar && field("时区", (0, import_react104.createElement)("input", { name: "timeZone", defaultValue: original.timeZone ?? localZone3, placeholder: "Asia/Taipei", required: true })),
+    error && (0, import_react104.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    row((0, import_react104.createElement)("button", { type: "submit", className: "gb-primary", disabled: busy }, "保存任务"), button("取消", onCancel, { disabled: busy }))
   );
 }
 function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRun, readOnly }) {
-  const [routines, setRoutines] = (0, import_react100.useState)(null);
-  const [workflows, setWorkflows] = (0, import_react100.useState)([]);
-  const [editor, setEditor] = (0, import_react100.useState)(null);
-  const [confirmId, setConfirmId] = (0, import_react100.useState)(null);
-  const [historyId, setHistoryId] = (0, import_react100.useState)(null);
-  const [history, setHistory] = (0, import_react100.useState)(null);
-  const [error, setError] = (0, import_react100.useState)("");
-  const [busy, setBusy] = (0, import_react100.useState)(false);
-  const [version2, refresh] = (0, import_react100.useState)(0);
-  const inFlight = (0, import_react100.useRef)(false);
-  (0, import_react100.useEffect)(() => {
+  const [routines, setRoutines] = (0, import_react104.useState)(null);
+  const [workflows, setWorkflows] = (0, import_react104.useState)([]);
+  const [editor, setEditor] = (0, import_react104.useState)(null);
+  const [confirmId, setConfirmId] = (0, import_react104.useState)(null);
+  const [historyId, setHistoryId] = (0, import_react104.useState)(null);
+  const [history, setHistory] = (0, import_react104.useState)(null);
+  const [error, setError] = (0, import_react104.useState)("");
+  const [busy, setBusy] = (0, import_react104.useState)(false);
+  const [version2, refresh] = (0, import_react104.useState)(0);
+  const inFlight = (0, import_react104.useRef)(false);
+  (0, import_react104.useEffect)(() => {
     let active = true, timer;
     async function load() {
       try {
@@ -61925,7 +63452,7 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
   }
   if (editor) {
     const existing = editor.id ? editor : null;
-    return (0, import_react100.createElement)("section", null, (0, import_react100.createElement)(RoutineForm, {
+    return (0, import_react104.createElement)("section", null, (0, import_react104.createElement)(RoutineForm, {
       key: existing?.id ?? "new",
       routine: existing,
       members,
@@ -61939,16 +63466,16 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
       )
     }));
   }
-  return (0, import_react100.createElement)(
+  return (0, import_react104.createElement)(
     "section",
     { className: "gb-stack", "aria-label": "团队自动化任务" },
-    (0, import_react100.createElement)(
+    (0, import_react104.createElement)(
       "div",
       { className: "gb-sectionhead" },
-      (0, import_react100.createElement)("h2", null, team.name),
+      (0, import_react104.createElement)("h2", null, team.name),
       button("新建自动化任务", () => setEditor({}), { className: "gb-primary", disabled: readOnly || !members.length })
     ),
-    error && (0, import_react100.createElement)("p", { role: "alert", className: "gb-error" }, error, " ", button("刷新", () => refresh((v2) => v2 + 1))),
+    error && (0, import_react104.createElement)("p", { role: "alert", className: "gb-error" }, error, " ", button("刷新", () => refresh((v2) => v2 + 1))),
     !routines && !error && empty("正在读取自动化任务…"),
     routines?.length === 0 && empty(members.length ? "还没有定时派工的任务。" : "在 Bot 设置中创建 Bot 后即可安排自动化任务。"),
     routines?.map((routine) => {
@@ -61956,19 +63483,19 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
       const identity2 = { id, revision };
       const open = historyId === id;
       const records = history?.id === id ? history.items : null;
-      return (0, import_react100.createElement)(
+      return (0, import_react104.createElement)(
         "article",
         { className: "gb-card", key: id, "aria-label": title2 },
-        (0, import_react100.createElement)("div", { className: "gb-sectionhead" }, (0, import_react100.createElement)("h3", { className: "gb-text" }, title2), badge(status, states3[status])),
-        (0, import_react100.createElement)("p", null, timingLabel(schedule)),
-        (0, import_react100.createElement)(
+        (0, import_react104.createElement)("div", { className: "gb-sectionhead" }, (0, import_react104.createElement)("h3", { className: "gb-text" }, title2), badge(status, states3[status])),
+        (0, import_react104.createElement)("p", null, timingLabel(schedule)),
+        (0, import_react104.createElement)(
           "small",
           null,
-          routine.workflowId ? routine.workflowName + " · 固定 v" + routine.workflowRevision : members.find((m) => m.id === routine.ownerId)?.name ?? routine.ownerId,
+          routine.workflowId ? routine.workflowName + " · 固定 v" + routine.workflowRevision : members.find((m2) => m2.id === routine.ownerId)?.name ?? routine.ownerId,
           routine.nextAt != null && " · 下次派工 " + stamp(routine.nextAt)
         ),
-        routine.criteria && (0, import_react100.createElement)("p", { className: "gb-text" }, routine.criteria),
-        routine.lastError && (0, import_react100.createElement)("p", { role: "alert", className: "gb-error" }, routine.lastError),
+        routine.criteria && (0, import_react104.createElement)("p", { className: "gb-text" }, routine.criteria),
+        routine.lastError && (0, import_react104.createElement)("p", { role: "alert", className: "gb-error" }, routine.lastError),
         row(
           button("立即运行", () => change("run", { id }, () => setHistoryId(id)), { disabled: busy || readOnly }),
           button("编辑", () => setEditor(routine), { disabled: busy || !members.length || readOnly }),
@@ -61981,39 +63508,39 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
           button("删除", () => setConfirmId(id), { disabled: busy || readOnly })
         ),
         confirmId === id && row(
-          (0, import_react100.createElement)("span", null, "删除此计划？已派发的任务会保留在任务板。"),
+          (0, import_react104.createElement)("span", null, "删除此计划？已派发的任务会保留在任务板。"),
           button("确认删除", () => change("delete", identity2, () => {
             setConfirmId(null);
             if (open) setHistoryId(null);
           }), { className: "gb-danger", disabled: busy }),
           button("取消删除", () => setConfirmId(null), { disabled: busy })
         ),
-        open && (0, import_react100.createElement)(
+        open && (0, import_react104.createElement)(
           "section",
           { className: "gb-stack", "aria-label": "运行记录" },
-          !records ? empty("正在读取记录…") : !records.length ? empty("暂无运行记录。") : records.map((item) => (0, import_react100.createElement)(
+          !records ? empty("正在读取记录…") : !records.length ? empty("暂无运行记录。") : records.map((item) => (0, import_react104.createElement)(
             "div",
             { key: item.id, className: "gb-stack" },
             row(
-              (0, import_react100.createElement)("time", null, stamp(item.at)),
-              (0, import_react100.createElement)("span", null, item.trigger === "manual" ? "手动运行" : "定时派工"),
+              (0, import_react104.createElement)("time", null, stamp(item.at)),
+              (0, import_react104.createElement)("span", null, item.trigger === "manual" ? "手动运行" : "定时派工"),
               badge(item.state, runStates[item.state] ?? item.state),
-              item.workflowId && (0, import_react100.createElement)("small", null, "工作流 v" + item.workflowRevision),
+              item.workflowId && (0, import_react104.createElement)("small", null, "工作流 v" + item.workflowRevision),
               item.workflowId && item.runId ? button("查看工作流运行", () => onWorkflowRun(item.workflowId, item.runId)) : item.rootTaskId && button("查看任务", () => onTask(item.rootTaskId))
             ),
-            item.nodes?.length > 0 && (0, import_react100.createElement)(
+            item.nodes?.length > 0 && (0, import_react104.createElement)(
               "details",
               null,
-              (0, import_react100.createElement)("summary", null, "节点任务（" + item.nodes.length + "）"),
-              item.nodes.map((n) => (0, import_react100.createElement)(
+              (0, import_react104.createElement)("summary", null, "节点任务（" + item.nodes.length + "）"),
+              item.nodes.map((n) => (0, import_react104.createElement)(
                 "div",
                 { key: n.nodeId, className: "gb-row" },
-                (0, import_react100.createElement)("span", null, n.title),
+                (0, import_react104.createElement)("span", null, n.title),
                 badge(n.status),
                 button("查看任务", () => onTask(n.taskId), { "aria-label": "查看任务 " + n.title })
               ))
             ),
-            !item.runId && item.reason && (0, import_react100.createElement)("small", null, item.reason)
+            !item.runId && item.reason && (0, import_react104.createElement)("small", null, item.reason)
           ))
         )
       );
@@ -62022,10 +63549,10 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
 }
 
 // src/client/workflows.js
-var import_react102 = require("react");
+var import_react106 = require("react");
 
 // src/client/workflow-files.js
-var import_react101 = require("react");
+var import_react105 = require("react");
 
 // src/team/workflow-graph.js
 function required(value, label) {
@@ -62128,15 +63655,15 @@ function download2(flow, bots) {
   setTimeout(() => URL.revokeObjectURL(url), 1e3);
 }
 function WorkflowFiles({ teamId, bots, workflow, client, onImported }) {
-  const [preview, setPreview] = (0, import_react101.useState)(null);
-  const [index, setIndex] = (0, import_react101.useState)(0);
-  const [mapping, setMapping] = (0, import_react101.useState)(/* @__PURE__ */ new Map());
-  const [error, setError] = (0, import_react101.useState)("");
-  const [busy, setBusy] = (0, import_react101.useState)(false);
-  const sequence = (0, import_react101.useRef)(0);
-  const sending = (0, import_react101.useRef)(false);
-  const lastRequest = (0, import_react101.useRef)(null);
-  (0, import_react101.useEffect)(() => () => {
+  const [preview, setPreview] = (0, import_react105.useState)(null);
+  const [index, setIndex] = (0, import_react105.useState)(0);
+  const [mapping, setMapping] = (0, import_react105.useState)(/* @__PURE__ */ new Map());
+  const [error, setError] = (0, import_react105.useState)("");
+  const [busy, setBusy] = (0, import_react105.useState)(false);
+  const sequence = (0, import_react105.useRef)(0);
+  const sending = (0, import_react105.useRef)(false);
+  const lastRequest = (0, import_react105.useRef)(null);
+  (0, import_react105.useEffect)(() => () => {
     sequence.current++;
   }, [teamId]);
   const selected = preview?.workflows[index];
@@ -62153,7 +63680,7 @@ function WorkflowFiles({ teamId, bots, workflow, client, onImported }) {
       if (seq !== sequence.current) return;
       setPreview(parsed);
       setIndex(0);
-      setMapping(new Map(parsed.bots.map((bot) => [bot.ref, bots.find((m) => m.name === bot.name)?.id ?? ""])));
+      setMapping(new Map(parsed.bots.map((bot) => [bot.ref, bots.find((m2) => m2.name === bot.name)?.id ?? ""])));
       lastRequest.current = null;
     } catch (cause) {
       if (seq === sequence.current) setError(cause.message);
@@ -62180,7 +63707,7 @@ function WorkflowFiles({ teamId, bots, workflow, client, onImported }) {
       if (seq === sequence.current) setBusy(false);
     }
   }
-  return (0, import_react101.createElement)(
+  return (0, import_react105.createElement)(
     "div",
     { className: "gb-stack" },
     row(workflow && button("导出工作流模板", () => {
@@ -62190,7 +63717,7 @@ function WorkflowFiles({ teamId, bots, workflow, client, onImported }) {
       } catch (cause) {
         setError(cause.message);
       }
-    }), (0, import_react101.createElement)("label", { className: "gb-workflow-file" }, "导入工作流模板", (0, import_react101.createElement)("input", {
+    }), (0, import_react105.createElement)("label", { className: "gb-workflow-file" }, "导入工作流模板", (0, import_react105.createElement)("input", {
       type: "file",
       accept: ".json,application/json",
       disabled: busy,
@@ -62200,21 +63727,21 @@ function WorkflowFiles({ teamId, bots, workflow, client, onImported }) {
         void open(file);
       }
     }))),
-    selected && (0, import_react101.createElement)(
+    selected && (0, import_react105.createElement)(
       "section",
       { className: "gb-card gb-form", "aria-label": "工作流模板预览" },
-      (0, import_react101.createElement)("h3", null, "导入工作流"),
-      preview.workflows.length > 1 ? field("选择模板中的工作流", (0, import_react101.createElement)(
+      (0, import_react105.createElement)("h3", null, "导入工作流"),
+      preview.workflows.length > 1 ? field("选择模板中的工作流", (0, import_react105.createElement)(
         "select",
         { value: index, disabled: busy, onChange: (e) => setIndex(Number(e.target.value)) },
         preview.workflows.map((flow, i) => option(String(i), flow.name))
-      )) : (0, import_react101.createElement)("strong", null, selected.name),
-      (0, import_react101.createElement)("p", null, selected.nodes.length + " 个节点 · " + selected.edges.length + " 条连线"),
-      required2.map((bot) => (0, import_react101.createElement)(
+      )) : (0, import_react105.createElement)("strong", null, selected.name),
+      (0, import_react105.createElement)("p", null, selected.nodes.length + " 个节点 · " + selected.edges.length + " 条连线"),
+      required2.map((bot) => (0, import_react105.createElement)(
         "label",
         { key: bot.ref, className: "gb-field" },
-        (0, import_react101.createElement)("span", null, bot.name + " 对应的 Bot"),
-        (0, import_react101.createElement)("select", { value: mapping.get(bot.ref) ?? "", disabled: busy, onChange: (e) => {
+        (0, import_react105.createElement)("span", null, bot.name + " 对应的 Bot"),
+        (0, import_react105.createElement)("select", { value: mapping.get(bot.ref) ?? "", disabled: busy, onChange: (e) => {
           const id = e.target.value;
           setMapping((previous) => new Map(previous).set(bot.ref, id));
         } }, option("", "选择负责 Bot"), bots.map((member) => option(member.id, member.name)))
@@ -62227,7 +63754,7 @@ function WorkflowFiles({ teamId, bots, workflow, client, onImported }) {
         }, { disabled: busy })
       )
     ),
-    error && (0, import_react101.createElement)("p", { role: "alert", className: "gb-error" }, error)
+    error && (0, import_react105.createElement)("p", { role: "alert", className: "gb-error" }, error)
   );
 }
 
@@ -62293,32 +63820,32 @@ function validateEdge(nodes, edges, edge) {
   return "";
 }
 function Graph({ nodes, edges, bots, selected, picking, onNode, onEdge, disabled, execution }) {
-  const { positions, lanes, width, height } = (0, import_react102.useMemo)(() => layoutGraph(nodes, edges), [nodes, edges]);
-  const marker = "gb-arrow-" + (0, import_react102.useId)().replace(/[^a-zA-Z0-9_-]/g, "");
+  const { positions, lanes, width, height } = (0, import_react106.useMemo)(() => layoutGraph(nodes, edges), [nodes, edges]);
+  const marker = "gb-arrow-" + (0, import_react106.useId)().replace(/[^a-zA-Z0-9_-]/g, "");
   if (!nodes.length) return empty("添加第一个节点，指定负责 Bot和验收标准。");
-  return (0, import_react102.createElement)(
+  return (0, import_react106.createElement)(
     "div",
     { className: "gb-flow-scroll", role: "group", "aria-label": execution ? "本次运行的节点图" : "工作流节点图", tabIndex: 0 },
-    (0, import_react102.createElement)(
+    (0, import_react106.createElement)(
       "div",
       { className: "gb-flow-canvas", style: { width, height } },
-      (0, import_react102.createElement)(
+      (0, import_react106.createElement)(
         "svg",
         { className: "gb-flow-wires", width, height, "aria-hidden": true },
-        (0, import_react102.createElement)("defs", null, (0, import_react102.createElement)(
+        (0, import_react106.createElement)("defs", null, (0, import_react106.createElement)(
           "marker",
           { id: marker, markerWidth: 8, markerHeight: 8, refX: 7, refY: 4, orient: "auto" },
-          (0, import_react102.createElement)("path", { d: "M0,0 L8,4 L0,8 z", fill: "var(--bt-ink-2)" })
+          (0, import_react106.createElement)("path", { d: "M0,0 L8,4 L0,8 z", fill: "var(--bt-ink-2)" })
         )),
         edges.map((edge, i) => {
           const start = positions.get(edge.from), end = positions.get(edge.to);
           const sx = start.x + nodeWidth, sy = start.y + nodeHeight / 2, ex = end.x - 3, ey = end.y + nodeHeight / 2;
           const lane = lanes.get(edge);
           const d = lane === void 0 ? `M ${sx} ${sy} C ${sx + columnGap / 2} ${sy}, ${ex - columnGap / 2} ${ey}, ${ex} ${ey}` : `M ${sx} ${sy} H ${sx + 12} V ${lane} H ${ex - 12} V ${ey} H ${ex}`;
-          return (0, import_react102.createElement)(
+          return (0, import_react106.createElement)(
             "g",
             { key: edge.from + "/" + edge.to },
-            (0, import_react102.createElement)("path", {
+            (0, import_react106.createElement)("path", {
               d,
               fill: "none",
               stroke: "var(--bt-ink-2)",
@@ -62326,7 +63853,7 @@ function Graph({ nodes, edges, bots, selected, picking, onNode, onEdge, disabled
               strokeDasharray: edge.when === "accepted" ? void 0 : "5 4",
               markerEnd: "url(#" + marker + ")"
             }),
-            (0, import_react102.createElement)(
+            (0, import_react106.createElement)(
               "path",
               {
                 d,
@@ -62339,7 +63866,7 @@ function Graph({ nodes, edges, bots, selected, picking, onNode, onEdge, disabled
                   if (!disabled) onEdge?.(i);
                 }
               },
-              (0, import_react102.createElement)("title", null, edgeTypes[edge.when] + (edge.value ? " · " + edge.value : ""))
+              (0, import_react106.createElement)("title", null, edgeTypes[edge.when] + (edge.value ? " · " + edge.value : ""))
             )
           );
         })
@@ -62348,13 +63875,13 @@ function Graph({ nodes, edges, bots, selected, picking, onNode, onEdge, disabled
         const pos = positions.get(node.id);
         const result = execution?.get(node.id);
         const title2 = node.title || "未命名节点";
-        const subtitle = execution ? states4[result?.status] || statusText(result?.status) : bots.find((m) => m.id === node.ownerId)?.name ?? "待指定负责人";
+        const subtitle = execution ? states4[result?.status] || statusText(result?.status) : bots.find((m2) => m2.id === node.ownerId)?.name ?? "待指定负责人";
         return button(
-          (0, import_react102.createElement)(
+          (0, import_react106.createElement)(
             "span",
             null,
-            (0, import_react102.createElement)("strong", null, title2),
-            (0, import_react102.createElement)("small", null, subtitle)
+            (0, import_react106.createElement)("strong", null, title2),
+            (0, import_react106.createElement)("small", null, subtitle)
           ),
           () => onNode(node.id),
           {
@@ -62372,46 +63899,46 @@ function Graph({ nodes, edges, bots, selected, picking, onNode, onEdge, disabled
   );
 }
 function History2({ runs, workflow, tasks, onTask, activeId }) {
-  const [viewId, setViewId] = (0, import_react102.useState)("");
+  const [viewId, setViewId] = (0, import_react106.useState)("");
   const items = runs.filter((run2) => run2.workflowId === workflow.id);
   const selected = items.find((r) => r.id === (viewId || activeId)) ?? items[0];
   const available = new Set(tasks.map((task) => task.id));
   const execution = new Map(selected?.nodes.map((n) => [n.nodeId, { status: n.status, taskId: available.has(n.taskId) ? n.taskId : null }]));
-  return (0, import_react102.createElement)(
+  return (0, import_react106.createElement)(
     "section",
     { className: "gb-stack gb-flow-history", "aria-label": "工作流运行记录" },
-    (0, import_react102.createElement)("h3", null, "运行记录"),
-    !items.length ? empty("这个工作流还没有运行记录。") : (0, import_react102.createElement)(
-      import_react102.Fragment,
+    (0, import_react106.createElement)("h3", null, "运行记录"),
+    !items.length ? empty("这个工作流还没有运行记录。") : (0, import_react106.createElement)(
+      import_react106.Fragment,
       null,
-      field("选择运行记录", (0, import_react102.createElement)(
+      field("选择运行记录", (0, import_react106.createElement)(
         "select",
         { value: selected.id, onChange: (e) => setViewId(e.target.value) },
         items.map((r) => option(r.id, (stamp(r.createdAt) || r.id.slice(0, 8)) + " · v" + r.workflowRevision + " · " + (states4[r.status] || statusText(r.status))))
       )),
-      (0, import_react102.createElement)(
+      (0, import_react106.createElement)(
         "div",
         { key: "details", className: "gb-stack" },
-        row(badge(selected.status, states4[selected.status] || statusText(selected.status)), (0, import_react102.createElement)("small", null, selected.id)),
-        selected.definition && (0, import_react102.createElement)(
+        row(badge(selected.status, states4[selected.status] || statusText(selected.status)), (0, import_react106.createElement)("small", null, selected.id)),
+        selected.definition && (0, import_react106.createElement)(
           "details",
           { className: "gb-flow-run-graph" },
-          (0, import_react102.createElement)("summary", null, "本次运行的流程图"),
-          (0, import_react102.createElement)("small", null, selected.name + " · v" + selected.workflowRevision),
-          (0, import_react102.createElement)(Graph, {
+          (0, import_react106.createElement)("summary", null, "本次运行的流程图"),
+          (0, import_react106.createElement)("small", null, selected.name + " · v" + selected.workflowRevision),
+          (0, import_react106.createElement)(Graph, {
             nodes: selected.definition.nodes,
             edges: selected.definition.edges,
             execution,
             onNode: (id) => onTask(execution.get(id).taskId)
           })
         ),
-        (0, import_react102.createElement)("ul", { className: "gb-flow-run-nodes" }, selected.nodes.map((n) => {
+        (0, import_react106.createElement)("ul", { className: "gb-flow-run-nodes" }, selected.nodes.map((n) => {
           const task = tasks.find((t2) => t2.id === n.taskId);
           const title2 = n.title || task?.title || workflow.nodes.find((def) => def.id === n.nodeId)?.title || n.nodeId;
-          return (0, import_react102.createElement)(
+          return (0, import_react106.createElement)(
             "li",
             { key: n.nodeId },
-            (0, import_react102.createElement)("span", null, title2),
+            (0, import_react106.createElement)("span", null, title2),
             badge(n.status, states4[n.status] || statusText(n.status)),
             n.taskId && button("查看任务", () => onTask(n.taskId), { "aria-label": "查看任务 " + title2, disabled: !task })
           );
@@ -62421,38 +63948,38 @@ function History2({ runs, workflow, tasks, onTask, activeId }) {
   );
 }
 function Workflows({ workspace, bots, tasks, client, refresh, readOnly, onTask, focusWorkflowId, focusRunId }) {
-  const [data, setData] = (0, import_react102.useState)(null);
-  const [draft, setDraft] = (0, import_react102.useState)(null);
-  const [editing, setEditing] = (0, import_react102.useState)(false);
-  const [nodeId, setNodeId] = (0, import_react102.useState)("");
-  const [edge, setEdge] = (0, import_react102.useState)(freshEdge);
-  const [editEdge, setEditEdge] = (0, import_react102.useState)(null);
-  const [picking, setPicking] = (0, import_react102.useState)("");
-  const [pendingChoice, setPendingChoice] = (0, import_react102.useState)(null);
-  const [busy, setBusy] = (0, import_react102.useState)(false);
-  const [error, setError] = (0, import_react102.useState)("");
-  const [loadError, setLoadError] = (0, import_react102.useState)("");
-  const [notice, setNotice] = (0, import_react102.useState)("");
-  const [activeRun, setActiveRun] = (0, import_react102.useState)(focusRunId ?? "");
-  const [epoch, reload] = (0, import_react102.useState)(0);
-  const [ledger] = (0, import_react102.useState)(() => {
+  const [data, setData] = (0, import_react106.useState)(null);
+  const [draft, setDraft] = (0, import_react106.useState)(null);
+  const [editing, setEditing] = (0, import_react106.useState)(false);
+  const [nodeId, setNodeId] = (0, import_react106.useState)("");
+  const [edge, setEdge] = (0, import_react106.useState)(freshEdge);
+  const [editEdge, setEditEdge] = (0, import_react106.useState)(null);
+  const [picking, setPicking] = (0, import_react106.useState)("");
+  const [pendingChoice, setPendingChoice] = (0, import_react106.useState)(null);
+  const [busy, setBusy] = (0, import_react106.useState)(false);
+  const [error, setError] = (0, import_react106.useState)("");
+  const [loadError, setLoadError] = (0, import_react106.useState)("");
+  const [notice, setNotice] = (0, import_react106.useState)("");
+  const [activeRun, setActiveRun] = (0, import_react106.useState)(focusRunId ?? "");
+  const [epoch, reload] = (0, import_react106.useState)(0);
+  const [ledger] = (0, import_react106.useState)(() => {
     try {
       return pendingRequests(window.sessionStorage);
     } catch {
       return pendingRequests();
     }
   });
-  const mounted = (0, import_react102.useRef)(false), pending = (0, import_react102.useRef)(false);
-  const listVersion = (0, import_react102.useRef)(0);
-  const unsaved = (0, import_react102.useRef)(false);
+  const mounted = (0, import_react106.useRef)(false), pending = (0, import_react106.useRef)(false);
+  const listVersion = (0, import_react106.useRef)(0);
+  const unsaved = (0, import_react106.useRef)(false);
   const teamId = workspace.id;
-  (0, import_react102.useEffect)(() => {
+  (0, import_react106.useEffect)(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
-  (0, import_react102.useEffect)(() => {
+  (0, import_react106.useEffect)(() => {
     let live = true, timer;
     async function load() {
       const version2 = listVersion.current;
@@ -62583,7 +64110,7 @@ function Workflows({ workspace, bots, tasks, client, refresh, readOnly, onTask, 
   function save() {
     if (!current2.name.trim()) return setError("请输入工作流名称。");
     if (!current2.nodes.length) return setError("请至少添加一个节点。");
-    const invalid = current2.nodes.find((n) => !n.title.trim() || !n.criteria.trim() || !bots.some((m) => m.id === n.ownerId));
+    const invalid = current2.nodes.find((n) => !n.title.trim() || !n.criteria.trim() || !bots.some((m2) => m2.id === n.ownerId));
     if (invalid) {
       setNodeId(invalid.id);
       return setError("请填写所选节点的名称、负责人和验收标准。");
@@ -62624,14 +64151,14 @@ function Workflows({ workspace, bots, tasks, client, refresh, readOnly, onTask, 
     setError("");
     setPicking("");
   }
-  return (0, import_react102.createElement)(
+  return (0, import_react106.createElement)(
     "section",
     { className: "gb-section gb-stack gb-workflows", "aria-label": "工作流" },
-    (0, import_react102.createElement)("style", null, workflows_default),
-    (0, import_react102.createElement)(
+    (0, import_react106.createElement)("style", null, workflows_default),
+    (0, import_react106.createElement)(
       "div",
       { className: "gb-sectionhead" },
-      (0, import_react102.createElement)("h2", null, "工作流"),
+      (0, import_react106.createElement)("h2", null, "工作流"),
       row(
         button("新建工作流", () => choose(""), { disabled: blocked || !data || !bots.length }),
         current2?.id && button("运行工作流", start, {
@@ -62640,44 +64167,44 @@ function Workflows({ workspace, bots, tasks, client, refresh, readOnly, onTask, 
         })
       )
     ),
-    (0, import_react102.createElement)(
+    (0, import_react106.createElement)(
       "fieldset",
       { className: "gb-flow-files", disabled: blocked },
-      (0, import_react102.createElement)(WorkflowFiles, { teamId, bots, workflow: data?.workflows.find((w) => w.id === current2?.id), client, onImported: imported })
+      (0, import_react106.createElement)(WorkflowFiles, { teamId, bots, workflow: data?.workflows.find((w) => w.id === current2?.id), client, onImported: imported })
     ),
-    loadError && (0, import_react102.createElement)("div", { className: "gb-alert", role: "alert" }, loadError, " ", button("重新加载", reloadData)),
+    loadError && (0, import_react106.createElement)("div", { className: "gb-alert", role: "alert" }, loadError, " ", button("重新加载", reloadData)),
     !data && !loadError && empty("正在读取工作流…"),
     data && !current2 && empty(bots.length ? "还没有保存的工作流。" : "在 Bot 设置中创建 Bot 后即可分配工作流节点。"),
-    data?.workflows.length > 0 && field("选择工作流", (0, import_react102.createElement)(
+    data?.workflows.length > 0 && field("选择工作流", (0, import_react106.createElement)(
       "select",
       { value: current2?.id || "", disabled: busy, onChange: (e) => choose(e.target.value) },
       !current2?.id && option("", "新工作流"),
       data.workflows.map((w) => option(w.id, w.name))
     )),
-    pendingChoice && (0, import_react102.createElement)(
+    pendingChoice && (0, import_react106.createElement)(
       "div",
       { className: "gb-alert", role: "alert" },
       "放弃未保存的更改？",
       row(button("放弃更改", () => open(pendingChoice.id)), button("继续编辑", () => setPendingChoice(null)))
     ),
-    current2 && (0, import_react102.createElement)(
+    current2 && (0, import_react106.createElement)(
       "div",
       { className: "gb-stack" },
-      field("工作流名称", (0, import_react102.createElement)("input", { ...inputs, value: current2.name, onChange: (e) => update({ name: e.target.value }) })),
-      (0, import_react102.createElement)("div", { className: "gb-sectionhead" }, (0, import_react102.createElement)("h3", null, "节点与连线"), button("添加节点", addNode, { disabled: blocked || !bots.length })),
-      picking && row((0, import_react102.createElement)("p", { role: "status" }, "请选择连线的终点节点。"), button("取消选择", resetLink)),
-      (0, import_react102.createElement)(Graph, { nodes: current2.nodes, edges: current2.edges, selected: node?.id, bots, picking, onNode: pickNode, onEdge: selectEdge, disabled: busy }),
-      node && (0, import_react102.createElement)(
+      field("工作流名称", (0, import_react106.createElement)("input", { ...inputs, value: current2.name, onChange: (e) => update({ name: e.target.value }) })),
+      (0, import_react106.createElement)("div", { className: "gb-sectionhead" }, (0, import_react106.createElement)("h3", null, "节点与连线"), button("添加节点", addNode, { disabled: blocked || !bots.length })),
+      picking && row((0, import_react106.createElement)("p", { role: "status" }, "请选择连线的终点节点。"), button("取消选择", resetLink)),
+      (0, import_react106.createElement)(Graph, { nodes: current2.nodes, edges: current2.edges, selected: node?.id, bots, picking, onNode: pickNode, onEdge: selectEdge, disabled: busy }),
+      node && (0, import_react106.createElement)(
         "div",
         { className: "gb-flow-panel" },
-        field("节点名称", (0, import_react102.createElement)("input", { ...inputs, value: node.title, onChange: (e) => changeNode({ title: e.target.value }) })),
-        field("负责人", (0, import_react102.createElement)(
+        field("节点名称", (0, import_react106.createElement)("input", { ...inputs, value: node.title, onChange: (e) => changeNode({ title: e.target.value }) })),
+        field("负责人", (0, import_react106.createElement)(
           "select",
           { ...inputs, value: node.ownerId, onChange: (e) => changeNode({ ownerId: e.target.value }) },
-          bots.map((m) => option(m.id, m.name))
+          bots.map((m2) => option(m2.id, m2.name))
         )),
-        field("验收标准", (0, import_react102.createElement)("textarea", { ...inputs, value: node.criteria, rows: 2, onChange: (e) => changeNode({ criteria: e.target.value }) })),
-        field("汇合条件", (0, import_react102.createElement)(
+        field("验收标准", (0, import_react106.createElement)("textarea", { ...inputs, value: node.criteria, rows: 2, onChange: (e) => changeNode({ criteria: e.target.value }) })),
+        field("汇合条件", (0, import_react106.createElement)(
           "select",
           { ...inputs, value: node.join ?? "all", onChange: (e) => changeNode({ join: e.target.value }) },
           Object.entries(joinTypes).map(([key, label]) => option(key, label))
@@ -62692,29 +64219,29 @@ function Workflows({ workspace, bots, tasks, client, refresh, readOnly, onTask, 
           button("删除节点", removeNode, { disabled: blocked, className: "gb-danger" })
         )
       ),
-      current2.nodes.length > 1 && (0, import_react102.createElement)(
+      current2.nodes.length > 1 && (0, import_react106.createElement)(
         "div",
         { className: "gb-stack gb-flow-links" },
-        (0, import_react102.createElement)("h3", null, "连线"),
-        current2.edges.length > 0 && (0, import_react102.createElement)("ul", { className: "gb-flow-edge-list" }, current2.edges.map((e, i) => {
+        (0, import_react106.createElement)("h3", null, "连线"),
+        current2.edges.length > 0 && (0, import_react106.createElement)("ul", { className: "gb-flow-edge-list" }, current2.edges.map((e, i) => {
           const name = (id) => current2.nodes.find((n) => n.id === id)?.title || "未命名节点";
-          return (0, import_react102.createElement)("li", { key: e.from + "/" + e.to }, button(
+          return (0, import_react106.createElement)("li", { key: e.from + "/" + e.to }, button(
             name(e.from) + " → " + name(e.to) + " · " + edgeTypes[e.when] + (e.value ? " " + e.value : ""),
             () => selectEdge(i),
             { disabled: blocked, "aria-pressed": editEdge === i }
           ));
         })),
-        (0, import_react102.createElement)(
+        (0, import_react106.createElement)(
           "div",
           { className: "gb-flow-panel" },
-          field("起点", (0, import_react102.createElement)("select", { ...inputs, value: edge.from, onChange: (e) => chooseLinkEnd("from", e.target.value) }, nodeOptions())),
-          field("终点", (0, import_react102.createElement)("select", { ...inputs, value: edge.to, onChange: (e) => chooseLinkEnd("to", e.target.value) }, nodeOptions())),
-          field("连线条件", (0, import_react102.createElement)(
+          field("起点", (0, import_react106.createElement)("select", { ...inputs, value: edge.from, onChange: (e) => chooseLinkEnd("from", e.target.value) }, nodeOptions())),
+          field("终点", (0, import_react106.createElement)("select", { ...inputs, value: edge.to, onChange: (e) => chooseLinkEnd("to", e.target.value) }, nodeOptions())),
+          field("连线条件", (0, import_react106.createElement)(
             "select",
             { ...inputs, value: edge.when, onChange: (e) => chooseLinkEnd("when", e.target.value) },
             Object.entries(edgeTypes).map(([key, label]) => option(key, label))
           )),
-          edge.when !== "accepted" && field("匹配文本", (0, import_react102.createElement)("input", { ...inputs, value: edge.value, onChange: (e) => chooseLinkEnd("value", e.target.value) })),
+          edge.when !== "accepted" && field("匹配文本", (0, import_react106.createElement)("input", { ...inputs, value: edge.value, onChange: (e) => chooseLinkEnd("value", e.target.value) })),
           row(
             button(editEdge === null ? "添加连线" : "更新连线", applyLink, { disabled: blocked || !edge.from || !edge.to }),
             editEdge !== null && button("删除连线", () => {
@@ -62725,32 +64252,32 @@ function Workflows({ workspace, bots, tasks, client, refresh, readOnly, onTask, 
           )
         )
       ),
-      stale && (0, import_react102.createElement)("div", { className: "gb-alert", role: "alert" }, "工作流已被更新。", button("载入最新版本", () => choose(saved.id))),
-      error && (0, import_react102.createElement)("p", { className: "gb-alert", role: "alert" }, error),
-      notice && (0, import_react102.createElement)("p", { role: "status" }, notice),
+      stale && (0, import_react106.createElement)("div", { className: "gb-alert", role: "alert" }, "工作流已被更新。", button("载入最新版本", () => choose(saved.id))),
+      error && (0, import_react106.createElement)("p", { className: "gb-alert", role: "alert" }, error),
+      notice && (0, import_react106.createElement)("p", { role: "status" }, notice),
       editing && row(
         button("保存工作流", save, { className: "gb-primary", disabled: blocked || stale }),
         current2.id && button("撤销更改", () => open(current2.id), { disabled: busy })
       ),
-      current2.id && !editing && (0, import_react102.createElement)(
+      current2.id && !editing && (0, import_react106.createElement)(
         "details",
         null,
-        (0, import_react102.createElement)("summary", null, "从 CI 运行 · v" + current2.revision),
-        (0, import_react102.createElement)("code", { className: "gb-flow-command" }, "godbot run --workflow " + current2.id + " --revision " + current2.revision + " --wait")
+        (0, import_react106.createElement)("summary", null, "从 CI 运行 · v" + current2.revision),
+        (0, import_react106.createElement)("code", { className: "gb-flow-command" }, "godbot run --workflow " + current2.id + " --revision " + current2.revision + " --wait")
       ),
-      current2.id && (0, import_react102.createElement)(History2, { key: current2.id + "/" + activeRun, runs: data?.runs ?? [], workflow: current2, tasks, activeId: activeRun, onTask })
+      current2.id && (0, import_react106.createElement)(History2, { key: current2.id + "/" + activeRun, runs: data?.runs ?? [], workflow: current2, tasks, activeId: activeRun, onTask })
     )
   );
 }
 
 // src/client/people-access.js
-var import_react103 = require("react");
+var import_react107 = require("react");
 var roleLabels = { none: "未共享", view: "查看", chat: "聊天和上传", manage: "管理与审批" };
 function PeopleAccess({ team, client }) {
-  const [view, setView] = (0, import_react103.useState)(null);
-  const [invitation, setInvitation] = (0, import_react103.useState)("");
-  const [error, setError] = (0, import_react103.useState)("");
-  const [pending, setPending] = (0, import_react103.useState)(false);
+  const [view, setView] = (0, import_react107.useState)(null);
+  const [invitation, setInvitation] = (0, import_react107.useState)("");
+  const [error, setError] = (0, import_react107.useState)("");
+  const [pending, setPending] = (0, import_react107.useState)(false);
   const call3 = (verb, fields = {}) => client.dispatch({ action: "automation.people." + verb, teamId: team.id, ...fields });
   async function refresh() {
     setView(await call3("list"));
@@ -62769,7 +64296,7 @@ function PeopleAccess({ team, client }) {
       setPending(false);
     }
   }
-  const permissions = (person) => (0, import_react103.createElement)(
+  const permissions = (person) => (0, import_react107.createElement)(
     "form",
     { key: person.id + JSON.stringify(person.permissions), className: "gb-form", onSubmit: (event) => {
       event.preventDefault();
@@ -62777,68 +64304,68 @@ function PeopleAccess({ team, client }) {
       const choices = [...fields].filter(([key, role]) => key !== "oidcEmail" && role !== "none");
       void submit2("permissions", { id: person.id, revision: person.revision ?? 0, permissions: Object.fromEntries(choices), ...view.sso ? { oidcEmail: fields.get("oidcEmail") } : {} });
     } },
-    (0, import_react103.createElement)("h4", null, person.name),
+    (0, import_react107.createElement)("h4", null, person.name),
     ...view.resources.map((resource) => field(
       resource.name + " · " + { native: "原生", bot: "Bot", room: "群" }[resource.kind],
-      (0, import_react103.createElement)(
+      (0, import_react107.createElement)(
         "select",
         { name: resource.id, defaultValue: person.permissions[resource.id] || "none" },
-        ...Object.entries(roleLabels).map(([role, label]) => (0, import_react103.createElement)("option", { key: role, value: role }, label))
+        ...Object.entries(roleLabels).map(([role, label]) => (0, import_react107.createElement)("option", { key: role, value: role }, label))
       )
     )),
-    (0, import_react103.createElement)("button", { type: "submit", disabled: pending }, "保存权限"),
-    view.sso && field("组织账号邮箱", (0, import_react103.createElement)("input", { type: "email", name: "oidcEmail", defaultValue: person.oidcEmail ?? "" })),
+    (0, import_react107.createElement)("button", { type: "submit", disabled: pending }, "保存权限"),
+    view.sso && field("组织账号邮箱", (0, import_react107.createElement)("input", { type: "email", name: "oidcEmail", defaultValue: person.oidcEmail ?? "" })),
     button("生成新设备邀请", () => void submit2("invite", { id: person.id }), { disabled: pending }),
     button("撤销该用户", () => void submit2("revoke", { id: person.id }), { disabled: pending })
   );
-  return (0, import_react103.createElement)(
+  return (0, import_react107.createElement)(
     "details",
     { className: "gb-card", onToggle: (e) => {
       if (e.currentTarget.open) void refresh().catch((cause) => setError(cause.message));
       else setInvitation("");
     } },
-    (0, import_react103.createElement)("summary", null, "多人共享与审计"),
-    (0, import_react103.createElement)("p", null, "按人选择可见会话。共享后，该会话已有的消息、任务证据和附件也可读取。"),
-    error && (0, import_react103.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    (0, import_react103.createElement)(
+    (0, import_react107.createElement)("summary", null, "多人共享与审计"),
+    (0, import_react107.createElement)("p", null, "按人选择可见会话。共享后，该会话已有的消息、任务证据和附件也可读取。"),
+    error && (0, import_react107.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    (0, import_react107.createElement)(
       "form",
       { className: "gb-form", onSubmit: (e) => {
         e.preventDefault();
         const form = new FormData(e.currentTarget);
         void submit2("invite", { name: form.get("name"), email: form.get("email") });
       } },
-      field("用户名称", (0, import_react103.createElement)("input", { name: "name", required: true, maxLength: 100 })),
-      view?.sso && field("组织账号邮箱", (0, import_react103.createElement)("input", { name: "email", type: "email", placeholder: "可选" })),
-      (0, import_react103.createElement)("button", { type: "submit", disabled: pending }, "创建个人邀请")
+      field("用户名称", (0, import_react107.createElement)("input", { name: "name", required: true, maxLength: 100 })),
+      view?.sso && field("组织账号邮箱", (0, import_react107.createElement)("input", { name: "email", type: "email", placeholder: "可选" })),
+      (0, import_react107.createElement)("button", { type: "submit", disabled: pending }, "创建个人邀请")
     ),
-    invitation && (0, import_react103.createElement)("div", { role: "status", "data-sensitive": true }, (0, import_react103.createElement)("p", null, "个人邀请可用一次，15 分钟内有效。"), (0, import_react103.createElement)("code", null, invitation)),
+    invitation && (0, import_react107.createElement)("div", { role: "status", "data-sensitive": true }, (0, import_react107.createElement)("p", null, "个人邀请可用一次，15 分钟内有效。"), (0, import_react107.createElement)("code", null, invitation)),
     ...(view?.people ?? []).filter((person) => !person.revoked).map(permissions),
-    !!view?.audit.length && (0, import_react103.createElement)(
+    !!view?.audit.length && (0, import_react107.createElement)(
       "details",
       null,
-      (0, import_react103.createElement)("summary", null, "操作记录"),
-      (0, import_react103.createElement)("ul", null, ...view.audit.map((entry) => (0, import_react103.createElement)("li", { key: entry.id }, entry.createdAt + " · " + (view.people.find((p) => p.id === entry.actor)?.name ?? entry.actor) + " · " + entry.action + (entry.resource ? " · " + entry.resource : ""))))
+      (0, import_react107.createElement)("summary", null, "操作记录"),
+      (0, import_react107.createElement)("ul", null, ...view.audit.map((entry) => (0, import_react107.createElement)("li", { key: entry.id }, entry.createdAt + " · " + (view.people.find((p) => p.id === entry.actor)?.name ?? entry.actor) + " · " + entry.action + (entry.resource ? " · " + entry.resource : ""))))
     )
   );
 }
 
 // src/client/task-settings.js
 function useTaskSettings(client) {
-  const [data, setData] = (0, import_react104.useState)(null);
-  const [offline, setOffline] = (0, import_react104.useState)("");
-  const [error, setError] = (0, import_react104.useState)(null);
-  const [ledger] = (0, import_react104.useState)(() => {
+  const [data, setData] = (0, import_react108.useState)(null);
+  const [offline, setOffline] = (0, import_react108.useState)("");
+  const [error, setError] = (0, import_react108.useState)(null);
+  const [ledger] = (0, import_react108.useState)(() => {
     try {
       return pendingRequests(window.sessionStorage);
     } catch {
       return pendingRequests();
     }
   });
-  const [busy, setBusy] = (0, import_react104.useState)([]);
-  const generation = (0, import_react104.useRef)(0);
-  const pending = (0, import_react104.useRef)(/* @__PURE__ */ new Set());
-  const mounted = (0, import_react104.useRef)(false);
-  const refresh = (0, import_react104.useCallback)(async () => {
+  const [busy, setBusy] = (0, import_react108.useState)([]);
+  const generation = (0, import_react108.useRef)(0);
+  const pending = (0, import_react108.useRef)(/* @__PURE__ */ new Set());
+  const mounted = (0, import_react108.useRef)(false);
+  const refresh = (0, import_react108.useCallback)(async () => {
     const token = ++generation.current;
     try {
       const view = await client.dispatch({ action: "team-workspace.management" });
@@ -62852,7 +64379,7 @@ function useTaskSettings(client) {
       if (mounted.current && token === generation.current) setOffline(cause.message || String(cause));
     }
   }, [client]);
-  (0, import_react104.useEffect)(() => {
+  (0, import_react108.useEffect)(() => {
     mounted.current = true;
     let timer;
     let stopped = false;
@@ -62916,18 +64443,18 @@ function TaskSettings({ client, actions, page, focus, readOnly: rosterReadOnly }
     actions.closeSettings();
     actions.openSession(bot.id);
   }
-  return (0, import_react104.createElement)(
+  return (0, import_react108.createElement)(
     "div",
     { className: "gb-task-settings gb-stack" },
     row(button("刷新", refresh), !readOnly && button("统一创建自动化", () => actions.openSettings("automation", { kind: page === "routines" ? "task" : "workflow" }))),
-    offline && (0, import_react104.createElement)("div", { className: "gb-alert", role: "status" }, "连接中断，正在重试 · " + offline),
-    error && (0, import_react104.createElement)(
+    offline && (0, import_react108.createElement)("div", { className: "gb-alert", role: "status" }, "连接中断，正在重试 · " + offline),
+    error && (0, import_react108.createElement)(
       "div",
       { className: "gb-alert", role: "alert" },
-      (0, import_react104.createElement)("span", null, error.message),
+      (0, import_react108.createElement)("span", null, error.message),
       row(button("重试原请求", error.retry), button("关闭", clearError))
     ),
-    !workspace ? empty("正在读取 Bot 团队…") : page === "routines" ? (0, import_react104.createElement)(NativeRoutines, {
+    !workspace ? empty("正在读取 Bot 团队…") : page === "routines" ? (0, import_react108.createElement)(NativeRoutines, {
       team: workspace,
       members: bots,
       client,
@@ -62935,11 +64462,11 @@ function TaskSettings({ client, actions, page, focus, readOnly: rosterReadOnly }
       readOnly,
       onTask: showTask,
       onWorkflowRun: (workflowId, workflowRunId) => actions.openSettings("tasks", { workflowId, workflowRunId })
-    }) : page === "limits" ? !readOnly && (0, import_react104.createElement)(UsageLimits, { client, bots, models: data.dshModels ?? [] }) : (0, import_react104.createElement)(
+    }) : page === "limits" ? !readOnly && (0, import_react108.createElement)(UsageLimits, { client, bots, models: data.dshModels ?? [] }) : (0, import_react108.createElement)(
       "div",
       { className: "gb-stack" },
-      (0, import_react104.createElement)(TaskBoard2, { workspace, bots, tasks: data.tasks, run: run2, pending, readOnly, focusTask: focus, openBot }),
-      (0, import_react104.createElement)(Workflows, {
+      (0, import_react108.createElement)(TaskBoard2, { workspace, bots, tasks: data.tasks, run: run2, pending, readOnly, focusTask: focus, openBot }),
+      (0, import_react108.createElement)(Workflows, {
         workspace,
         bots,
         tasks: data.tasks,
@@ -62950,23 +64477,23 @@ function TaskSettings({ client, actions, page, focus, readOnly: rosterReadOnly }
         focusRunId: focus?.workflowRunId,
         onTask: showTask
       }),
-      !readOnly && (0, import_react104.createElement)(AutomationAccess, { client, team: workspace, members: bots }),
-      !readOnly && (0, import_react104.createElement)(PeopleAccess, { client, team: workspace })
+      !readOnly && (0, import_react108.createElement)(AutomationAccess, { client, team: workspace, members: bots }),
+      !readOnly && (0, import_react108.createElement)(PeopleAccess, { client, team: workspace })
     )
   );
 }
 
 // src/client/bot-schedules.js
-var import_react106 = require("react");
+var import_react110 = require("react");
 
 // src/client/bot-schedule-editor.js
-var import_react105 = require("react");
+var import_react109 = require("react");
 var kinds3 = [["at", "单次"], ["every", "固定间隔"], ["daily", "每天"], ["weekly", "每周"], ["cron", "Cron"], ["rrule", "日历规则（RRULE）"]];
 var days = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 var intervalUnits = [[1, "分钟"], [60, "小时"], [1440, "天"]];
 var localZone2 = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-var option2 = ([value, label]) => (0, import_react105.createElement)("option", { key: value, value }, label);
-var field2 = (label, child) => (0, import_react105.createElement)("label", { className: "gb-schedule-field" }, (0, import_react105.createElement)("span", null, label), child);
+var option2 = ([value, label]) => (0, import_react109.createElement)("option", { key: value, value }, label);
+var field2 = (label, child) => (0, import_react109.createElement)("label", { className: "gb-schedule-field" }, (0, import_react109.createElement)("span", null, label), child);
 function localDate2(value) {
   const date = new Date(value);
   return new Date(date.getTime() - date.getTimezoneOffset() * 6e4).toISOString().slice(0, 16);
@@ -63026,14 +64553,14 @@ function timingOf(draft) {
   }
 }
 function ScheduleEditor({ task, targets: targets2, initialTarget, busy, save, cancel }) {
-  const [draft, setDraft] = (0, import_react105.useState)(() => initialTiming(task));
-  const [target, setTarget] = (0, import_react105.useState)(task?.botId ?? task?.roomId ?? initialTarget ?? targets2[0]?.id ?? "");
-  const [title2, setTitle] = (0, import_react105.useState)(task?.title ?? "");
-  const [prompt, setPrompt] = (0, import_react105.useState)(task?.prompt ?? "");
-  const [problem, setProblem] = (0, import_react105.useState)("");
-  const [replaceTiming, setReplaceTiming] = (0, import_react105.useState)(!task);
+  const [draft, setDraft] = (0, import_react109.useState)(() => initialTiming(task));
+  const [target, setTarget] = (0, import_react109.useState)(task?.botId ?? task?.roomId ?? initialTarget ?? targets2[0]?.id ?? "");
+  const [title2, setTitle] = (0, import_react109.useState)(task?.title ?? "");
+  const [prompt, setPrompt] = (0, import_react109.useState)(task?.prompt ?? "");
+  const [problem, setProblem] = (0, import_react109.useState)("");
+  const [replaceTiming, setReplaceTiming] = (0, import_react109.useState)(!task);
   const change = (key, value) => setDraft((old) => ({ ...old, [key]: value }));
-  const input2 = (key, props) => (0, import_react105.createElement)("input", { ...props, value: draft[key], required: true, onChange: (e) => change(key, e.target.value) });
+  const input2 = (key, props) => (0, import_react109.createElement)("input", { ...props, value: draft[key], required: true, onChange: (e) => change(key, e.target.value) });
   const isCalendar = ["daily", "weekly", "cron"].includes(draft.kind);
   function submit2(e) {
     e.preventDefault();
@@ -63050,38 +64577,38 @@ function ScheduleEditor({ task, targets: targets2, initialTarget, busy, save, ca
     }
     void save(fields);
   }
-  return (0, import_react105.createElement)(
+  return (0, import_react109.createElement)(
     "form",
     { className: "bt-set-card gb-schedule-form", onSubmit: submit2, "aria-label": task ? "编辑自动化任务" : "新建自动化任务" },
-    (0, import_react105.createElement)("h3", null, task ? "编辑任务" : "新建任务"),
-    (0, import_react105.createElement)(
+    (0, import_react109.createElement)("h3", null, task ? "编辑任务" : "新建任务"),
+    (0, import_react109.createElement)(
       "fieldset",
       { disabled: busy },
-      field2("任务名称", (0, import_react105.createElement)("input", { name: "title", required: true, maxLength: 120, autoFocus: true, value: title2, onChange: (e) => setTitle(e.target.value) })),
-      field2("执行会话", (0, import_react105.createElement)("select", { value: target, required: true, onChange: (e) => setTarget(e.target.value) }, targets2.map((t2) => option2([t2.id, t2.label])))),
-      field2("任务指令", (0, import_react105.createElement)("textarea", { name: "prompt", required: true, rows: 3, value: prompt, onChange: (e) => setPrompt(e.target.value) })),
-      task && (0, import_react105.createElement)("label", { className: "gb-schedule-check" }, (0, import_react105.createElement)("input", { type: "checkbox", checked: replaceTiming, onChange: (e) => setReplaceTiming(e.target.checked) }), "更改执行时间"),
-      !replaceTiming && (0, import_react105.createElement)("p", { className: "bt-set-hint" }, scheduleLabel(task)),
-      replaceTiming && (0, import_react105.createElement)(
+      field2("任务名称", (0, import_react109.createElement)("input", { name: "title", required: true, maxLength: 120, autoFocus: true, value: title2, onChange: (e) => setTitle(e.target.value) })),
+      field2("执行会话", (0, import_react109.createElement)("select", { value: target, required: true, onChange: (e) => setTarget(e.target.value) }, targets2.map((t2) => option2([t2.id, t2.label])))),
+      field2("任务指令", (0, import_react109.createElement)("textarea", { name: "prompt", required: true, rows: 3, value: prompt, onChange: (e) => setPrompt(e.target.value) })),
+      task && (0, import_react109.createElement)("label", { className: "gb-schedule-check" }, (0, import_react109.createElement)("input", { type: "checkbox", checked: replaceTiming, onChange: (e) => setReplaceTiming(e.target.checked) }), "更改执行时间"),
+      !replaceTiming && (0, import_react109.createElement)("p", { className: "bt-set-hint" }, scheduleLabel(task)),
+      replaceTiming && (0, import_react109.createElement)(
         "div",
         { className: "gb-schedule-grid" },
-        field2("重复方式", (0, import_react105.createElement)("select", { value: draft.kind, onChange: (e) => change("kind", e.target.value) }, kinds3.map(option2))),
+        field2("重复方式", (0, import_react109.createElement)("select", { value: draft.kind, onChange: (e) => change("kind", e.target.value) }, kinds3.map(option2))),
         draft.kind === "at" && field2("执行时间（" + localZone2() + "）", input2("at", { type: "datetime-local" })),
         draft.kind === "every" && field2("重复间隔", input2("count", { type: "number", min: 1, step: 1 })),
-        draft.kind === "every" && field2("间隔单位", (0, import_react105.createElement)("select", { value: draft.unit, onChange: (e) => change("unit", Number(e.target.value)) }, intervalUnits.map(option2))),
+        draft.kind === "every" && field2("间隔单位", (0, import_react109.createElement)("select", { value: draft.unit, onChange: (e) => change("unit", Number(e.target.value)) }, intervalUnits.map(option2))),
         ["daily", "weekly"].includes(draft.kind) && field2("时间", input2("time", { type: "time" })),
-        draft.kind === "weekly" && (0, import_react105.createElement)(
+        draft.kind === "weekly" && (0, import_react109.createElement)(
           "fieldset",
           { className: "gb-schedule-days" },
-          (0, import_react105.createElement)("legend", null, "执行日"),
-          ...days.map((label, i) => (0, import_react105.createElement)("label", { key: label }, (0, import_react105.createElement)("input", {
+          (0, import_react109.createElement)("legend", null, "执行日"),
+          ...days.map((label, i) => (0, import_react109.createElement)("label", { key: label }, (0, import_react109.createElement)("input", {
             type: "checkbox",
             checked: draft.weekdays.includes(i + 1),
             onChange: (e) => change("weekdays", e.target.checked ? [...draft.weekdays, i + 1].sort() : draft.weekdays.filter((day) => day !== i + 1))
           }), label))
         ),
         draft.kind === "cron" && field2("Cron 表达式（分 时 日 月 周）", input2("expression", { spellCheck: false })),
-        draft.kind === "rrule" && field2("iCalendar 规则", (0, import_react105.createElement)("textarea", {
+        draft.kind === "rrule" && field2("iCalendar 规则", (0, import_react109.createElement)("textarea", {
           rows: 3,
           required: true,
           value: draft.rrule,
@@ -63092,12 +64619,12 @@ function ScheduleEditor({ task, targets: targets2, initialTarget, busy, save, ca
         isCalendar && field2("时区", input2("timeZone", { placeholder: "Asia/Taipei", spellCheck: false }))
       )
     ),
-    problem && (0, import_react105.createElement)("p", { role: "alert", className: "bt-danger" }, problem),
-    (0, import_react105.createElement)(
+    problem && (0, import_react109.createElement)("p", { role: "alert", className: "bt-danger" }, problem),
+    (0, import_react109.createElement)(
       "div",
       { className: "gb-schedule-actions" },
-      (0, import_react105.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: cancel }, "取消"),
-      (0, import_react105.createElement)(
+      (0, import_react109.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: cancel }, "取消"),
+      (0, import_react109.createElement)(
         "button",
         { type: "submit", className: "bt-send bt-soft-sm", disabled: busy || !target || !prompt.trim() || !title2.trim() },
         task ? "保存修改" : "创建任务"
@@ -63119,14 +64646,14 @@ var stamp2 = (value) => new Date(value).toLocaleString(void 0, {
   second: "2-digit",
   timeZoneName: "short"
 });
-var click = (text, onClick, disabled = false) => (0, import_react106.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled, onClick }, text);
+var click = (text, onClick, disabled = false) => (0, import_react110.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled, onClick }, text);
 var identity = (task) => ({ id: task.id, sessionId: task.sessionId });
 function ScheduleHistory({ client, task, openChat }) {
-  const [page, setPage] = (0, import_react106.useState)(null);
-  const [error, setError] = (0, import_react106.useState)("");
-  const [loading, setLoading] = (0, import_react106.useState)(false);
-  const revision = (0, import_react106.useRef)(0);
-  const load = (0, import_react106.useCallback)(async (before) => {
+  const [page, setPage] = (0, import_react110.useState)(null);
+  const [error, setError] = (0, import_react110.useState)("");
+  const [loading, setLoading] = (0, import_react110.useState)(false);
+  const revision = (0, import_react110.useRef)(0);
+  const load = (0, import_react110.useCallback)(async (before) => {
     const version2 = ++revision.current;
     setLoading(true);
     setError("");
@@ -63139,45 +64666,45 @@ function ScheduleHistory({ client, task, openChat }) {
       if (revision.current === version2) setLoading(false);
     }
   }, [client, task.id, task.sessionId]);
-  (0, import_react106.useEffect)(() => {
+  (0, import_react110.useEffect)(() => {
     void load();
     return () => {
       revision.current++;
     };
   }, [load, task.lastDelivery?.messageId]);
-  return (0, import_react106.createElement)(
+  return (0, import_react110.createElement)(
     "section",
     { className: "gb-schedule-history", "aria-label": "投递记录" },
-    (0, import_react106.createElement)("div", { className: "gb-schedule-heading" }, (0, import_react106.createElement)("h4", null, "投递记录"), click("刷新记录", () => load(), loading)),
-    !page && loading && (0, import_react106.createElement)("p", { role: "status" }, "正在读取记录…"),
-    error && (0, import_react106.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    page?.records.length === 0 && (0, import_react106.createElement)("p", { className: "bt-set-hint" }, "暂无投递记录。"),
-    page?.records.length > 0 && (0, import_react106.createElement)("ol", null, page.records.map((record) => (0, import_react106.createElement)(
+    (0, import_react110.createElement)("div", { className: "gb-schedule-heading" }, (0, import_react110.createElement)("h4", null, "投递记录"), click("刷新记录", () => load(), loading)),
+    !page && loading && (0, import_react110.createElement)("p", { role: "status" }, "正在读取记录…"),
+    error && (0, import_react110.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    page?.records.length === 0 && (0, import_react110.createElement)("p", { className: "bt-set-hint" }, "暂无投递记录。"),
+    page?.records.length > 0 && (0, import_react110.createElement)("ol", null, page.records.map((record) => (0, import_react110.createElement)(
       "li",
       { key: record.messageId },
-      (0, import_react106.createElement)("span", null, stamp2(record.deliveredAt) + " · 已投递"),
+      (0, import_react110.createElement)("span", null, stamp2(record.deliveredAt) + " · 已投递"),
       click("打开会话", () => openChat(record.targetSessionId)),
-      record.prompt && (0, import_react106.createElement)("p", null, record.prompt)
+      record.prompt && (0, import_react110.createElement)("p", null, record.prompt)
     ))),
     page?.nextBefore && click("更早的记录", () => load(page.nextBefore), loading),
-    page && !page.nextBefore && page.earlierRecordsUnavailable && (0, import_react106.createElement)("p", { className: "bt-set-hint" }, page.earlierRecordsPruned ? "更早的记录已超过保留期限或数量上限。" : "宿主未保存更早的投递记录。")
+    page && !page.nextBefore && page.earlierRecordsUnavailable && (0, import_react110.createElement)("p", { className: "bt-set-hint" }, page.earlierRecordsPruned ? "更早的记录已超过保留期限或数量上限。" : "宿主未保存更早的投递记录。")
   );
 }
 function TaskCard({ task, target, client, actions, busy, readonly, onEdit, mutate }) {
-  const [history, setHistory] = (0, import_react106.useState)(false);
-  const [confirm2, setConfirm] = (0, import_react106.useState)(false);
+  const [history, setHistory] = (0, import_react110.useState)(false);
+  const [confirm2, setConfirm] = (0, import_react110.useState)(false);
   const running = task.executionActive;
   const cooling = task.deliveryFloorEndsAt && Date.parse(task.deliveryFloorEndsAt) > Date.now();
   const locked = readonly || busy;
   const next = task.status === "active" ? (task.state === "overdue" ? "已到期 · " : "下次 · ") + stamp2(task.scheduledAt) : task.status === "paused" ? "已暂停" : "计划已结束";
-  return (0, import_react106.createElement)(
+  return (0, import_react110.createElement)(
     "article",
     { className: "bt-set-card gb-schedule-card", "aria-label": task.title },
-    (0, import_react106.createElement)("div", { className: "gb-schedule-heading" }, (0, import_react106.createElement)("h3", null, task.title), (0, import_react106.createElement)("span", { className: "bt-set-hint" }, next)),
-    (0, import_react106.createElement)("p", { className: "gb-schedule-meta" }, target + " · " + scheduleLabel(task)),
-    (0, import_react106.createElement)("p", { className: "gb-schedule-prompt" }, task.prompt),
-    running ? (0, import_react106.createElement)("p", { className: "bt-set-hint" }, "会话中有一次投递正在排队或执行。") : cooling && (0, import_react106.createElement)("p", { className: "bt-set-hint" }, "可再次运行 · " + stamp2(task.deliveryFloorEndsAt)),
-    (0, import_react106.createElement)(
+    (0, import_react110.createElement)("div", { className: "gb-schedule-heading" }, (0, import_react110.createElement)("h3", null, task.title), (0, import_react110.createElement)("span", { className: "bt-set-hint" }, next)),
+    (0, import_react110.createElement)("p", { className: "gb-schedule-meta" }, target + " · " + scheduleLabel(task)),
+    (0, import_react110.createElement)("p", { className: "gb-schedule-prompt" }, task.prompt),
+    running ? (0, import_react110.createElement)("p", { className: "bt-set-hint" }, "会话中有一次投递正在排队或执行。") : cooling && (0, import_react110.createElement)("p", { className: "bt-set-hint" }, "可再次运行 · " + stamp2(task.deliveryFloorEndsAt)),
+    (0, import_react110.createElement)(
       "div",
       { className: "gb-schedule-actions" },
       !readonly && click("立即运行", () => mutate("Run", task), locked || running || cooling),
@@ -63187,17 +64714,17 @@ function TaskCard({ task, target, client, actions, busy, readonly, onEdit, mutat
         locked
       ),
       !readonly && click("编辑", () => onEdit(task), locked),
-      (0, import_react106.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", "aria-expanded": history, onClick: () => setHistory(!history) }, "投递记录"),
+      (0, import_react110.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", "aria-expanded": history, onClick: () => setHistory(!history) }, "投递记录"),
       !readonly && !confirm2 && click("删除", () => setConfirm(true), locked)
     ),
-    confirm2 && (0, import_react106.createElement)(
+    confirm2 && (0, import_react110.createElement)(
       "div",
       { className: "gb-schedule-actions" },
-      (0, import_react106.createElement)("span", null, "删除此任务及其投递记录？"),
+      (0, import_react110.createElement)("span", null, "删除此任务及其投递记录？"),
       click("取消", () => setConfirm(false), busy),
       click("确认删除", () => mutate("Delete", task), locked)
     ),
-    history && (0, import_react106.createElement)(ScheduleHistory, { client, task, openChat: (id) => {
+    history && (0, import_react110.createElement)(ScheduleHistory, { client, task, openChat: (id) => {
       actions.closeSettings();
       actions.openSession(id);
     } })
@@ -63205,22 +64732,22 @@ function TaskCard({ task, target, client, actions, busy, readonly, onEdit, mutat
 }
 function BotSchedulesPage({ client, roster, actions, start, initialTarget, publish }) {
   const owner = start?.startsWith("bot:") ? start.slice(4) : start?.startsWith("room:") ? start.slice(5) : "";
-  const [filter, setFilter] = (0, import_react106.useState)(owner);
-  const [editor, setEditor] = (0, import_react106.useState)(start && !owner && !roster.readOnly ? { target: start } : null);
-  const [view, setView] = (0, import_react106.useState)(null);
-  const [busy, setBusy] = (0, import_react106.useState)(false);
-  const [loadError, setLoadError] = (0, import_react106.useState)("");
-  const [error, setError] = (0, import_react106.useState)("");
-  const [notice, setNotice] = (0, import_react106.useState)("");
-  const mounted = (0, import_react106.useRef)(false);
-  const lock = (0, import_react106.useRef)(false);
-  const sequence = (0, import_react106.useRef)(0);
-  const update = (0, import_react106.useCallback)((next) => {
+  const [filter, setFilter] = (0, import_react110.useState)(owner);
+  const [editor, setEditor] = (0, import_react110.useState)(start && !owner && !roster.readOnly ? { target: start } : null);
+  const [view, setView] = (0, import_react110.useState)(null);
+  const [busy, setBusy] = (0, import_react110.useState)(false);
+  const [loadError, setLoadError] = (0, import_react110.useState)("");
+  const [error, setError] = (0, import_react110.useState)("");
+  const [notice, setNotice] = (0, import_react110.useState)("");
+  const mounted = (0, import_react110.useRef)(false);
+  const lock = (0, import_react110.useRef)(false);
+  const sequence = (0, import_react110.useRef)(0);
+  const update = (0, import_react110.useCallback)((next) => {
     setView(next);
     setLoadError("");
     publish(next);
   }, [publish]);
-  const reload = (0, import_react106.useCallback)(async () => {
+  const reload = (0, import_react110.useCallback)(async () => {
     const token = ++sequence.current;
     try {
       const next = await client.dispatch({ action: "team-workspace.scheduleList" });
@@ -63229,7 +64756,7 @@ function BotSchedulesPage({ client, roster, actions, start, initialTarget, publi
       if (mounted.current && token === sequence.current) setLoadError(cause.message);
     }
   }, [client, update]);
-  (0, import_react106.useEffect)(() => {
+  (0, import_react110.useEffect)(() => {
     mounted.current = true;
     let stopped = false, timer;
     async function poll() {
@@ -63280,28 +64807,28 @@ function BotSchedulesPage({ client, roster, actions, start, initialTarget, publi
   }
   const tasks = view?.tasks.filter((task) => !filter || task.botId === filter || task.roomId === filter) ?? [];
   const newTarget = filter || (targets2.some((t2) => t2.id === initialTarget) ? initialTarget : targets2[0]?.id);
-  return (0, import_react106.createElement)(
+  return (0, import_react110.createElement)(
     "section",
     { className: "gb-bot-schedules", "aria-label": t("Scheduled messages") },
-    (0, import_react106.createElement)("style", null, bot_schedules_default),
-    loadError && (0, import_react106.createElement)("div", { role: "alert", className: "gb-error" }, loadError, " ", click("重新读取", reload, busy)),
-    !view && !loadError && (0, import_react106.createElement)("p", { role: "status" }, "正在读取自动化任务…"),
-    view && !view.available && (0, import_react106.createElement)(
+    (0, import_react110.createElement)("style", null, bot_schedules_default),
+    loadError && (0, import_react110.createElement)("div", { role: "alert", className: "gb-error" }, loadError, " ", click("重新读取", reload, busy)),
+    !view && !loadError && (0, import_react110.createElement)("p", { role: "status" }, "正在读取自动化任务…"),
+    view && !view.available && (0, import_react110.createElement)(
       "div",
       { className: "bt-set-card gb-schedule-card" },
-      (0, import_react106.createElement)("p", null, "在 DSH 插件设置中启用「自动化任务」即可调度 Bot 和群聊。"),
+      (0, import_react110.createElement)("p", null, "在 DSH 插件设置中启用「自动化任务」即可调度 Bot 和群聊。"),
       click("打开插件设置", () => actions.openSettings("dsh", "plugins"))
     ),
-    view?.available && !editor && (0, import_react106.createElement)(
+    view?.available && !editor && (0, import_react110.createElement)(
       "div",
       { className: "gb-schedule-toolbar" },
-      (0, import_react106.createElement)(
+      (0, import_react110.createElement)(
         "select",
         { className: "bt-select", "aria-label": "筛选执行会话", value: filter, onChange: (e) => setFilter(e.target.value) },
-        (0, import_react106.createElement)("option", { value: "" }, "所有会话"),
-        ...targets2.map((t2) => (0, import_react106.createElement)("option", { key: t2.id, value: t2.id }, t2.label))
+        (0, import_react110.createElement)("option", { value: "" }, "所有会话"),
+        ...targets2.map((t2) => (0, import_react110.createElement)("option", { key: t2.id, value: t2.id }, t2.label))
       ),
-      !roster.readOnly && (0, import_react106.createElement)("button", {
+      !roster.readOnly && (0, import_react110.createElement)("button", {
         type: "button",
         className: "bt-send bt-soft-sm",
         disabled: busy || !targets2.length,
@@ -63309,9 +64836,9 @@ function BotSchedulesPage({ client, roster, actions, start, initialTarget, publi
       }, "新建任务"),
       !roster.readOnly && click("统一创建自动化", () => actions.openSettings("automation", { kind: "message", id: newTarget }), busy)
     ),
-    error && (0, import_react106.createElement)("p", { role: "alert", className: "bt-danger" }, error),
-    notice && (0, import_react106.createElement)("p", { role: "status", className: "bt-set-hint" }, notice),
-    view?.available && (editor && !roster.readOnly ? (0, import_react106.createElement)(ScheduleEditor, {
+    error && (0, import_react110.createElement)("p", { role: "alert", className: "bt-danger" }, error),
+    notice && (0, import_react110.createElement)("p", { role: "status", className: "bt-set-hint" }, notice),
+    view?.available && (editor && !roster.readOnly ? (0, import_react110.createElement)(ScheduleEditor, {
       key: editor.task?.id ?? "new",
       task: editor.task,
       targets: targets2,
@@ -63319,7 +64846,7 @@ function BotSchedulesPage({ client, roster, actions, start, initialTarget, publi
       busy,
       cancel: () => edit(null),
       save: (fields) => mutate(editor.task ? "Edit" : "Create", editor.task, fields)
-    }) : tasks.length ? tasks.map((task) => (0, import_react106.createElement)(TaskCard, {
+    }) : tasks.length ? tasks.map((task) => (0, import_react110.createElement)(TaskCard, {
       key: task.id,
       task,
       client,
@@ -63329,17 +64856,17 @@ function BotSchedulesPage({ client, roster, actions, start, initialTarget, publi
       target: targets2.find((t2) => t2.id === (task.botId ?? task.roomId))?.label ?? task.sessionId,
       onEdit: (task2) => edit({ task: task2 }),
       mutate
-    })) : (0, import_react106.createElement)("p", { className: "bt-set-hint" }, filter ? "这个会话暂无自动化任务。" : "暂无自动化任务。"))
+    })) : (0, import_react110.createElement)("p", { className: "bt-set-hint" }, filter ? "这个会话暂无自动化任务。" : "暂无自动化任务。"))
   );
 }
 
 // src/client/browser-viewer.js
-var import_react108 = require("react");
+var import_react112 = require("react");
 
 // src/client/browser-teaching.js
-var import_react107 = require("react");
-function button2(label, onClick, disabled) {
-  return (0, import_react107.createElement)("button", { type: "button", onClick, disabled }, label);
+var import_react111 = require("react");
+function button3(label, onClick, disabled) {
+  return (0, import_react111.createElement)("button", { type: "button", onClick, disabled }, label);
 }
 function describe(step) {
   const actions = { click: "点击", navigate: "打开", fill: "输入", key: "按键", scroll: "滚动" };
@@ -63352,12 +64879,12 @@ function describe(step) {
   ].filter(Boolean).join(" · ");
 }
 function BrowserTeachingPanel({ call: call3, lease, canRecord, recording }) {
-  const [goal, setGoal] = (0, import_react107.useState)("");
-  const [records, setRecords] = (0, import_react107.useState)([]);
-  const [working, setWorking] = (0, import_react107.useState)(false);
-  const [notice, setNotice] = (0, import_react107.useState)("");
-  const [error, setError] = (0, import_react107.useState)("");
-  (0, import_react107.useEffect)(() => {
+  const [goal, setGoal] = (0, import_react111.useState)("");
+  const [records, setRecords] = (0, import_react111.useState)([]);
+  const [working, setWorking] = (0, import_react111.useState)(false);
+  const [notice, setNotice] = (0, import_react111.useState)("");
+  const [error, setError] = (0, import_react111.useState)("");
+  (0, import_react111.useEffect)(() => {
     let disposed = false;
     call3("teaching.list").then(
       (value) => {
@@ -63385,33 +64912,33 @@ function BrowserTeachingPanel({ call: call3, lease, canRecord, recording }) {
       setWorking(false);
     }
   };
-  return (0, import_react107.createElement)(
+  return (0, import_react111.createElement)(
     "details",
     { className: "gb-browser-teaching" },
-    (0, import_react107.createElement)("summary", null, recording ? "正在录制示范 · " + recording.count + " 步" : "浏览器示范"),
-    (0, import_react107.createElement)("p", { className: "gb-modal-note" }, "接管网页后录制操作。示范仅保存网页来源和步骤，用于生成待审核的 Skill。"),
-    error && (0, import_react107.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    notice && (0, import_react107.createElement)("p", { role: "status" }, notice),
-    recording ? button2("结束录制", () => perform("stop", { lease }, (result) => result ? "已保存 " + result.steps.length + " 个步骤" : "这次没有录到操作"), working || !canRecord) : (0, import_react107.createElement)(
+    (0, import_react111.createElement)("summary", null, recording ? "正在录制示范 · " + recording.count + " 步" : "浏览器示范"),
+    (0, import_react111.createElement)("p", { className: "gb-modal-note" }, "接管网页后录制操作。示范仅保存网页来源和步骤，用于生成待审核的 Skill。"),
+    error && (0, import_react111.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    notice && (0, import_react111.createElement)("p", { role: "status" }, notice),
+    recording ? button3("结束录制", () => perform("stop", { lease }, (result) => result ? "已保存 " + result.steps.length + " 个步骤" : "这次没有录到操作"), working || !canRecord) : (0, import_react111.createElement)(
       "div",
       { className: "gb-modal-actions" },
-      (0, import_react107.createElement)("input", { "aria-label": "示范目标", placeholder: "例如核对一条待审核记录", value: goal, maxLength: 400, onChange: (event) => setGoal(event.target.value) }),
-      button2("开始录制", () => perform("start", { lease, goal }), !goal.trim() || !canRecord || working)
+      (0, import_react111.createElement)("input", { "aria-label": "示范目标", placeholder: "例如核对一条待审核记录", value: goal, maxLength: 400, onChange: (event) => setGoal(event.target.value) }),
+      button3("开始录制", () => perform("start", { lease, goal }), !goal.trim() || !canRecord || working)
     ),
-    ...records.slice().reverse().map((record) => (0, import_react107.createElement)(
+    ...records.slice().reverse().map((record) => (0, import_react111.createElement)(
       "details",
       { key: record.id, className: "gb-browser-demonstration" },
-      (0, import_react107.createElement)("summary", null, record.goal + " · " + record.steps.length + " 步"),
-      (0, import_react107.createElement)("ol", null, ...record.steps.map((step, index) => (0, import_react107.createElement)("li", { key: index }, describe(step)))),
-      (0, import_react107.createElement)(
+      (0, import_react111.createElement)("summary", null, record.goal + " · " + record.steps.length + " 步"),
+      (0, import_react111.createElement)("ol", null, ...record.steps.map((step, index) => (0, import_react111.createElement)("li", { key: index }, describe(step)))),
+      (0, import_react111.createElement)(
         "div",
         { className: "gb-modal-actions" },
-        button2("整理成 Skill 提案", () => perform(
+        button3("整理成 Skill 提案", () => perform(
           "draft",
           { id: record.id },
           (result) => result.existing ? "这段示范已有提案，可回 Bot 私聊查看" : "Skill 提案已送到 Bot 私聊等待审核"
         ), working),
-        button2("删除示范", () => perform("remove", { id: record.id }), working)
+        button3("删除示范", () => perform("remove", { id: record.id }), working)
       )
     ))
   );
@@ -63422,22 +64949,22 @@ var browser_viewer_default = ".gb-browser-viewer {\n  display: grid;\n  gap: 12p
 
 // src/client/browser-viewer.js
 var surfaceNames = { local: "服务器浏览器", container: "独立容器", cloud: "云端容器" };
-var button3 = (label, onClick, disabled = false, primary = false) => (0, import_react108.createElement)("button", { type: "button", className: primary ? "gb-modal-primary" : void 0, onClick, disabled }, label);
+var button4 = (label, onClick, disabled = false, primary = false) => (0, import_react112.createElement)("button", { type: "button", className: primary ? "gb-modal-primary" : void 0, onClick, disabled }, label);
 var remoteKeys = /* @__PURE__ */ new Set(["Enter", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]);
 function BrowserPanel2({ client, bot, sessionId, close }) {
-  const lease = (0, import_react108.useRef)();
-  const alive = (0, import_react108.useRef)(false);
-  const [available, setAvailable] = (0, import_react108.useState)([]);
-  const [target, setTarget] = (0, import_react108.useState)("local");
-  const [open, setOpen] = (0, import_react108.useState)(false);
-  const [busy, setBusy] = (0, import_react108.useState)(false);
-  const [frame, setFrame] = (0, import_react108.useState)();
-  const [surface, setSurface] = (0, import_react108.useState)("browser");
-  const [input2, setInput] = (0, import_react108.useState)("");
-  const [address, setAddress] = (0, import_react108.useState)("");
-  const [error, setError] = (0, import_react108.useState)("");
-  const call3 = (0, import_react108.useCallback)((action2, values) => client.dispatch({ action: "browser." + action2, botId: bot.id, sessionId, ...values }), [client, bot.id, sessionId]);
-  (0, import_react108.useEffect)(() => {
+  const lease = (0, import_react112.useRef)();
+  const alive = (0, import_react112.useRef)(false);
+  const [available, setAvailable] = (0, import_react112.useState)([]);
+  const [target, setTarget] = (0, import_react112.useState)("local");
+  const [open, setOpen] = (0, import_react112.useState)(false);
+  const [busy, setBusy] = (0, import_react112.useState)(false);
+  const [frame, setFrame] = (0, import_react112.useState)();
+  const [surface, setSurface] = (0, import_react112.useState)("browser");
+  const [input2, setInput] = (0, import_react112.useState)("");
+  const [address, setAddress] = (0, import_react112.useState)("");
+  const [error, setError] = (0, import_react112.useState)("");
+  const call3 = (0, import_react112.useCallback)((action2, values) => client.dispatch({ action: "browser." + action2, botId: bot.id, sessionId, ...values }), [client, bot.id, sessionId]);
+  (0, import_react112.useEffect)(() => {
     alive.current = true;
     call3("status").then((value) => {
       if (!alive.current) return;
@@ -63454,7 +64981,7 @@ function BrowserPanel2({ client, bot, sessionId, close }) {
       lease.current = void 0;
     };
   }, [call3]);
-  (0, import_react108.useEffect)(() => {
+  (0, import_react112.useEffect)(() => {
     if (!open) return;
     let stop = false, timer;
     async function poll() {
@@ -63524,47 +65051,47 @@ function BrowserPanel2({ client, bot, sessionId, close }) {
     agent: frame?.expired ? "接管已过期，Bot 可继续" : "Bot 可操作"
   };
   const frameTitle = frame?.title || frame?.url;
-  return (0, import_react108.createElement)(
+  return (0, import_react112.createElement)(
     GodbotModal,
     {
       title: bot.name + " 的网页浏览器",
       close,
       closeLabel: "关闭面板",
       wide: true,
-      headerAside: frame && (0, import_react108.createElement)("span", { className: "gb-browser-status", role: "status" }, state[frame.control])
+      headerAside: frame && (0, import_react112.createElement)("span", { className: "gb-browser-status", role: "status" }, state[frame.control])
     },
-    (0, import_react108.createElement)("style", null, browser_viewer_default),
-    error && (0, import_react108.createElement)("p", { className: "gb-modal-note", role: "alert" }, error),
-    !open && (0, import_react108.createElement)(
+    (0, import_react112.createElement)("style", null, browser_viewer_default),
+    error && (0, import_react112.createElement)("p", { className: "gb-modal-note", role: "alert" }, error),
+    !open && (0, import_react112.createElement)(
       "div",
       { className: "gb-modal-actions" },
-      (0, import_react108.createElement)("select", {
+      (0, import_react112.createElement)("select", {
         "aria-label": "浏览器执行环境",
         value: target,
         disabled: busy || !available.length,
         onChange: (e) => setTarget(e.target.value)
-      }, available.map((value) => (0, import_react108.createElement)("option", { key: value, value }, surfaceNames[value]))),
-      button3("打开执行环境", openEnvironment, busy || !available.length, true)
+      }, available.map((value) => (0, import_react112.createElement)("option", { key: value, value }, surfaceNames[value]))),
+      button4("打开执行环境", openEnvironment, busy || !available.length, true)
     ),
-    open && (0, import_react108.createElement)(
+    open && (0, import_react112.createElement)(
       "div",
       { className: "gb-browser-viewer" },
-      (0, import_react108.createElement)(
+      (0, import_react112.createElement)(
         "div",
         { className: "gb-modal-actions" },
-        (0, import_react108.createElement)("span", { className: "gb-browser-title", title: frameTitle }, frameTitle || "正在读取画面"),
-        ["container", "cloud"].includes(target) && (0, import_react108.createElement)("select", {
+        (0, import_react112.createElement)("span", { className: "gb-browser-title", title: frameTitle }, frameTitle || "正在读取画面"),
+        ["container", "cloud"].includes(target) && (0, import_react112.createElement)("select", {
           "aria-label": "远程视图",
           value: surface,
           onChange(e) {
             setFrame(void 0);
             setSurface(e.target.value);
           }
-        }, (0, import_react108.createElement)("option", { value: "browser" }, "网页"), (0, import_react108.createElement)("option", { value: "desktop" }, "完整桌面")),
-        lease.current ? button3("交还给 Bot", releaseControl, busy) : button3("接管网页", takeControl, busy || !frame || frame.control === "other", true),
-        button3("关闭执行环境", closeEnvironment, busy || frame?.control === "other")
+        }, (0, import_react112.createElement)("option", { value: "browser" }, "网页"), (0, import_react112.createElement)("option", { value: "desktop" }, "完整桌面")),
+        lease.current ? button4("交还给 Bot", releaseControl, busy) : button4("接管网页", takeControl, busy || !frame || frame.control === "other", true),
+        button4("关闭执行环境", closeEnvironment, busy || frame?.control === "other")
       ),
-      frame && (0, import_react108.createElement)("img", {
+      frame && (0, import_react112.createElement)("img", {
         src: "data:image/jpeg;base64," + frame.data,
         alt: frame.surface === "desktop" ? "实时桌面画面" : "实时浏览器画面",
         draggable: false,
@@ -63586,37 +65113,37 @@ function BrowserPanel2({ client, bot, sessionId, close }) {
           if (controllable) void send({ kind: "scroll", delta: Math.max(-1200, Math.min(1200, e.deltaY)) });
         }
       }),
-      frame?.control === "mine" && (0, import_react108.createElement)(
+      frame?.control === "mine" && (0, import_react112.createElement)(
         "div",
         { className: "gb-browser-inputs" },
-        frame.surface === "browser" && (0, import_react108.createElement)("input", {
+        frame.surface === "browser" && (0, import_react112.createElement)("input", {
           type: "url",
           "aria-label": "网页地址",
           placeholder: "https://",
           value: address,
           onChange: (e) => setAddress(e.target.value)
         }),
-        frame.surface === "browser" && button3("打开地址", () => send({ kind: "navigate", url: address }), !controllable || !address),
-        (0, import_react108.createElement)("input", {
+        frame.surface === "browser" && button4("打开地址", () => send({ kind: "navigate", url: address }), !controllable || !address),
+        (0, import_react112.createElement)("input", {
           type: "password",
           autoComplete: "off",
           "aria-label": "输入到当前网页的内容",
           value: input2,
           onChange: (e) => setInput(e.target.value)
         }),
-        button3("输入到网页", () => send({ kind: "text", text: input2 }, () => setInput("")), !controllable || !input2)
+        button4("输入到网页", () => send({ kind: "text", text: input2 }, () => setInput("")), !controllable || !input2)
       )
     ),
-    (0, import_react108.createElement)(BrowserTeachingPanel, { call: call3, lease: lease.current, canRecord: Boolean(controllable && frame.surface === "browser"), recording: frame?.recording })
+    (0, import_react112.createElement)(BrowserTeachingPanel, { call: call3, lease: lease.current, canRecord: Boolean(controllable && frame.surface === "browser"), recording: frame?.recording })
   );
 }
 function WebBrowserButton({ client, bot, sessionId }) {
-  const [shown, setShown] = (0, import_react108.useState)(false);
-  return (0, import_react108.createElement)(
-    import_react108.Fragment,
+  const [shown, setShown] = (0, import_react112.useState)(false);
+  return (0, import_react112.createElement)(
+    import_react112.Fragment,
     null,
-    (0, import_react108.createElement)("button", { type: "button", className: "bt-icon-btn bt-head-search", "aria-label": "打开网页浏览器", title: "打开网页浏览器", onClick: () => setShown(true) }, (0, import_react108.createElement)(Icon, { name: "monitor", size: 17 })),
-    shown && (0, import_react108.createElement)(BrowserPanel2, { client, bot, sessionId, close: () => setShown(false) })
+    (0, import_react112.createElement)("button", { type: "button", className: "bt-icon-btn bt-head-search", "aria-label": "打开网页浏览器", title: "打开网页浏览器", onClick: () => setShown(true) }, (0, import_react112.createElement)(Icon, { name: "monitor", size: 17 })),
+    shown && (0, import_react112.createElement)(BrowserPanel2, { client, bot, sessionId, close: () => setShown(false) })
   );
 }
 
@@ -64022,7 +65549,7 @@ function bindTeamSlashSource(controller, source, sessionId) {
 }
 
 // src/client/automation-setup.js
-var import_react109 = require("react");
+var import_react113 = require("react");
 var destinations = { messages: ["schedules", "查看会话日程"], routines: ["routines", "查看定时派工"], events: ["tasks", "查看事件设置"] };
 var days2 = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 var targets = [["message", "在会话执行"], ["task", "派工并验收"], ["workflow", "运行已保存工作流"]];
@@ -64041,33 +65568,33 @@ function timing(form, kind) {
 }
 function TimingFields({ kind }) {
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  if (kind === "once") return field("执行时间", (0, import_react109.createElement)("input", { name: "when", type: "datetime-local", required: true }));
-  if (kind === "interval") return field("间隔分钟", (0, import_react109.createElement)("input", { name: "minutes", type: "number", min: 1, defaultValue: 60, required: true }));
-  if (kind === "rrule") return field("RRULE", (0, import_react109.createElement)("textarea", { name: "rrule", rows: 2, required: true }));
-  return (0, import_react109.createElement)(
+  if (kind === "once") return field("执行时间", (0, import_react113.createElement)("input", { name: "when", type: "datetime-local", required: true }));
+  if (kind === "interval") return field("间隔分钟", (0, import_react113.createElement)("input", { name: "minutes", type: "number", min: 1, defaultValue: 60, required: true }));
+  if (kind === "rrule") return field("RRULE", (0, import_react113.createElement)("textarea", { name: "rrule", rows: 2, required: true }));
+  return (0, import_react113.createElement)(
     "div",
     { className: "gb-form" },
-    kind === "cron" ? field("五字段 Cron", (0, import_react109.createElement)("input", { name: "expression", placeholder: "0 9 * * 1-5", required: true })) : field("本地时间", (0, import_react109.createElement)("input", { name: "time", type: "time", defaultValue: "09:00", required: true })),
-    field("IANA 时区", (0, import_react109.createElement)("input", { name: "timeZone", defaultValue: zone, required: true })),
-    kind === "weekly" && row(...days2.map((day, index) => (0, import_react109.createElement)(
+    kind === "cron" ? field("五字段 Cron", (0, import_react113.createElement)("input", { name: "expression", placeholder: "0 9 * * 1-5", required: true })) : field("本地时间", (0, import_react113.createElement)("input", { name: "time", type: "time", defaultValue: "09:00", required: true })),
+    field("IANA 时区", (0, import_react113.createElement)("input", { name: "timeZone", defaultValue: zone, required: true })),
+    kind === "weekly" && row(...days2.map((day, index) => (0, import_react113.createElement)(
       "label",
       { key: day },
-      (0, import_react109.createElement)("input", { type: "checkbox", name: "day", value: index + 1, defaultChecked: index < 5 }),
+      (0, import_react113.createElement)("input", { type: "checkbox", name: "day", value: index + 1, defaultChecked: index < 5 }),
       day
     )))
   );
 }
-function AutomationSetupPage({ client, roster, actions, initial }) {
-  const [catalog, setCatalog] = (0, import_react109.useState)();
-  const [type, setType] = (0, import_react109.useState)(initial?.kind ?? "message");
-  const [trigger, setTrigger] = (0, import_react109.useState)("schedule");
-  const [kind, setKind] = (0, import_react109.useState)("once");
-  const [error, setError] = (0, import_react109.useState)("");
-  const [result, setResult] = (0, import_react109.useState)();
-  const inFlight = (0, import_react109.useRef)(false);
-  const last = (0, import_react109.useRef)();
-  const [busy, setBusy] = (0, import_react109.useState)(false);
-  (0, import_react109.useEffect)(() => {
+function AutomationSetupPage({ client, roster, actions, initial: initial2 }) {
+  const [catalog, setCatalog] = (0, import_react113.useState)();
+  const [type, setType] = (0, import_react113.useState)(initial2?.kind ?? "message");
+  const [trigger, setTrigger] = (0, import_react113.useState)("schedule");
+  const [kind, setKind] = (0, import_react113.useState)("once");
+  const [error, setError] = (0, import_react113.useState)("");
+  const [result, setResult] = (0, import_react113.useState)();
+  const inFlight = (0, import_react113.useRef)(false);
+  const last = (0, import_react113.useRef)();
+  const [busy, setBusy] = (0, import_react113.useState)(false);
+  (0, import_react113.useEffect)(() => {
     let disposed = false;
     client.dispatch({ action: "automation.setup.view" }).then(
       (value) => {
@@ -64110,63 +65637,63 @@ function AutomationSetupPage({ client, roster, actions, initial }) {
   }
   const choices = type === "workflow" ? catalog?.workflows.map((item) => ({ ...item, name: item.name + " · R" + item.revision })) ?? [] : [...roster.bots, ...type === "message" ? roster.rooms : []];
   const available = catalog && (type !== "message" || catalog.available);
-  return (0, import_react109.createElement)(
+  return (0, import_react113.createElement)(
     "div",
     { className: "gb-stack" },
-    error && (0, import_react109.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    (0, import_react109.createElement)(
+    error && (0, import_react113.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    (0, import_react113.createElement)(
       "form",
       { className: "gb-card gb-form", onSubmit: submit2, "aria-label": "统一创建自动化" },
-      (0, import_react109.createElement)(
+      (0, import_react113.createElement)(
         "fieldset",
         { disabled: busy || Boolean(roster.readOnly) },
-        (0, import_react109.createElement)(
+        (0, import_react113.createElement)(
           "div",
           { className: "gb-form" },
-          field("执行方式", (0, import_react109.createElement)("select", { value: type, onChange: (event) => {
+          field("执行方式", (0, import_react113.createElement)("select", { value: type, onChange: (event) => {
             const next = event.target.value;
             if (next === "message") setTrigger("schedule");
             if (next !== "message" && ["cron", "rrule"].includes(kind)) setKind("once");
             setType(next);
           } }, ...targets.map(([value, label]) => option(value, label)))),
-          field("执行对象", (0, import_react109.createElement)(
+          field("执行对象", (0, import_react113.createElement)(
             "select",
-            { key: type, name: "target", defaultValue: initial?.id ?? "", required: true },
+            { key: type, name: "target", defaultValue: initial2?.id ?? "", required: true },
             option("", "选择" + (type === "workflow" ? "工作流版本" : type === "task" ? " Bot" : "会话")),
             ...choices.map((item) => option(item.id, item.name))
           )),
-          field("任务名称", (0, import_react109.createElement)("input", { name: "title", required: true, maxLength: 120 })),
+          field("任务名称", (0, import_react113.createElement)("input", { name: "title", required: true, maxLength: 120 })),
           type !== "workflow" && field(
             type === "message" ? "执行指令" : "执行要求与验收条件",
-            (0, import_react109.createElement)("textarea", { name: "instructions", required: true, rows: 3, maxLength: 16e3 })
+            (0, import_react113.createElement)("textarea", { name: "instructions", required: true, rows: 3, maxLength: 16e3 })
           ),
-          field("动作权限", (0, import_react109.createElement)("select", { name: "executionMode" }, option("normal", "按 Bot 和工作区策略执行"), option("check", "只检查并反馈"))),
-          field("何时开始", (0, import_react109.createElement)(
+          field("动作权限", (0, import_react113.createElement)("select", { name: "executionMode" }, option("normal", "按 Bot 和工作区策略执行"), option("check", "只检查并反馈"))),
+          field("何时开始", (0, import_react113.createElement)(
             "select",
             { value: trigger, onChange: (event) => setTrigger(event.target.value) },
             option("schedule", "按日程"),
             type !== "message" && option("webhook", "收到 Webhook"),
             type !== "message" && option("github", "GitHub 公开仓库事件")
           )),
-          trigger === "schedule" && field("重复方式", (0, import_react109.createElement)(
+          trigger === "schedule" && field("重复方式", (0, import_react113.createElement)(
             "select",
             { value: kind, onChange: (event) => setKind(event.target.value) },
             ...[...sharedTimings, ...type === "message" ? [["cron", "Cron"], ["rrule", "RRULE"]] : []].map(([value, label]) => option(value, label))
           )),
-          trigger === "schedule" && (0, import_react109.createElement)(TimingFields, { key: kind, kind }),
-          trigger === "github" && field("GitHub 仓库", (0, import_react109.createElement)("input", { name: "repo", placeholder: "owner/repo", required: true })),
-          trigger === "github" && field("事件类型", (0, import_react109.createElement)("input", { name: "eventType", placeholder: "例如 IssuesEvent，可留空" })),
-          catalog && !available && (0, import_react109.createElement)("p", { role: "status", className: "gb-muted" }, "在 DSH 插件设置启用自动化任务后可调度会话。"),
-          (0, import_react109.createElement)("button", { type: "submit", className: "gb-primary", disabled: busy || !available || !choices.length }, busy ? "正在创建…" : "创建自动化")
+          trigger === "schedule" && (0, import_react113.createElement)(TimingFields, { key: kind, kind }),
+          trigger === "github" && field("GitHub 仓库", (0, import_react113.createElement)("input", { name: "repo", placeholder: "owner/repo", required: true })),
+          trigger === "github" && field("事件类型", (0, import_react113.createElement)("input", { name: "eventType", placeholder: "例如 IssuesEvent，可留空" })),
+          catalog && !available && (0, import_react113.createElement)("p", { role: "status", className: "gb-muted" }, "在 DSH 插件设置启用自动化任务后可调度会话。"),
+          (0, import_react113.createElement)("button", { type: "submit", className: "gb-primary", disabled: busy || !available || !choices.length }, busy ? "正在创建…" : "创建自动化")
         )
       )
     ),
-    result && (0, import_react109.createElement)(
+    result && (0, import_react113.createElement)(
       "div",
       { className: "gb-card", role: "status" },
-      (0, import_react109.createElement)("p", null, result.replayed ? "此请求已创建" : "自动化已创建"),
-      result.url && (0, import_react109.createElement)("p", null, "投递地址 ", (0, import_react109.createElement)("code", null, result.url)),
-      result.secret && (0, import_react109.createElement)("p", { "data-sensitive": true }, "签名密钥 ", (0, import_react109.createElement)("code", null, result.secret)),
+      (0, import_react113.createElement)("p", null, result.replayed ? "此请求已创建" : "自动化已创建"),
+      result.url && (0, import_react113.createElement)("p", null, "投递地址 ", (0, import_react113.createElement)("code", null, result.url)),
+      result.secret && (0, import_react113.createElement)("p", { "data-sensitive": true }, "签名密钥 ", (0, import_react113.createElement)("code", null, result.secret)),
       button(destinations[result.mode][1], () => actions.openSettings(destinations[result.mode][0]))
     ),
     row(
@@ -64178,7 +65705,7 @@ function AutomationSetupPage({ client, roster, actions, initial }) {
 }
 
 // src/client/platform-settings.js
-var import_react110 = require("react");
+var import_react114 = require("react");
 var sourceLabels = {
   person: "人工",
   schedule: "日程",
@@ -64192,15 +65719,15 @@ var sourceLabels = {
   unattended: "无人值守",
   any: "全部来源"
 };
-function useSettingsData(client, prefix, initial = "list") {
-  const [data, setData] = (0, import_react110.useState)();
-  const [busy, setBusy] = (0, import_react110.useState)(false);
-  const [error, setError] = (0, import_react110.useState)("");
-  const writing = (0, import_react110.useRef)(false);
-  const send = (0, import_react110.useCallback)((verb, fields) => client.dispatch({ action: prefix + "." + verb, ...fields }), [client, prefix]);
-  (0, import_react110.useEffect)(() => {
+function useSettingsData(client, prefix, initial2 = "list") {
+  const [data, setData] = (0, import_react114.useState)();
+  const [busy, setBusy] = (0, import_react114.useState)(false);
+  const [error, setError] = (0, import_react114.useState)("");
+  const writing = (0, import_react114.useRef)(false);
+  const send = (0, import_react114.useCallback)((verb, fields) => client.dispatch({ action: prefix + "." + verb, ...fields }), [client, prefix]);
+  (0, import_react114.useEffect)(() => {
     let disposed = false;
-    send(initial).then((value) => {
+    send(initial2).then((value) => {
       if (!disposed) setData(value);
     }, (failure) => {
       if (!disposed) setError(failure.message);
@@ -64208,7 +65735,7 @@ function useSettingsData(client, prefix, initial = "list") {
     return () => {
       disposed = true;
     };
-  }, [send, initial]);
+  }, [send, initial2]);
   async function perform(verb, fields, apply3) {
     if (writing.current) return;
     writing.current = true;
@@ -64240,9 +65767,9 @@ var componentExample = {
 var toJson = (value) => JSON.stringify(value, null, 2);
 function ComponentSettings({ client, roster }) {
   const { data, busy, error, setError, perform } = useSettingsData(client, "components");
-  const [name, setName] = (0, import_react110.useState)("");
-  const [definition, setDefinition] = (0, import_react110.useState)(() => toJson(componentExample));
-  const [preview, setPreview] = (0, import_react110.useState)();
+  const [name, setName] = (0, import_react114.useState)("");
+  const [definition, setDefinition] = (0, import_react114.useState)(() => toJson(componentExample));
+  const [preview, setPreview] = (0, import_react114.useState)();
   const selected = data?.components.find((component) => component.name === name);
   const locked = Boolean(roster.readOnly) || busy || !data;
   function definitionRequest(verb) {
@@ -64254,60 +65781,60 @@ function ComponentSettings({ client, roster }) {
       setError("组件定义须为有效 JSON");
     }
   }
-  return (0, import_react110.createElement)(
+  return (0, import_react114.createElement)(
     "div",
     { className: "gb-stack" },
-    error && (0, import_react110.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    data && field("选择组件", (0, import_react110.createElement)("select", { value: selected ? name : "", onChange: (event) => {
+    error && (0, import_react114.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    data && field("选择组件", (0, import_react114.createElement)("select", { value: selected ? name : "", onChange: (event) => {
       const component = data.components.find((item) => item.name === event.target.value);
       setName(component?.name ?? "");
       setDefinition(toJson(component?.draft ?? componentExample));
       setPreview(void 0);
     } }, option("", "新建组件"), ...data.components.map((item) => option(item.name, item.name + (item.published ? " · v" + item.published.version : " · 草稿"))))),
-    (0, import_react110.createElement)(
+    (0, import_react114.createElement)(
       "form",
       { className: "gb-form gb-card", onSubmit: (event) => {
         event.preventDefault();
         definitionRequest("save");
       } },
-      field("组件名称", (0, import_react110.createElement)("input", { value: name, onChange: (event) => setName(event.target.value), required: true, pattern: "[a-z][a-z0-9-]*", maxLength: 40 })),
-      field("组件定义", (0, import_react110.createElement)("textarea", { rows: 15, value: definition, onChange: (event) => {
+      field("组件名称", (0, import_react114.createElement)("input", { value: name, onChange: (event) => setName(event.target.value), required: true, pattern: "[a-z][a-z0-9-]*", maxLength: 40 })),
+      field("组件定义", (0, import_react114.createElement)("textarea", { rows: 15, value: definition, onChange: (event) => {
         setDefinition(event.target.value);
         setPreview(void 0);
       }, spellCheck: false })),
       row(
         button("预览定义", () => definitionRequest("preview"), { disabled: locked }),
-        (0, import_react110.createElement)("button", { type: "submit", className: "gb-primary", disabled: locked }, "保存草稿")
+        (0, import_react114.createElement)("button", { type: "submit", className: "gb-primary", disabled: locked }, "保存草稿")
       ),
-      preview && (0, import_react110.createElement)(ViewCard, { title: preview.title, view: preview.view, busy: true })
+      preview && (0, import_react114.createElement)(ViewCard, { title: preview.title, view: preview.view, busy: true })
     ),
-    selected && (0, import_react110.createElement)(
+    selected && (0, import_react114.createElement)(
       "div",
       { className: "gb-card gb-form" },
-      (0, import_react110.createElement)("p", { role: "status" }, selected.published ? "已发布 v" + selected.published.version : "草稿待发布"),
+      (0, import_react114.createElement)("p", { role: "status" }, selected.published ? "已发布 v" + selected.published.version : "草稿待发布"),
       row(
         button("发布已保存草稿", () => perform("publish", { name }), { disabled: locked }),
         selected.published && button("下架组件", () => perform("unpublish", { name }), { disabled: locked })
       ),
-      (0, import_react110.createElement)(
+      (0, import_react114.createElement)(
         "form",
         { key: toJson([name, selected.bots, selected.allowedFunctions]), className: "gb-form", onSubmit: (event) => {
           event.preventDefault();
           const input2 = new FormData(event.currentTarget);
           void perform("grants", { name, bots: input2.getAll("bot"), functions: input2.getAll("function") });
         } },
-        (0, import_react110.createElement)(
+        (0, import_react114.createElement)(
           "fieldset",
           { className: "gb-form", disabled: locked },
-          (0, import_react110.createElement)("legend", null, "允许使用的 Bot 和数据函数"),
-          ...roster.bots.map((bot) => (0, import_react110.createElement)("label", { key: bot.id }, (0, import_react110.createElement)("input", { type: "checkbox", name: "bot", value: bot.id, defaultChecked: selected.bots.includes(bot.id) }), bot.name)),
-          ...data.functions.map((item) => (0, import_react110.createElement)(
+          (0, import_react114.createElement)("legend", null, "允许使用的 Bot 和数据函数"),
+          ...roster.bots.map((bot) => (0, import_react114.createElement)("label", { key: bot.id }, (0, import_react114.createElement)("input", { type: "checkbox", name: "bot", value: bot.id, defaultChecked: selected.bots.includes(bot.id) }), bot.name)),
+          ...data.functions.map((item) => (0, import_react114.createElement)(
             "label",
             { key: item.id },
-            (0, import_react110.createElement)("input", { type: "checkbox", name: "function", value: item.id, defaultChecked: selected.allowedFunctions.includes(item.id) }),
+            (0, import_react114.createElement)("input", { type: "checkbox", name: "function", value: item.id, defaultChecked: selected.allowedFunctions.includes(item.id) }),
             item.title + " · " + Object.keys(item.slots).map((key) => "{{" + key + "}}").join("、")
           )),
-          (0, import_react110.createElement)("button", { type: "submit" }, "保存授权")
+          (0, import_react114.createElement)("button", { type: "submit" }, "保存授权")
         )
       )
     )
@@ -64315,11 +65842,11 @@ function ComponentSettings({ client, roster }) {
 }
 var blankRule = { name: "", origin: "unattended", tool: "changes", effect: "ask", enabled: true };
 var decisionNames = { allow: "继续现有权限检查", ask: "需要批准", deny: "拒绝" };
-function sourceSelect(name, allowed2, initial) {
-  return (0, import_react110.createElement)("select", { name, defaultValue: initial }, ...allowed2.map((value) => option(value, sourceLabels[value] ?? (value || "全部来源"))));
+function sourceSelect(name, allowed2, initial2) {
+  return (0, import_react114.createElement)("select", { name, defaultValue: initial2 }, ...allowed2.map((value) => option(value, sourceLabels[value] ?? (value || "全部来源"))));
 }
-function botSelect(bots, name, initial, empty2) {
-  return (0, import_react110.createElement)("select", { name, defaultValue: initial ?? "" }, option("", empty2), ...bots.map((bot) => option(bot.id, bot.name)));
+function botSelect(bots, name, initial2, empty2) {
+  return (0, import_react114.createElement)("select", { name, defaultValue: initial2 ?? "" }, option("", empty2), ...bots.map((bot) => option(bot.id, bot.name)));
 }
 function downloadAudit(data) {
   const url = URL.createObjectURL(new Blob([toJson(data)], { type: "application/json" }));
@@ -64331,41 +65858,41 @@ function downloadAudit(data) {
 }
 function GovernanceSettings({ client, roster }) {
   const { data, error, busy, perform } = useSettingsData(client, "governance", "view");
-  const [selected, setSelected] = (0, import_react110.useState)();
-  const [preview, setPreview] = (0, import_react110.useState)();
-  const [filter, setFilter] = (0, import_react110.useState)({});
+  const [selected, setSelected] = (0, import_react114.useState)();
+  const [preview, setPreview] = (0, import_react114.useState)();
+  const [filter, setFilter] = (0, import_react114.useState)({});
   const current2 = data?.rules.find((rule) => rule.id === selected) ?? blankRule;
   const origins = data?.origins ?? [];
   const locked = Boolean(roster.readOnly) || busy || !data;
-  return (0, import_react110.createElement)(
+  return (0, import_react114.createElement)(
     "div",
     { className: "gb-stack" },
-    error && (0, import_react110.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    data && field("规则", (0, import_react110.createElement)(
+    error && (0, import_react114.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    data && field("规则", (0, import_react114.createElement)(
       "select",
       { value: selected ?? "", onChange: (event) => setSelected(event.target.value || void 0) },
       option("", "新建规则"),
       ...data.rules.map((rule) => option(rule.id, rule.name + (rule.enabled ? "" : " · 已停用")))
     )),
-    (0, import_react110.createElement)(
+    (0, import_react114.createElement)(
       "form",
       { key: toJson(current2), className: "gb-form gb-card", onSubmit: (event) => {
         event.preventDefault();
         const supplied = new FormData(event.currentTarget);
         void perform("save", { id: selected, rule: { ...Object.fromEntries(supplied), enabled: supplied.has("enabled") } });
       } },
-      (0, import_react110.createElement)(
+      (0, import_react114.createElement)(
         "fieldset",
         { disabled: locked, className: "gb-form" },
-        field("规则名称", (0, import_react110.createElement)("input", { name: "name", defaultValue: current2.name, required: true, maxLength: 100 })),
+        field("规则名称", (0, import_react114.createElement)("input", { name: "name", defaultValue: current2.name, required: true, maxLength: 100 })),
         field("发起来源", sourceSelect("origin", ["any", "unattended", ...origins], current2.origin)),
         field("应用于 Bot", botSelect(roster.bots, "botId", current2.botId, "全部 Bot")),
-        field("工具", (0, import_react110.createElement)("input", { name: "tool", defaultValue: current2.tool, placeholder: "changes、* 或工具名称", required: true })),
-        field("目标", (0, import_react110.createElement)("input", { name: "target", defaultValue: current2.target, placeholder: "可选，例如 https://example.com" })),
-        field("决定", (0, import_react110.createElement)("select", { name: "effect", defaultValue: current2.effect }, option("ask", "要求批准"), option("deny", "禁止"))),
-        (0, import_react110.createElement)("label", null, (0, import_react110.createElement)("input", { type: "checkbox", name: "enabled", defaultChecked: current2.enabled }), "启用"),
+        field("工具", (0, import_react114.createElement)("input", { name: "tool", defaultValue: current2.tool, placeholder: "changes、* 或工具名称", required: true })),
+        field("目标", (0, import_react114.createElement)("input", { name: "target", defaultValue: current2.target, placeholder: "可选，例如 https://example.com" })),
+        field("决定", (0, import_react114.createElement)("select", { name: "effect", defaultValue: current2.effect }, option("ask", "要求批准"), option("deny", "禁止"))),
+        (0, import_react114.createElement)("label", null, (0, import_react114.createElement)("input", { type: "checkbox", name: "enabled", defaultChecked: current2.enabled }), "启用"),
         row(
-          (0, import_react110.createElement)("button", { className: "gb-primary", type: "submit" }, "保存规则"),
+          (0, import_react114.createElement)("button", { className: "gb-primary", type: "submit" }, "保存规则"),
           selected && button("删除规则", () => perform("remove", { id: selected }, (value, update) => {
             setSelected(void 0);
             update(value);
@@ -64373,25 +65900,25 @@ function GovernanceSettings({ client, roster }) {
         )
       )
     ),
-    (0, import_react110.createElement)(
+    (0, import_react114.createElement)(
       "form",
       { className: "gb-form gb-card", onSubmit: (event) => {
         event.preventDefault();
         void perform("preview", Object.fromEntries(new FormData(event.currentTarget)), setPreview);
       } },
-      (0, import_react110.createElement)("h3", null, "预览规则结果"),
+      (0, import_react114.createElement)("h3", null, "预览规则结果"),
       field("发起来源", sourceSelect("origin", origins, "schedule")),
       field("Bot", botSelect(roster.bots, "botId", "", "请选择 Bot")),
-      field("工具名称", (0, import_react110.createElement)("input", { name: "tool", defaultValue: "browser_click", required: true })),
-      field("目标", (0, import_react110.createElement)("input", { name: "target", placeholder: "可选" })),
-      (0, import_react110.createElement)("button", { type: "submit", disabled: busy || !data }, "查看匹配"),
-      preview && (0, import_react110.createElement)("p", { role: "status" }, decisionNames[preview.decision] + (preview.reason ? " · " + preview.reason : ""))
+      field("工具名称", (0, import_react114.createElement)("input", { name: "tool", defaultValue: "browser_click", required: true })),
+      field("目标", (0, import_react114.createElement)("input", { name: "target", placeholder: "可选" })),
+      (0, import_react114.createElement)("button", { type: "submit", disabled: busy || !data }, "查看匹配"),
+      preview && (0, import_react114.createElement)("p", { role: "status" }, decisionNames[preview.decision] + (preview.reason ? " · " + preview.reason : ""))
     ),
-    (0, import_react110.createElement)(
+    (0, import_react114.createElement)(
       "section",
       { className: "gb-card gb-stack" },
-      (0, import_react110.createElement)("h3", null, "执行审计"),
-      (0, import_react110.createElement)(
+      (0, import_react114.createElement)("h3", null, "执行审计"),
+      (0, import_react114.createElement)(
         "form",
         { className: "gb-form", onSubmit: (event) => {
           event.preventDefault();
@@ -64400,14 +65927,14 @@ function GovernanceSettings({ client, roster }) {
           void perform("view", next);
         } },
         field("来源", sourceSelect("origin", ["", "unattended", ...origins], "")),
-        field("决定", (0, import_react110.createElement)("select", { name: "decision" }, option("", "全部决定"), ...Object.entries(decisionNames).map(([value, label]) => option(value, label)))),
+        field("决定", (0, import_react114.createElement)("select", { name: "decision" }, option("", "全部决定"), ...Object.entries(decisionNames).map(([value, label]) => option(value, label)))),
         field("Bot", botSelect(roster.bots, "botId", "", "全部 Bot")),
         row(
-          (0, import_react110.createElement)("button", { type: "submit", disabled: busy }, "筛选和刷新"),
+          (0, import_react114.createElement)("button", { type: "submit", disabled: busy }, "筛选和刷新"),
           button("导出审计 JSON", () => perform("export", filter, downloadAudit), { disabled: busy })
         )
       ),
-      (data?.audit ?? []).map((entry) => (0, import_react110.createElement)(
+      (data?.audit ?? []).map((entry) => (0, import_react114.createElement)(
         "p",
         { key: entry.id },
         stamp(entry.time) + " · " + (roster.byId[entry.botId]?.name ?? entry.botId) + " · " + (sourceLabels[entry.origin.kind] ?? entry.origin.kind) + " · " + entry.name + " · " + (entry.effect ?? decisionNames[entry.decision]) + (entry.reason ? " · " + entry.reason : "")
@@ -64417,20 +65944,20 @@ function GovernanceSettings({ client, roster }) {
 }
 function RemoteAgentSettings({ client, roster, actions }) {
   const { data, busy, error, perform } = useSettingsData(client, "remote-agents");
-  const [selected, setSelected] = (0, import_react110.useState)("");
+  const [selected, setSelected] = (0, import_react114.useState)("");
   const item = data?.agents.find((agent) => agent.id === selected);
   const locked = Boolean(roster.readOnly) || busy || !data;
-  return (0, import_react110.createElement)(
+  return (0, import_react114.createElement)(
     "div",
     { className: "gb-stack" },
-    error && (0, import_react110.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    data && field("远程 Agent", (0, import_react110.createElement)(
+    error && (0, import_react114.createElement)("p", { role: "alert", className: "gb-error" }, error),
+    data && field("远程 Agent", (0, import_react114.createElement)(
       "select",
       { value: selected, onChange: (event) => setSelected(event.target.value) },
       option("", "注册远程 Agent"),
       ...data.agents.map((agent) => option(agent.id, agent.name))
     )),
-    (0, import_react110.createElement)(
+    (0, import_react114.createElement)(
       "form",
       { key: toJson(item), className: "gb-form gb-card", onSubmit: (event) => {
         event.preventDefault();
@@ -64449,15 +65976,15 @@ function RemoteAgentSettings({ client, roster, actions }) {
           update(value);
         });
       } },
-      (0, import_react110.createElement)(
+      (0, import_react114.createElement)(
         "fieldset",
         { className: "gb-form", disabled: locked },
-        field("名称", (0, import_react110.createElement)("input", { name: "name", defaultValue: item?.name, required: true, maxLength: 100 })),
-        field("AG-UI 运行地址", (0, import_react110.createElement)("input", { name: "endpoint", type: "url", defaultValue: item?.endpoint, required: true, placeholder: "https://agent.example.com/ag-ui" })),
-        field("Bearer 凭据", (0, import_react110.createElement)("input", { name: "token", type: "password", autoComplete: "off", placeholder: item?.usesToken ? "已配置，留空保留" : "可选" })),
-        item?.usesToken && (0, import_react110.createElement)("label", null, (0, import_react110.createElement)("input", { name: "clear", type: "checkbox" }), "清除已有凭据"),
+        field("名称", (0, import_react114.createElement)("input", { name: "name", defaultValue: item?.name, required: true, maxLength: 100 })),
+        field("AG-UI 运行地址", (0, import_react114.createElement)("input", { name: "endpoint", type: "url", defaultValue: item?.endpoint, required: true, placeholder: "https://agent.example.com/ag-ui" })),
+        field("Bearer 凭据", (0, import_react114.createElement)("input", { name: "token", type: "password", autoComplete: "off", placeholder: item?.usesToken ? "已配置，留空保留" : "可选" })),
+        item?.usesToken && (0, import_react114.createElement)("label", null, (0, import_react114.createElement)("input", { name: "clear", type: "checkbox" }), "清除已有凭据"),
         row(
-          (0, import_react110.createElement)("button", { type: "submit", className: "gb-primary" }, item ? "保存" : "注册"),
+          (0, import_react114.createElement)("button", { type: "submit", className: "gb-primary" }, item ? "保存" : "注册"),
           item && button("移除", () => perform("remove", { id: item.id }, (value, update) => {
             setSelected("");
             update(value);
@@ -64465,7 +65992,7 @@ function RemoteAgentSettings({ client, roster, actions }) {
         )
       )
     ),
-    item && (0, import_react110.createElement)("p", null, "在 Bot 的模型设置中选择 ", item.name, "。", button("打开 Bot 设置", () => actions.openSettings("bots")))
+    item && (0, import_react114.createElement)("p", null, "在 Bot 的模型设置中选择 ", item.name, "。", button("打开 Bot 设置", () => actions.openSettings("bots")))
   );
 }
 
@@ -64649,8 +66176,8 @@ button.gb-bot-model:focus-visible,
 `;
 function useNativeTerminalActive(client, target, running) {
   const { botId, sessionId } = target ?? {};
-  const [activePart, setActivePart] = (0, import_react111.useState)();
-  (0, import_react111.useEffect)(() => {
+  const [activePart, setActivePart] = (0, import_react115.useState)();
+  (0, import_react115.useEffect)(() => {
     if (!botId || !sessionId) return;
     let timer, mounted = true;
     async function update() {
@@ -64672,7 +66199,7 @@ function useNativeTerminalActive(client, target, running) {
 function NativeAgentButton({ target, active, actions }) {
   const { sessionId, agent } = target;
   const title2 = agent === "local-claude-code" ? "打开原生会话并信任此 Bot 的工作目录" : void 0;
-  return (0, import_react111.createElement)(PanelMenu, {
+  return (0, import_react115.createElement)(PanelMenu, {
     className: "gb-native-button",
     "aria-label": "原生 Agent",
     active,
@@ -64681,7 +66208,7 @@ function NativeAgentButton({ target, active, actions }) {
       { key: "terminal", icon: TerminalIcon, label: "原生终端", title: title2, onPick: () => actions.showDetails(sessionId, nativeTabs.terminal) },
       { key: "conversation", icon: ChatsIcon, label: "原生对话", title: title2, onPick: () => actions.showDetails(sessionId, nativeTabs.conversation) }
     ]
-  }, (0, import_react111.createElement)(TerminalIcon));
+  }, (0, import_react115.createElement)(TerminalIcon));
 }
 function readLast() {
   try {
@@ -64707,7 +66234,7 @@ function TeamCommandReport({ ctx, client, report, text, bot, sessionId }) {
   const loadSession = botId && part && Number.isInteger(seq) ? () => client.claudeReportSession({ botId, sessionId: part, seq, messageId }) : void 0;
   const isCurrentClaude = bot && (bot.sessionId ?? bot.id) === sessionId && (bot.model ?? bot.appliedModel)?.split("/")[0] === "local-claude-code";
   const loadStats = isCurrentClaude ? () => client.claudeStats({ botId, sessionId }) : void 0;
-  return (0, import_react111.createElement)(NativeCommandReport, { ...report, text, loadStats, sessionUsage: current2, loadSession, receiptKey });
+  return (0, import_react115.createElement)(NativeCommandReport, { ...report, text, loadStats, sessionUsage: current2, loadSession, receiptKey });
 }
 function mountTeamSurface(ctx, client, navigation, target) {
   return openWorkspace(ctx, client, navigation, (ready) => mountProduct(ctx, client, navigation, target, ready));
@@ -64726,40 +66253,40 @@ function mountProduct(ctx, client, navigation, target, ready) {
     back: navigation.back,
     turnReport,
     earlierReports,
-    renderReport: (report, text, bot, sessionId) => (0, import_react111.createElement)(TeamCommandReport, { ctx, client, report, text, bot, sessionId }),
+    renderReport: (report, text, bot, sessionId) => (0, import_react115.createElement)(TeamCommandReport, { ctx, client, report, text, bot, sessionId }),
     browserButton(bot, id, state) {
-      return bot && !state.readOnly && !state.browser && (bot.sessionId ?? bot.id) === id ? (0, import_react111.createElement)(WebBrowserButton, { key: "web-browser-" + bot.id, client, bot, sessionId: id }) : null;
+      return bot && !state.readOnly && !state.browser && (bot.sessionId ?? bot.id) === id ? (0, import_react115.createElement)(WebBrowserButton, { key: "web-browser-" + bot.id, client, bot, sessionId: id }) : null;
     },
     useNativeTerminalActive: (bot, id, state, running) => useNativeTerminalActive(client, botNativeTarget(bot, id, state), running),
     nativeButton(bot, id, state, actions, terminalActive) {
       const target2 = botNativeTarget(bot, id, state);
-      return target2 && (0, import_react111.createElement)(NativeAgentButton, { key: "native:" + id, target: target2, active: terminalActive, actions });
+      return target2 && (0, import_react115.createElement)(NativeAgentButton, { key: "native:" + id, target: target2, active: terminalActive, actions });
     },
     nativePane(bot, id, state, close, mode, actions) {
       const target2 = botNativeTarget(bot, id, state);
-      return target2 ? (0, import_react111.createElement)(TerminalPanel, {
+      return target2 ? (0, import_react115.createElement)(TerminalPanel, {
         client,
         target: target2,
         close,
         mode,
         onModeChange: (next) => actions.showDetails(id, nativeTabs[next])
-      }) : (0, import_react111.createElement)("p", { role: "status" }, "请选择当前 Bot 的 CLI 会话。");
+      }) : (0, import_react115.createElement)("p", { role: "status" }, "请选择当前 Bot 的 CLI 会话。");
     },
     executionButton(bot, id, state, actions) {
-      return canViewExecution(bot, id, state) && (0, import_react111.createElement)("button", {
+      return canViewExecution(bot, id, state) && (0, import_react115.createElement)("button", {
         key: "execution:" + id,
         type: "button",
         className: "bt-icon-btn bt-head-search",
         "aria-label": "查看会话执行记录",
         title: "查看会话执行记录",
         onClick: () => actions.showDetails(id, "godbot-execution")
-      }, (0, import_react111.createElement)(Icon, { name: "clock", size: 17 }));
+      }, (0, import_react115.createElement)(Icon, { name: "clock", size: 17 }));
     },
     executionPane(bot, id, state, close) {
-      return canViewExecution(bot, id, state) ? (0, import_react111.createElement)(ExecutionHistory, { key: id, client, bot, sessionId: id, close }) : null;
+      return canViewExecution(bot, id, state) ? (0, import_react115.createElement)(ExecutionHistory, { key: id, client, bot, sessionId: id, close }) : null;
     },
     useExecutionTools: (botId, sessionId, turn, enabled) => useExecutionTools(client, botId, sessionId, turn, enabled),
-    inlineExecution: (key, botId, sessionId, turn, running, events) => (0, import_react111.createElement)(InlineExecution, {
+    inlineExecution: (key, botId, sessionId, turn, running, events) => (0, import_react115.createElement)(InlineExecution, {
       key,
       client,
       botId,
@@ -64768,15 +66295,15 @@ function mountProduct(ctx, client, navigation, target, ready) {
       running,
       events
     }),
-    providerAgents: (props) => (0, import_react111.createElement)(ProviderAgentsPage, { client, ...props }),
-    taskSettings: (page, focus, actions, readOnly) => (0, import_react111.createElement)(TaskSettings, { client, actions, page, focus, readOnly }),
-    platformSettings(page, roster2, actions, initial) {
+    providerAgents: (props) => (0, import_react115.createElement)(ProviderAgentsPage, { client, ...props }),
+    taskSettings: (page, focus, actions, readOnly) => (0, import_react115.createElement)(TaskSettings, { client, actions, page, focus, readOnly }),
+    platformSettings(page, roster2, actions, initial2) {
       const pages = { automation: AutomationSetupPage, components: ComponentSettings, governance: GovernanceSettings, "remote-agents": RemoteAgentSettings };
-      return (0, import_react111.createElement)("div", { className: "gb-platform" }, (0, import_react111.createElement)(pages[page], { client, roster: roster2, actions, initial }));
+      return (0, import_react115.createElement)("div", { className: "gb-platform" }, (0, import_react115.createElement)(pages[page], { client, roster: roster2, actions, initial: initial2 }));
     },
     schedulesPage(state, actions, start, publish) {
       const session = mainSession(ctx);
-      return (0, import_react111.createElement)(BotSchedulesPage, {
+      return (0, import_react115.createElement)(BotSchedulesPage, {
         key: start ?? "all",
         client,
         roster: state,
@@ -64812,7 +66339,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
       if (roster2.readOnly) return null;
       const route = (bot.appliedModel ?? bot.model ?? "").split("/")[0];
       const kind = bot.sandboxKind ?? { "local-antigravity": "antigravity", "local-claude-code": "claude", "local-codex-cli": "codex" }[route];
-      return (0, import_react111.createElement)(SandboxBinding, {
+      return (0, import_react115.createElement)(SandboxBinding, {
         key: "sandbox-" + bot.id,
         client,
         subject: bot,
@@ -64821,8 +66348,8 @@ function mountProduct(ctx, client, navigation, target, ready) {
         onSave: (patch) => actions.afterSandboxBinding(client.dispatch({ action: "sandbox-bot-bind", botId: bot.id, ...patch }))
       });
     },
-    connectorTools: (bot) => (0, import_react111.createElement)(ConnectorToolsPanel, { key: "connector-tools-" + bot.id, client, bot, sessionId: bot.sessionId ?? bot.id }),
-    startCli: (props) => (0, import_react111.createElement)(AgentSetup, { ...props, key: props.bot.id }),
+    connectorTools: (bot) => (0, import_react115.createElement)(ConnectorToolsPanel, { key: "connector-tools-" + bot.id, client, bot, sessionId: bot.sessionId ?? bot.id }),
+    startCli: (props) => (0, import_react115.createElement)(AgentSetup, { ...props, key: props.bot.id }),
     installSlash(triggers, roster2, actions, controllerOf) {
       const source = teamSlashSource(roster2, actions, client);
       const unregister = triggers.registerSource(source);
@@ -64838,7 +66365,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
     },
     navigation(wide, latest, actions) {
       roster = latest;
-      return (0, import_react111.createElement)(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings("schedules"), onBack: navigation.back });
+      return (0, import_react115.createElement)(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings("schedules"), onBack: navigation.back });
     }
   };
   const fiber = ctx.plugin({
@@ -64916,7 +66443,7 @@ function installSidebarLoadingStyle(document2) {
 // src/client/index.js
 var inject2 = ["slots", "layout", "connection", "sessions", "uiWorkspace"];
 function icon2({ size = 18 }) {
-  return (0, import_react112.createElement)("img", {
+  return (0, import_react116.createElement)("img", {
     src: webIconUrl,
     alt: "",
     width: size,
