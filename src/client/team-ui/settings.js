@@ -409,7 +409,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
           shown === 'tasks' || shown === 'routines' || usageLimits
             ? actions.godbot.taskSettings(usageLimits ? 'limits' : shown, shown === 'tasks' ? id : null, actions, roster.readOnly) : null,
           ['automation', 'remote-agents', 'governance', 'components'].includes(shown)
-            ? actions.godbot.platformSettings(shown, roster, actions, id) : null,
+            ? actions.godbot.platformSettings(shown, roster, actions, id, { Section: SetSection, Row: SetRow, Switch }) : null,
           shown === 'schedules' ? actions.godbot.schedulesPage(roster, actions, id, publishSchedules) : null,
           shown === 'secrets' ? h(SecretsPage, { roster, actions, run, Section: SetSection }) : null,
           shown === 'feedback' ? h(FeedbackPage, { actions, run, Section: SetSection, Row: SetRow }) : null,
