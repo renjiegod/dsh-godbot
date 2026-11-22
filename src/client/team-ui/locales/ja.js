@@ -925,6 +925,7 @@ export const JA = {
   "Profile updated": "プロフィールを更新しました",
   "Asked to make the tool call it wrote as text": "ツール呼び出しがテキストとして出力されたため、再実行を依頼しました",
   "Went on after the failed turn": "前回のターンが失敗したため、作業を続行しました",
+  "A background task reported back": "バックグラウンドのタスクから知らせが届きました",
   "A Bot": "Bot",
   "{name} is waiting for your approval": "{name} が承認を待っています",
   "{first} and {second} are waiting for your approval": "{first} と {second} が承認を待っています",

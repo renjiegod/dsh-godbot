@@ -322,7 +322,12 @@ class ClaudeSession extends ClaudeControlSession {
   settle(event) {
     const answer = this.turns.settle(event.origin)
     if (answer === undefined) {
-      this.emit({ type: 'background', of: 'result' })
+      // A stop asked for while the CLI ran a turn of its own stopped that turn: a
+      // later prompt's result is not read as stopped.
+      this.interruptPending = undefined
+      this.interruptAcknowledged = false
+      const usage = usageOf(event.usage)
+      this.emit({ type: 'background', of: 'result', ...(usage === undefined ? {} : { usage }) })
       return
     }
     const { turn, finished } = answer

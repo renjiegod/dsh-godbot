@@ -6,6 +6,7 @@
 // mapped to, and the CLI's output back into stream chunks.
 import { createHash, randomUUID } from 'node:crypto'
 import { LlmAdapter, LlmError, offloadedImageText, resolveImageAttachmentAccess, textOnlyImageText } from '@deepseek-ai/dsh-llm'
+import { BACKGROUND_ROLE, SOURCE_KIND } from '../constants.js'
 import { textOf } from '../text.js'
 import { engineOf, cliMode } from './engines.js'
 import { LoopbackMcp } from './mcp.js'
@@ -21,6 +22,17 @@ const APPROVE_TOOL = 'approve_agent_action'
 const COMPACT_START_MS = 15_000
 // What a request Godbot makes of the CLI for itself answers to a tool call it tries.
 const NO_TOOLS = 'Tools are not available for this request. Answer with text only.'
+// Events a prompt's turn says or ends with.
+const PROMPT_EVENTS = new Set(['text', 'thought', 'activity', 'tool', 'execution-trace', 'usage', 'done', 'error'])
+
+// The message that opened a turn to show what the CLI said by itself (delivery.js):
+// the last message of the request that did not come from the loop.
+export function backgroundTrigger(messages) {
+  const last = (messages ?? []).findLast(message => message.role === 'user' && message.source?.kind !== 'runtime-context')
+  return isBackgroundTrigger(last) ? last : undefined
+}
+const isBackgroundTrigger = message => message?.source?.kind === SOURCE_KIND && message.source.role === BACKGROUND_ROLE
+  && typeof message.source.background === 'string'
 
 // A title request never reaches the CLI.
 function titleChunk(text) {
@@ -201,6 +213,11 @@ export class LocalAgentAdapter extends LlmAdapter {
       // Output of a request Godbot made for itself may trail its end (Devin's
       // "Context compacted"); until the next prompt, text, thoughts and activity drop.
       mute: false,
+      // Turns the CLI ran by itself, by id, until the turn that shows each one ends;
+      // the one the CLI still runs; and the one the current stream shows.
+      backgrounds: new Map(),
+      background: undefined,
+      showing: undefined,
     }
     live.push = (event) => {
       this.observe(live, event)
@@ -208,9 +225,9 @@ export class LocalAgentAdapter extends LlmAdapter {
       clearTimeout(live.idle)
       live.idle = setTimeout(() => void this.closeLive(live, { idle: true }), IDLE_CLOSE_MS)
       live.idle.unref?.()
-      // A turn the CLI ran by itself (a background task ended, say) keeps its process
-      // in use, but none of it answers a request.
-      if (event?.type === 'background') return
+      // A turn the CLI ran by itself (a background task ended, say) answers no request:
+      // its output waits for the turn that shows it (showBackground).
+      if (this.background(live, event)) return
       const waiter = live.waiters.shift()
       if (waiter !== undefined) waiter(event)
       else live.events.push(event)
@@ -318,11 +335,106 @@ export class LocalAgentAdapter extends LlmAdapter {
   stopTurn(live, reason) {
     live.state = 'idle'
     live.queue.length = 0
+    // What the CLI still says in a turn of its own that was showing goes nowhere.
+    live.showing = undefined
     const stopped = live.engineSession === undefined ? undefined : live.engine.cancel?.(live.engineSession)
     live.mcp?.failAll(new Error(reason))
     for (const pending of live.pending.values()) pending.resolve({ text: reason, isError: true })
     live.pending.clear()
     return stopped
+  }
+
+  // ---------------------------------------------------------------------------
+  // Turns the CLI ran by itself. Claude Code wakes its model when a background task it
+  // started ends or a Monitor fires, and the model answers on its own. That output
+  // answers no prompt (ClaudeTurns wraps it as `background`): it waits here as the
+  // events of a reply of its own, and the Session gets a message that opens a turn to
+  // show it (deps.onBackground, delivery.js). That turn sends nothing to the CLI.
+
+  // Takes an event of such a turn: true when it was one. A prompt's output or end while
+  // such a turn is open means the CLI folded the prompt into it, and a failure ends
+  // the process: either way the turn is over.
+  background(live, event) {
+    const open = live.background
+    if (event?.type !== 'background') {
+      if (open !== undefined && (event?.type === 'error' || (event?.turnId !== undefined && PROMPT_EVENTS.has(event.type)))) this.endBackground(live, open)
+      return false
+    }
+    if (event.of === 'result') {
+      if (open !== undefined) this.endBackground(live, open, event.usage)
+      return true
+    }
+    // Where no turn can show it, it only keeps the process in use.
+    if (this.deps.onBackground === undefined) return true
+    let turn = open
+    if (turn === undefined) {
+      turn = { id: `background-${randomUUID()}`, events: [], claimed: false }
+      live.background = turn
+      live.backgrounds.set(turn.id, turn)
+      void Promise.resolve().then(() => this.deps.onBackground(live.sessionId, turn.id)).then((opened) => {
+        if (opened === false) this.dropBackground(live, turn)
+      }, (error) => {
+        this.deps.rt?.warn?.('local-agents: what the CLI said by itself is not shown: %s', error?.message ?? error)
+        this.dropBackground(live, turn)
+      })
+    }
+    this.backgroundEvent(live, turn, { ...event.event, turnId: turn.id })
+    return true
+  }
+
+  endBackground(live, turn, usage) {
+    if (live.background === turn) live.background = undefined
+    this.backgroundEvent(live, turn, { type: 'done', reason: 'stop', ...(usage === undefined ? {} : { usage }), turnId: turn.id })
+  }
+
+  // An event of a turn the CLI ran by itself goes to the stream that shows the turn, or
+  // waits for it. A turn whose showing stopped takes no more.
+  backgroundEvent(live, turn, event) {
+    if (live.showing === turn) {
+      const waiter = live.waiters.shift()
+      if (waiter !== undefined) waiter(event)
+      else live.events.push(event)
+    } else if (!turn.claimed) turn.events.push(event)
+    else if (event.type === 'done') live.backgrounds.delete(turn.id)
+  }
+
+  // A turn no Session turn will show.
+  dropBackground(live, turn) {
+    turn.claimed = true
+    turn.events.length = 0
+    if (live.background !== turn) live.backgrounds.delete(turn.id)
+  }
+
+  // The turn the Session opened to show a turn the CLI ran by itself; `trigger` is the
+  // message that opened it. Nothing goes to the CLI: the stream is what the CLI said in
+  // that turn, kept and then live, until that turn ends. A call it makes over the
+  // loopback server suspends the stream as in any turn, and its result comes back here.
+  async *showBackground(sessionId, trigger, options) {
+    const live = this.live.get(sessionId)
+    const turn = live?.backgrounds.get(trigger.source.background)
+    // Its process is gone (a restart, a part that moved on), or a turn showed it already.
+    if (live === undefined || live.dead || turn === undefined || (turn.claimed && live.showing !== turn)) {
+      yield { type: 'finish', reason: { kind: 'stop' } }
+      return
+    }
+    for (const message of options.messages ?? []) {
+      if (message.role !== 'tool') continue
+      const pending = live.pending.get(message.toolCallId)
+      if (pending === undefined) continue
+      live.pending.delete(message.toolCallId)
+      pending.resolve({ text: textOf(message.content) || (message.isError ? 'the call failed' : ''), isError: message.isError === true })
+    }
+    if (live.showing !== turn) {
+      // What finished turns left behind answers nothing here.
+      this.discardTurnOutput(live)
+      turn.claimed = true
+      live.showing = turn
+      live.turnTag = turn.id
+      live.events.push(...turn.events.splice(0))
+    }
+    // Running, so the loopback server takes the calls the CLI's turn makes.
+    live.state = 'running'
+    yield* this.drain(live, options)
   }
 
   // The Session left this CLI: its part moved on. Its process leaves; the CLI session
@@ -387,6 +499,13 @@ export class LocalAgentAdapter extends LlmAdapter {
     }
     const sessionId = options.sessionId
     if (sessionId === undefined) throw new LlmError('a local agent request needs a session', 'INVALID_REQUEST')
+    // A turn that shows what the CLI said by itself reads the process that said it, as it
+    // is: nothing reopens it on another model or preset first.
+    const trigger = backgroundTrigger(options.messages)
+    if (trigger !== undefined) {
+      yield* this.showBackground(String(sessionId), trigger, options)
+      return
+    }
     const preset = this.deps.presetFor(sessionId)
     const live = await this.liveFor(options, preset)
 
@@ -409,14 +528,16 @@ export class LocalAgentAdapter extends LlmAdapter {
       live.pending.delete(message.toolCallId)
       const text = textOf(message.content) || (message.isError ? 'the call failed' : '')
       pending.resolve({ text, isError: message.isError === true })
-      settled.push({ name: pending.name, text, isError: message.isError === true })
+      // The CLI's own turn still showing made the call, and reads its result itself.
+      if (live.showing === undefined) settled.push({ name: pending.name, text, isError: message.isError === true })
     }
     // The loop's runtime-context user messages are context, not input: they
     // fold into the next prompt or steer, never start a prompt on their own.
     const contextText = delta
       .filter(message => message.role === 'user' && message.source?.kind === 'runtime-context')
       .map(message => textOf(message.content)).filter(text => text !== '').join('\n')
-    const users = delta.filter(message => message.role === 'user' && message.source?.kind !== 'runtime-context')
+    // A message that opened a turn to show what the CLI said by itself is not input either.
+    const users = delta.filter(message => message.role === 'user' && message.source?.kind !== 'runtime-context' && !isBackgroundTrigger(message))
     // The first open bridged call that is not an approval may take the user's
     // next message as its answer; the rest of the input is new.
     const openCall = [...live.pending.entries()].find(([, entry]) => entry.name !== APPROVE_TOOL)
@@ -430,7 +551,7 @@ export class LocalAgentAdapter extends LlmAdapter {
         pending.resolve({ text: answer })
         // The CLI may have finished while this call waited; the answer is then a
         // settled result the turn below has to carry, like a tool result (#1513).
-        settled.push({ name: openCall[1].name, text: answer, isError: false })
+        if (live.showing === undefined) settled.push({ name: openCall[1].name, text: answer, isError: false })
         answered = true
       } else {
         remaining.push(message)
@@ -631,8 +752,10 @@ export class LocalAgentAdapter extends LlmAdapter {
   }
 
   discardTurnOutput(live) {
-    // Requests retain their reply callbacks until surfaced and answered.
-    live.events = live.events.filter(event => event.type === 'permission' || event.type === 'call')
+    // Requests retain their reply callbacks until surfaced and answered, and the CLI's
+    // own turn a stream shows keeps its output.
+    live.events = live.events.filter(event => event.type === 'permission' || event.type === 'call'
+      || (live.showing !== undefined && event.turnId === live.showing.id))
   }
 
   // Codex resolves on acceptance; ACP resolves only when the entire turn ends.
@@ -746,12 +869,18 @@ export class LocalAgentAdapter extends LlmAdapter {
     for (;;) {
       const event = await Promise.race([live.next(), abortPromise]).catch(error => ({ type: 'abort', error }))
       if (event.type === 'abort') {
+        // What the CLI's own turn still says once its showing stopped goes nowhere
+        // (backgroundEvent), so the read left waiting here would take a later turn's
+        // first event instead.
+        if (live.showing !== undefined) live.waiters.length = 0
         this.stopTurn(live, 'the turn was stopped')
         yield { type: 'finish', reason: { kind: 'aborted', failure: { code: 'ABORTED', message: 'the turn was stopped' } } }
         return
       }
-      // A finished turn's leftovers must not answer the turn this stream reads.
-      if (event.type !== 'permission' && event.type !== 'call' && event.turnId !== undefined && live.turnTag !== undefined && event.turnId !== live.turnTag) continue
+      // A finished turn's leftovers must not answer the turn this stream reads. The
+      // CLI's own turn it shows still does, also after the user added a prompt to it.
+      if (event.type !== 'permission' && event.type !== 'call' && event.turnId !== undefined && live.turnTag !== undefined && event.turnId !== live.turnTag
+        && event.turnId !== live.showing?.id) continue
       switch (event.type) {
         case 'text': {
           if (!event.text) break
@@ -804,6 +933,16 @@ export class LocalAgentAdapter extends LlmAdapter {
           return
         }
         case 'done': {
+          // The CLI's own turn this stream shows has ended. A prompt the user added to
+          // it meanwhile runs on, and its end ends the stream.
+          if (live.showing !== undefined && event.turnId === live.showing.id) {
+            live.backgrounds.delete(live.showing.id)
+            live.showing = undefined
+            if (event.turnId !== live.turnTag) {
+              if (event.usage !== undefined) yield addUsage(event.usage)
+              break
+            }
+          }
           // The answer resolved a call this turn never read — it ended while the user
           // was still deciding. Nothing was said after that answer, so start the turn
           // that carries it instead of ending on the finished turn's old reply (#1513).
@@ -830,6 +969,7 @@ export class LocalAgentAdapter extends LlmAdapter {
         }
         case 'error': {
           live.state = 'idle'
+          live.showing = undefined
           throw toLlmError(event.error, live)
         }
         default: break

@@ -256,7 +256,8 @@ class ClaudeSession {
   settle(event) {
     const answer = this.turns.settle(event.origin)
     if (answer === undefined) {
-      this.emit({ type: 'background', of: 'result' })
+      const usage = usageOf(event.usage)
+      this.emit({ type: 'background', of: 'result', ...(usage === undefined ? {} : { usage }) })
       return
     }
     const { turn, finished } = answer
