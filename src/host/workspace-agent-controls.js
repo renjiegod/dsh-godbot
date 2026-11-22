@@ -87,7 +87,7 @@ class WorkspaceClaudeEngine extends ClaudeEngine {
   }
 
   steer(session, input) {
-    return session.prompt(Array.isArray(input) ? input : [{ type: 'text', text: input }])
+    return session.prompt(Array.isArray(input) ? input : [{ type: 'text', text: input }], { steer: true })
   }
 
   cancel(session) {

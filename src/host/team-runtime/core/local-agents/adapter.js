@@ -208,6 +208,9 @@ export class LocalAgentAdapter extends LlmAdapter {
       clearTimeout(live.idle)
       live.idle = setTimeout(() => void this.closeLive(live, { idle: true }), IDLE_CLOSE_MS)
       live.idle.unref?.()
+      // A turn the CLI ran by itself (a background task ended, say) keeps its process
+      // in use, but none of it answers a request.
+      if (event?.type === 'background') return
       const waiter = live.waiters.shift()
       if (waiter !== undefined) waiter(event)
       else live.events.push(event)
@@ -619,6 +622,10 @@ export class LocalAgentAdapter extends LlmAdapter {
         return recover()
       }
     }
+    // Nothing the CLI said before this prompt answers it: output a finished or stopped
+    // turn left behind would otherwise be read as this turn's reply, and its end as
+    // this turn's end.
+    this.discardTurnOutput(live)
     this.startTurn(live, blocks, signal, effort)
     return Promise.resolve()
   }
@@ -634,11 +641,20 @@ export class LocalAgentAdapter extends LlmAdapter {
     live.state = 'running'
     // The turn an engine names is the one this stream reads: a finished turn's late
     // events carry another id and are dropped instead of answering this one (#1513).
-    live.turnTag = undefined
+    // Claude names the prompt as it writes it, before the CLI can answer it, so until
+    // then no turn's output answers it.
+    const unnamed = {}
+    live.turnTag = live.spec.kind === 'claude' ? unnamed : undefined
     try {
       const started = Promise.resolve(live.engine.prompt(live.engineSession, blocks, { signal, effort }))
-        .then((turnId) => { if (live.spec.kind === 'codex' && turnId !== undefined) live.turnTag = turnId })
-        .catch(error => live.push({ type: 'error', error }))
+        .then((turnId) => {
+          if (live.spec.kind === 'codex' && turnId !== undefined) live.turnTag = turnId
+          else if (live.turnTag === unnamed) live.turnTag = turnId
+        })
+        .catch((error) => {
+          if (live.turnTag === unnamed) live.turnTag = undefined
+          live.push({ type: 'error', error })
+        })
       return live.spec.kind === 'acp' ? Promise.resolve() : started
     } catch (error) {
       live.push({ type: 'error', error })
@@ -869,6 +885,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     if (live.state !== 'idle' || live.pending.size > 0) throw new LlmError('the local agent is in the middle of a turn', 'LOCAL_AGENT_BUSY')
     // What a finished turn left behind is not this request's answer.
     live.events.length = 0
+    live.turnTag = undefined
     try {
       signal?.throwIfAborted()
       return await work(live)
@@ -955,6 +972,8 @@ export class LocalAgentAdapter extends LlmAdapter {
           clearTimeout(timer)
           next.drop()
         }
+        // An earlier turn's late output answers nothing here.
+        if (event.turnId !== undefined && live.turnTag !== undefined && event.turnId !== live.turnTag) continue
         switch (event.type) {
           case 'text': text += event.text; break
           case 'call': {
