@@ -82,6 +82,8 @@ export async function bumpedArchive(candidate, scratch, version, { trap = false 
   execFileSync('tar', ['-xzf', candidate.path, '--strip-components', '1', '-C', staging])
   const manifest = join(staging, 'package.json')
   await writeFile(manifest, JSON.stringify({ ...JSON.parse(await readFile(manifest, 'utf8')), version }, null, 2) + '\n')
+  const buildId = sha256([candidate.buildId, version].join(':')).slice(0, 16)
+  await writeFile(join(staging, 'src/host/build-id.js'), 'export const buildId = ' + JSON.stringify(buildId) + '\n')
   if (trap) {
     const entry = join(staging, 'src/host/plugin.js')
     await writeFile(entry, "import { existsSync as reloadTrapSet } from 'node:fs'\n"

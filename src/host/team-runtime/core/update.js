@@ -163,14 +163,8 @@ export function profileDependencies(ctx) {
   } catch { return null }
 }
 
-/**
- * How to install into this profile without loading the new version into the running
- * process: DSH's own `dsh plugin --profile <name>`, run by the node running DSH. Only
- * where DSH reloads plugins in place (see the top of this file); null elsewhere, and
- * where the CLI or this profile's place below DSH_HOME cannot be confirmed.
- */
-export function profileCommand(ctx) {
-  if (ctx.get?.('hmr') === undefined) return null
+/** Find the installed DSH CLI and verify that it opens this same profile. */
+export function profileCli(ctx) {
   const { name, dir, home, installAnchor } = ctx.get?.('profileContext') ?? {}
   if (![name, dir, home, installAnchor].every(value => typeof value === 'string' && value !== '')) return null
   // The desktop app manages its own profile, and the CLI refuses it while the app runs.
@@ -182,8 +176,18 @@ export function profileCommand(ctx) {
     const cli = resolve(dirname(installAnchor), bin)
     // The CLI finds a profile by name below DSH_HOME; it has to be the one running here.
     if (!existsSync(cli) || realpathSync(join(home, 'profiles', name)) !== realpathSync(dir)) return null
-    return { command: process.execPath, args: [cli, 'plugin', '--profile', name], cwd: dir, env: { ...process.env, DSH_HOME: home } }
+    return { cli, name, dir, home }
   } catch { return null }
+}
+
+// In a hot-reloading host, install through a separate CLI so this process keeps
+// its existing module resolutions until the next start.
+export function profileCommand(ctx) {
+  if (ctx.get?.('hmr') === undefined) return null
+  const profile = profileCli(ctx)
+  if (profile === null) return null
+  const { cli, name, dir, home } = profile
+  return { command: process.execPath, args: [cli, 'plugin', '--profile', name], cwd: dir, env: { ...process.env, DSH_HOME: home } }
 }
 
 // Run a command to its end, keeping the tail of what it printed for a failure message.
