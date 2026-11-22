@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { readFile, symlink } from 'node:fs/promises'
+import { readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { findExecutable } from '../../../src/drivers/external/discover.js'
@@ -11,12 +11,16 @@ import { openFullTeam, openSettingsPage } from '../native-ui.mjs'
 
 // An installed archive updates itself from a release. The release list and the
 // archive come from a local server shaped like GitHub's (GODBOT_UPDATE_API); the
-// archive is verified on the Host, installed through DSH's own plugin manager,
-// and the next start runs the new version.
+// archive is verified on the Host and installed through DSH's own CLI, and the
+// next start runs the new version. DSH reloads plugins in place, but the running
+// DSH never loads the update: the release here cannot be imported into it (the
+// reload trap), the way rc.16 could not after pnpm moved a dependency it had
+// already resolved, and Godbot keeps answering until the restart.
 export default async function UPDATE({ makeHost, candidate, scratch, note }) {
   const [major, minor, patch] = candidate.version.split('-')[0].split('.').map(Number)
   const version = `${major}.${minor}.${patch + 1}`
-  const next = await bumpedArchive(candidate, scratch, version)
+  const next = await bumpedArchive(candidate, scratch, version, { trap: true })
+  const trap = join(scratch, 'update-reload-trap')
   const data = await readFile(next.path)
   const name = `dsh-godbot-${version}.tgz`
   const asked = []
@@ -45,7 +49,7 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     const pnpm = findExecutable('pnpm')
     if (!pnpm) throw new EnvironmentError('pnpm is required for the DSH plugin manager to install the update')
     const store = execFileSync(pnpm, ['store', 'path'], { encoding: 'utf8' }).trim()
-    const host = await makeHost({ env: { GODBOT_UPDATE_CHECK: '1', GODBOT_UPDATE_API: base, pnpm_config_store_dir: store } })
+    const host = await makeHost({ env: { GODBOT_UPDATE_CHECK: '1', GODBOT_UPDATE_API: base, pnpm_config_store_dir: store, GODBOT_E2E_RELOAD_TRAP: trap } })
     await symlink(realpathSync(pnpm), join(host.bin, 'pnpm'))
     await host.install(candidate)
     await host.start()
@@ -95,21 +99,35 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
 
     await page.locator('button.bt-settings-close:visible').click()
     await notice.click()
+    // From here on the release cannot load into this DSH.
+    await writeFile(trap, 'set while the installing DSH runs\n')
     await details.getByRole('button', { name: /^(更新|Update)$/u }).click()
-    // A plugin reloaded in place answers again as the new version, which reports the update.
+    // The running version installs the release for the next start and keeps answering.
+    let failure
     const installed = await until(async () => {
-      const view = await host.bot('update-check', { fresh: false }).catch(() => null)
-      if (view?.phase === 'failed') throw new Error('The update failed: ' + view.error)
-      return ['installed', 'updated'].includes(view?.phase) && view
-    }, 'the plugin manager install', 180_000)
+      const view = await host.bot('update-check', { fresh: false })
+      if (view.phase === 'failed') failure = view.error
+      return (failure !== undefined || view.phase === 'installed') && view
+    }, 'the install for the next DSH start', 180_000)
+    if (failure !== undefined) throw new Error('The update failed: ' + failure)
+    assert.equal(installed.current, candidate.version, 'the DSH that installed the update still runs the version it started with')
+    assert.equal(installed.installed, version)
     const manifest = join(host.home, 'profiles/web/package.json')
-    const dependency = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')).dependencies?.['dsh-godbot'] : undefined
-    if (dependency !== undefined) assert.ok(dependency.endsWith(archive), `the profile installs ${dependency}`)
-    note('update-installed', { from: candidate.version, to: version, phase: installed.phase, dependency })
+    const dependency = JSON.parse(readFileSync(manifest, 'utf8')).dependencies?.['dsh-godbot']
+    assert.ok(dependency?.endsWith(archive), `the profile installs ${dependency}`)
+    assert.equal((await host.snapshot()).buildId, candidate.buildId)
+    // The sidebar (and the details, while open) ask for the restart.
+    const v = version.replaceAll('.', '\\.')
+    await page.getByText(new RegExp(`^(Godbot ${v} 已安装，重启 DSH 后生效|Godbot ${v} is installed\\. Restart DSH to use it\\.|重启 DSH 后开始使用 Godbot ${v}。|Restart DSH to start using Godbot ${v}\\.)$`, 'u')).first().waitFor()
+    await host.capture('update-installed')
+    note('update-installed', { from: candidate.version, to: version, phase: installed.phase, running: installed.current, dependency })
 
+    // The next start is a new process: the release loads there.
+    await rm(trap)
     await host.restart()
     const after = await host.bot('update-check', { fresh: false })
     assert.equal(after.current, version)
+    assert.equal(after.phase, 'updated')
     assert.equal(after.available, false)
     note('update-running', { version: after.current, phase: after.phase, asked: [...new Set(asked)] })
   } finally {
