@@ -8,6 +8,13 @@ import { cleanEnv, findEngineExecutable, spawnAgent, terminateChild } from '../.
 // The name the loopback MCP server is registered under in each thread's config.
 const MCP_SERVER = 'godbot'
 
+// The team's instructions first, then the user's own from their Codex config,
+// which keep the last word as they would without Godbot.
+export function withOwnInstructions(team, own) {
+  if (own === undefined || own === '') return team
+  return `${team}\n\nThe developer instructions from the user's own Codex configuration still apply:\n\n${own}`
+}
+
 export class CodexEngine {
   constructor(route, engine, { findExecutable }) {
     this.route = route
@@ -195,6 +202,7 @@ export class CodexEngine {
       ...(mode ? { sandbox: mode, approvalPolicy: mode === 'danger-full-access' ? 'never' : 'on-request' } : {}),
       ...(mcp !== undefined ? { config: { mcp_servers: { [MCP_SERVER]: { url: mcp.url, http_headers: { Authorization: `Bearer ${mcp.token}` } } } } } : {}),
     }
+    thread.cwd = cwd
     if (thread.threadId !== undefined) {
       try {
         // thread/resume takes the same params, plus the thread id. The instructions it
@@ -205,15 +213,33 @@ export class CodexEngine {
         thread.threadId = undefined
       }
     }
-    const reply = await peer.request('thread/start', { ...params, ...(instructions ? { developerInstructions: instructions } : {}), ...(ephemeral ? { ephemeral: true } : {}) }, { timeout: 60_000 })
+    const developerInstructions = instructions ? withOwnInstructions(instructions, await this.ownInstructions(peer, cwd)) : undefined
+    const reply = await peer.request('thread/start', { ...params, ...(developerInstructions ? { developerInstructions } : {}), ...(ephemeral ? { ephemeral: true } : {}) }, { timeout: 60_000 })
     thread.threadId = reply?.thread?.id ?? reply?.threadId
     return thread
   }
 
+  // developerInstructions replaces the developer_instructions of the user's own
+  // Codex config for the thread instead of adding to them, so they are read first
+  // and kept. A Codex without config/read, or a config it cannot read, has none to keep.
+  async ownInstructions(peer, cwd) {
+    try {
+      const reply = await peer.request('config/read', { cwd, includeLayers: false }, { timeout: 15_000 })
+      const value = reply?.config?.developer_instructions
+      return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined
+    } catch {
+      return undefined
+    }
+  }
+
   // Follow-up instructions while a thread lives (Codex injects a developer item).
+  // They replace the team's earlier ones, so the user's own come along again.
   async instruct(thread, text) {
     if (text === '') return
-    await this.peer?.request('thread/inject_items', { threadId: thread.threadId, items: [{ type: 'developerMessage', text }] }, { timeout: 15_000 }).catch(() => {})
+    const peer = this.peer
+    if (peer === undefined) return
+    const own = await this.ownInstructions(peer, thread.cwd)
+    await peer.request('thread/inject_items', { threadId: thread.threadId, items: [{ type: 'developerMessage', text: withOwnInstructions(text, own) }] }, { timeout: 15_000 }).catch(() => {})
   }
 
   async prompt(thread, blocks, { signal, effort }) {

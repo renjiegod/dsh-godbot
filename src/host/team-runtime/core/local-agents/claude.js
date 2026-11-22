@@ -3,9 +3,53 @@
 // stdin takes user/control JSON messages; stdout streams the assistant's
 // events until the `result` of the turn that ran the prompt ends it.
 import { randomUUID } from 'node:crypto'
-import { cleanEnv, findEngineExecutable, spawnAgent } from '../../../../drivers/external/discover.js'
+import { execFile } from 'node:child_process'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { cleanEnv, findEngineExecutable, launchOf, spawnAgent } from '../../../../drivers/external/discover.js'
 import { ClaudeTurns } from '../../../../drivers/external/claude-turns.js'
 import { tasksNeedingProcess } from '../../../../drivers/external/claude-tasks.js'
+
+// Whether a Claude Code takes `--append-system-prompt-file`, asked once per
+// executable from its help. The instructions then stay off the command line,
+// out of `ps` and clear of the length a command line may have; a CLI that does
+// not know the flag gets the text itself, as before.
+const promptFileSupport = new Map()
+export function takesPromptFile(bin, args = [], env = process.env) {
+  const key = JSON.stringify([bin, args])
+  let known = promptFileSupport.get(key)
+  if (known === undefined) {
+    known = new Promise((resolve) => {
+      try {
+        const launch = launchOf(bin, [...args, '--help'])
+        const child = execFile(launch.file, launch.args, { encoding: 'utf8', timeout: 10_000, maxBuffer: 4 * 1024 * 1024, env, windowsHide: true, ...launch.options },
+          (_error, stdout) => resolve(/--append-system-prompt(?:-file|\[-file\])/.test(String(stdout ?? ''))))
+        child.stdin?.end()
+      } catch {
+        resolve(false)
+      }
+    })
+    promptFileSupport.set(key, known)
+  }
+  return known
+}
+
+// The instructions in a file only this user can read, in a folder of its own.
+function writePromptFile(system) {
+  try {
+    const dir = mkdtempSync(join(tmpdir(), 'godbot-claude-'))
+    const path = join(dir, 'instructions.md')
+    writeFileSync(path, system, { mode: 0o600 })
+    return { dir, path }
+  } catch {
+    return undefined
+  }
+}
+
+const removePromptFile = (file) => {
+  if (file !== undefined) try { rmSync(file.dir, { recursive: true, force: true }) } catch { /* already gone */ }
+}
 
 // Claude Code tools that only read; the rest may change files or run something.
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead'])
@@ -109,9 +153,17 @@ class ClaudeSession {
     // Fixture scripts in tests ride in spec.args ahead of the real CLI flags.
     // The stream-json formats only exist in print mode: without `--print` the
     // CLI starts an interactive session and never speaks this protocol.
+    const env = cleanEnv(this.engine.env ?? {})
+    const promptFile = system !== undefined && await takesPromptFile(bin, this.engine.engine.args ?? [], env) ? writePromptFile(system) : undefined
+    // Another start spawned the process while this one asked the CLI.
+    if (this.child !== undefined) {
+      removePromptFile(promptFile)
+      return this
+    }
     const args = [...(this.engine.engine.args ?? []), '--print', '--input-format', 'stream-json', '--output-format', 'stream-json', '--verbose']
     if (resumeId !== undefined) args.push('--resume', resumeId)
-    if (system !== undefined) args.push('--append-system-prompt', system)
+    if (promptFile !== undefined) args.push('--append-system-prompt-file', promptFile.path)
+    else if (system !== undefined) args.push('--append-system-prompt', system)
     if (mode !== undefined) args.push('--permission-mode', mode)
     if (model !== undefined && model !== 'default') args.push('--model', model)
     // Print mode has no one to ask: without a prompt tool a call that needs
@@ -128,7 +180,7 @@ class ClaudeSession {
     }
     this.resumeId = resumeId
     const child = this.child = spawnAgent(bin, args, {
-      env: cleanEnv(this.engine.env ?? {}),
+      env,
       cwd,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
@@ -165,6 +217,7 @@ class ClaudeSession {
     })
     child.on('error', (error) => {
       this.dead = true
+      removePromptFile(promptFile)
       const failure = fail(`${this.engine.engine.name} could not start: ${error.message}`)
       this.rejectStart?.(failure)
       this.rejectStart = undefined
@@ -172,6 +225,7 @@ class ClaudeSession {
     })
     child.on('exit', (code, signal) => {
       this.dead = true
+      removePromptFile(promptFile)
       // Claude Code deletes old conversations; resuming one that is gone exits
       // before init with this line on stderr.
       if (this.resumeId !== undefined && this.cliSessionId === undefined && /no conversation found/i.test(stderr)) this.resumeMissing = true
