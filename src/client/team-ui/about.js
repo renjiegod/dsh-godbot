@@ -96,6 +96,14 @@ function dshHint(dsh, shown) {
 
 const linkProps = href => ({ className: 'bt-soft bt-soft-sm bt-about-link', href, target: '_blank', rel: 'noopener noreferrer' })
 
+export function RestartDshButton({ update, actions, className }) {
+  const pending = update.restart?.pending === true
+  if (!update.canRestartDsh && !pending) return null
+  return h('button', {
+    type: 'button', className, disabled: pending, 'aria-live': 'polite', onClick: actions.restartDsh,
+  }, pending ? t('Restarting DSH…') : t('Restart DSH'))
+}
+
 export function AboutPage({ useUpdate, actions, run, Section, Row }) {
   const update = useUpdate(value => value) ?? {}
   const [checking, setChecking] = useState(false)
@@ -110,6 +118,7 @@ export function AboutPage({ useUpdate, actions, run, Section, Row }) {
   const dshNew = showsDshRow(dsh, update.app)
   const dshShown = dshNew && dsh.available
   const ownRow = update.source === 'app' ? ownAppRow(update.ownApp) : null
+  const restartControl = h(RestartDshButton, { update, actions, className: 'bt-fb-primary' })
   const ownControl = ownRow?.button === 'restart'
     ? h('button', { type: 'button', className: 'bt-fb-primary', onClick: () => run(actions.installOwnApp()) }, t('Restart to update'))
     : ownRow?.button === 'check'
@@ -118,7 +127,8 @@ export function AboutPage({ useUpdate, actions, run, Section, Row }) {
         ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => run(actions.openOwnApp()) }, t('Download'))
         : null
   const botControl = ownRow !== null ? ownControl
-    : phase === 'installed' || phase === 'updated' || update.source === 'app' ? null
+    : phase === 'installed' ? restartControl
+    : phase === 'updated' || update.source === 'app' ? null
     : update.available || phase === 'installing'
       ? h('button', { type: 'button', className: 'bt-fb-primary', disabled: phase === 'installing', onClick: () => run(actions.installUpdate()) },
           phase === 'installing' ? t('Updating…') : phase === 'failed' ? t('Try again') : phase === 'downloading' ? t('Install when downloaded') : t('Update'))
@@ -133,7 +143,8 @@ export function AboutPage({ useUpdate, actions, run, Section, Row }) {
         h('option', { value: 'notify' }, t('Download, then ask')),
         h('option', { value: 'off' }, t('Check manually'))))
     : null
-  const dshControl = !dshNew || dshPhase === 'installed' ? null
+  const dshControl = !dshNew ? null
+    : dshPhase === 'installed' ? phase === 'installed' ? null : restartControl
     : dsh.kind === 'app'
       ? dsh.available ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => run(actions.openAppUpdates(dsh.verified)) }, t('Open updates')) : null
       : dsh.available || dshPhase !== 'idle'
@@ -150,7 +161,8 @@ export function AboutPage({ useUpdate, actions, run, Section, Row }) {
     h(Section, { key: 'updates', title: t('Updates') },
       h(Row, { label: 'Godbot', hint: ownRow?.hint ?? botHint(update) }, botControl, update.available && update.notesUrl ? h('a', linkProps(update.notesUrl), t("What's new")) : null),
       modeControl,
-      dsh?.current ? h(Row, { label: 'DeepSeek Harness', hint: dshHint(dsh, dshShown) }, dshControl) : null),
+      dsh?.current ? h(Row, { label: 'DeepSeek Harness', hint: dshHint(dsh, dshShown) }, dshControl) : null,
+      update.restart?.error ? h('div', { className: 'bt-error', role: 'alert' }, update.restart.error) : null),
     h(Section, { key: 'links', title: t('Links') },
       repo ? h(Row, { label: t('Source code'), hint: repo.replace(/^https:\/\//, '') }, h('a', linkProps(repo), h(GitHubMark), t('Open'))) : null,
       update.notesUrl ? h(Row, { label: t('Release notes') }, h('a', linkProps(update.notesUrl), t('Open'))) : null,

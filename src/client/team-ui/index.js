@@ -304,6 +304,7 @@ export function apply(ctx, godbot) {
   // answer for a while and asks GitHub on its own clock), again each hour, and every
   // two seconds while a release downloads or installs.
   const update = createSource({ available: false, phase: 'idle' })
+  const takeUpdate = value => update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp, restart: previous.restart }))
   let wakeUpdate = () => {}
   ctx.effect(() => {
     let stopped = false
@@ -313,7 +314,7 @@ export function apply(ctx, godbot) {
       if (stopped) return
       const value = await call('update-check', { fresh: false }).catch(() => null)
       if (stopped) return
-      if (value) update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp }))
+      if (value) takeUpdate(value)
       const moving = value?.phase === 'installing' || value?.phase === 'downloading' || value?.dsh?.phase === 'installing'
       // A release waiting for an idle moment installs within minutes: follow it closer.
       timer = setTimeout(loop, moving ? 2000 : value?.phase === 'ready' && value?.mode === 'auto' ? 60_000 : 60 * 60_000)
@@ -953,6 +954,25 @@ export function apply(ctx, godbot) {
     update.set(previous => ({ ...previous, dsh }))
     wakeUpdate()
   }
+  actions.restartDsh = async () => {
+    if (update.getSnapshot().restart?.pending) return
+    update.set(previous => ({ ...previous, restart: { pending: true } }))
+    try {
+      const { boot } = await call('update-restart')
+      const deadline = Date.now() + 60_000
+      while (Date.now() < deadline) {
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        const hello = await call('hello', {}, AbortSignal.timeout(2500), { quiet: true }).catch(() => null)
+        if (hello?.boot && hello.boot !== boot) {
+          window.location.reload()
+          return
+        }
+      }
+      throw new Error(t('DSH did not reconnect. Restart it from the terminal, then reload this page.'))
+    } catch (error) {
+      update.set(previous => ({ ...previous, restart: { error: error.message } }))
+    }
+  }
   // The app's panel installs whatever its updater found by now, so it opens only
   // while that is still the verified version.
   actions.openAppUpdates = async (verified) => {
@@ -968,7 +988,7 @@ export function apply(ctx, godbot) {
   }
   actions.checkUpdate = async () => {
     const value = await call('update-check', { fresh: true })
-    update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp }))
+    takeUpdate(value)
     wakeUpdate()
   }
   // The app's own updater answers through its bridge; the state it pushes back re-renders
