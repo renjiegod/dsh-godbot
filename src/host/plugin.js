@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { buildId } from './build-id.js'
+import { RemoteComputers } from './remote-computers.js'
 import { BotTerminals } from './bot-terminals.js'
 import { GodbotService, readOnlyWorkspaceSnapshot } from './service.js'
 import { createGodbotRemote } from './dsh-remote.js'
@@ -87,8 +88,9 @@ export async function apply(ctx, config = {}) {
       const subprocess = ctx.get('subprocess')
       const service = new GodbotService({ stateDir, config, subprocess, runtime })
       const terminals = new BotTerminals(service, subprocess)
-      return { service, terminals, start: () => service.start(child),
-        async close() { try { await terminals.dispose() } finally { await service.close() } } }
+      const computers = new RemoteComputers(stateDir)
+      return { service, terminals, computers, start: () => service.start(child),
+        async close() { try { await computers.close() } finally { try { await terminals.dispose() } finally { await service.close() } } } }
     }, error => child.logger.warn('Could not activate Bot workspace operations: %s', error.message))
     current = scope
     child.effect(() => () => {
@@ -110,6 +112,11 @@ export async function apply(ctx, config = {}) {
   }
   ctx.plugin(createGodbotRemote({
     snapshot: async () => ({ buildId, ...await snapshot(current), ...models.view(), workspaceRuntime: teamRuntimeStatus(ctx) }),
+    machine: async (request, peer, signal) => {
+      const scope = workspace()
+      await scope.ready()
+      return scope.existing({ write: true }).computers.handle(request, peer, signal)
+    },
     terminalStatus: async request => (await workspace().ready())?.terminals.status(request) ?? { active: false, closing: false },
     terminalOpen: async request => {
       const scope = workspace()

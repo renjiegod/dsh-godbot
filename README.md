@@ -207,6 +207,12 @@ Godbot 提供两类自动化入口：
 
 DSH、Claude Code 和 Codex 成员可从当前会话调用已授权的应用工具，实际操作沿用宿主审批和连接器只读设置。撤销成员授权会对已打开的会话生效。CLI 不能表示某个工具的参数约束时，详情会说明原因。任务使用负责 Bot 的工具和权限配置。
 
+### 远程控制自己的 Mac 和 Linux 电脑
+
+在目标电脑安装 Godbot Computer Host，在 Godbot 工作台侧栏打开 **远程电脑 / Remote computers**。首次使用时，在目标端运行 `godbot-computer manage`，选择 **Pair controller**。安卓 App 通过 **Computers → Remote computers** 扫码，本机 dsh web 粘贴配对链接并核对指纹。每个控制端使用单独的一次性配对链接。
+
+有图形会话时可以 **查看桌面**，电脑所有者同意后才能使用鼠标和键盘。无桌面的 Linux 服务器可以 **打开终端**。终端以目标账号运行。目标端可以随时结束会话、移除已记住的权限或撤销控制端。参见[电脑端安装、权限、网络和升级说明](computer-host/README.md)。
+
 ### Bot 的浏览器和桌面
 
 在标准 DSH Web 的完整团队中打开一个 Bot 私聊，选择标题旁的 **浏览器 → 打开执行环境**。默认在 DSH 服务器上按 Bot 启动独立的 Chromium 配置目录。宿主需要有 Chrome 或 Playwright Chromium，也可以通过下方配置的 `executablePath` 指定浏览器绝对路径。

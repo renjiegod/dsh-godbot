@@ -30,6 +30,11 @@ const files = (await readdir('src', { recursive: true, withFileTypes: true }))
   .filter((entry) => entry.isFile())
   .map((entry) => entry.parentPath + '/' + entry.name)
   .filter((path) => !path.endsWith('/build-id.js'))
+for (const entry of await readdir('computer-host', { recursive: true, withFileTypes: true })) {
+  if (!entry.isFile()) continue
+  const path = entry.parentPath + '/' + entry.name
+  if (!path.includes('/test/') && /\.(?:js|mjs|go|mod|sum|swift|py|c|html)$/.test(path)) files.push(path)
+}
 files.push('package.json', 'cordis.patch.yml', 'client.js')
 for (const entry of await readdir('bin', { withFileTypes: true })) {
   if (entry.isFile()) files.push('bin/' + entry.name)

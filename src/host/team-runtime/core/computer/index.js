@@ -10,6 +10,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { dshVersion } from '../diagnostics.js'
 import { LEGACY_EXECUTABLES, LEGACY_NAME } from '../legacy.mjs'
 import { classify, isComputerTool, levelAllows, LEVELS, DRIVER_GLOBAL, DRIVER_REFUSED } from './catalog.js'
+import { claimComputerInput } from '../../../computer-input-lock.js'
 import { createLeases } from './leases.js'
 import { prepareComputerHelper } from './mac-helper.js'
 import { REPLY_KIND } from '../constants.js'
@@ -880,7 +881,11 @@ export function install(rt) {
     const previous = exec.signal
     exec.signal = previous !== undefined ? AbortSignal.any([previous, abort.signal]) : abort.signal
     const started = Date.now()
+    let releaseInput
     try {
+      if (call.kind !== 'observe' && (process.platform === 'linux' || process.platform === 'darwin')) {
+        releaseInput = claimComputerInput('bot')
+      }
       const result = await next()
       // Tool results arrive as an envelope { isError, content, value } — the
       // recorded app identity and screenshot attachment live in `value`.
@@ -919,6 +924,7 @@ export function install(rt) {
       noteStep(botId, { time: started, callId: exec.callId, app: app?.name, action: call.method ?? exec.name, kind: call.kind, ok: false, error: String(error?.message ?? error).slice(0, 200) })
       throw error
     } finally {
+      releaseInput?.()
       if (typeof exec.callId === 'string') inFlight.delete(exec.callId)
       exec.signal = previous
       settleControl(botId)

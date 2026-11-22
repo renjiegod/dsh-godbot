@@ -1,6 +1,6 @@
 {
   "name": "dsh-godbot",
-  "version": "0.2.0-rc.19",
+  "version": "0.2.0-rc.20",
   "description": "Control native agent sessions and collaborate in a local dsh team.",
   "license": "MIT",
   "repository": {
@@ -18,6 +18,7 @@
   },
   "files": [
     "bin",
+    "computer-host",
     "src/host",
     "src/drivers",
     "src/team",
@@ -57,7 +58,6 @@
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "esbuild": "0.28.2",
-    "qrcode-generator": "2.0.4",
     "typescript": "6.0.3"
   },
   "peerDependencies": {
@@ -82,10 +82,12 @@
     "openid-client": "6.9.1",
     "playwright-core": "1.64.1",
     "pngjs": "7.0.0",
+    "qrcode-generator": "2.0.4",
     "undici": "8.13.1",
     "ws": "8.23.0"
   },
   "bin": {
-    "godbot": "bin/godbot.mjs"
+    "godbot": "bin/godbot.mjs",
+    "godbot-computer": "computer-host/cli.mjs"
   }
 }
