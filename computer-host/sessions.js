@@ -26,6 +26,7 @@ export class MachineSessions {
     desktop,
     name,
     grants,
+    portalMemory,
     ask,
     audit,
     peerName,
@@ -38,6 +39,7 @@ export class MachineSessions {
     this.desktop = desktop
     this.name = name
     this.grants = grants
+    this.portalMemory = portalMemory
     this.peerName = peerName
     this.claimInput = claimInput
     this.localPrivate = localPrivate
@@ -503,6 +505,10 @@ export class MachineSessions {
           sessionId: s.id,
           displayId,
           quality,
+          portalPolicy: this.portalMemory?.session(
+            s.peerId,
+            () => s.generation === generation && s.state === 'approved' && s.expiresAt > Date.now(),
+          ),
           signal: s.lifetime.signal,
           controllerName: this.peerName?.(s.peerId) || s.peerId,
           iceServers: s.ice?.host ?? [],

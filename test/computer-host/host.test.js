@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as sleep } from 'node:timers/promises'
@@ -283,5 +283,138 @@ test(
     assert.equal(next.state, 'approved')
     await restored.rpc('session.close', { sessionId: next.sessionId })
     assert.equal((await stat(join(directory, 'identity.json'))).mode & 0o777, 0o600)
+  },
+)
+
+test(
+  'configured STUN reaches the approved viewer and native desktop as a URL list',
+  { skip: !process.env.GODBOT_RELAY_BIN, timeout: 10000 },
+  async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), 'godbot-stun-config-'))
+    const relay = await startRelay(directory, () => {})
+    let client, host, nativeServers
+    t.after(async () => {
+      await client?.close()
+      await host?.close()
+      await relay.close()
+      await rm(directory, { recursive: true, force: true })
+    })
+    const stun = 'stun:localhost:3478'
+    await writeFile(join(directory, 'network.json'), JSON.stringify({ stun }), { mode: 0o600 })
+    const desktop = {
+      probe: async () => ({ available: true }),
+      displays: async () => [{ id: 'test-display', revision: 1 }],
+      start: async ({ iceServers }) => {
+        nativeServers = iceServers
+        return { signal: async () => {}, close: async () => {} }
+      },
+    }
+    host = await startComputerHost({ home: directory, relay: relay.url, desktop, noPrompts: true })
+    const admin = (method, ...args) => localRequest(directory, method, args)
+    const peer = identity()
+    client = await connect(parseMachinePairingUri((await admin('pair')).uri), peer)
+    await admin('grant', peer.deviceId, 'desktop.view')
+
+    const session = await client.rpc('session.open', { mode: 'desktop', requestId: 'stun-desktop' })
+    assert.equal(session.state, 'approved')
+    assert.deepEqual(session.iceServers, [{ urls: [stun] }])
+    await client.rpc('desktop.signal', {
+      sessionId: session.sessionId,
+      generation: 1,
+      displayId: 'test-display',
+      signal: { type: 'offer', sdp: 'test' },
+    })
+    assert.deepEqual(nativeServers, [{ urls: [stun] }])
+  },
+)
+
+test(
+  'Wayland opt-in is local, scope-gated and revoked with the paired controller',
+  { skip: !process.env.GODBOT_RELAY_BIN, timeout: 10000 },
+  async (t) => {
+    const directory = await mkdtemp(join(tmpdir(), 'godbot-portal-policy-'))
+    const relay = await startRelay(directory, () => {})
+    const context = { seat: 'seat0', backend: 'wayland', revision: 1 }
+    let client, host, input
+    t.after(async () => {
+      await client?.close()
+      await host?.close()
+      await relay.close()
+      await rm(directory, { recursive: true, force: true })
+    })
+    const desktop = {
+      probe: async () => ({ available: true, control: true }),
+      portalSupport: async () => ['desktop.view', 'desktop.control'],
+      displays: async () => [{ id: 'portal', revision: 1 }],
+      start: async ({ portalPolicy }) => {
+        const view = portalPolicy.take('desktop.view', context)
+        assert.deepEqual(view.request, { remember: true })
+        view.replace({ token: 'test-view-capability', streamId: 'selected-monitor' })
+        return {
+          signal: async () => {},
+          close: async () => {},
+          async setControl(enabled) {
+            if (enabled) input = portalPolicy.take('desktop.control', context)
+          },
+        }
+      },
+    }
+    const opts = {
+      home: directory,
+      relay: relay.url,
+      desktop,
+      noPrompts: true,
+      claimInput: await isolatedInput(t),
+    }
+    host = await startComputerHost(opts)
+    await host.link.waitOnline()
+    const admin = (method, ...args) => localRequest(directory, method, args)
+    const peer = identity()
+    client = await connect(parseMachinePairingUri((await admin('pair')).uri), peer)
+    const id = peer.deviceId
+    await assert.rejects(admin('remember-portal', id, 'desktop.view'), /corresponding Godbot desktop grant/)
+    await admin('grant', id, 'desktop.control')
+    await admin('remember-portal', id, 'desktop.view')
+    await admin('remember-portal', id, 'desktop.control')
+    assert.deepEqual((await admin('controllers'))[0].portalScopes, ['desktop.view', 'desktop.control'])
+    assert.deepEqual((await client.rpc('computer.hello', {})).portalScopes, undefined)
+    const s = await client.rpc('session.open', { mode: 'desktop', requestId: 'test portal' })
+    const p = { sessionId: s.sessionId }
+    assert.equal(s.state, 'approved')
+    await assert.rejects(client.rpc('forget-portal', p), { code: 'SCOPE_DENIED' })
+    await client.rpc('desktop.signal', { ...p, displayId: 'portal', generation: 1, signal: { type: 'offer', sdp: 'test' } })
+    await client.rpc('desktop.requestControl', p)
+    await eventually(async () => assert.equal((await client.rpc('session.status', p)).control, true))
+    assert.deepEqual(input.request, { remember: true })
+    const identityPath = join(directory, 'identity.json')
+    const policy = async () => JSON.parse(await readFile(identityPath, 'utf8')).portalMemory?.[id]
+    assert.equal((await policy())['desktop.view'].saved.token, 'test-view-capability')
+    assert.equal(JSON.stringify(await admin('controllers')).includes('test-view-capability'), false)
+    assert.equal(JSON.stringify(await client.rpc('session.status', p)).includes('test-view-capability'), false)
+    await admin('ungrant', id, 'desktop.control')
+    input.replace({ token: 'late-test-control-capability', streamId: 'selected-monitor' })
+    assert.equal((await policy())['desktop.control'], undefined)
+    assert.equal((await client.rpc('session.status', p)).state, 'approved')
+    assert.equal((await client.rpc('session.status', p)).control, false)
+    await client.close()
+    client = undefined
+    await host.close()
+    host = await startComputerHost(opts)
+    await host.link.waitOnline()
+    assert.deepEqual((await admin('controllers'))[0].portalScopes, ['desktop.view'])
+    await host.close()
+    // Prior hosts atomically replace the identity file and preserve unknown
+    // keys. Even a byte-identical legacy rewrite must discard portal consent.
+    const legacyPath = identityPath + '.legacy'
+    await writeFile(legacyPath, await readFile(identityPath), { mode: 0o600, flag: 'wx' })
+    await rename(legacyPath, identityPath)
+    host = await startComputerHost(opts)
+    await host.link.waitOnline()
+    const controller = (await admin('controllers'))[0]
+    assert.equal(controller.deviceId, id)
+    assert.deepEqual(controller.grants, ['desktop.view'])
+    assert.deepEqual(controller.portalScopes, [])
+    await admin('revoke', id)
+    assert.equal(await policy(), undefined)
   },
 )
