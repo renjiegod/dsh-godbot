@@ -16,6 +16,10 @@ export const DEFAULT_CONTEXT_WINDOW = 200_000
 const REPLAY_MESSAGES = 12
 const REPLAY_BYTES = 24 * 1024
 const IDLE_CLOSE_MS = 10 * 60_000
+// Background work a CLI runs (Claude Code's shells, Monitors and subagents) ends with
+// its process. A process that still runs some outlasts the idle limit, but not this
+// long without a word.
+const BACKGROUND_IDLE_CLOSE_MS = 2 * 60 * 60_000
 const APPROVE_TOOL = 'approve_agent_action'
 // A CLI that answers its compaction command first and condenses after (Devin) says
 // that it started within this long, or it is taken to have condensed without a word.
@@ -72,7 +76,7 @@ const RESUME_RETRIED = Symbol('resume retried')
 export class LocalAgentAdapter extends LlmAdapter {
   // deps: {rt, findExecutable, spawnEngine(kind,route,engine), record(sessionId),
   //        saveRecord, dropRecord, presetFor(sessionId), toolsFor(options), signInHint(route),
-  //        usedModels(route)}
+  //        usedModels(route), idleCloseMs?, backgroundIdleCloseMs?}
   constructor(deps) {
     super()
     this.deps = deps
@@ -202,7 +206,9 @@ export class LocalAgentAdapter extends LlmAdapter {
       // Prompts queued while a turn runs (ACP speaks one prompt at a time);
       // the drain sends the next one when the turn ends.
       queue: [],
+      // The idle close timer, and when the CLI last said something.
       idle: undefined,
+      heard: 0,
       cwd: record?.cwd,
       model: options.model,
       preset,
@@ -222,9 +228,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     live.push = (event) => {
       this.observe(live, event)
       if (live.mute && live.state === 'idle' && (event?.type === 'text' || event?.type === 'thought' || event?.type === 'activity')) return
-      clearTimeout(live.idle)
-      live.idle = setTimeout(() => void this.closeLive(live, { idle: true }), IDLE_CLOSE_MS)
-      live.idle.unref?.()
+      this.armIdle(live)
       // A turn the CLI ran by itself (a background task ended, say) answers no request:
       // its output waits for the turn that shows it (showBackground).
       if (this.background(live, event)) return
@@ -313,6 +317,31 @@ export class LocalAgentAdapter extends LlmAdapter {
       || [...this.sideRequests].some(request => request !== except && request.engine === engine)
   }
 
+  // A process the CLI said nothing in for the idle limit leaves; the CLI session stays,
+  // and the next prompt resumes it.
+  armIdle(live) {
+    live.heard = Date.now()
+    clearTimeout(live.idle)
+    live.idle = setTimeout(() => this.idleOut(live), this.deps.idleCloseMs ?? IDLE_CLOSE_MS)
+    live.idle.unref?.()
+  }
+
+  // Background tasks the CLI still runs would die with its process, so it stays until
+  // they end and the idle limit passes again, or until it has been quiet for the
+  // longer limit (a `sleep infinity` never ends). A reply the CLI gave by itself that
+  // its Session has not shown yet keeps it the same way: it goes with the process.
+  idleOut(live) {
+    if (live.dead) return
+    const left = (this.deps.backgroundIdleCloseMs ?? BACKGROUND_IDLE_CLOSE_MS) - (Date.now() - live.heard)
+    const session = live.engineSession
+    if (left > 0 && session !== undefined && (this.backgroundWaits(live) || live.engine.backgroundTasks?.(session)?.length > 0)) {
+      live.idle = setTimeout(() => this.idleOut(live), Math.min(left, this.deps.idleCloseMs ?? IDLE_CLOSE_MS))
+      live.idle.unref?.()
+      return
+    }
+    void this.closeLive(live, { idle: true })
+  }
+
   async closeLive(live, { idle = false } = {}) {
     if (live.dead) return
     live.dead = true
@@ -364,8 +393,9 @@ export class LocalAgentAdapter extends LlmAdapter {
       if (open !== undefined) this.endBackground(live, open, event.usage)
       return true
     }
-    // Where no turn can show it, it only keeps the process in use.
-    if (this.deps.onBackground === undefined) return true
+    // Only what the CLI says in such a turn shows. Other notes (its background tasks
+    // changed), or output no turn can show, only keep the process in use.
+    if (event.event === undefined || this.deps.onBackground === undefined) return true
     let turn = open
     if (turn === undefined) {
       turn = { id: `background-${randomUUID()}`, events: [], claimed: false }
@@ -396,6 +426,11 @@ export class LocalAgentAdapter extends LlmAdapter {
       else live.events.push(event)
     } else if (!turn.claimed) turn.events.push(event)
     else if (event.type === 'done') live.backgrounds.delete(turn.id)
+  }
+
+  // A reply the CLI gave by itself that its Session shows now or has yet to show.
+  backgroundWaits(live) {
+    return live.showing !== undefined || [...live.backgrounds.values()].some(turn => !turn.claimed)
   }
 
   // A turn no Session turn will show.

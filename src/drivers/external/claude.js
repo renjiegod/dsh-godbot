@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { cleanEnv, findEngineExecutable, spawnAgent } from './discover.js'
 import { claudeToolResult } from './tool-results.js'
 import { ClaudeTurns } from './claude-turns.js'
+import { tasksNeedingProcess } from './claude-tasks.js'
 
 // Claude Code tools that only read; the rest may change files or run something.
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead'])
@@ -47,6 +48,11 @@ export class ClaudeEngine {
     return session.cancel()
   }
 
+  // Background tasks the CLI runs in the session's process, which end with it.
+  backgroundTasks(session) {
+    return session.dead ? [] : session.backgroundTasks
+  }
+
   compact(session) {
     return session.compact()
   }
@@ -77,6 +83,7 @@ class ClaudeSession extends ClaudeControlSession {
     this.dead = false
     this.idWaiters = []
     this.turns = new ClaudeTurns()
+    this.backgroundTasks = []
   }
 
   // A prompt is still unanswered. A turn the CLI started by itself does not count.
@@ -210,6 +217,11 @@ class ClaudeSession extends ClaudeControlSession {
           for (const resolve of this.idWaiters.splice(0)) resolve(this.cliSessionId)
         } else if (event.subtype === 'compact_boundary') this.emit({ type: 'compaction', status: 'completed' })
         else if (event.subtype === 'status' && event.status === 'compacting') this.emit({ type: 'compaction', status: 'started' })
+        else if (event.subtype === 'background_tasks_changed') {
+          this.backgroundTasks = tasksNeedingProcess(event.tasks)
+          // The change keeps the process in use and answers nothing.
+          this.emit({ type: 'background', of: 'tasks' })
+        }
         break
       case 'stream_event': {
         const piece = event.event
