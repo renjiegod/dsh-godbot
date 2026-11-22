@@ -9,6 +9,7 @@ import { handoffReply, questionReply, viewReply } from './parts.js'
 import { threadCurrentOfPart } from './threads.js'
 import { validateViewAnswer } from 'deep-view/core'
 import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
+import { dshRestart } from './dsh-restart.js'
 
 const STAGED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
 const STAGED_MS = 30 * 60_000
@@ -46,6 +47,7 @@ export function install(rt) {
   installBtw(rt)
   installSide(rt)
   const { ctx, state } = rt
+  const restart = dshRestart(rt)
 
   // The DSH interface language of the last browser that asked for the team.
   let uiLocale
@@ -301,9 +303,12 @@ export function install(rt) {
     return rt.save()
   }
 
-  const handle = async (endpoint, payload, signal) => {
+  const handle = async (endpoint, payload, signal, browser = false) => {
     try {
       const body = payload ?? {}
+      // Only the authenticated Web route can restart the process. The team
+      // Remote and paired phones share the handler without this capability.
+      if (browser && endpoint === 'update-restart') return ok(restart.schedule())
       await rt.refresh()
       const readOnly = rt.readOnly()
       if (readOnly !== undefined && !READS.has(endpoint)) return fail(readOnly, 'bot/read-only')
@@ -802,14 +807,18 @@ export function install(rt) {
         }
         case 'update-check': {
           const fresh = body.fresh === true
-          return ok({ ...(await rt.updateCheck({ fresh })), dsh: (await rt.dshUpdateCheck?.({ fresh })) ?? null })
+          const update = await rt.updateCheck({ fresh })
+          const dsh = (await rt.dshUpdateCheck?.({ fresh })) ?? null
+          return ok({ ...update, dsh, ...(browser ? { canRestartDsh: restart.available(update, dsh) } : {}) })
         }
         case 'update-install':
+          if (restart.scheduled()) return fail('Restarting DSH…', 'bot/refused')
           return ok(rt.updateStart())
         case 'update-settings':
           if (typeof body.mode !== 'string') return fail('Choose an update mode', 'bot/invalid')
           return ok(rt.updateSettings({ mode: body.mode }))
         case 'dsh-update-install':
+          if (restart.scheduled()) return fail('Restarting DSH…', 'bot/refused')
           return ok(rt.dshUpdateStart?.())
         case 'repo-stars':
           return ok(await rt.repoStars())
@@ -1004,7 +1013,7 @@ export function install(rt) {
     fetch: async (request) => {
       let body
       try { body = await request.json() } catch { body = {} }
-      const result = await handle(String(body?.endpoint ?? ''), body?.payload, request.signal)
+      const result = await handle(String(body?.endpoint ?? ''), body?.payload, request.signal, true)
       return new Response(JSON.stringify(result), { status: 200, headers: { 'content-type': 'application/json' } })
     },
   }), 'godbot: api route')

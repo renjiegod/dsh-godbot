@@ -1459,6 +1459,11 @@ var JA = {
   "Godbot update": "Godbot のアップデート",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "アップデート完了",
+  "Restart DSH": "DSH を再起動",
+  "Restarting DSH…": "DSH を再起動しています…",
+  "No installed update is ready for a restart.": "再起動が必要な更新はありません。",
+  "Restart DSH from the terminal to apply the update.": "更新を適用するには、ターミナルから DSH を再起動してください。",
+  "DSH did not reconnect. Restart it from the terminal, then reload this page.": "DSH に再接続できませんでした。ターミナルから DSH を再起動し、このページを再読み込みしてください。",
   "Restart DSH to start using Godbot {version}.": "DSH を再起動して Godbot {version} の使用を開始してください。",
   "You have {version}.": "現在のバージョンは {version} です。",
   "The update did not finish: {reason}": "アップデートが完了しませんでした: {reason}",
@@ -3940,6 +3945,11 @@ var KO = {
   "Godbot update": "Godbot 업데이트",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "업데이트 설치됨",
+  "Restart DSH": "DSH 재시작",
+  "Restarting DSH…": "DSH를 재시작하는 중…",
+  "No installed update is ready for a restart.": "재시작이 필요한 업데이트가 없습니다.",
+  "Restart DSH from the terminal to apply the update.": "업데이트를 적용하려면 터미널에서 DSH를 재시작하세요.",
+  "DSH did not reconnect. Restart it from the terminal, then reload this page.": "DSH에 다시 연결하지 못했습니다. 터미널에서 DSH를 재시작한 후 이 페이지를 새로고침하세요.",
   "Restart DSH to start using Godbot {version}.": "Godbot {version} 사용을 시작하려면 DSH를 재시작하세요.",
   "You have {version}.": "현재 버전: {version}",
   "The update did not finish: {reason}": "업데이트를 완료하지 못했습니다: {reason}",
@@ -6441,6 +6451,11 @@ var ES = {
   "Godbot update": "Actualización de Godbot",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "Actualización instalada",
+  "Restart DSH": "Reiniciar DSH",
+  "Restarting DSH…": "Reiniciando DSH…",
+  "No installed update is ready for a restart.": "No hay ninguna actualización instalada pendiente de reinicio.",
+  "Restart DSH from the terminal to apply the update.": "Reinicia DSH desde la terminal para aplicar la actualización.",
+  "DSH did not reconnect. Restart it from the terminal, then reload this page.": "DSH no volvió a conectarse. Reinícialo desde la terminal y vuelve a cargar esta página.",
   "Restart DSH to start using Godbot {version}.": "Reinicia DSH para empezar a usar Godbot {version}.",
   "You have {version}.": "Tienes la versión {version}.",
   "The update did not finish: {reason}": "La actualización no terminó: {reason}",
@@ -8917,6 +8932,11 @@ var FR = {
   "Godbot update": "Mise à jour de Godbot",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "Mise à jour installée",
+  "Restart DSH": "Redémarrer DSH",
+  "Restarting DSH…": "Redémarrage de DSH…",
+  "No installed update is ready for a restart.": "Aucune mise à jour installée ne nécessite de redémarrage.",
+  "Restart DSH from the terminal to apply the update.": "Redémarrez DSH depuis le terminal pour appliquer la mise à jour.",
+  "DSH did not reconnect. Restart it from the terminal, then reload this page.": "DSH ne s’est pas reconnecté. Redémarrez-le depuis le terminal, puis actualisez cette page.",
   "Restart DSH to start using Godbot {version}.": "Redémarrez DSH pour commencer à utiliser Godbot {version}.",
   "You have {version}.": "Version actuelle : {version}.",
   "The update did not finish: {reason}": "La mise à jour n’a pas abouti : {reason}",
@@ -11398,6 +11418,11 @@ var DE = {
   "Godbot update": "Godbot-Update",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "Update installiert",
+  "Restart DSH": "DSH neu starten",
+  "Restarting DSH…": "DSH wird neu gestartet…",
+  "No installed update is ready for a restart.": "Für den Neustart ist kein installiertes Update bereit.",
+  "Restart DSH from the terminal to apply the update.": "Starte DSH im Terminal neu, um das Update anzuwenden.",
+  "DSH did not reconnect. Restart it from the terminal, then reload this page.": "Die Verbindung zu DSH konnte nicht wiederhergestellt werden. Starte DSH im Terminal neu und lade diese Seite erneut.",
   "Restart DSH to start using Godbot {version}.": "Starte DSH neu, um Godbot {version} zu verwenden.",
   "You have {version}.": "Installierte Version: {version}.",
   "The update did not finish: {reason}": "Das Update wurde nicht abgeschlossen: {reason}",
@@ -13907,6 +13932,11 @@ var ZH = {
   "Godbot update": "Godbot 更新",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "更新已安装",
+  "Restart DSH": "重启 DSH",
+  "Restarting DSH…": "正在重启 DSH…",
+  "No installed update is ready for a restart.": "没有需要重启生效的更新。",
+  "Restart DSH from the terminal to apply the update.": "请在终端重启 DSH 以应用更新。",
+  "DSH did not reconnect. Restart it from the terminal, then reload this page.": "DSH 未能重新连接。请在终端重启 DSH，然后刷新此页面。",
   "Restart DSH to start using Godbot {version}.": "重启 DSH 后开始使用 Godbot {version}。",
   "You have {version}.": "当前版本 {version}。",
   "The update did not finish: {reason}": "更新没有完成：{reason}",
@@ -15202,7 +15232,7 @@ ${REST_NOTE}`);
 // src/client/team-ui/api.js
 var ROUTE = "api/godbot/team";
 var REFUSALS = /* @__PURE__ */ new Set(["bot/refused", "bot/invalid", "bot/read-only", "bot/not-found", "bot/browser-off"]);
-var call = async (endpoint, payload, signal) => {
+var call = async (endpoint, payload, signal, { quiet = false } = {}) => {
   let response;
   try {
     response = await fetch(ROUTE, {
@@ -15214,12 +15244,12 @@ var call = async (endpoint, payload, signal) => {
     });
   } catch (error) {
     if (error?.name === "AbortError") throw error;
-    noteClientError(endpoint, Object.assign(new Error(`network error: ${error?.message ?? error}`), { code: "NETWORK" }));
+    if (!quiet) noteClientError(endpoint, Object.assign(new Error(`network error: ${error?.message ?? error}`), { code: "NETWORK" }));
     throw markNoted(Object.assign(new Error(t("Could not reach DSH. Check that it is still running.")), { code: "NETWORK", cause: error }));
   }
   if (!response.ok) {
     const error = Object.assign(new Error(hostText(`HTTP ${response.status}`)), { code: `HTTP_${response.status}` });
-    noteClientError(endpoint, error);
+    if (!quiet) noteClientError(endpoint, error);
     throw error;
   }
   const result = await response.json();
@@ -15227,7 +15257,7 @@ var call = async (endpoint, payload, signal) => {
     const code = result.error?.code ?? "bot/error";
     const message2 = hostText(result.error?.message ?? "Request failed");
     const error = Object.assign(new Error(code === "bot/internal" ? `${message2} ${t("Settings → Feedback has the details.")}` : message2), { code });
-    if (!REFUSALS.has(code)) {
+    if (!quiet && !REFUSALS.has(code)) {
       noteClientError(endpoint, Object.assign(new Error(result.error?.message ?? "Request failed"), { code }));
       markNoted(error);
     }
@@ -30187,7 +30217,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.23";
+var version = "0.2.0-rc.24";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -30455,6 +30485,17 @@ function dshHint(dsh, shown) {
   return t("Version {version}", { version: dsh.current });
 }
 var linkProps = (href) => ({ className: "bt-soft bt-soft-sm bt-about-link", href, target: "_blank", rel: "noopener noreferrer" });
+function RestartDshButton({ update, actions, className }) {
+  const pending = update.restart?.pending === true;
+  if (!update.canRestartDsh && !pending) return null;
+  return (0, import_react38.createElement)("button", {
+    type: "button",
+    className,
+    disabled: pending,
+    "aria-live": "polite",
+    onClick: actions.restartDsh
+  }, pending ? t("Restarting DSH…") : t("Restart DSH"));
+}
 function AboutPage({ useUpdate, actions, run: run2, Section: Section2, Row: Row4 }) {
   const update = useUpdate((value) => value) ?? {};
   const [checking, setChecking] = (0, import_react38.useState)(false);
@@ -30472,8 +30513,9 @@ function AboutPage({ useUpdate, actions, run: run2, Section: Section2, Row: Row4
   const dshNew = showsDshRow(dsh, update.app);
   const dshShown = dshNew && dsh.available;
   const ownRow = update.source === "app" ? ownAppRow(update.ownApp) : null;
+  const restartControl = (0, import_react38.createElement)(RestartDshButton, { update, actions, className: "bt-fb-primary" });
   const ownControl = ownRow?.button === "restart" ? (0, import_react38.createElement)("button", { type: "button", className: "bt-fb-primary", onClick: () => run2(actions.installOwnApp()) }, t("Restart to update")) : ownRow?.button === "check" ? (0, import_react38.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => run2(actions.checkOwnApp()) }, t("Check for updates")) : ownRow?.button === "open" ? (0, import_react38.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => run2(actions.openOwnApp()) }, t("Download")) : null;
-  const botControl = ownRow !== null ? ownControl : phase === "installed" || phase === "updated" || update.source === "app" ? null : update.available || phase === "installing" ? (0, import_react38.createElement)(
+  const botControl = ownRow !== null ? ownControl : phase === "installed" ? restartControl : phase === "updated" || update.source === "app" ? null : update.available || phase === "installing" ? (0, import_react38.createElement)(
     "button",
     { type: "button", className: "bt-fb-primary", disabled: phase === "installing", onClick: () => run2(actions.installUpdate()) },
     phase === "installing" ? t("Updating…") : phase === "failed" ? t("Try again") : phase === "downloading" ? t("Install when downloaded") : t("Update")
@@ -30494,7 +30536,7 @@ function AboutPage({ useUpdate, actions, run: run2, Section: Section2, Row: Row4
       (0, import_react38.createElement)("option", { value: "off" }, t("Check manually"))
     )
   ) : null;
-  const dshControl = !dshNew || dshPhase === "installed" ? null : dsh.kind === "app" ? dsh.available ? (0, import_react38.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => run2(actions.openAppUpdates(dsh.verified)) }, t("Open updates")) : null : dsh.available || dshPhase !== "idle" ? (0, import_react38.createElement)(
+  const dshControl = !dshNew ? null : dshPhase === "installed" ? phase === "installed" ? null : restartControl : dsh.kind === "app" ? dsh.available ? (0, import_react38.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => run2(actions.openAppUpdates(dsh.verified)) }, t("Open updates")) : null : dsh.available || dshPhase !== "idle" ? (0, import_react38.createElement)(
     "button",
     { type: "button", className: "bt-fb-primary", disabled: dshPhase === "installing", onClick: () => run2(actions.installDshUpdate()) },
     dshPhase === "installing" ? t("Updating…") : dshPhase === "failed" ? t("Try again") : t("Update")
@@ -30517,7 +30559,8 @@ function AboutPage({ useUpdate, actions, run: run2, Section: Section2, Row: Row4
       { key: "updates", title: t("Updates") },
       (0, import_react38.createElement)(Row4, { label: "Godbot", hint: ownRow?.hint ?? botHint(update) }, botControl, update.available && update.notesUrl ? (0, import_react38.createElement)("a", linkProps(update.notesUrl), t("What's new")) : null),
       modeControl,
-      dsh?.current ? (0, import_react38.createElement)(Row4, { label: "DeepSeek Harness", hint: dshHint(dsh, dshShown) }, dshControl) : null
+      dsh?.current ? (0, import_react38.createElement)(Row4, { label: "DeepSeek Harness", hint: dshHint(dsh, dshShown) }, dshControl) : null,
+      update.restart?.error ? (0, import_react38.createElement)("div", { className: "bt-error", role: "alert" }, update.restart.error) : null
     ),
     (0, import_react38.createElement)(
       Section2,
@@ -31611,9 +31654,10 @@ function UpdateNotice({ wide, useUpdate, actions }) {
     void actions.installDshUpdate().catch((failure) => setDshError(hostText(failure?.message ?? String(failure))));
   };
   const label = phase === "installing" ? t("Updating Godbot…") : dshPhase === "installing" ? t("Updating DSH…") : phase === "installed" ? t("Godbot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is installed.", { version: update.installed ?? update.latest }) : dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : pending ?? (update?.available ? t("Godbot {version} is available", { version: update.latest }) : t("DSH {version} is available", { version: dsh?.verified }));
-  const summary = phase === "failed" || error ? t("Godbot update failed") : dshPhase === "failed" || dshError ? t("DSH update failed") : phase === "ready" ? t("Godbot {version} is ready to install", { version: update.latest }) : label;
+  const summary = update?.restart?.pending ? t("Restarting DSH…") : phase === "failed" || error ? t("Godbot update failed") : dshPhase === "failed" || dshError ? t("DSH update failed") : phase === "ready" ? t("Godbot {version} is ready to install", { version: update.latest }) : label;
   const message2 = error || (phase === "failed" ? update.error : "");
   const dshMessage = dshError || (dshPhase === "failed" ? dsh?.error : "");
+  const restartControl = (0, import_react39.createElement)(RestartDshButton, { update, actions, className: "bt-update-go" });
   const dshText = dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : dsh?.available === false && dsh?.blockedBy ? t("Update Godbot {version} first.", { version: dsh.blockedBy }) : t("You have {version}.", { version: dsh?.current });
   return (0, import_react39.createElement)(
     import_react39.Fragment,
@@ -31657,7 +31701,7 @@ function UpdateNotice({ wide, useUpdate, actions }) {
           "div",
           { className: "bt-update-actions" },
           update.notesUrl ? (0, import_react39.createElement)("a", { className: "bt-update-notes", href: update.notesUrl, target: "_blank", rel: "noopener noreferrer" }, t("What's new")) : null,
-          phase === "installed" || phase === "updated" ? null : (0, import_react39.createElement)("button", {
+          phase === "installed" ? restartControl : phase === "updated" ? null : (0, import_react39.createElement)("button", {
             type: "button",
             className: "bt-update-go",
             disabled: phase === "installing",
@@ -31675,14 +31719,15 @@ function UpdateNotice({ wide, useUpdate, actions }) {
           "div",
           { className: "bt-update-actions" },
           dsh.kind === "app" ? dsh.available ? (0, import_react39.createElement)("button", { type: "button", className: "bt-update-go", onClick: () => void actions.openAppUpdates(dsh.verified).catch(() => {
-          }) }, t("Open updates")) : null : !dsh.available && dshPhase === "idle" ? null : dshPhase === "installed" ? null : (0, import_react39.createElement)("button", {
+          }) }, t("Open updates")) : null : !dsh.available && dshPhase === "idle" ? null : dshPhase === "installed" ? phase === "installed" ? null : restartControl : (0, import_react39.createElement)("button", {
             type: "button",
             className: "bt-update-go",
             disabled: dshPhase === "installing",
             onClick: startDsh
           }, dshPhase === "installing" ? t("Updating…") : dshPhase === "failed" ? t("Try again") : t("Update"))
         )
-      ) : null
+      ) : null,
+      update?.restart?.error ? (0, import_react39.createElement)("div", { className: "bt-update-error", role: "alert" }, update.restart.error) : null
     ), document.body) : null
   );
 }
@@ -46557,6 +46602,7 @@ function apply(ctx, godbot) {
     };
   }, "godbot: roster poll");
   const update = createSource({ available: false, phase: "idle" });
+  const takeUpdate = (value) => update.set((previous) => ({ ...value, app: previous.app, ownApp: previous.ownApp, restart: previous.restart }));
   let wakeUpdate = () => {
   };
   ctx.effect(() => {
@@ -46567,7 +46613,7 @@ function apply(ctx, godbot) {
       if (stopped) return;
       const value = await call("update-check", { fresh: false }).catch(() => null);
       if (stopped) return;
-      if (value) update.set((previous) => ({ ...value, app: previous.app, ownApp: previous.ownApp }));
+      if (value) takeUpdate(value);
       const moving = value?.phase === "installing" || value?.phase === "downloading" || value?.dsh?.phase === "installing";
       timer = setTimeout(loop, moving ? 2e3 : value?.phase === "ready" && value?.mode === "auto" ? 6e4 : 60 * 6e4);
     };
@@ -47193,6 +47239,25 @@ function apply(ctx, godbot) {
     update.set((previous) => ({ ...previous, dsh }));
     wakeUpdate();
   };
+  actions.restartDsh = async () => {
+    if (update.getSnapshot().restart?.pending) return;
+    update.set((previous) => ({ ...previous, restart: { pending: true } }));
+    try {
+      const { boot } = await call("update-restart");
+      const deadline = Date.now() + 6e4;
+      while (Date.now() < deadline) {
+        await new Promise((resolve2) => setTimeout(resolve2, 1e3));
+        const hello = await call("hello", {}, AbortSignal.timeout(2500), { quiet: true }).catch(() => null);
+        if (hello?.boot && hello.boot !== boot) {
+          window.location.reload();
+          return;
+        }
+      }
+      throw new Error(t("DSH did not reconnect. Restart it from the terminal, then reload this page."));
+    } catch (error) {
+      update.set((previous) => ({ ...previous, restart: { error: error.message } }));
+    }
+  };
   actions.openAppUpdates = async (verified) => {
     const app = await appUpdates?.status?.();
     if (app) update.set((previous) => ({ ...previous, app }));
@@ -47205,7 +47270,7 @@ function apply(ctx, godbot) {
   };
   actions.checkUpdate = async () => {
     const value = await call("update-check", { fresh: true });
-    update.set((previous) => ({ ...value, app: previous.app, ownApp: previous.ownApp }));
+    takeUpdate(value);
     wakeUpdate();
   };
   actions.checkOwnApp = async () => {
