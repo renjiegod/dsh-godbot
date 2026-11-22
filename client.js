@@ -17295,9 +17295,11 @@ button.bt-set-row:hover .bt-chevron{transform:translateX(2px);color:var(--bt-ink
 .bt-browser-duration-choice:hover{color:var(--bt-ink)}
 .bt-browser-duration-choice:active{scale:.96}
 .bt-browser-duration-choice[aria-pressed=true]{background:var(--bt-card);color:var(--bt-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+:is(.bt-browser-form,.bt-automation-form) :is(.bt-set-card,.bt-set-section)>.bt-set-row>.bt-set-control,
 :is(.bt-browser-form,.bt-automation-form)>.bt-set-row>.bt-set-control{flex:0 1 64%;min-width:0;justify-content:flex-end}
 :is(.bt-browser-form,.bt-automation-form) .bt-select{width:auto;min-width:160px;max-width:280px}
 .bt-automation-form .bt-input:not(.bt-input-area){width:100%;min-width:160px;max-width:280px}
+:is(.bt-browser-form,.bt-automation-form) :is(.bt-set-card,.bt-set-section)>.bt-set-row+.bt-set-row,
 :is(.bt-browser-form,.bt-automation-form)>.bt-set-row+.bt-set-row{border-top:.5px solid var(--bt-line)}
 .bt-browser-site{width:min(320px,100%);max-width:320px}
 .bt-browser-form-foot{display:flex;justify-content:flex-end;padding:10px 16px;border-top:.5px solid var(--bt-line)}
@@ -17765,7 +17767,7 @@ body[data-ds-dark-theme] .bt-theme-chip i{background:var(--da)}
   .bt-settings-scroll{overflow-x:clip;padding:12px 16px calc(24px + env(safe-area-inset-bottom,0px))}
   .bt-set-row{flex-direction:column;align-items:stretch;gap:8px}
   .bt-set-row>.bt-set-copy{width:100%}
-  :is(.bt-browser-form,.bt-automation-form)>.bt-set-row>.bt-set-control{flex:1 1 auto;justify-content:flex-start}
+  :is(.bt-browser-form,.bt-automation-form) .bt-set-row>.bt-set-control{flex:1 1 auto;justify-content:flex-start}
   .bt-automation-form .bt-select,.bt-automation-form .bt-input:not(.bt-input-area){max-width:100%}
   .bt-automation-form-foot{flex-direction:column;align-items:stretch;gap:8px}
   .bt-browser-action-list{justify-content:flex-start}
@@ -63916,34 +63918,34 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
     "form",
     { className: "gb-card gb-form", onSubmit: submit2, "aria-label": "自动化任务设置" },
     (0, import_react104.createElement)("h2", null, routine ? "编辑自动化任务" : "新建自动化任务"),
-    field("任务名称", (0, import_react104.createElement)("input", { name: "title", defaultValue: routine?.title, required: true, autoFocus: true })),
+    field("任务名称", (0, import_react104.createElement)("input", { name: "title", className: "bt-input", defaultValue: routine?.title, required: true, autoFocus: true })),
     field("执行类型", (0, import_react104.createElement)(
       "select",
-      { value: target, onChange: (e) => setTarget(e.target.value) },
+      { className: "bt-select", value: target, onChange: (e) => setTarget(e.target.value) },
       option("member", "Bot 任务"),
       option("workflow", "工作流")
     )),
     target === "workflow" && field("工作流模板", (0, import_react104.createElement)(
       "select",
-      { value: workflowId, required: true, onChange: (e) => chooseWorkflow(e.target.value) },
+      { className: "bt-select", value: workflowId, required: true, onChange: (e) => chooseWorkflow(e.target.value) },
       option("", "选择工作流"),
       options.map((w) => option(w.id, w.name + " · v" + w.revision))
     )),
     target === "workflow" && !options.length && empty("在「设置 → 任务板」保存工作流后即可选择。"),
     target === "workflow" && !!workflowId && field("固定版本", (0, import_react104.createElement)(
       "select",
-      { value: revision, onChange: (e) => setRevision(Number(e.target.value)) },
+      { className: "bt-select", value: revision, onChange: (e) => setRevision(Number(e.target.value)) },
       versions.map((v2) => option(String(v2), "v" + v2))
     )),
     target === "member" && field("负责人", (0, import_react104.createElement)(
       "select",
-      { name: "ownerId", defaultValue: routine?.ownerId, required: true },
+      { className: "bt-select", name: "ownerId", defaultValue: routine?.ownerId, required: true },
       members.map((m2) => option(m2.id, m2.name))
     )),
-    target === "member" && field("执行要求与验收条件", (0, import_react104.createElement)("textarea", { name: "criteria", rows: 3, defaultValue: routine?.criteria, required: true })),
+    target === "member" && field("执行要求与验收条件", (0, import_react104.createElement)("textarea", { className: "bt-input bt-input-area", name: "criteria", rows: 3, defaultValue: routine?.criteria, required: true })),
     field("执行频率", (0, import_react104.createElement)(
       "select",
-      { value: kind, onChange: (e) => {
+      { className: "bt-select", value: kind, onChange: (e) => {
         setKind(e.target.value);
         setError("");
       } },
@@ -63953,6 +63955,7 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
       type: "datetime-local",
       step: 1,
       name: "at",
+      className: "bt-input",
       defaultValue: localDate(original.at),
       required: true
     })),
@@ -63962,6 +63965,7 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
       max: 525600,
       step: 1,
       name: "minutes",
+      className: "bt-input",
       defaultValue: original.minutes ?? 60,
       required: true
     })),
@@ -63969,17 +63973,17 @@ function RoutineForm({ routine, members, workflows, busy, onSave, onCancel }) {
       "fieldset",
       { className: "gb-checks" },
       (0, import_react104.createElement)("legend", null, "执行日"),
-      weekdays.map((label, i) => (0, import_react104.createElement)("label", { key: label }, (0, import_react104.createElement)("input", {
+      weekdays.map((label, i) => (0, import_react104.createElement)("label", { key: label, className: "bt-browser-action-choice" }, (0, import_react104.createElement)("input", {
         name: "day",
         type: "checkbox",
         value: i + 1,
         defaultChecked: (original.weekdays ?? [1]).includes(i + 1)
       }), "周" + label))
     ),
-    calendar && field("每天的执行时间", (0, import_react104.createElement)("input", { type: "time", name: "time", defaultValue: original.time ?? "09:00", required: true })),
-    calendar && field("时区", (0, import_react104.createElement)("input", { name: "timeZone", defaultValue: original.timeZone ?? localZone3, placeholder: "Asia/Taipei", required: true })),
+    calendar && field("每天的执行时间", (0, import_react104.createElement)("input", { type: "time", name: "time", className: "bt-input", defaultValue: original.time ?? "09:00", required: true })),
+    calendar && field("时区", (0, import_react104.createElement)("input", { name: "timeZone", className: "bt-input", defaultValue: original.timeZone ?? localZone3, placeholder: "Asia/Taipei", required: true })),
     error && (0, import_react104.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    row((0, import_react104.createElement)("button", { type: "submit", className: "gb-primary", disabled: busy }, "保存任务"), button("取消", onCancel, { disabled: busy }))
+    row((0, import_react104.createElement)("button", { type: "submit", className: "bt-send bt-soft-sm", disabled: busy }, "保存任务"), button("取消", onCancel, { className: "bt-soft bt-soft-sm", disabled: busy }))
   );
 }
 function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRun, readOnly }) {
@@ -64056,9 +64060,9 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
       "div",
       { className: "gb-sectionhead" },
       (0, import_react104.createElement)("h2", null, team.name),
-      button("新建自动化任务", () => setEditor({}), { className: "gb-primary", disabled: readOnly || !members.length })
+      (0, import_react104.createElement)("button", { type: "button", className: "bt-send bt-soft-sm", disabled: readOnly || !members.length, onClick: () => setEditor({}) }, "新建自动化任务")
     ),
-    error && (0, import_react104.createElement)("p", { role: "alert", className: "gb-error" }, error, " ", button("刷新", () => refresh((v2) => v2 + 1))),
+    error && (0, import_react104.createElement)("p", { role: "alert", className: "gb-error" }, error, " ", button("刷新", () => refresh((v2) => v2 + 1), { className: "bt-soft bt-soft-sm" })),
     !routines && !error && empty("正在读取自动化任务…"),
     routines?.length === 0 && empty(members.length ? "还没有定时派工的任务。" : "在 Bot 设置中创建 Bot 后即可安排自动化任务。"),
     routines?.map((routine) => {
@@ -64080,23 +64084,23 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
         routine.criteria && (0, import_react104.createElement)("p", { className: "gb-text" }, routine.criteria),
         routine.lastError && (0, import_react104.createElement)("p", { role: "alert", className: "gb-error" }, routine.lastError),
         row(
-          button("立即运行", () => change("run", { id }, () => setHistoryId(id)), { disabled: busy || readOnly }),
-          button("编辑", () => setEditor(routine), { disabled: busy || !members.length || readOnly }),
+          button("立即运行", () => change("run", { id }, () => setHistoryId(id)), { className: "bt-soft bt-soft-sm", disabled: busy || readOnly }),
+          button("编辑", () => setEditor(routine), { className: "bt-soft bt-soft-sm", disabled: busy || !members.length || readOnly }),
           status !== "finished" && button(
             status === "paused" ? "恢复" : "暂停",
             () => change(status === "paused" ? "resume" : "pause", identity2),
-            { disabled: busy || readOnly }
+            { className: "bt-soft bt-soft-sm", disabled: busy || readOnly }
           ),
-          button("运行记录", () => setHistoryId(open ? null : id), { "aria-expanded": open }),
-          button("删除", () => setConfirmId(id), { disabled: busy || readOnly })
+          button("运行记录", () => setHistoryId(open ? null : id), { className: "bt-soft bt-soft-sm", "aria-expanded": open }),
+          button("删除", () => setConfirmId(id), { className: "bt-soft bt-soft-sm bt-danger", disabled: busy || readOnly })
         ),
         confirmId === id && row(
           (0, import_react104.createElement)("span", null, "删除此计划？已派发的任务会保留在任务板。"),
           button("确认删除", () => change("delete", identity2, () => {
             setConfirmId(null);
             if (open) setHistoryId(null);
-          }), { className: "gb-danger", disabled: busy }),
-          button("取消删除", () => setConfirmId(null), { disabled: busy })
+          }), { className: "bt-soft bt-soft-sm bt-danger", disabled: busy }),
+          button("取消删除", () => setConfirmId(null), { className: "bt-soft bt-soft-sm", disabled: busy })
         ),
         open && (0, import_react104.createElement)(
           "section",
@@ -64109,7 +64113,7 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
               (0, import_react104.createElement)("span", null, item.trigger === "manual" ? "手动运行" : "定时派工"),
               badge(item.state, runStates[item.state] ?? item.state),
               item.workflowId && (0, import_react104.createElement)("small", null, "工作流 v" + item.workflowRevision),
-              item.workflowId && item.runId ? button("查看工作流运行", () => onWorkflowRun(item.workflowId, item.runId)) : item.rootTaskId && button("查看任务", () => onTask(item.rootTaskId))
+              item.workflowId && item.runId ? button("查看工作流运行", () => onWorkflowRun(item.workflowId, item.runId), { className: "bt-soft bt-soft-sm" }) : item.rootTaskId && button("查看任务", () => onTask(item.rootTaskId), { className: "bt-soft bt-soft-sm" })
             ),
             item.nodes?.length > 0 && (0, import_react104.createElement)(
               "details",
@@ -64120,7 +64124,7 @@ function NativeRoutines({ team, members, client, run: run2, onTask, onWorkflowRu
                 { key: n.nodeId, className: "gb-row" },
                 (0, import_react104.createElement)("span", null, n.title),
                 badge(n.status),
-                button("查看任务", () => onTask(n.taskId), { "aria-label": "查看任务 " + n.title })
+                button("查看任务", () => onTask(n.taskId), { className: "bt-soft bt-soft-sm", "aria-label": "查看任务 " + n.title })
               ))
             ),
             !item.runId && item.reason && (0, import_react104.createElement)("small", null, item.reason)
@@ -65029,7 +65033,12 @@ function TaskSettings({ client, actions, page, focus, readOnly: rosterReadOnly }
   return (0, import_react108.createElement)(
     "div",
     { className: "gb-task-settings gb-stack" },
-    row(button("刷新", refresh), !readOnly && button("统一创建自动化", () => actions.openSettings("automation", { kind: page === "routines" ? "task" : "workflow" }))),
+    (0, import_react108.createElement)(
+      "div",
+      { className: "gb-row gb-task-toolbar" },
+      (0, import_react108.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: refresh }, "刷新"),
+      !readOnly && (0, import_react108.createElement)("button", { type: "button", className: "bt-send bt-soft-sm", onClick: () => actions.openSettings("automation", { kind: page === "routines" ? "task" : "workflow" }) }, "统一创建自动化")
+    ),
     offline && (0, import_react108.createElement)("div", { className: "gb-alert", role: "status" }, "连接中断，正在重试 · " + offline),
     error && (0, import_react108.createElement)(
       "div",
@@ -66535,6 +66544,18 @@ var sourceLabels = {
   unattended: "无人值守",
   any: "全部来源"
 };
+var DefaultSection2 = ({ title: title2, action: action2 = null, className = "", children }) => (0, import_react114.createElement)(
+  "section",
+  { className: `bt-set-section ${className}`.trim() },
+  action2 ? (0, import_react114.createElement)("div", { className: "bt-la-sec-head" }, (0, import_react114.createElement)("h3", null, title2), action2) : title2 ? (0, import_react114.createElement)("h3", null, title2) : null,
+  (0, import_react114.createElement)("div", { className: "bt-set-card" }, children)
+);
+var DefaultRow2 = ({ label, hint, children, className = "" }) => (0, import_react114.createElement)(
+  "div",
+  { className: `bt-set-row ${className}`.trim() },
+  (0, import_react114.createElement)("div", { className: "bt-set-copy" }, (0, import_react114.createElement)("span", null, label), hint ? (0, import_react114.createElement)("span", { className: "bt-set-hint" }, hint) : null),
+  children ? (0, import_react114.createElement)("div", { className: "bt-set-control" }, children) : null
+);
 function useSettingsData(client, prefix, initial2 = "list") {
   const [data, setData] = (0, import_react114.useState)();
   const [busy, setBusy] = (0, import_react114.useState)(false);
@@ -66581,7 +66602,9 @@ var componentExample = {
   ] }
 };
 var toJson = (value) => JSON.stringify(value, null, 2);
-function ComponentSettings({ client, roster }) {
+function ComponentSettings({ client, roster, Section: CustomSection, Row: CustomRow }) {
+  const Section2 = CustomSection ?? DefaultSection2;
+  const Row4 = CustomRow ?? DefaultRow2;
   const { data, busy, error, setError, perform } = useSettingsData(client, "components");
   const [name, setName] = (0, import_react114.useState)("");
   const [definition, setDefinition] = (0, import_react114.useState)(() => toJson(componentExample));
@@ -66599,58 +66622,156 @@ function ComponentSettings({ client, roster }) {
   }
   return (0, import_react114.createElement)(
     "div",
-    { className: "gb-stack" },
-    error && (0, import_react114.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    data && field("选择组件", (0, import_react114.createElement)("select", { value: selected ? name : "", onChange: (event) => {
-      const component = data.components.find((item) => item.name === event.target.value);
-      setName(component?.name ?? "");
-      setDefinition(toJson(component?.draft ?? componentExample));
-      setPreview(void 0);
-    } }, option("", "新建组件"), ...data.components.map((item) => option(item.name, item.name + (item.published ? " · v" + item.published.version : " · 草稿"))))),
+    { className: "bt-settings-form" },
+    error && (0, import_react114.createElement)("p", { role: "alert", className: "bt-danger", style: { margin: "0 0 12px" } }, error),
+    data && (0, import_react114.createElement)(
+      Section2,
+      { title: "业务组件" },
+      (0, import_react114.createElement)(
+        Row4,
+        { label: "选择组件", hint: "选择已有组件修改，或创建新组件" },
+        (0, import_react114.createElement)(
+          "select",
+          {
+            className: "bt-select",
+            "aria-label": "选择组件",
+            value: selected ? name : "",
+            onChange: (event) => {
+              const component = data.components.find((item) => item.name === event.target.value);
+              setName(component?.name ?? "");
+              setDefinition(toJson(component?.draft ?? componentExample));
+              setPreview(void 0);
+            }
+          },
+          (0, import_react114.createElement)("option", { value: "" }, "新建组件"),
+          ...data.components.map((item) => (0, import_react114.createElement)("option", { key: item.name, value: item.name }, item.name + (item.published ? " · v" + item.published.version : " · 草稿")))
+        )
+      )
+    ),
     (0, import_react114.createElement)(
       "form",
-      { className: "gb-form gb-card", onSubmit: (event) => {
-        event.preventDefault();
-        definitionRequest("save");
-      } },
-      field("组件名称", (0, import_react114.createElement)("input", { value: name, onChange: (event) => setName(event.target.value), required: true, pattern: "[a-z][a-z0-9-]*", maxLength: 40 })),
-      field("组件定义", (0, import_react114.createElement)("textarea", { rows: 15, value: definition, onChange: (event) => {
-        setDefinition(event.target.value);
-        setPreview(void 0);
-      }, spellCheck: false })),
-      row(
-        button("预览定义", () => definitionRequest("preview"), { disabled: locked }),
-        (0, import_react114.createElement)("button", { type: "submit", className: "gb-primary", disabled: locked }, "保存草稿")
-      ),
-      preview && (0, import_react114.createElement)(ViewCard, { title: preview.title, view: preview.view, busy: true })
+      {
+        className: "bt-automation-form",
+        onSubmit: (event) => {
+          event.preventDefault();
+          definitionRequest("save");
+        }
+      },
+      (0, import_react114.createElement)(
+        Section2,
+        { title: selected ? "编辑组件定义" : "新建组件定义" },
+        (0, import_react114.createElement)(
+          Row4,
+          { label: "组件名称", hint: "小写字母开头，支持小写字母、数字与连字符" },
+          (0, import_react114.createElement)("input", {
+            className: "bt-input",
+            "aria-label": "组件名称",
+            value: name,
+            onChange: (event) => setName(event.target.value),
+            required: true,
+            pattern: "[a-z][a-z0-9-]*",
+            maxLength: 40
+          })
+        ),
+        (0, import_react114.createElement)(
+          "div",
+          { className: "bt-set-row bt-set-paste" },
+          (0, import_react114.createElement)(
+            "div",
+            { className: "bt-set-copy" },
+            (0, import_react114.createElement)("span", null, "组件定义"),
+            (0, import_react114.createElement)("span", { className: "bt-set-hint" }, "JSON 格式的组件视图与参数定义")
+          ),
+          (0, import_react114.createElement)("textarea", {
+            rows: 12,
+            className: "bt-input bt-input-area",
+            "aria-label": "组件定义",
+            value: definition,
+            onChange: (event) => {
+              setDefinition(event.target.value);
+              setPreview(void 0);
+            },
+            spellCheck: false
+          })
+        ),
+        (0, import_react114.createElement)(
+          "div",
+          { className: "bt-automation-form-foot" },
+          (0, import_react114.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: locked, onClick: () => definitionRequest("preview") }, "预览定义"),
+          (0, import_react114.createElement)("button", { type: "submit", className: "bt-send bt-soft-sm", disabled: locked }, "保存草稿")
+        ),
+        preview && (0, import_react114.createElement)(
+          "div",
+          { style: { padding: "12px 16px", borderTop: "0.5px solid var(--bt-line)" } },
+          (0, import_react114.createElement)(ViewCard, { title: preview.title, view: preview.view, busy: true })
+        )
+      )
     ),
     selected && (0, import_react114.createElement)(
-      "div",
-      { className: "gb-card gb-form" },
-      (0, import_react114.createElement)("p", { role: "status" }, selected.published ? "已发布 v" + selected.published.version : "草稿待发布"),
-      row(
-        button("发布已保存草稿", () => perform("publish", { name }), { disabled: locked }),
-        selected.published && button("下架组件", () => perform("unpublish", { name }), { disabled: locked })
+      Section2,
+      { title: "发布与授权" },
+      (0, import_react114.createElement)(
+        Row4,
+        { label: "发布状态", hint: "只有已发布的组件版本可在会话或工作流中被渲染" },
+        (0, import_react114.createElement)(
+          "span",
+          { role: "status", className: "bt-set-hint", style: { fontWeight: 600 } },
+          selected.published ? "已发布 v" + selected.published.version : "草稿待发布"
+        )
+      ),
+      (0, import_react114.createElement)(
+        "div",
+        { className: "bt-automation-form-foot" },
+        (0, import_react114.createElement)("button", { type: "button", className: "bt-send bt-soft-sm", disabled: locked, onClick: () => perform("publish", { name }) }, "发布已保存草稿"),
+        selected.published && (0, import_react114.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm bt-danger", disabled: locked, onClick: () => perform("unpublish", { name }) }, "下架组件")
       ),
       (0, import_react114.createElement)(
         "form",
-        { key: toJson([name, selected.bots, selected.allowedFunctions]), className: "gb-form", onSubmit: (event) => {
-          event.preventDefault();
-          const input2 = new FormData(event.currentTarget);
-          void perform("grants", { name, bots: input2.getAll("bot"), functions: input2.getAll("function") });
-        } },
+        {
+          key: toJson([name, selected.bots, selected.allowedFunctions]),
+          className: "bt-automation-form",
+          onSubmit: (event) => {
+            event.preventDefault();
+            const input2 = new FormData(event.currentTarget);
+            void perform("grants", { name, bots: input2.getAll("bot"), functions: input2.getAll("function") });
+          }
+        },
         (0, import_react114.createElement)(
           "fieldset",
-          { className: "gb-form", disabled: locked },
-          (0, import_react114.createElement)("legend", null, "允许使用的 Bot 和数据函数"),
-          ...roster.bots.map((bot) => (0, import_react114.createElement)("label", { key: bot.id }, (0, import_react114.createElement)("input", { type: "checkbox", name: "bot", value: bot.id, defaultChecked: selected.bots.includes(bot.id) }), bot.name)),
-          ...data.functions.map((item) => (0, import_react114.createElement)(
-            "label",
-            { key: item.id },
-            (0, import_react114.createElement)("input", { type: "checkbox", name: "function", value: item.id, defaultChecked: selected.allowedFunctions.includes(item.id) }),
-            item.title + " · " + Object.keys(item.slots).map((key) => "{{" + key + "}}").join("、")
-          )),
-          (0, import_react114.createElement)("button", { type: "submit" }, "保存授权")
+          { disabled: locked, style: { border: 0, padding: 0, margin: 0, display: "contents" } },
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "允许使用的 Bot", hint: "勾选允许调用此组件渲染卡片的 Bot" },
+            (0, import_react114.createElement)(
+              "div",
+              { className: "bt-browser-action-list" },
+              roster.bots.map((bot) => (0, import_react114.createElement)(
+                "label",
+                { key: bot.id, className: "bt-browser-action-choice" },
+                (0, import_react114.createElement)("input", { type: "checkbox", name: "bot", value: bot.id, defaultChecked: selected.bots.includes(bot.id) }),
+                bot.name
+              ))
+            )
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "数据函数授权", hint: "允许此组件执行插槽替换的数据函数" },
+            (0, import_react114.createElement)(
+              "div",
+              { className: "bt-browser-action-list" },
+              data.functions.map((item) => (0, import_react114.createElement)(
+                "label",
+                { key: item.id, className: "bt-browser-action-choice" },
+                (0, import_react114.createElement)("input", { type: "checkbox", name: "function", value: item.id, defaultChecked: selected.allowedFunctions.includes(item.id) }),
+                item.title + " · " + Object.keys(item.slots).map((key) => "{{" + key + "}}").join("、")
+              ))
+            )
+          ),
+          (0, import_react114.createElement)(
+            "div",
+            { className: "bt-automation-form-foot" },
+            (0, import_react114.createElement)("button", { type: "submit", className: "bt-send bt-soft-sm" }, "保存授权")
+          )
         )
       )
     )
@@ -66658,11 +66779,20 @@ function ComponentSettings({ client, roster }) {
 }
 var blankRule = { name: "", origin: "unattended", tool: "changes", effect: "ask", enabled: true };
 var decisionNames = { allow: "继续现有权限检查", ask: "需要批准", deny: "拒绝" };
-function sourceSelect(name, allowed2, initial2) {
-  return (0, import_react114.createElement)("select", { name, defaultValue: initial2 }, ...allowed2.map((value) => option(value, sourceLabels[value] ?? (value || "全部来源"))));
+function sourceSelect(name, allowed2, initial2, ariaLabel) {
+  return (0, import_react114.createElement)(
+    "select",
+    { name, className: "bt-select", "aria-label": ariaLabel, defaultValue: initial2 },
+    ...allowed2.map((value) => (0, import_react114.createElement)("option", { key: value, value }, sourceLabels[value] ?? (value || "全部来源")))
+  );
 }
-function botSelect(bots, name, initial2, empty2) {
-  return (0, import_react114.createElement)("select", { name, defaultValue: initial2 ?? "" }, option("", empty2), ...bots.map((bot) => option(bot.id, bot.name)));
+function botSelect(bots, name, initial2, empty2, ariaLabel) {
+  return (0, import_react114.createElement)(
+    "select",
+    { name, className: "bt-select", "aria-label": ariaLabel, defaultValue: initial2 ?? "" },
+    (0, import_react114.createElement)("option", { value: "" }, empty2),
+    ...bots.map((bot) => (0, import_react114.createElement)("option", { key: bot.id, value: bot.id }, bot.name))
+  );
 }
 function downloadAudit(data) {
   const url = URL.createObjectURL(new Blob([toJson(data)], { type: "application/json" }));
@@ -66672,7 +66802,9 @@ function downloadAudit(data) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1e4);
 }
-function GovernanceSettings({ client, roster }) {
+function GovernanceSettings({ client, roster, Section: CustomSection, Row: CustomRow }) {
+  const Section2 = CustomSection ?? DefaultSection2;
+  const Row4 = CustomRow ?? DefaultRow2;
   const { data, error, busy, perform } = useSettingsData(client, "governance", "view");
   const [selected, setSelected] = (0, import_react114.useState)();
   const [preview, setPreview] = (0, import_react114.useState)();
@@ -66682,133 +66814,362 @@ function GovernanceSettings({ client, roster }) {
   const locked = Boolean(roster.readOnly) || busy || !data;
   return (0, import_react114.createElement)(
     "div",
-    { className: "gb-stack" },
-    error && (0, import_react114.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    data && field("规则", (0, import_react114.createElement)(
-      "select",
-      { value: selected ?? "", onChange: (event) => setSelected(event.target.value || void 0) },
-      option("", "新建规则"),
-      ...data.rules.map((rule) => option(rule.id, rule.name + (rule.enabled ? "" : " · 已停用")))
-    )),
-    (0, import_react114.createElement)(
-      "form",
-      { key: toJson(current2), className: "gb-form gb-card", onSubmit: (event) => {
-        event.preventDefault();
-        const supplied = new FormData(event.currentTarget);
-        void perform("save", { id: selected, rule: { ...Object.fromEntries(supplied), enabled: supplied.has("enabled") } });
-      } },
+    { className: "bt-settings-form" },
+    error && (0, import_react114.createElement)("p", { role: "alert", className: "bt-danger", style: { margin: "0 0 12px" } }, error),
+    data && (0, import_react114.createElement)(
+      Section2,
+      { title: "执行策略规则" },
       (0, import_react114.createElement)(
-        "fieldset",
-        { disabled: locked, className: "gb-form" },
-        field("规则名称", (0, import_react114.createElement)("input", { name: "name", defaultValue: current2.name, required: true, maxLength: 100 })),
-        field("发起来源", sourceSelect("origin", ["any", "unattended", ...origins], current2.origin)),
-        field("应用于 Bot", botSelect(roster.bots, "botId", current2.botId, "全部 Bot")),
-        field("工具", (0, import_react114.createElement)("input", { name: "tool", defaultValue: current2.tool, placeholder: "changes、* 或工具名称", required: true })),
-        field("目标", (0, import_react114.createElement)("input", { name: "target", defaultValue: current2.target, placeholder: "可选，例如 https://example.com" })),
-        field("决定", (0, import_react114.createElement)("select", { name: "effect", defaultValue: current2.effect }, option("ask", "要求批准"), option("deny", "禁止"))),
-        (0, import_react114.createElement)("label", null, (0, import_react114.createElement)("input", { type: "checkbox", name: "enabled", defaultChecked: current2.enabled }), "启用"),
-        row(
-          (0, import_react114.createElement)("button", { className: "gb-primary", type: "submit" }, "保存规则"),
-          selected && button("删除规则", () => perform("remove", { id: selected }, (value, update) => {
-            setSelected(void 0);
-            update(value);
-          }))
+        Row4,
+        { label: "选择规则", hint: "选择已有规则修改或创建新规则" },
+        (0, import_react114.createElement)(
+          "select",
+          {
+            className: "bt-select",
+            "aria-label": "规则",
+            value: selected ?? "",
+            onChange: (event) => setSelected(event.target.value || void 0)
+          },
+          (0, import_react114.createElement)("option", { value: "" }, "新建规则"),
+          ...data.rules.map((rule) => (0, import_react114.createElement)("option", { key: rule.id, value: rule.id }, rule.name + (rule.enabled ? "" : " · 已停用")))
         )
       )
     ),
     (0, import_react114.createElement)(
       "form",
-      { className: "gb-form gb-card", onSubmit: (event) => {
-        event.preventDefault();
-        void perform("preview", Object.fromEntries(new FormData(event.currentTarget)), setPreview);
-      } },
-      (0, import_react114.createElement)("h3", null, "预览规则结果"),
-      field("发起来源", sourceSelect("origin", origins, "schedule")),
-      field("Bot", botSelect(roster.bots, "botId", "", "请选择 Bot")),
-      field("工具名称", (0, import_react114.createElement)("input", { name: "tool", defaultValue: "browser_click", required: true })),
-      field("目标", (0, import_react114.createElement)("input", { name: "target", placeholder: "可选" })),
-      (0, import_react114.createElement)("button", { type: "submit", disabled: busy || !data }, "查看匹配"),
-      preview && (0, import_react114.createElement)("p", { role: "status" }, decisionNames[preview.decision] + (preview.reason ? " · " + preview.reason : ""))
+      {
+        key: toJson(current2),
+        className: "bt-automation-form",
+        onSubmit: (event) => {
+          event.preventDefault();
+          const supplied = new FormData(event.currentTarget);
+          void perform("save", { id: selected, rule: { ...Object.fromEntries(supplied), enabled: supplied.has("enabled") } });
+        }
+      },
+      (0, import_react114.createElement)(
+        Section2,
+        { title: selected ? "编辑规则" : "新建规则" },
+        (0, import_react114.createElement)(
+          "fieldset",
+          { disabled: locked, style: { border: 0, padding: 0, margin: 0, display: "contents" } },
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "规则名称", hint: "便于识别该拦截或放行策略的名称" },
+            (0, import_react114.createElement)("input", {
+              name: "name",
+              className: "bt-input",
+              "aria-label": "规则名称",
+              defaultValue: current2.name,
+              required: true,
+              maxLength: 100
+            })
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "发起来源", hint: "限制触发调用的来源环境" },
+            sourceSelect("origin", ["any", "unattended", ...origins], current2.origin, "发起来源")
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "应用于 Bot", hint: "限制此规则生效的特定 Bot，留空应用于全部 Bot" },
+            botSelect(roster.bots, "botId", current2.botId, "全部 Bot", "应用于 Bot")
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "工具", hint: "匹配的工具名称，例如 remember、changes 或 *" },
+            (0, import_react114.createElement)("input", {
+              name: "tool",
+              className: "bt-input",
+              "aria-label": "工具",
+              defaultValue: current2.tool,
+              placeholder: "changes、* 或工具名称",
+              required: true
+            })
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "目标", hint: "匹配调用的目标，如网址或对象标识（可选）" },
+            (0, import_react114.createElement)("input", {
+              name: "target",
+              className: "bt-input",
+              "aria-label": "目标",
+              defaultValue: current2.target,
+              placeholder: "可选，例如 https://example.com"
+            })
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "决定", hint: "命中规则时的执行动作" },
+            (0, import_react114.createElement)(
+              "select",
+              {
+                name: "effect",
+                className: "bt-select",
+                "aria-label": "决定",
+                defaultValue: current2.effect
+              },
+              (0, import_react114.createElement)("option", { value: "ask" }, "要求批准"),
+              (0, import_react114.createElement)("option", { value: "deny" }, "禁止")
+            )
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "规则状态", hint: "启用或停用此条规则" },
+            (0, import_react114.createElement)(
+              "label",
+              { className: "bt-browser-action-choice" },
+              (0, import_react114.createElement)("input", { type: "checkbox", name: "enabled", defaultChecked: current2.enabled }),
+              "启用"
+            )
+          ),
+          (0, import_react114.createElement)(
+            "div",
+            { className: "bt-automation-form-foot" },
+            (0, import_react114.createElement)("button", { type: "submit", className: "bt-send bt-soft-sm" }, "保存规则"),
+            selected && (0, import_react114.createElement)("button", {
+              type: "button",
+              className: "bt-soft bt-soft-sm bt-danger",
+              onClick: () => perform("remove", { id: selected }, (value, update) => {
+                setSelected(void 0);
+                update(value);
+              })
+            }, "删除规则")
+          )
+        )
+      )
     ),
     (0, import_react114.createElement)(
-      "section",
-      { className: "gb-card gb-stack" },
-      (0, import_react114.createElement)("h3", null, "执行审计"),
+      "form",
+      {
+        className: "bt-automation-form",
+        onSubmit: (event) => {
+          event.preventDefault();
+          void perform("preview", Object.fromEntries(new FormData(event.currentTarget)), setPreview);
+        }
+      },
+      (0, import_react114.createElement)(
+        Section2,
+        { title: "预览规则结果" },
+        (0, import_react114.createElement)(
+          Row4,
+          { label: "发起来源" },
+          sourceSelect("origin", origins, "schedule", "预览发起来源")
+        ),
+        (0, import_react114.createElement)(
+          Row4,
+          { label: "Bot" },
+          botSelect(roster.bots, "botId", "", "请选择 Bot", "预览 Bot")
+        ),
+        (0, import_react114.createElement)(
+          Row4,
+          { label: "工具名称" },
+          (0, import_react114.createElement)("input", { name: "tool", className: "bt-input", "aria-label": "工具名称", defaultValue: "browser_click", required: true })
+        ),
+        (0, import_react114.createElement)(
+          Row4,
+          { label: "目标" },
+          (0, import_react114.createElement)("input", { name: "target", className: "bt-input", "aria-label": "预览目标", placeholder: "可选" })
+        ),
+        (0, import_react114.createElement)(
+          "div",
+          { className: "bt-automation-form-foot" },
+          (0, import_react114.createElement)("button", { type: "submit", className: "bt-soft bt-soft-sm", disabled: busy || !data }, "查看匹配"),
+          preview && (0, import_react114.createElement)(
+            "p",
+            { role: "status", className: "bt-set-hint", style: { fontWeight: 600 } },
+            decisionNames[preview.decision] + (preview.reason ? " · " + preview.reason : "")
+          )
+        )
+      )
+    ),
+    (0, import_react114.createElement)(
+      Section2,
+      { title: "执行审计" },
       (0, import_react114.createElement)(
         "form",
-        { className: "gb-form", onSubmit: (event) => {
-          event.preventDefault();
-          const next = Object.fromEntries(new FormData(event.currentTarget));
-          setFilter(next);
-          void perform("view", next);
-        } },
-        field("来源", sourceSelect("origin", ["", "unattended", ...origins], "")),
-        field("决定", (0, import_react114.createElement)("select", { name: "decision" }, option("", "全部决定"), ...Object.entries(decisionNames).map(([value, label]) => option(value, label)))),
-        field("Bot", botSelect(roster.bots, "botId", "", "全部 Bot")),
-        row(
-          (0, import_react114.createElement)("button", { type: "submit", disabled: busy }, "筛选和刷新"),
-          button("导出审计 JSON", () => perform("export", filter, downloadAudit), { disabled: busy })
+        {
+          className: "bt-automation-form",
+          onSubmit: (event) => {
+            event.preventDefault();
+            const next = Object.fromEntries(new FormData(event.currentTarget));
+            setFilter(next);
+            void perform("view", next);
+          }
+        },
+        (0, import_react114.createElement)(
+          Row4,
+          { label: "来源" },
+          sourceSelect("origin", ["", "unattended", ...origins], "", "审计来源")
+        ),
+        (0, import_react114.createElement)(
+          Row4,
+          { label: "决定" },
+          (0, import_react114.createElement)(
+            "select",
+            { name: "decision", className: "bt-select", "aria-label": "审计决定" },
+            (0, import_react114.createElement)("option", { value: "" }, "全部决定"),
+            ...Object.entries(decisionNames).map(([value, label]) => (0, import_react114.createElement)("option", { key: value, value }, label))
+          )
+        ),
+        (0, import_react114.createElement)(
+          Row4,
+          { label: "Bot" },
+          botSelect(roster.bots, "botId", "", "全部 Bot", "审计 Bot")
+        ),
+        (0, import_react114.createElement)(
+          "div",
+          { className: "bt-automation-form-foot" },
+          (0, import_react114.createElement)("button", { type: "submit", className: "bt-soft bt-soft-sm", disabled: busy }, "筛选和刷新"),
+          (0, import_react114.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", disabled: busy, onClick: () => perform("export", filter, downloadAudit) }, "导出审计 JSON")
         )
       ),
-      (data?.audit ?? []).map((entry) => (0, import_react114.createElement)(
-        "p",
-        { key: entry.id },
-        stamp(entry.time) + " · " + (roster.byId[entry.botId]?.name ?? entry.botId) + " · " + (sourceLabels[entry.origin.kind] ?? entry.origin.kind) + " · " + entry.name + " · " + (entry.effect ?? decisionNames[entry.decision]) + (entry.reason ? " · " + entry.reason : "")
-      ))
+      (data?.audit ?? []).length > 0 ? (0, import_react114.createElement)(
+        "div",
+        { style: { padding: "8px 16px", display: "grid", gap: "8px", borderTop: "0.5px solid var(--bt-line)" } },
+        data.audit.map((entry) => (0, import_react114.createElement)(
+          "p",
+          { key: entry.id, className: "bt-set-hint", style: { margin: 0, fontSize: "12px" } },
+          stamp(entry.time) + " · " + (roster.byId[entry.botId]?.name ?? entry.botId) + " · " + (sourceLabels[entry.origin.kind] ?? entry.origin.kind) + " · " + entry.name + " · " + (entry.effect ?? decisionNames[entry.decision]) + (entry.reason ? " · " + entry.reason : "")
+        ))
+      ) : (0, import_react114.createElement)("p", { className: "bt-set-hint", style: { padding: "12px 16px", margin: 0 } }, "暂无审计记录")
     )
   );
 }
-function RemoteAgentSettings({ client, roster, actions }) {
+function RemoteAgentSettings({ client, roster, actions, Section: CustomSection, Row: CustomRow }) {
+  const Section2 = CustomSection ?? DefaultSection2;
+  const Row4 = CustomRow ?? DefaultRow2;
   const { data, busy, error, perform } = useSettingsData(client, "remote-agents");
   const [selected, setSelected] = (0, import_react114.useState)("");
   const item = data?.agents.find((agent) => agent.id === selected);
   const locked = Boolean(roster.readOnly) || busy || !data;
   return (0, import_react114.createElement)(
     "div",
-    { className: "gb-stack" },
-    error && (0, import_react114.createElement)("p", { role: "alert", className: "gb-error" }, error),
-    data && field("远程 Agent", (0, import_react114.createElement)(
-      "select",
-      { value: selected, onChange: (event) => setSelected(event.target.value) },
-      option("", "注册远程 Agent"),
-      ...data.agents.map((agent) => option(agent.id, agent.name))
-    )),
-    (0, import_react114.createElement)(
-      "form",
-      { key: toJson(item), className: "gb-form gb-card", onSubmit: (event) => {
-        event.preventDefault();
-        const element = event.currentTarget;
-        const form = new FormData(element);
-        const token = form.get("token").trim();
-        const input2 = {
-          id: item?.id,
-          name: form.get("name"),
-          endpoint: form.get("endpoint"),
-          ...form.has("clear") ? { token: "" } : token ? { token } : {}
-        };
-        void perform("save", input2, (value, update) => {
-          setSelected(item?.id ?? value.agents.at(-1)?.id ?? "");
-          element.reset();
-          update(value);
-        });
-      } },
+    { className: "bt-settings-form" },
+    error && (0, import_react114.createElement)("p", { role: "alert", className: "bt-danger", style: { margin: "0 0 12px" } }, error),
+    data && (0, import_react114.createElement)(
+      Section2,
+      { title: "远程 Agent 列表" },
       (0, import_react114.createElement)(
-        "fieldset",
-        { className: "gb-form", disabled: locked },
-        field("名称", (0, import_react114.createElement)("input", { name: "name", defaultValue: item?.name, required: true, maxLength: 100 })),
-        field("AG-UI 运行地址", (0, import_react114.createElement)("input", { name: "endpoint", type: "url", defaultValue: item?.endpoint, required: true, placeholder: "https://agent.example.com/ag-ui" })),
-        field("Bearer 凭据", (0, import_react114.createElement)("input", { name: "token", type: "password", autoComplete: "off", placeholder: item?.usesToken ? "已配置，留空保留" : "可选" })),
-        item?.usesToken && (0, import_react114.createElement)("label", null, (0, import_react114.createElement)("input", { name: "clear", type: "checkbox" }), "清除已有凭据"),
-        row(
-          (0, import_react114.createElement)("button", { type: "submit", className: "gb-primary" }, item ? "保存" : "注册"),
-          item && button("移除", () => perform("remove", { id: item.id }, (value, update) => {
-            setSelected("");
-            update(value);
-          }))
+        Row4,
+        { label: "选择 Agent", hint: "选择已有 Agent 进行配置，或注册新 Agent" },
+        (0, import_react114.createElement)(
+          "select",
+          {
+            className: "bt-select",
+            "aria-label": "远程 Agent",
+            value: selected,
+            onChange: (event) => setSelected(event.target.value)
+          },
+          (0, import_react114.createElement)("option", { value: "" }, "注册远程 Agent"),
+          ...data.agents.map((agent) => (0, import_react114.createElement)("option", { key: agent.id, value: agent.id }, agent.name))
         )
       )
     ),
-    item && (0, import_react114.createElement)("p", null, "在 Bot 的模型设置中选择 ", item.name, "。", button("打开 Bot 设置", () => actions.openSettings("bots")))
+    (0, import_react114.createElement)(
+      "form",
+      {
+        key: toJson(item),
+        className: "bt-automation-form",
+        onSubmit: (event) => {
+          event.preventDefault();
+          const element = event.currentTarget;
+          const form = new FormData(element);
+          const token = form.get("token").trim();
+          const input2 = {
+            id: item?.id,
+            name: form.get("name"),
+            endpoint: form.get("endpoint"),
+            ...form.has("clear") ? { token: "" } : token ? { token } : {}
+          };
+          void perform("save", input2, (value, update) => {
+            setSelected(item?.id ?? value.agents.at(-1)?.id ?? "");
+            element.reset();
+            update(value);
+          });
+        }
+      },
+      (0, import_react114.createElement)(
+        Section2,
+        { title: item ? "编辑远程 Agent" : "注册远程 Agent" },
+        (0, import_react114.createElement)(
+          "fieldset",
+          { disabled: locked, style: { border: 0, padding: 0, margin: 0, display: "contents" } },
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "名称", hint: "设置该远程 Agent 在团队中展示的名称" },
+            (0, import_react114.createElement)("input", {
+              name: "name",
+              className: "bt-input",
+              "aria-label": "名称",
+              defaultValue: item?.name,
+              required: true,
+              maxLength: 100
+            })
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "AG-UI 运行地址", hint: "兼容 AG-UI 协议的服务端点 URL" },
+            (0, import_react114.createElement)("input", {
+              name: "endpoint",
+              type: "url",
+              className: "bt-input",
+              "aria-label": "AG-UI 运行地址",
+              defaultValue: item?.endpoint,
+              required: true,
+              placeholder: "https://agent.example.com/ag-ui"
+            })
+          ),
+          (0, import_react114.createElement)(
+            Row4,
+            { label: "Bearer 凭据", hint: item?.usesToken ? "已配置凭据，留空则保留" : "访问该端点所需的 Authorization Bearer Token（可选）" },
+            (0, import_react114.createElement)("input", {
+              name: "token",
+              type: "password",
+              className: "bt-input",
+              "aria-label": "Bearer 凭据",
+              autoComplete: "off",
+              placeholder: item?.usesToken ? "已配置，留空保留" : "可选"
+            })
+          ),
+          item?.usesToken && (0, import_react114.createElement)(
+            Row4,
+            { label: "清除凭据", hint: "保存时清除已有凭据" },
+            (0, import_react114.createElement)(
+              "label",
+              { className: "bt-browser-action-choice" },
+              (0, import_react114.createElement)("input", { name: "clear", type: "checkbox" }),
+              "清除已有凭据"
+            )
+          ),
+          (0, import_react114.createElement)(
+            "div",
+            { className: "bt-automation-form-foot" },
+            (0, import_react114.createElement)("button", { type: "submit", className: "bt-send bt-soft-sm" }, item ? "保存" : "注册"),
+            item && (0, import_react114.createElement)("button", {
+              type: "button",
+              className: "bt-soft bt-soft-sm bt-danger",
+              onClick: () => perform("remove", { id: item.id }, (value, update) => {
+                setSelected("");
+                update(value);
+              })
+            }, "移除")
+          )
+        )
+      )
+    ),
+    item && (0, import_react114.createElement)(
+      Section2,
+      { title: "使用引导" },
+      (0, import_react114.createElement)(
+        Row4,
+        { label: "在 Bot 中启用", hint: `在 Bot 的模型设置中选择「${item.name}」` },
+        (0, import_react114.createElement)("button", {
+          type: "button",
+          className: "bt-soft bt-soft-sm",
+          onClick: () => actions.openSettings("bots")
+        }, "打开 Bot 设置")
+      )
+    )
   );
 }
 
