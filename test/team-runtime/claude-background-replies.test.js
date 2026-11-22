@@ -30,7 +30,7 @@ const engines = {
   sandbox: (id, spec) => new ClaudeEngine(id, { ...spec, args: [fixture] }, { findExecutable: () => process.execPath }),
 }
 
-function setup(t, engineFor) {
+function setup(t, engineFor, limits = {}) {
   const records = {}
   // What reached the CLI as a prompt or a steer.
   const prompts = []
@@ -57,6 +57,7 @@ function setup(t, engineFor) {
       }
       return engine
     },
+    ...limits,
   })
   t.after(() => adapter.dispose())
   const opening = async (count) => {
@@ -152,6 +153,36 @@ for (const [name, engineFor] of Object.entries(engines)) {
     const next = await run([u1, a1, t1, assistant('a2', textOf(chunks)), user('u2', 'next')])
     assert.equal(textOf(next), 'reply: next')
     assert.equal(prompts.at(-1), 'next')
+  })
+
+  test(`${name} engine: a background task Claude Code reports opens one turn, for what Claude says when it ends`, { timeout: 20_000 }, async (t) => {
+    const { opened, opening, run } = setup(t, engineFor)
+    const u1 = user('u1', 'TASK 200 please')
+    const first = await run([u1])
+    assert.equal(textOf(first), 'started a background task')
+    // The task list changed while the prompt ran, and nothing was said by itself yet.
+    assert.equal(opened.length, 0)
+    const { background } = await opening(1)
+    const shown = await run([u1, assistant('a1', textOf(first)), trigger('t1', background)])
+    assert.equal(textOf(shown), AUTONOMOUS)
+    // The task list changing as the task ended opened nothing more.
+    await new Promise(resolve => setTimeout(resolve, 200))
+    assert.equal(opened.length, 1)
+  })
+
+  test(`${name} engine: a reply the Session has not shown yet keeps the process past the idle limit`, { timeout: 20_000 }, async (t) => {
+    const { adapter, opening, run } = setup(t, engineFor, { idleCloseMs: 300, backgroundIdleCloseMs: 60_000 })
+    const u1 = user('u1', 'BACKGROUND task')
+    const first = await run([u1])
+    const { background } = await opening(1)
+    // The Session is busy elsewhere well past the idle limit.
+    await new Promise(resolve => setTimeout(resolve, 900))
+    assert.ok(adapter.live.has('part'), 'the process left with the reply it had not shown')
+    const shown = await run([u1, assistant('a1', textOf(first)), trigger('t1', background)])
+    assert.equal(textOf(shown), AUTONOMOUS)
+    // Once shown, the process leaves at the idle limit as before.
+    for (let wait = 0; adapter.live.has('part') && wait < 100; wait++) await new Promise(resolve => setTimeout(resolve, 50))
+    assert.equal(adapter.live.has('part'), false)
   })
 }
 
