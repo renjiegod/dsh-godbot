@@ -31,6 +31,25 @@ import { cleanEnv, findEngineExecutable, findExecutable, probeSignIn, probeVersi
 
 const isLocalAgentRoute = route => isBaseLocalRoute(route) || Boolean(sandboxRouteInfo(route))
 
+// What a local agent CLI keeps of a DSH prompt assembly. Sections: Godbot's
+// instructions only. Contexts: the working folder and Godbot's own, plus the
+// memory, which leaves the instructions for the runtime context.
+const LOCAL_AGENT_SECTIONS = new Set(['bot-identity'])
+const LOCAL_AGENT_CONTEXTS = new Set(['working-directory:current', 'godbot-learning'])
+const MEMORY_SECTION = 'bot-memory'
+export const MEMORY_CONTEXT = 'godbot-memory'
+
+export function localAgentPresentation(assembly) {
+  const memory = assembly.sections.find(section => section.name === MEMORY_SECTION)
+  const contexts = assembly.contexts.filter(entry => LOCAL_AGENT_CONTEXTS.has(entry.name))
+  if (memory !== undefined && memory.text !== '') contexts.push({ name: MEMORY_CONTEXT, text: memory.text, interpolate: false })
+  return {
+    ...assembly,
+    sections: assembly.sections.filter(section => LOCAL_AGENT_SECTIONS.has(section.name)),
+    contexts,
+  }
+}
+
 const SIGNED_IN_TTL_MS = 60_000
 
 function spawnEngine(kind, route, spec) {
@@ -204,6 +223,7 @@ export class WorkspaceCodexEngine extends CodexEngine {
     if (reply?.thread?.id !== resumeId) throw new Error('Codex 未恢复该原生会话。')
     const thread = this.threadFor(id)
     thread.threadId = resumeId
+    thread.cwd = cwd
     return thread
   }
   onNotice(method, params) {
@@ -676,6 +696,17 @@ export function install(rt) {
         rt.warn?.('Godbot could not close a native session after permission changed: %s', error.message))
     })
   })
+  // A local agent CLI reads only Godbot's part of the prompt: DSH's own sections and
+  // contexts describe DSH's tools, approvals and sandbox, which the CLI does not
+  // have; it keeps its own. The memory moves to the runtime context, which reaches
+  // the CLI as a note with its next input whenever it changes, so the instructions
+  // stay the same for the whole conversation.
+  ctx.on('system-prompt/assemble', async (_assembly, context, next) => {
+    const assembly = await next()
+    const provider = context?.modelSelection?.provider
+    if (typeof provider !== 'string' || !isLocalAgentRoute(provider)) return assembly
+    return localAgentPresentation(assembly)
+  }, { prepend: true })
   const llm = () => serviceOf(ctx, 'llm')
   const supported = () => typeof llm()?.registerAdapter === 'function'
   const usedRefs = () => [...new Set(Object.values(state.bots ?? {}).flatMap(bot => [bot.model, bot.appliedModel]).filter(Boolean))]
