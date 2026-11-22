@@ -20,7 +20,7 @@ export function WorkspaceActions({ wide, client, onSchedules, onBack }) {
       'aria-label': schedules,
       'aria-haspopup': 'dialog',
       onClick: onSchedules,
-    }, h(Icon, { name: 'clock', size: 17 }), wide && h('span', null, schedules)),
+    }, h(Icon, { name: 'clock', size: 17 })),
     h(RemoteComputersButton, { client }),
     h(WorkspaceInbox, { client }),
     h('button', {

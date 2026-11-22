@@ -33,8 +33,8 @@ export async function fullTeamRoutines(host, note) {
       await page.mouse.move(width, y, { steps: 12 })
       await page.mouse.up()
     }
-    await shortcut.waitFor()
-    assert.match(await shortcut.innerText(), /^(会话定时消息|Scheduled messages)$/u)
+    await shortcut.locator('svg').waitFor()
+    assert.equal((await shortcut.innerText()).trim(), '')
     await host.capture('full-team-automation-sidebar')
     await resize(80)
     const rail = page.locator('.bt-side.bt-rail').getByRole('button', { name: /^(会话定时消息|Scheduled messages)$/u })

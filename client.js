@@ -30181,7 +30181,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.20";
+var version = "0.2.0-rc.21";
 
 // src/client/team-ui/about.js
 var import_react38 = require("react");
@@ -62873,7 +62873,7 @@ function WorkspaceInbox({ client }) {
 }
 
 // src/client/workspace-actions.css
-var workspace_actions_default = ".gb-workspace-actions {\n  display: flex;\n  align-items: center;\n  gap: 4px;\n  flex: none;\n  padding-block: 4px 8px;\n  border-bottom: 1px solid var(--bt-line);\n}\n.gb-workspace-actions .gb-workspace-action {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex: none;\n  width: 34px;\n  height: 34px;\n  padding: 0;\n  border: 0;\n  border-radius: 8px;\n  background: transparent;\n  color: var(--bt-ink-2);\n  cursor: pointer;\n}\n.gb-workspace-actions .gb-workspace-action:hover { background: var(--bt-hover); color: var(--bt-ink); }\n.gb-workspace-action:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }\n.gb-workspace-actions .gb-schedule-shortcut {\n  background: var(--bt-hover);\n  color: var(--bt-ink);\n}\n.gb-workspace-actions .gb-schedule-shortcut:hover { background: var(--bt-active); }\n.gb-workspace-actions:not([data-rail]) .gb-schedule-shortcut {\n  flex: 1 1 auto;\n  min-width: 0;\n  width: auto;\n  justify-content: flex-start;\n  gap: 7px;\n  padding-inline: 9px;\n  font-family: inherit;\n  font-size: 13px;\n  font-weight: 500;\n}\n.gb-schedule-shortcut > span {\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.gb-workspace-actions[data-rail] {\n  flex-direction: column;\n  padding-block: 0 4px;\n  border-bottom: 0;\n}\n";
+var workspace_actions_default = ".gb-workspace-actions {\n  display: flex;\n  align-items: center;\n  gap: 4px;\n  flex: none;\n  padding-block: 4px 8px;\n  border-bottom: 1px solid var(--bt-line);\n}\n.gb-workspace-actions .gb-workspace-action {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex: none;\n  width: 34px;\n  height: 34px;\n  padding: 0;\n  border: 0;\n  border-radius: 8px;\n  background: transparent;\n  color: var(--bt-ink-2);\n  cursor: pointer;\n}\n.gb-workspace-actions .gb-workspace-action:hover { background: var(--bt-hover); color: var(--bt-ink); }\n.gb-workspace-action:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }\n.gb-workspace-actions .gb-schedule-shortcut {\n  background: var(--bt-hover);\n  color: var(--bt-ink);\n}\n.gb-workspace-actions .gb-schedule-shortcut:hover { background: var(--bt-active); }\n.gb-workspace-actions[data-rail] {\n  flex-direction: column;\n  padding-block: 0 4px;\n  border-bottom: 0;\n}\n";
 
 // src/client/workspace-actions.js
 function WorkspaceActions({ wide, client, onSchedules, onBack }) {
@@ -62893,7 +62893,7 @@ function WorkspaceActions({ wide, client, onSchedules, onBack }) {
       "aria-label": schedules,
       "aria-haspopup": "dialog",
       onClick: onSchedules
-    }, (0, import_react101.createElement)(Icon, { name: "clock", size: 17 }), wide && (0, import_react101.createElement)("span", null, schedules)),
+    }, (0, import_react101.createElement)(Icon, { name: "clock", size: 17 })),
     (0, import_react101.createElement)(RemoteComputersButton, { client }),
     (0, import_react101.createElement)(WorkspaceInbox, { client }),
     (0, import_react101.createElement)("button", {
