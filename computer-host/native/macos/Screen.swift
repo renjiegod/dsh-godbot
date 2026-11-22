@@ -14,13 +14,17 @@ func send(_ object: Object) {
   FileHandle.standardOutput.write(data + Data([10]))
 }
 
-func consoleUnlocked() -> Bool {
+enum ConsoleState { case unlocked, locked, unavailable }
+
+func consoleState() -> ConsoleState {
   guard let session = CGSessionCopyCurrentDictionary() as? Object,
     session[kCGSessionOnConsoleKey as String] as? Bool == true,
     session[kCGSessionUserIDKey as String] as? UInt32 == getuid()
-  else { return false }
-  return session["CGSSessionScreenIsLocked"] as? Bool != true
+  else { return .unavailable }
+  return session["CGSSessionScreenIsLocked"] as? Bool == true ? .locked : .unlocked
 }
+
+func consoleUnlocked() -> Bool { consoleState() == .unlocked }
 
 func geometryRevision(_ id: CGDirectDisplayID, _ bounds: CGRect, _ mode: CGDisplayMode) -> Int {
   let values = [
@@ -83,7 +87,7 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
   var lastPoint: CGPoint
   var ended = false
   private let video = FileHandle(fileDescriptor: 3, closeOnDealloc: false)
-  private let captureQueue = DispatchQueue(label: "io.godbot.capture")
+  private let writerQueue = DispatchQueue(label: "io.godbot.capture.writer")
   private var newestFrame: Data?
   private var pacing: DispatchSourceTimer?
 
@@ -105,20 +109,71 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
     return geometryRevision(displayID, currentBounds, mode) == revision
   }
 
+  // Secure Event Input is not thread-safe. Sample admission, control and every
+  // paced write consult the same main-thread authority, including on idle screens.
+  private func permitsDesktop() -> Bool {
+    precondition(Thread.isMainThread)
+    guard !ended else { return false }
+    switch consoleState() {
+    case .locked:
+      stop("Computer locked")
+      return false
+    case .unavailable:
+      stop("Graphical session changed")
+      return false
+    case .unlocked: break
+    }
+    if IsSecureEventInputEnabled() {
+      stop("Sharing paused for a private prompt")
+      return false
+    }
+    if !CGPreflightScreenCaptureAccess() {
+      stop("Screen Recording permission or an unlocked graphical session is required")
+      return false
+    }
+    if CGDisplayIsOnline(displayID) == 0 {
+      stop("Display disconnected")
+      return false
+    }
+    return true
+  }
+
+  private func canStartSharing() -> Bool {
+    guard permitsDesktop() else { return false }
+    guard geometryMatches() else {
+      stop("Display geometry changed before sharing")
+      return false
+    }
+    return true
+  }
+
+  private func startPacing() {
+    let timer = DispatchSource.makeTimerSource(queue: writerQueue)
+    timer.schedule(deadline: .now(), repeating: .milliseconds(67))
+    timer.setEventHandler { [weak self] in
+      guard let self else { return }
+      // A blocked main loop cannot authorize a repeat of the previous frame.
+      // Pipe backpressure only blocks this worker; main can always revoke access.
+      let frame: Data? = DispatchQueue.main.sync {
+        self.permitsDesktop() ? self.newestFrame : nil
+      }
+      guard let frame else { return }
+      do { try self.video.write(contentsOf: frame) } catch {
+        DispatchQueue.main.async { self.stop("Capture reader closed") }
+      }
+    }
+    pacing = timer
+    timer.resume()
+  }
+
   @MainActor func start() async {
     do {
-      guard consoleUnlocked(), CGPreflightScreenCaptureAccess() else {
-        stop("Screen Recording permission or an unlocked graphical session is required")
-        return
-      }
-      guard geometryMatches() else {
-        stop("Display geometry changed before sharing")
-        return
-      }
+      guard canStartSharing() else { return }
       let content = try await SCShareableContent.excludingDesktopWindows(
         false, onScreenWindowsOnly: true)
+      guard canStartSharing() else { return }
       guard let display = content.displays.first(where: { $0.displayID == displayID }) else {
-        stop("Display disconnected")
+        stop("The selected display is unavailable for sharing")
         return
       }
       let filter = SCContentFilter(display: display, excludingWindows: [])
@@ -132,7 +187,7 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
       config.capturesAudio = false
       let capturing = SCStream(filter: filter, configuration: config, delegate: self)
       stream = capturing
-      try capturing.addStreamOutput(self, type: .screen, sampleHandlerQueue: captureQueue)
+      try capturing.addStreamOutput(self, type: .screen, sampleHandlerQueue: .main)
       let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
       status.button?.title = "▣ Godbot · Sharing"
       let menu = NSMenu()
@@ -158,30 +213,20 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
       NotificationCenter.default.addObserver(
         self, selector: #selector(sessionChanged),
         name: NSApplication.didChangeScreenParametersNotification, object: nil)
-      let timer = DispatchSource.makeTimerSource(queue: captureQueue)
-      timer.schedule(deadline: .now(), repeating: .milliseconds(67))
-      timer.setEventHandler { [weak self] in
-        guard let self = self, let frame = self.newestFrame else { return }
-        do { try self.video.write(contentsOf: frame) } catch {
-          DispatchQueue.main.async { self.stop("Capture reader closed") }
-        }
-      }
-      pacing = timer
-      timer.resume()
       try await capturing.startCapture()
-      guard geometryMatches() else {
-        stop("Display geometry changed before sharing")
-        return
-      }
+      guard canStartSharing() else { return }
       send(["type": "ready", "revision": revision])
+      startPacing()
       armPermissionCheck()
-    } catch { stop("Screen capture could not start") }
+    } catch {
+      if permitsDesktop() { stop("Screen capture could not start") }
+    }
   }
 
   func stream(
     _ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType
   ) {
-    guard type == .screen, sample.isValid,
+    guard type == .screen, permitsDesktop(), sample.isValid,
       let records = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false)
         as? [[SCStreamFrameInfo: Any]],
       let record = records.first, let status = record[.status] as? Int
@@ -189,8 +234,7 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
     if status == SCFrameStatus.blank.rawValue || status == SCFrameStatus.suspended.rawValue
       || status == SCFrameStatus.stopped.rawValue
     {
-      newestFrame = nil
-      DispatchQueue.main.async { self.stop("Display sharing was suspended") }
+      stop("Display sharing was suspended")
       return
     }
     guard status == SCFrameStatus.complete.rawValue, let pixel = sample.imageBuffer else { return }
@@ -213,7 +257,9 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
   }
 
   func stream(_ stream: SCStream, didStopWithError error: Error) {
-    DispatchQueue.main.async { self.stop("Screen capture stopped") }
+    DispatchQueue.main.async {
+      if self.permitsDesktop() { self.stop("Screen capture stopped") }
+    }
   }
   private func armPermissionCheck() {
     let timer = Timer(
@@ -222,11 +268,8 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
     RunLoop.main.add(timer, forMode: .common)
   }
   @objc func checkPermissions() {
-    if !consoleUnlocked() || !CGPreflightScreenCaptureAccess() || IsSecureEventInputEnabled() {
-      stop("Sharing ended because the desktop is locked, protected, or unavailable")
-    } else if control && !AXIsProcessTrusted() {
-      revokeInput()
-    }
+    guard permitsDesktop() else { return }
+    if control && !AXIsProcessTrusted() { revokeInput() }
   }
   func revokeInput() {
     guard control else { return }
@@ -234,11 +277,19 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
     release()
     send(["type": "control-revoked", "reason": "Accessibility permission was revoked"])
   }
-  @objc func sessionChanged() { stop("Graphical session changed") }
+  @objc func sessionChanged() {
+    if !Thread.isMainThread {
+      DispatchQueue.main.async { self.sessionChanged() }
+      return
+    }
+    if permitsDesktop() { stop("Graphical session changed") }
+  }
   @objc func stopLocally() { stop("Stopped on target") }
   func stop(_ reason: String) {
     guard !ended else { return }
     ended = true
+    newestFrame = nil
+    pacing?.cancel()
     release()
     send(["type": "ended", "reason": reason])
     exit(0)
@@ -281,16 +332,16 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
     }
     if type == "control" {
       release()
-      control = m["enabled"] as? Bool == true && consoleUnlocked() && AXIsProcessTrusted()
-      if m["enabled"] as? Bool == true && !control && consoleUnlocked()
-        && CGPreflightScreenCaptureAccess()
-      {
+      let enabled = m["enabled"] as? Bool == true
+      if enabled && !permitsDesktop() { return }
+      control = enabled && AXIsProcessTrusted()
+      if enabled && !control {
         send([
           "id": m["id"] ?? 0, "ok": false, "code": "INPUT_DENIED",
           "error": "Allow Accessibility to control this Mac",
         ])
       } else {
-        send(["id": m["id"] ?? 0, "ok": m["enabled"] as? Bool != true || control])
+        send(["id": m["id"] ?? 0, "ok": true])
       }
       return
     }
@@ -298,11 +349,11 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
       release()
       return
     }
-    if control && !AXIsProcessTrusted() {
+    guard control, permitsDesktop() else { return }
+    if !AXIsProcessTrusted() {
       revokeInput()
       return
     }
-    guard control, consoleUnlocked(), !IsSecureEventInputEnabled() else { return }
     if let x = m["x"] as? Double, let y = m["y"] as? Double {
       lastPoint = CGPoint(
         x: bounds.origin.x + min(1, max(0, x)) * max(0, bounds.width - 1),
@@ -336,6 +387,7 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
     case "text":
       if let text = m["text"] as? String {
         for character in text {
+          guard permitsDesktop() else { return }
           let units = Array(String(character).utf16)
           for down in [true, false] {
             let e = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: down)
@@ -350,82 +402,128 @@ final class Session: NSObject, SCStreamOutput, SCStreamDelegate {
 }
 
 signal(SIGPIPE, SIG_IGN)
-let app = NSApplication.shared
-app.setActivationPolicy(.accessory)
-if CommandLine.arguments.count == 1 || CommandLine.arguments.dropFirst().first == "permissions" {
-  // End sharing before presenting local-only privacy controls.
-  DistributedNotificationCenter.default().postNotificationName(
-    .init("io.github.renjiegod.godbot.computerhost.setup"), object: nil, userInfo: nil,
-    deliverImmediately: true)
-  app.setActivationPolicy(.regular)
-  app.activate(ignoringOtherApps: true)
-  let panel = NSAlert()
-  panel.messageText = "Godbot Computer Host"
-  panel.informativeText =
-    "Screen Recording: " + (CGPreflightScreenCaptureAccess() ? "allowed" : "permission required")
-    + "\nPointer and keyboard: "
-    + (AXIsProcessTrusted() ? "allowed" : "Accessibility permission required")
-    + "\n\nSet permissions for this app in System Settings. Pair controllers separately with the Godbot Computer Host."
-  panel.addButton(withTitle: "Done")
-  panel.addButton(withTitle: "Screen Recording…")
-  panel.addButton(withTitle: "Accessibility…")
-  panel.addButton(withTitle: "Manage paired controllers…")
-  let choice = panel.runModal()
-  if choice == .alertSecondButtonReturn {
-    _ = CGRequestScreenCaptureAccess()
-    NSWorkspace.shared.open(
-      URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-  } else if choice == .alertThirdButtonReturn {
-    _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
-    NSWorkspace.shared.open(
-      URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
-  } else if choice.rawValue == NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + 3 {
-    let launcher = Process()
-    launcher.executableURL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(
-      ".local/bin/godbot-computer")
-    launcher.arguments = ["manage"]
-    do { try launcher.run() } catch {
-      let errorPanel = NSAlert()
-      errorPanel.messageText = "Install the Godbot Computer Host CLI first"
-      errorPanel.informativeText =
-        "The local controller manager opens from ~/.local/bin/godbot-computer."
-      errorPanel.runModal()
-    }
-  }
+let original = CommandLine.arguments
+if original.count == 2, original[1] == "bridge-info" {
+  send(["protocol": 1, "publisherKeySha256": String(cString: GBPublisherKeyDigest())])
   exit(0)
 }
-if CommandLine.arguments.count == 2 {
-  switch CommandLine.arguments[1] {
-  case "probe":
-    let visible = consoleUnlocked()
-    let capture = CGPreflightScreenCaptureAccess()
-    send([
-      "available": visible && capture, "control": visible && AXIsProcessTrusted(),
-      "reason": !visible
-        ? "No unlocked graphical session"
-        : !capture ? "Allow Screen Recording for Godbot Computer Host" : "",
-      "displays": visible && capture ? screens() : [],
-    ])
+if original.dropFirst().first == "launch" { exit(GBLaunchApplication()) }
+let attached = original.dropFirst().first == "attached"
+let command = attached ? [original[0]] + original.dropFirst(2) : original
+let app = NSApplication.shared
+app.setActivationPolicy(.accessory)
+func handleOperation() {
+  var launcherChannel: Int32 = -1
+  if attached {
+    let operation = command.dropFirst().first
+    guard
+      (operation == "probe" && command.count == 2) || (operation == "stream" && command.count == 7)
+    else { exit(2) }
+    launcherChannel = GBAttachToLauncher(operation == "stream" ? 1 : 0)
+    guard launcherChannel >= 0 else { exit(3) }
+  }
+
+  if command.count == 1 || command.dropFirst().first == "permissions" {
+    // End sharing before presenting local-only privacy controls.
+    DistributedNotificationCenter.default().postNotificationName(
+      .init("io.github.renjiegod.godbot.computerhost.setup"), object: nil, userInfo: nil,
+      deliverImmediately: true)
+    app.setActivationPolicy(.regular)
+    app.activate(ignoringOtherApps: true)
+    let panel = NSAlert()
+    panel.messageText = "Godbot Computer Host"
+    panel.informativeText =
+      "Screen Recording: " + (CGPreflightScreenCaptureAccess() ? "allowed" : "permission required")
+      + "\nPointer and keyboard: "
+      + (AXIsProcessTrusted() ? "allowed" : "Accessibility permission required")
+      + "\n\nSet permissions for this app in System Settings. Pair controllers separately with the Godbot Computer Host."
+    panel.addButton(withTitle: "Done")
+    panel.addButton(withTitle: "Screen Recording…")
+    panel.addButton(withTitle: "Accessibility…")
+    panel.addButton(withTitle: "Manage paired controllers…")
+    let choice = panel.runModal()
+    if choice == .alertSecondButtonReturn {
+      _ = CGRequestScreenCaptureAccess()
+      NSWorkspace.shared.open(
+        URL(
+          string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+    } else if choice == .alertThirdButtonReturn {
+      _ = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary)
+      NSWorkspace.shared.open(
+        URL(
+          string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+    } else if choice.rawValue == NSApplication.ModalResponse.alertFirstButtonReturn.rawValue + 3 {
+      let launcher = Process()
+      launcher.executableURL = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(
+          ".local/bin/godbot-computer")
+      launcher.arguments = ["manage"]
+      do { try launcher.run() } catch {
+        let errorPanel = NSAlert()
+        errorPanel.messageText = "Install the Godbot Computer Host CLI first"
+        errorPanel.informativeText =
+          "The local controller manager opens from ~/.local/bin/godbot-computer."
+        errorPanel.runModal()
+      }
+    }
     exit(0)
-  default: break
   }
-}
-guard CommandLine.arguments.count == 7, CommandLine.arguments[1] == "stream",
-  let id = UInt32(CommandLine.arguments[2]), let revision = UInt32(CommandLine.arguments[6]),
-  let width = Int(CommandLine.arguments[3]), let height = Int(CommandLine.arguments[4]), width > 0,
-  height > 0, width <= 1920, height <= 1920
-else { exit(2) }
-let session = Session(
-  id: id, width: width, height: height, controller: String(CommandLine.arguments[5].prefix(96)),
-  revision: Int(revision))
-DispatchQueue.global(qos: .userInitiated).async {
-  while let line = readLine() {
-    guard let data = line.data(using: .utf8),
-      let m = try? JSONSerialization.jsonObject(with: data) as? Object
-    else { continue }
-    DispatchQueue.main.async { session.command(m) }
+  if command.count == 2 {
+    switch command[1] {
+    case "probe", "permission-probe":
+      if command[1] == "probe" && !attached {
+        send([
+          "available": false, "control": false, "displays": [],
+          "reason":
+            "Update the Godbot Computer Host and desktop helper together, then restart the host",
+        ])
+        exit(0)
+      }
+      let visible = consoleUnlocked()
+      let capture = CGPreflightScreenCaptureAccess()
+      send([
+        "available": visible && capture, "control": visible && AXIsProcessTrusted(),
+        "reason": !visible
+          ? "No unlocked graphical session"
+          : !capture ? "Allow Screen Recording for Godbot Computer Host" : "",
+        "displays": visible && capture ? screens() : [],
+      ])
+      exit(0)
+    default: break
+    }
   }
-  DispatchQueue.main.async { session.stop("Coordinator disconnected") }
+  guard attached, command.count == 7, command[1] == "stream",
+    let id = UInt32(command[2]), let revision = UInt32(command[6]),
+    let width = Int(command[3]), let height = Int(command[4]), width > 0,
+    height > 0, width <= 1920, height <= 1920
+  else { exit(2) }
+  let session = Session(
+    id: id, width: width, height: height, controller: String(command[5].prefix(96)),
+    revision: Int(revision))
+  func coordinatorLost() {
+    DispatchQueue.main.async { session.stop("Coordinator disconnected") }
+    DispatchQueue.global().asyncAfter(deadline: .now() + 1) { _exit(1) }
+  }
+  DispatchQueue.global(qos: .userInitiated).async {
+    while let line = readLine() {
+      guard let data = line.data(using: .utf8),
+        let m = try? JSONSerialization.jsonObject(with: data) as? Object
+      else { continue }
+      DispatchQueue.main.async { session.command(m) }
+    }
+    coordinatorLost()
+  }
+  DispatchQueue.global(qos: .userInitiated).async {
+    GBWaitForLauncherExit(launcherChannel)
+    coordinatorLost()
+  }
+  Task { @MainActor in await session.start() }
 }
-Task { @MainActor in await session.start() }
-app.run()
+
+if attached {
+  // Finish LaunchServices registration before blocking on the authenticated fd handoff.
+  DispatchQueue.main.async { handleOperation() }
+  app.run()
+} else {
+  handleOperation()
+}

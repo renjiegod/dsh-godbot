@@ -1,6 +1,8 @@
 // The graphical runtime is explicitly installed under the current user. The
 // headless package can therefore run without any capture or codec libraries.
 import { execFileSync } from 'node:child_process'
+import { createPublicKey } from 'node:crypto'
+import { homedir } from 'node:os'
 import {
   chmodSync,
   copyFileSync,
@@ -8,6 +10,7 @@ import {
   mkdirSync,
   mkdtempSync,
   renameSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -43,11 +46,35 @@ function build(stage) {
     const app = join(stage, capture),
       contents = join(app, 'Contents')
     mkdirSync(join(contents, 'MacOS'), { recursive: true })
+    const bridge = join(stage, 'LaunchBridge.o')
+    run('xcrun', ['clang', '-O2', '-fobjc-arc', '-c', join(here, 'macos', 'LaunchBridge.m'), '-o', bridge])
+    const authority = join(stage, 'HostAuthority.o')
+    run('xcrun', ['clang', '-O2', '-fobjc-arc', '-c', join(here, 'macos', 'HostAuthority.m'), '-o', authority])
+    const publisher = process.env.GODBOT_COMPUTER_PUBLISHER_PUBLIC_KEY ||
+      join(homedir(), '.local/share/godbot-computer/publisher.pem')
+    if (!existsSync(publisher)) throw new Error('Set GODBOT_COMPUTER_PUBLISHER_PUBLIC_KEY to the standalone host publisher public PEM')
+    const pem = readFileSync(publisher, 'utf8')
+    if (!pem.startsWith('-----BEGIN PUBLIC KEY-----')) throw new Error('Expected a public publisher key')
+    const jwk = createPublicKey(pem).export({format:'jwk'})
+    if (jwk.kty !== 'EC' || jwk.crv !== 'P-256') throw new Error('Expected a P-256 publisher public key')
+    mkdirSync(join(contents, 'Resources'), {recursive:true})
+    const keyBytes = Buffer.concat([Buffer.from([4]), Buffer.from(jwk.x, 'base64url'), Buffer.from(jwk.y, 'base64url')])
+    writeFileSync(join(contents, 'Resources', 'coordinator-publisher.x963'), keyBytes)
+    const keySource = join(stage, 'PublisherKey.c'), keyObject=join(stage,'PublisherKey.o')
+    writeFileSync(keySource, 'const unsigned char GBPublisherBytes[65]={' + [...keyBytes].join(',') + '};\n')
+    run('xcrun',['clang','-O2','-c',keySource,'-o',keyObject])
     run('swiftc', [
       '-O',
       '-swift-version',
       '5',
       join(here, 'macos', 'Screen.swift'),
+      '-import-objc-header',
+      join(here, 'macos', 'LaunchBridge.h'),
+      bridge,
+      authority,
+      keyObject,
+      '-framework',
+      'Security',
       '-framework',
       'Cocoa',
       '-framework',

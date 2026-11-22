@@ -1,6 +1,17 @@
 import { createServer } from 'node:net'
 import { randomUUID } from 'node:crypto'
-import { chmodSync, lstatSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -16,11 +27,17 @@ import { claimComputerInput } from '../src/host/computer-input-lock.js'
 import { MachineSessions } from './sessions.js'
 import { askLocal } from './consent.js'
 import { defaultHome, localRequest, privateDir, socketPath } from './local.js'
+import { createPortalMemory } from './portal-memory.js'
 
-const scopes = ['desktop.view', 'desktop.control', 'terminal']
+const desktopScopes = ['desktop.view', 'desktop.control']
+const scopes = [...desktopScopes, 'terminal']
 const headlessDesktop = {
   probe: async () => ({ available: false, control: false, reason: 'No graphical session' }),
   displays: async () => [],
+}
+
+function portalFileStamp(stat) {
+  if (stat.birthtimeNs > 0n && stat.ino > 0n) return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`
 }
 
 function relayUrl(value) {
@@ -45,8 +62,19 @@ function relayUrl(value) {
 function saveConfig(directory, cfg) {
   const target = join(directory, 'identity.json')
   const temp = target + '.' + randomUUID()
-  writeFileSync(temp, JSON.stringify(cfg) + '\n', { mode: 0o600, flag: 'wx' })
+  const fd = openSync(temp, 'wx', 0o600)
   try {
+    try {
+      const stored = { ...cfg }
+      if (stored.portalMemory && Object.keys(stored.portalMemory).length) {
+        const stamp = portalFileStamp(fstatSync(fd, { bigint: true }))
+        if (stamp) stored.portalMemoryFile = stamp
+        else delete stored.portalMemory
+      }
+      writeFileSync(fd, JSON.stringify(stored) + '\n')
+    } finally {
+      closeSync(fd)
+    }
     renameSync(temp, target)
   } catch (err) {
     unlinkSync(temp)
@@ -58,10 +86,17 @@ function loadConfig(directory, options) {
   const path = join(directory, 'identity.json')
   let cfg
   try {
-    const stat = lstatSync(path)
-    if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0)
-      throw new Error('Unsafe host identity file permissions')
-    cfg = JSON.parse(readFileSync(path, 'utf8'))
+    const fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    let stamp
+    try {
+      const stat = fstatSync(fd, { bigint: true })
+      if (!stat.isFile() || stat.uid !== BigInt(process.getuid()) || (stat.mode & 0o077n) !== 0n)
+        throw new Error('Unsafe host identity file permissions')
+      cfg = JSON.parse(readFileSync(fd, 'utf8'))
+      stamp = portalFileStamp(stat)
+    } finally {
+      closeSync(fd)
+    }
     if (
       cfg.version !== 1 ||
       cfg.identity.deviceId !== deviceIdFor(cfg.identity.publicKey) ||
@@ -72,6 +107,11 @@ function loadConfig(directory, options) {
       !Array.isArray(cfg.audit)
     )
       throw new Error('Invalid computer host identity file')
+    // Old hosts replace identity.json without understanding portal memory.
+    // A file-specific stamp catches an intervening rollback or external copy,
+    // even if legacy code removes and later re-adds the same desktop grant.
+    if (!stamp || cfg.portalMemoryFile !== stamp) delete cfg.portalMemory
+    delete cfg.portalMemoryFile
   } catch (err) {
     if (err.code !== 'ENOENT') throw err
     const keys = generateKeyPair()
@@ -133,7 +173,7 @@ function iceProvider(env) {
       throw new Error('Invalid TURN issuer')
     if (url.pathname === '/') url.pathname = '/v1/turn/credentials'
   }
-  const base = stun ? [{ urls: stun }] : []
+  const base = stun ? [{ urls: [stun] }] : []
   const direct = () => ({ host: [...base], viewer: [...base] })
   return async (sessionId) => {
     if (!url) return direct()
@@ -239,6 +279,8 @@ export async function startComputerHost(options = {}) {
   let cfg,
     link,
     registry,
+    desktop,
+    portalMemory,
     sessions,
     stopping = false
   const device = (id) => {
@@ -326,12 +368,36 @@ export async function startComputerHost(options = {}) {
         expiresAt,
       }
     }
-    if (method === 'controllers')
-      return registry.list().map((d) => ({
-        ...describePeer(d),
-        lastSeen: cfg.lastSeen?.[d.deviceId] ?? d.pairedAt,
-        grants: grants(d.deviceId),
-      }))
+    if (method === 'controllers') {
+      const supported = (await desktop.portalSupport?.()) ?? []
+      return registry.list().map((d) => {
+        const remembered = portalMemory.scopes(d.deviceId)
+        return {
+          ...describePeer(d),
+          lastSeen: cfg.lastSeen?.[d.deviceId] ?? d.pairedAt,
+          grants: grants(d.deviceId),
+          ...((supported.length || remembered.length) && { portalScopes: remembered }),
+          ...(supported.length && { portalSupportedScopes: supported }),
+        }
+      })
+    }
+    if (method === 'remember-portal' || method === 'forget-portal') {
+      device(id)
+      if (!desktopScopes.includes(scope)) throw new Error('Choose desktop.view or desktop.control')
+      if (method === 'forget-portal') {
+        portalMemory.disable(id, scope)
+        return { deviceId: id, portalScopes: portalMemory.scopes(id) }
+      }
+      const supported = (await desktop.portalSupport?.()) ?? []
+      if (!supported.includes(scope)) throw new Error('The current Wayland session cannot remember this permission')
+      return protectedChange(() => {
+        device(id)
+        if (!grants(id).includes(scope) || !grants(id).includes('desktop.view'))
+          throw new Error('Remember the corresponding Godbot desktop grant before remembering a Wayland screen')
+        portalMemory.enable(id, scope)
+        return { deviceId: id, portalScopes: portalMemory.scopes(id) }
+      })
+    }
     if (method === 'grant' || method === 'ungrant') {
       device(id)
       if (!scopes.includes(scope)) throw new Error('Choose desktop.view, desktop.control or terminal')
@@ -343,6 +409,7 @@ export async function startComputerHost(options = {}) {
         } else {
           next.delete(scope)
           if (scope === 'desktop.view') next.delete('desktop.control')
+          portalMemory.invalidate(id, scope)
         }
         cfg.grants[id] = [...next]
         saveConfig(directory, cfg)
@@ -353,6 +420,7 @@ export async function startComputerHost(options = {}) {
     }
     if (method === 'revoke') {
       device(id)
+      portalMemory.invalidate(id)
       const closing = sessions.revoke(id)
       delete cfg.grants[id]
       if (cfg.lastSeen) delete cfg.lastSeen[id]
@@ -408,11 +476,12 @@ export async function startComputerHost(options = {}) {
   }
   try {
     cfg = loadConfig(directory, options)
-    const desktop =
+    desktop =
       options.desktop ??
       (options.headless
         ? headlessDesktop
         : (await import('./native/desktop.js')).createDesktopAdapter({ directory }))
+    portalMemory = createPortalMemory(cfg, grants, () => saveConfig(directory, cfg))
     registry = new DeviceRegistry(cfg.devices, (devices) => {
       cfg.devices = devices
       saveConfig(directory, cfg)
@@ -421,6 +490,7 @@ export async function startComputerHost(options = {}) {
       desktop,
       name: cfg.name,
       grants,
+      portalMemory,
       localPrivate: privateActive,
       claimInput,
       peerName: (id) => describePeer(device(id)).name,

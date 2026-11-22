@@ -1,10 +1,13 @@
 #!/usr/bin/python3
 """Godbot's per-seat Linux helper. The coordinator owns the inherited pipes."""
 
+import hashlib
 import json
 import math
 import os
+import re
 import shutil
+import stat
 import time
 import subprocess
 import sys
@@ -89,9 +92,13 @@ if not Gst.ElementFactory.find("pipewiresrc" if wayland else "ximagesrc"):
     unavailable("The graphical capture plugin is missing")
 
 
+logind_seat = None
+
+
 def select_lock_probe():
     # logind is authoritative for a real login. Desktop screensaver providers
     # additionally cover GNOME, KDE and other seats which publish GetActive.
+    global logind_seat
     probes = []
     try:
         sysbus = dbus.SystemBus()
@@ -103,16 +110,23 @@ def select_lock_probe():
         path = manager.GetSession(sid) if sid else manager.GetSessionByPID(os.getpid())
         props = dbus.Interface(sysbus.get_object("org.freedesktop.login1", path), PROPS)
 
-        def logged_in():
-            state = props.GetAll("org.freedesktop.login1.Session")
+        def owns_active_session(state):
             return (
                 bool(state["Active"])
                 and not bool(state["LockedHint"])
                 and int(state["User"][0]) == os.getuid()
             )
 
-        logged_in()
-        probes.append(logged_in)
+        state = props.GetAll("org.freedesktop.login1.Session")
+        probes.append(
+            lambda: owns_active_session(props.GetAll("org.freedesktop.login1.Session"))
+        )
+        if (
+            owns_active_session(state)
+            and state.get("Type") == "wayland"
+            and state.get("Seat")
+        ):
+            logind_seat = str(state["Seat"][0]) or None
     except (dbus.DBusException, KeyError):
         pass
     for name, path in [
@@ -144,7 +158,83 @@ def select_lock_probe():
 unlocked = select_lock_probe()
 
 
+def portal_context(revision):
+    backend = (
+        os.getenv("XDG_CURRENT_DESKTOP") or os.getenv("XDG_SESSION_DESKTOP") or ""
+    ).lower()
+    if not backend or len(backend) > 128:
+        return None
+    uid = os.getuid()
+    if logind_seat:
+        seat = f"logind:{uid}:{logind_seat}"
+    else:
+        # A user service or nested compositor may have no logind seat. Limit
+        # reuse to the same live compositor socket and D-Bus session in that case.
+        try:
+            runtime = os.environ["XDG_RUNTIME_DIR"]
+            path = os.path.join(runtime, os.environ["WAYLAND_DISPLAY"])
+            info = os.stat(path, follow_symlinks=False)
+            if not stat.S_ISSOCK(info.st_mode) or info.st_uid != uid:
+                return None
+            bus_id = dbus.Interface(
+                bus.get_object(
+                    "org.freedesktop.DBus", "/org/freedesktop/DBus", introspect=False
+                ),
+                "org.freedesktop.DBus",
+            ).GetId(timeout=0.25)
+            if not bus_id:
+                return None
+            binding = f"{uid}:{info.st_dev}:{info.st_ino}:{bus_id}"
+            seat = "session:" + hashlib.sha256(binding.encode()).hexdigest()
+        except (KeyError, OSError, dbus.DBusException):
+            return None
+
+    def version(iface):
+        try:
+            return int(properties.Get(iface, "version", timeout=0.25))
+        except (dbus.DBusException, TypeError, ValueError):
+            return 0
+
+    return dict(
+        seat=seat,
+        backend=backend,
+        revision=revision,
+        screenCastVersion=version(CAST),
+        remoteDesktopVersion=version(REMOTE),
+    )
+
+
+output_connectors = {}
+
+
+def parse_output_connectors(description):
+    outputs = {}
+    record = None
+    for line in description.splitlines():
+        line = line.strip()
+        if line == "xdg_output_v1":
+            record = {}
+        elif line.startswith("interface:"):
+            record = None
+        elif record is not None:
+            name = re.fullmatch(r"name: '([^'\x00]{1,256})'", line)
+            xy = re.fullmatch(r"logical_x: (-?\d+), logical_y: (-?\d+)", line)
+            size = re.fullmatch(r"logical_width: (\d+), logical_height: (\d+)", line)
+            if name:
+                record["name"] = name[1]
+            elif xy:
+                record["xy"] = tuple(map(int, xy.groups()))
+            elif size:
+                record["size"] = tuple(map(int, size.groups()))
+            if len(record) == 3:
+                geometry = record["xy"] + record["size"]
+                outputs.setdefault(geometry, set()).add(record["name"])
+                record = None
+    return outputs
+
+
 def wayland_revision():
+    global output_connectors
     if shutil.which("wayland-info") is None:
         raise RuntimeError(
             "Install wayland-utils to monitor display rotation and scale"
@@ -169,6 +259,9 @@ def wayland_revision():
     ]
     if not geometry:
         raise RuntimeError("The compositor did not expose display geometry")
+    output_connectors = parse_output_connectors(result.stdout)
+    for rectangle, names in sorted(output_connectors.items()):
+        geometry.append(str((rectangle, sorted(names))))
     return zlib.crc32("\n".join(geometry).encode())
 
 
@@ -224,19 +317,35 @@ except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         if isinstance(error, RuntimeError)
         else "Could not determine display geometry"
     )
+context = (
+    portal_context(initial_displays[0]["revision"])
+    if wayland and initial_displays
+    else None
+)
 if sys.argv[1:2] == ["probe"]:
-    emit(
-        dict(
-            available=active,
-            control=active and can_input,
-            reason=""
+    result = dict(
+        available=active,
+        control=active and can_input,
+        reason=(
+            ""
             if active
-            else "An unlocked graphical session with lock detection is required",
-            displays=initial_displays,
-        )
+            else "An unlocked graphical session with lock detection is required"
+        ),
+        displays=initial_displays,
     )
+    if context is not None:
+        result["portalContext"] = context
+    emit(result)
     sys.exit(0)
-if len(sys.argv) not in (7, 8) or sys.argv[1] != "stream" or not active:
+flags = sys.argv[7:]
+restore_protocol = "--portal-restore-v1" in flags
+if (
+    len(sys.argv) < 7
+    or set(flags) - {"low", "--portal-restore-v1"}
+    or len(flags) != len(set(flags))
+    or sys.argv[1] != "stream"
+    or not active
+):
     unavailable("The user session or display is unavailable")
 selected = next((row for row in initial_displays if row["id"] == sys.argv[2]), None)
 if selected is None:
@@ -244,6 +353,7 @@ if selected is None:
 if str(selected["revision"]) != sys.argv[6]:
     unavailable("Display geometry changed before sharing")
 controller = sys.argv[5][:96]
+portal_enabled = False
 session_path = None
 stream_id = 0
 stream_width, stream_height = selected["width"], selected["height"]
@@ -259,6 +369,59 @@ pipeline = None
 
 class PickerDenied(RuntimeError):
     """The local chooser declined devices without authorizing remote input."""
+
+
+def portal_init():
+    global portal_enabled
+    if not restore_protocol:
+        return None
+    line = sys.stdin.readline(16385)
+    if not line.endswith("\n") or len(line) > 16384:
+        raise RuntimeError("Incomplete desktop portal initialization")
+    message = json.loads(line)
+    if not isinstance(message, dict) or message.get("type") != "portal-init":
+        raise RuntimeError("Invalid desktop portal initialization")
+    # Recheck the actual stream process against the earlier probe. A different
+    # seat or layout must never receive this private restore token.
+    expected = message.get("context")
+    portal_enabled = (
+        context is not None
+        and isinstance(expected, dict)
+        and all(
+            expected.get(key) == context[key] for key in ("seat", "backend", "revision")
+        )
+    )
+    return message.get("view") if portal_enabled else None
+
+
+def bounded_string(value, limit):
+    return isinstance(value, str) and 0 < len(value) <= limit and "\0" not in value
+
+
+def persistence_options(with_input, policy):
+    if (
+        not portal_enabled
+        or not isinstance(policy, dict)
+        or policy.get("remember") is not True
+    ):
+        return {}
+    if with_input:
+        supported = context["remoteDesktopVersion"] >= 2
+    else:
+        supported = context["screenCastVersion"] >= 4
+    if not supported:
+        return {}
+    options = {"persist_mode": dbus.UInt32(2)}
+    if "restore" in policy:
+        saved = policy["restore"]
+        if (
+            not isinstance(saved, dict)
+            or not bounded_string(saved.get("token"), 1024)
+            or not bounded_string(saved.get("streamId"), 256)
+        ):
+            raise RuntimeError("Invalid saved desktop selection")
+        options["restore_token"] = saved["token"]
+    return options
 
 
 def portal_request(iface, method, *args, **extra):
@@ -332,8 +495,42 @@ def portal_logical_size(properties):
     return tuple(map(int, properties["size"]))
 
 
-def open_portal(with_input):
+def stream_binding(props):
+    # A portal may number every first stream "0", including when an invalid
+    # token fell back to a fresh chooser. Bind to the actual compositor output.
+    count = display.get_n_monitors()
+    position = props.get("position")
+    matches = []
+    for index in range(count):
+        monitor = display.get_monitor(index)
+        g = monitor.get_geometry()
+        if position == (g.x, g.y) or (position is None and count == 1):
+            matches.append((monitor, (g.x, g.y, g.width, g.height)))
+    if len(matches) != 1:
+        return None
+    monitor, rectangle = matches[0]
+    connectors = output_connectors.get(rectangle, set())
+    if len(connectors) > 1:
+        return None
+    model = monitor.get_model()
+    if not connectors and not model:
+        return None
+    identity = (
+        props.get("id"),
+        next(iter(connectors), None),
+        rectangle,
+        monitor.get_scale_factor(),
+        monitor.get_manufacturer(),
+        model,
+        monitor.get_width_mm(),
+        monitor.get_height_mm(),
+    )
+    return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
+
+
+def open_portal(with_input, policy=None):
     iface = REMOTE if with_input else CAST
+    persistence = persistence_options(with_input, policy)
     result = portal_request(
         iface, "CreateSession", session_handle_token="s" + uuid.uuid4().hex
     )
@@ -341,14 +538,33 @@ def open_portal(with_input):
     lease = {"path": path}
     try:
         if with_input:
-            portal_request(REMOTE, "SelectDevices", path, types=dbus.UInt32(3))
+            portal_request(
+                REMOTE, "SelectDevices", path, types=dbus.UInt32(3), **persistence
+            )
         options = dict(types=dbus.UInt32(1), multiple=dbus.Boolean(False))
+        if not with_input:
+            options.update(persistence)
         modes = int(dbus.Interface(portal, PROPS).Get(CAST, "AvailableCursorModes"))
         if modes & 2:
             options["cursor_mode"] = dbus.UInt32(2)
         portal_request(CAST, "SelectSources", path, **options)
         result = portal_request(iface, "Start", path, "")
-        node, props = result["streams"][0]
+        streams = result.get("streams", [])
+        if len(streams) != 1:
+            raise RuntimeError("The portal did not return a single display")
+        node, props = streams[0]
+        if int(props.get("source_type", 1)) != 1:
+            raise RuntimeError("The portal did not return a monitor")
+        if persistence and (not unlocked() or selected not in monitors()):
+            raise RuntimeError("The seat or display layout changed before sharing")
+        stream_key = stream_binding(props) if persistence else None
+        if (
+            "restore_token" in persistence
+            and stream_key != policy["restore"]["streamId"]
+        ):
+            raise PickerDenied(
+                "The saved display changed. Request a new screen selection on the target"
+            )
         if "size" not in props:
             raise RuntimeError("The portal did not report display geometry")
         if with_input and int(result.get("devices", 0)) & 3 != 3:
@@ -362,6 +578,13 @@ def open_portal(with_input):
             mapping=props.get("mapping_id"),
             control=with_input,
         )
+        token = result.get("restore_token")
+        if (
+            persistence
+            and bounded_string(stream_key, 256)
+            and bounded_string(token, 1024)
+        ):
+            lease["saved"] = {"token": str(token), "streamId": str(stream_key)}
         lease["fd"] = (
             dbus.Interface(portal, CAST)
             .OpenPipeWireRemote(path, dbus.Dictionary({}, signature="sv"))
@@ -388,10 +611,10 @@ def portal_source(lease):
     return src
 
 
-def source():
+def source(view_policy=None):
     global current_portal, session_path, stream_id, stream_width, stream_height
     if wayland:
-        current_portal = open_portal(False)
+        current_portal = open_portal(False, view_policy)
         session_path = current_portal["path"]
         stream_id = current_portal["node"]
         stream_width, stream_height = current_portal["size"]
@@ -434,10 +657,21 @@ def make_pipeline(src, w, h):
     return p
 
 
-def upgrade_portal(epoch):
+def upgrade_portal(epoch, policy=None):
     global current_portal, session_path, stream_id, pipeline
     if current_portal["control"]:
-        return
+        # This native session already owns the devices. A coordinator may have
+        # taken its saved token before re-enabling input. Put back that same
+        # unspent token only when it belongs to this validated live session.
+        if (
+            portal_enabled
+            and isinstance(policy, dict)
+            and policy.get("remember") is True
+        ):
+            saved = current_portal.get("saved")
+            if saved and saved == policy.get("restore"):
+                return saved
+        return None
     old = current_portal
     old_pipeline = pipeline
     # Keep the selected view available when the user declines an input upgrade.
@@ -452,7 +686,7 @@ def upgrade_portal(epoch):
     new = None
     replacement = None
     try:
-        new = open_portal(True)
+        new = open_portal(True, policy)
         if selected not in monitors():
             stop("Display geometry changed")
         if old["mapping"] is not None and new["mapping"] is not None:
@@ -487,6 +721,7 @@ def upgrade_portal(epoch):
         raise
     old_pipeline.set_state(Gst.State.NULL)
     close_portal(old)
+    return new.get("saved")
 
 
 codes = {
@@ -582,6 +817,8 @@ def stop(reason):
     if stopped:
         return
     stopped = True
+    if portal_enabled and reason in ("Portal sharing stopped", "Stopped on target"):
+        emit(dict(type="portal-cleared"))
     try:
         reset()
     except Exception:
@@ -648,10 +885,11 @@ def apply(message):
             authorized = False
             control_epoch += 1
             epoch = control_epoch
+            saved = None
             if message.get("enabled") and can_input and unlocked():
                 try:
                     if wayland:
-                        upgrade_portal(epoch)
+                        saved = upgrade_portal(epoch, message.get("portal"))
                     authorized = epoch == control_epoch and unlocked()
                 except (dbus.DBusException, RuntimeError, ValueError) as error:
                     reason = (
@@ -668,9 +906,12 @@ def apply(message):
                         reply["code"] = "INPUT_DENIED"
                     emit(reply)
                     return False
-            emit(
-                dict(id=message.get("id"), ok=authorized or not message.get("enabled"))
+            reply = dict(
+                id=message.get("id"), ok=authorized or not message.get("enabled")
             )
+            if authorized and saved:
+                reply["portal"] = saved
+            emit(reply)
             return False
         if k == "reset":
             reset()
@@ -766,6 +1007,7 @@ def periodic_check():
 
 def run():
     global pipeline, encoded_size
+    view_policy = portal_init()
     Gdk.Screen.get_default().connect(
         "monitors-changed", lambda *_: stop("Display layout changed")
     )
@@ -783,13 +1025,13 @@ def run():
     window.add(row)
     window.show_all()
     threading.Thread(target=read_commands, daemon=True).start()
-    src = source()
+    src = source(view_policy)
     if not 0 < stream_width <= 32768 or not 0 < stream_height <= 32768:
         raise RuntimeError("Invalid display size")
     # The local portal picker can stay open while the monitor layout changes.
-    if selected not in monitors():
+    if not unlocked() or selected not in monitors():
         stop("Display geometry changed before sharing")
-    low = sys.argv[7:8] == ["low"]
+    low = "low" in flags
     factor = min(
         1, (960 if low else 1280) / stream_width, (540 if low else 960) / stream_height
     )
@@ -801,6 +1043,8 @@ def run():
     if pipeline.set_state(Gst.State.PLAYING) == Gst.StateChangeReturn.FAILURE:
         raise RuntimeError("Screen capture failed to start")
     GLib.timeout_add(350, periodic_check)
+    if current_portal and "saved" in current_portal:
+        emit(dict(type="portal-saved", scope="desktop.view", **current_portal["saved"]))
     emit(dict(type="ready", control=bool(can_input), revision=selected["revision"]))
     Gtk.main()
 

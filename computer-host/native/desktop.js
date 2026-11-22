@@ -7,6 +7,7 @@ import { homedir, platform } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { promisify } from 'node:util'
+import { socketPath } from '../local.js'
 
 const exec = promisify(execFile)
 const mac = platform() === 'darwin'
@@ -41,6 +42,22 @@ function displayInfo(row) {
     height: row.height,
     revision: row.revision,
   }
+}
+function portalDetails(info) {
+  const portal = info.portalContext
+  if (mac || !info.available || !portal) return
+  const { seat, backend, revision, screenCastVersion, remoteDesktopVersion } = portal
+  if (
+    ![seat, backend].every((value) => typeof value === 'string' && value.length > 0 && value.length <= 256) ||
+    !Number.isInteger(revision) ||
+    !info.displays.some((display) => display.id === 'portal' && display.revision === revision)
+  )
+    return
+  const scopes = []
+  if (Number.isInteger(screenCastVersion) && screenCastVersion >= 4) scopes.push('desktop.view')
+  if (info.control && Number.isInteger(remoteDesktopVersion) && remoteDesktopVersion >= 2)
+    scopes.push('desktop.control')
+  return { context: { seat, backend, revision }, scopes }
 }
 function checkedInput(event, display) {
   if (!event || event.displayId !== display.id || event.revision !== display.revision) return
@@ -97,20 +114,28 @@ function startProcess(file, args, descriptors) {
   return spawn(file, args, { stdio: descriptors, windowsHide: true })
 }
 
-export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
+export function createDesktopAdapter({ directory, onEnded: adapterEnded } = {}) {
   let active
-  async function inspect() {
+  async function inspect(signal) {
     if (!['darwin', 'linux'].includes(platform()))
       return { available: false, control: false, displays: [], reason: 'Unsupported graphical platform' }
     const paths = programs()
     try {
       await Promise.all([access(paths.media, constants.X_OK), access(paths.platform, constants.X_OK)])
-      const probe = await exec(paths.platform, ['probe'], { timeout: 5000, maxBuffer: 64 * 1024 })
+      const probe = await exec(paths.platform, mac ? ['launch', 'probe'] : ['probe'], {
+        timeout: mac ? 7000 : 5000, maxBuffer: 64 * 1024, ...(signal && { signal, killSignal: 'SIGKILL' }),
+      })
       const info = JSON.parse(probe.stdout)
       if (!info.available) return { ...info, control: false, displays: [] }
       if (!Array.isArray(info.displays) || !info.displays.length) throw new Error('No graphical display')
       return { ...info, displays: info.displays.map(displayInfo) }
-    } catch {
+    } catch (error) {
+      if (mac && error.code === 2) {
+        return {
+          available: false, control: false, displays: [],
+          reason: 'Update the Godbot Computer Host and desktop helper together, then restart the host',
+        }
+      }
       return {
         available: false,
         control: false,
@@ -127,6 +152,10 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
     async displays() {
       return (await inspect()).displays
     },
+    async portalSupport() {
+      if (mac || !(process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland')) return []
+      return portalDetails(await inspect())?.scopes ?? []
+    },
     async start({
       sessionId,
       displayId,
@@ -137,6 +166,7 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
       onControlRevoked,
       signal,
       quality,
+      portalPolicy,
     }) {
       if (active) throw desktopError('Desktop busy')
       const owner = Symbol(sessionId)
@@ -153,7 +183,8 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
       const pending = new Map()
       const procs = []
       const exits = []
-      let closeDone, frameWatch
+      let closeDone, frameWatch, permissionCheck
+      let macRevocationReported = false
       const onAbort = () => shutdown('Session closed')
       const ready = deadline(80_000, 'Timed out waiting for the target screen chooser')
       // Capture and peer can fail while the caller is still awaiting probe.
@@ -163,11 +194,46 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
         if (proc.stdin.writableLength > 256 * 1024) throw desktopError('Desktop helper is overloaded')
         proc.stdin.write(JSON.stringify(msg) + '\n')
       }
+      function revokeControl(reason) {
+        if (mac && macRevocationReported) return
+        if (mac) macRevocationReported = true
+        ++controlVersion
+        granted = false
+        systemControl = false
+        try {
+          Promise.resolve(onControlRevoked?.(reason)).catch(() => shutdown('Could not revoke remote control'))
+        } catch {
+          shutdown('Could not revoke remote control')
+        }
+      }
+      // The streaming app can retain its original Accessibility decision after an
+      // owner reset. A separate, non-prompting instance of the signed app checks it.
+      function checkMacControl() {
+        const revision = controlVersion
+        const check = new AbortController()
+        permissionCheck = check
+        const revokeIfCurrent = () => {
+          if (!closed && granted && revision === controlVersion)
+            revokeControl('Desktop input permission could not be verified')
+        }
+        const timeout = setTimeout(() => {
+          check.abort()
+          revokeIfCurrent()
+        }, 2500)
+        timeout.unref()
+        inspect(check.signal).then((seat) => {
+          if (!seat.available || seat.control !== true) revokeIfCurrent()
+        }, revokeIfCurrent).finally(() => {
+          clearTimeout(timeout)
+          if (permissionCheck === check) permissionCheck = undefined
+        })
+      }
       function shutdown(reason) {
         if (closed) return closeDone
         closed = true
         granted = false
         clearInterval(frameWatch)
+        permissionCheck?.abort()
         closeDone = Promise.all(exits).then(() => {
           if (active === owner) active = undefined
         })
@@ -198,14 +264,19 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
         procs.push(p)
         exits.push(
           new Promise((resolve) => {
-            p.once('exit', resolve)
+            // The LaunchServices process still owns the stream descriptors after its proxy exits.
+            p.once('close', resolve)
             p.once('error', () => {
               if (!p.pid) resolve()
             })
           }),
         )
         p.once('error', () => shutdown('Could not start the desktop helper'))
-        p.once('exit', () => shutdown('A desktop session process stopped'))
+        p.once('exit', (code) => shutdown(
+          mac && p === platformChild && code === 3
+            ? 'Start the current signed Godbot Computer Host and its matching desktop helper with an approved desktop session'
+            : 'A desktop session process stopped'
+        ))
         for (const stream of p.stdio) stream?.on('error', () => shutdown('Desktop helper connection closed'))
         if (receive) {
           const lines = createInterface({ input: p.stdout })
@@ -217,7 +288,7 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
                 const req = pending.get(msg.id)
                 pending.delete(msg.id)
                 if (req) {
-                  if (msg.ok) req.resolve()
+                  if (msg.ok) req.resolve(req.portal ? msg.portal : undefined)
                   else {
                     const err = desktopError(msg.error || 'The target denied this operation')
                     if (req.enable && msg.code === 'INPUT_DENIED') err.code = 'INPUT_DENIED'
@@ -241,6 +312,7 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
         pending.set(id, {
           ...wait,
           enable: proc === platformChild && msg.type === 'control' && msg.enabled === true,
+          portal: proc === platformChild && msg.type === 'control' && msg.portal?.remember === true,
         })
         try {
           write(proc, { ...msg, id })
@@ -258,6 +330,12 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
           info.displays.find((row) => row.id === String(displayId)) ||
           (!displayId ? info.displays[0] : undefined)
         if (!display) throw desktopError(info.reason || 'Display disconnected')
+        const portal = display.id === 'portal' && portalDetails(info)
+        const usePortal = portal && portal.scopes.some((scope) => portalPolicy?.enabled(scope))
+        const view = usePortal && portal.scopes.includes('desktop.view')
+          ? portalPolicy.take('desktop.view', portal.context)
+          : undefined
+        let savedView
         systemControl = info.control
         const low = quality === 'low'
         let osReady = false,
@@ -270,6 +348,7 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
         frameWatch = setInterval(() => {
           if (osReady && encoder && Date.now() - lastFrameTime > 8000)
             shutdown('The compositor did not deliver desktop video frames')
+          else if (mac && !closed && granted && !permissionCheck) checkMacControl()
         }, 1000)
         frameWatch.unref()
         function encode(width, height) {
@@ -369,24 +448,24 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
         platformChild = child(
           paths.platform,
           [
+            ...(mac ? ['launch'] : []),
             'stream',
             display.id,
             String(w),
             String(h),
             label,
             String(display.revision),
-            ...(!mac && low ? ['low'] : []),
+            ...(mac ? [socketPath(directory), sessionId] : low ? ['low'] : []),
+            ...(usePortal ? ['--portal-restore-v1'] : []),
           ],
           ['pipe', 'pipe', 'ignore', 'pipe'],
           (msg) => {
             if (msg.type === 'ended') shutdown(msg.reason)
+            else if (usePortal && msg.type === 'portal-saved' && msg.scope === 'desktop.view') savedView = msg
+            else if (usePortal && msg.type === 'portal-cleared') portalPolicy.clear()
             else if (msg.type === 'control-revoked') {
-              ++controlVersion
-              granted = false
-              systemControl = false
-              Promise.resolve(onControlRevoked?.(msg.reason || 'Desktop input permission was revoked')).catch(
-                () => shutdown('Could not revoke remote control'),
-              )
+              if (usePortal) portalPolicy.clear('desktop.control')
+              revokeControl(msg.reason || 'Desktop input permission was revoked')
             } else if (msg.type === 'format') encode(msg.width, msg.height)
             else if (msg.type === 'ready') {
               if (!Number.isInteger(msg.revision) || msg.revision !== display.revision) {
@@ -399,8 +478,12 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
             }
           },
         )
+        if (usePortal) {
+          write(platformChild, { type: 'portal-init', view: view?.request, context: portal.context })
+        }
         if (mac) encode(w, h)
         await ready.promise
+        if (!closed) view?.replace(savedView)
         return {
           async signal(msg) {
             if (msg?.type === 'offer' && typeof msg.sdp === 'string' && msg.sdp.length <= 128 * 1024)
@@ -417,7 +500,7 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
           async setControl(enabled) {
             const revision = ++controlVersion
             granted = false
-            if (enabled && !systemControl) {
+            if (enabled && (mac || !systemControl)) {
               const seat = await inspect()
               if (!seat.available) throw desktopError('The target desktop is no longer available')
               if (!seat.control)
@@ -425,8 +508,20 @@ export function createDesktopAdapter({ onEnded: adapterEnded } = {}) {
                   code: 'INPUT_DENIED',
                 })
             }
-            await request(platformChild, { type: 'control', enabled: enabled === true })
-            if (revision === controlVersion) granted = !closed && enabled === true
+            if (revision !== controlVersion || closed) return
+            if (mac && enabled) macRevocationReported = false
+            const memory = enabled && usePortal && portal.scopes.includes('desktop.control')
+              ? portalPolicy.take('desktop.control', portal.context)
+              : undefined
+            const saved = await request(platformChild, {
+              type: 'control',
+              enabled: enabled === true,
+              ...(memory && { portal: memory.request }),
+            })
+            if (revision === controlVersion && !closed) {
+              memory?.replace(saved)
+              granted = enabled === true
+            }
           },
           close() {
             return shutdown()
