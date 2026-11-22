@@ -1583,6 +1583,7 @@ var JA = {
   "Profile updated": "プロフィールを更新しました",
   "Asked to make the tool call it wrote as text": "ツール呼び出しがテキストとして出力されたため、再実行を依頼しました",
   "Went on after the failed turn": "前回のターンが失敗したため、作業を続行しました",
+  "A background task reported back": "バックグラウンドのタスクから知らせが届きました",
   "A Bot": "Bot",
   "{name} is waiting for your approval": "{name} が承認を待っています",
   "{first} and {second} are waiting for your approval": "{first} と {second} が承認を待っています",
@@ -4059,6 +4060,7 @@ var KO = {
   "Profile updated": "프로필 업데이트됨",
   "Asked to make the tool call it wrote as text": "도구 호출을 텍스트로 작성하여 다시 호출하도록 요청했습니다",
   "Went on after the failed turn": "이전 차례 실패 후 작업을 이어서 진행했습니다",
+  "A background task reported back": "백그라운드 작업에서 소식이 왔습니다",
   "A Bot": "Bot",
   "{name} is waiting for your approval": "{name}이(가) 승인을 기다리는 중",
   "{first} and {second} are waiting for your approval": "{first}, {second}이(가) 승인을 기다리는 중",
@@ -6551,6 +6553,7 @@ var ES = {
   "Profile updated": "Perfil actualizado",
   "Asked to make the tool call it wrote as text": "Se le pidió ejecutar la llamada a herramienta que escribió como texto",
   "Went on after the failed turn": "Continuó tras el turno fallido",
+  "A background task reported back": "Una tarea en segundo plano dio noticias",
   "A Bot": "Un Bot",
   "{name} is waiting for your approval": "{name} espera tu aprobación",
   "{first} and {second} are waiting for your approval": "{first} y {second} esperan tu aprobación",
@@ -9014,6 +9017,7 @@ var FR = {
   "Profile updated": "Profil mis à jour",
   "Asked to make the tool call it wrote as text": "Invité à exécuter l’appel d’outil qu’il avait écrit en texte",
   "Went on after the failed turn": "A repris après le tour en échec",
+  "A background task reported back": "Une tâche en arrière-plan a donné des nouvelles",
   "A Bot": "Un Bot",
   "{name} is waiting for your approval": "{name} attend votre approbation",
   "{first} and {second} are waiting for your approval": "{first} et {second} attendent votre approbation",
@@ -11490,6 +11494,7 @@ var DE = {
   "Profile updated": "Profil aktualisiert",
   "Asked to make the tool call it wrote as text": "Aufgefordert, den als Text geschriebenen Tool-Aufruf regulär auszuführen",
   "Went on after the failed turn": "Hat nach dem fehlgeschlagenen Durchgang weitergemacht",
+  "A background task reported back": "Eine Hintergrundaufgabe hat sich gemeldet",
   "A Bot": "Ein Bot",
   "{name} is waiting for your approval": "{name} wartet auf deine Freigabe",
   "{first} and {second} are waiting for your approval": "{first} und {second} warten auf deine Freigabe",
@@ -13992,6 +13997,7 @@ var ZH = {
   "Profile updated": "资料已更新",
   "Asked to make the tool call it wrote as text": "工具调用被写成了文字，已让它重新调用",
   "Went on after the failed turn": "上一轮失败后，已让它接着做",
+  "A background task reported back": "后台任务有了新消息",
   "A Bot": "一个 Bot",
   "{name} is waiting for your approval": "{name} 等你批准",
   "{first} and {second} are waiting for your approval": "{first}、{second} 等你批准",
@@ -16051,7 +16057,7 @@ var stripToolCallTags = (text) => {
   });
 };
 var contentText = (content) => (content ?? []).filter((block) => block?.type === "text").map((block) => typeof block.text === "string" ? stripToolCallTags(block.text) : "").join("\n");
-var HEADER = /^\[(Message from|Reply from|Group chat|Group post from|Bot team setup|Handoff · part|Secret card)(?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/;
+var HEADER = /^\[(Message from|Reply from|Group chat|Group post from|Bot team setup|Handoff · part|Secret card|Background turn)(?:[^\r\n]*\]\r?\n|[^\]\r\n]*\])/;
 var currentPart = (bot) => bot.sessionId ?? bot.id;
 function reminderPrompts(text) {
   const one = /^reminder_prompt_json: (.*)$/m.exec(text);
@@ -29378,6 +29384,7 @@ function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnClock, us
       if (source.role === "resume" || source.resumed === true) return (0, import_react35.createElement)("div", { className: "bt-event" }, t("Picked up its work after a restart"));
       if (source.role === "retry" || source.retried === true) return (0, import_react35.createElement)("div", { className: "bt-event" }, t("Asked to make the tool call it wrote as text"));
       if (source.role === "continue") return (0, import_react35.createElement)("div", { className: "bt-event" }, t("Went on after the failed turn"));
+      if (source.role === "background") return (0, import_react35.createElement)("div", { className: "bt-event" }, t("A background task reported back"));
       const run2 = relayed ? commRunOf(
         order.split(",").filter(Boolean).map(Number),
         Object.fromEntries(peers.split(",").filter(Boolean).map((pair) => [Number(pair.slice(0, pair.indexOf(":"))), pair.slice(pair.indexOf(":") + 1)])),

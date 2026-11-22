@@ -937,6 +937,7 @@ export const DE = {
   'Profile updated': 'Profil aktualisiert',
   'Asked to make the tool call it wrote as text': 'Aufgefordert, den als Text geschriebenen Tool-Aufruf regulär auszuführen',
   'Went on after the failed turn': 'Hat nach dem fehlgeschlagenen Durchgang weitergemacht',
+  'A background task reported back': 'Eine Hintergrundaufgabe hat sich gemeldet',
   'A Bot': 'Ein Bot',
   '{name} is waiting for your approval': '{name} wartet auf deine Freigabe',
   '{first} and {second} are waiting for your approval': '{first} und {second} warten auf deine Freigabe',

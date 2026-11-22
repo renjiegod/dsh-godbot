@@ -925,6 +925,7 @@ export const FR = {
   "Profile updated": "Profil mis à jour",
   "Asked to make the tool call it wrote as text": "Invité à exécuter l’appel d’outil qu’il avait écrit en texte",
   "Went on after the failed turn": "A repris après le tour en échec",
+  "A background task reported back": "Une tâche en arrière-plan a donné des nouvelles",
   "A Bot": "Un Bot",
   "{name} is waiting for your approval": "{name} attend votre approbation",
   "{first} and {second} are waiting for your approval": "{first} et {second} attendent votre approbation",

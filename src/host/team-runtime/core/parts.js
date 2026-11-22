@@ -19,7 +19,7 @@ import { readComponentReceipt } from '../shared/component-receipt.js'
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { openTurnAt } from './btw.js'
-import { HANDOFF_ACK, HISTORY_TIMEOUT_MS, REPLY_KIND, SOURCE_KIND } from './constants.js'
+import { BACKGROUND_ROLE, HANDOFF_ACK, HISTORY_TIMEOUT_MS, REPLY_KIND, SOURCE_KIND } from './constants.js'
 import { assembleLlmStream } from './models.js'
 import { parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
 import { CHECKPOINT_PROMPT, STEWARD_SYSTEM, checkpointCount, checkpointTail, checkpointTailNote, checkpointText, linesFor, parseDecision, stewardRequest } from './steward.js'
@@ -155,6 +155,9 @@ export function historyEntry(event, group) {
   const text = textOf(event.data.content)
   const ours = source.kind === SOURCE_KIND
   const skipped = (ours && (source.handoff === true || source.role === 'kickoff' || source.role === 'goal')) || (!group && text.startsWith('[Group chat'))
+  // What the Bot said by itself after a background task stays; the note that opened
+  // that turn is no message.
+  if (ours && source.role === BACKGROUND_ROLE) return { answer: false, who: 'bot', text: '', keepAnswers: true }
   // A turn that went on after a handoff did real work, so its answers stay.
   return { answer: false, who: ours ? 'bot' : 'user', text: skipped ? '' : text, keepAnswers: !skipped || (ours && source.resume === true) }
 }
