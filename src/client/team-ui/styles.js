@@ -661,12 +661,16 @@ button.bt-set-row:hover .bt-chevron{transform:translateX(2px);color:var(--bt-ink
 .bt-browser-duration-choice:hover{color:var(--bt-ink)}
 .bt-browser-duration-choice:active{scale:.96}
 .bt-browser-duration-choice[aria-pressed=true]{background:var(--bt-card);color:var(--bt-ink);box-shadow:0 1px 3px rgba(0,0,0,.08)}
-.bt-browser-form>.bt-set-row>.bt-set-control{flex:0 1 64%;min-width:0;justify-content:flex-end}
-.bt-browser-form .bt-select{width:auto;min-width:160px;max-width:260px}
-.bt-browser-form>.bt-set-row+.bt-set-row{border-top:.5px solid var(--bt-line)}
+:is(.bt-browser-form,.bt-automation-form) :is(.bt-set-card,.bt-set-section)>.bt-set-row>.bt-set-control,
+:is(.bt-browser-form,.bt-automation-form)>.bt-set-row>.bt-set-control{flex:0 1 64%;min-width:0;justify-content:flex-end}
+:is(.bt-browser-form,.bt-automation-form) .bt-select{width:auto;min-width:160px;max-width:280px}
+.bt-automation-form .bt-input:not(.bt-input-area){width:100%;min-width:160px;max-width:280px}
+:is(.bt-browser-form,.bt-automation-form) :is(.bt-set-card,.bt-set-section)>.bt-set-row+.bt-set-row,
+:is(.bt-browser-form,.bt-automation-form)>.bt-set-row+.bt-set-row{border-top:.5px solid var(--bt-line)}
 .bt-browser-site{width:min(320px,100%);max-width:320px}
 .bt-browser-form-foot{display:flex;justify-content:flex-end;padding:10px 16px;border-top:.5px solid var(--bt-line)}
-@media(max-width:700px){.bt-browser-grant{flex-wrap:wrap}.bt-browser-grant-who{flex:1}.bt-browser-grant-meta{order:3;flex:1 0 100%}}
+.bt-automation-form-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;border-top:.5px solid var(--bt-line)}
+@media(max-width:700px){.bt-browser-grant{flex-wrap:wrap}.bt-browser-grant-who{flex:1}.bt-browser-grant-meta{order:3;flex:1 0 100%}.bt-automation-form-foot{flex-direction:column;align-items:stretch;gap:8px}}
 .bt-set-paste{flex-direction:column;align-items:stretch;gap:10px;padding:14px 16px}
 .bt-chevron{color:var(--bt-ink-3);display:inline-flex;flex:none;transition:transform .16s ease,color .16s ease}
 .bt-la-sec-head{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:28px}
@@ -1129,7 +1133,9 @@ body[data-ds-dark-theme] .bt-theme-chip i{background:var(--da)}
   .bt-settings-scroll{overflow-x:clip;padding:12px 16px calc(24px + env(safe-area-inset-bottom,0px))}
   .bt-set-row{flex-direction:column;align-items:stretch;gap:8px}
   .bt-set-row>.bt-set-copy{width:100%}
-  .bt-browser-form>.bt-set-row>.bt-set-control{flex:1 1 auto;justify-content:flex-start}
+  :is(.bt-browser-form,.bt-automation-form) .bt-set-row>.bt-set-control{flex:1 1 auto;justify-content:flex-start}
+  .bt-automation-form .bt-select,.bt-automation-form .bt-input:not(.bt-input-area){max-width:100%}
+  .bt-automation-form-foot{flex-direction:column;align-items:stretch;gap:8px}
   .bt-browser-action-list{justify-content:flex-start}
   .bt-la-row{flex-direction:row;align-items:center;flex-wrap:wrap}
   .bt-la-row>.bt-set-copy{width:auto}
