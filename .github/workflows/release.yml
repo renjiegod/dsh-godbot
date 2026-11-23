@@ -50,8 +50,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          package=$(npm pack --pack-destination dist --silent)
-          test "$package" = "dsh-godbot-$VERSION.tgz"
+          package="dsh-godbot-$VERSION.tgz"
+          npm pack --pack-destination dist --silent
+          test -s "dist/$package"
           node scripts/check-bundled-host-package.mjs "dist/$package" --require-encoder
           (cd dist && shasum -a 256 "$package" > "$package.sha256" && cat "$package.sha256")
           node --input-type=module -e "import { verifyEncoderDistribution } from './computer-host/bundled-encoder.js'; verifyEncoderDistribution(undefined, { sources: true })"
