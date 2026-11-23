@@ -6,7 +6,7 @@ import { WorkspaceMark } from './workspace-mark.js'
 import { inkFill } from './inks.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, SignInIcon, SignOutIcon, SlidersIcon, ChevronRightIcon, DotsIcon, FolderIcon } from './icons.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, SignInIcon, SignOutIcon, SlidersIcon, ChevronRightIcon, CloseIcon, DotsIcon, FolderIcon } from './icons.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
 import { reducedMotion } from './activity-row.js'
@@ -19,6 +19,7 @@ import { downloadText, readyText, RestartDshButton, sentences } from './about.js
 import { quietly } from './diagnostics.js'
 import { frameLayout, dragColumn, RAIL_WIDTH, FALLBACK_SIDEBAR_WIDTH, userSidebarToggle } from './frame-layout.js'
 import { chatRoom, dshCollapsed } from './frame-watch.js'
+import { STORAGE } from './storage.js'
 
 // -------------------------------------------------------------------------
 // Sidebar
@@ -495,6 +496,13 @@ function BootFailed({ actions }) {
 
 export function TeamSidebar(props) {
   const { wide, useRoster, useUi, useSessions, actions } = props
+  const [dismissedUpdate, setDismissedUpdate] = useState(() => {
+    try { return localStorage.getItem(STORAGE.dismissedUpdate) } catch { return null }
+  })
+  const dismissUpdate = version => {
+    setDismissedUpdate(version)
+    try { localStorage.setItem(STORAGE.dismissedUpdate, version) } catch { /* Storage may be unavailable. */ }
+  }
   const mounted = useRef(false)
   useLayoutEffect(() => { mounted.current = true }, [])
   const listRef = useRef(null)
@@ -805,7 +813,7 @@ export function TeamSidebar(props) {
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('New…'), title: t('New…'), onClick: () => actions.openNewChat('new') }, h(PlusIcon)),
         h('button', { type: 'button', className: 'bt-round bt-side-collapse', 'aria-label': t('Collapse sidebar'), title: t('Collapse sidebar'), onClick: onToggle }, h(SidebarIcon)))
     : h('div', { className: 'bt-rail-top' },
-        h(UpdateNotice, { useUpdate: props.useUpdate, actions }),
+        h(UpdateNotice, { useUpdate: props.useUpdate, actions, dismissedUpdate, dismissUpdate }),
         h('button', { type: 'button', className: 'bt-round bt-side-collapse', 'aria-label': t('Collapse sidebar'), title: t('Collapse sidebar'), onClick: onToggle }, h(SidebarIcon)),
         main ? h(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : bootFailed ? h(BootFailed, { actions }) : h('div', { className: 'bt-hint' }, t('Setting up your Main Bot…')),
         h('span', { className: 'bt-rail-sep', 'aria-hidden': true }))
@@ -819,7 +827,7 @@ export function TeamSidebar(props) {
         h(PluginsButton, { actions }))
   const content = h('div', { className: wideContent ? 'bt-side' : 'bt-side bt-rail', onKeyDown: typeToSearch },
     top,
-    wideContent ? h(UpdateNotice, { wide: true, useUpdate: props.useUpdate, actions }) : null,
+    wideContent ? h(UpdateNotice, { wide: true, useUpdate: props.useUpdate, actions, dismissedUpdate, dismissUpdate }) : null,
     actions.godbot.navigation(wideContent, roster, actions),
     wideContent && roster.readOnly ? h('div', { className: 'bt-hint bt-read-only', role: 'status' }, hostText(roster.readOnly)) : null,
     h('div', {
@@ -857,7 +865,7 @@ export function TeamSidebar(props) {
 
 // The sidebar notice summarizes the update. Its details hold the Godbot and DSH
 // install controls, progress and release notes.
-function UpdateNotice({ wide, useUpdate, actions }) {
+function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate }) {
   const update = useUpdate(value => value)
   const [open, setOpen] = useState(false)
   const [shown, leaving] = useLinger(open, 120)
@@ -883,7 +891,9 @@ function UpdateNotice({ wide, useUpdate, actions }) {
     window.addEventListener('keydown', onKey, true)
     return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey, true) }
   }, [open])
-  const phase = update?.phase ?? 'idle'
+  const installedVersion = update?.phase === 'updated' ? update.installed ?? update.current : null
+  const dismissed = installedVersion != null && installedVersion === dismissedUpdate
+  const phase = dismissed ? 'idle' : update?.phase ?? 'idle'
   const dsh = update?.dsh
   const dshPhase = dsh?.phase ?? 'idle'
   const dshRow = showsDshRow(dsh, update?.app)
@@ -911,15 +921,21 @@ function UpdateNotice({ wide, useUpdate, actions }) {
   const label = phase === 'installing' ? t('Updating Godbot…')
     : dshPhase === 'installing' ? t('Updating DSH…')
       : phase === 'installed' ? t('Godbot {version} is installed. Restart DSH to use it.', { version: update.installed ?? update.latest })
-        : phase === 'updated' ? t('Godbot {version} is installed.', { version: update.installed ?? update.latest })
+        : phase === 'updated' ? t('Godbot {version} is installed.', { version: installedVersion })
         : dshPhase === 'installed' ? t('Restart DSH to start using DSH {version}.', { version: dsh.installed ?? dsh.verified })
           : pending ?? (update?.available ? t('Godbot {version} is available', { version: update.latest })
             : t('DSH {version} is available', { version: dsh?.verified }))
-  const summary = update?.restart?.pending ? t('Restarting DSH…')
+  const statusSummary = update?.restart?.pending ? t('Restarting DSH…')
     : phase === 'failed' || error ? t('Godbot update failed')
-    : dshPhase === 'failed' || dshError ? t('DSH update failed')
-      : phase === 'ready' ? t('Godbot {version} is ready to install', { version: update.latest })
-        : label
+      : dshPhase === 'failed' || dshError ? t('DSH update failed')
+        : null
+  const summary = statusSummary ?? (phase === 'ready' ? t('Godbot {version} is ready to install', { version: update.latest }) : label)
+  const canDismiss = phase === 'updated' && installedVersion != null && dshPhase !== 'installing' && statusSummary === null
+  const dismiss = () => {
+    button.current?.closest('.bt-leftcol')?.querySelector('.bt-side-collapse')?.focus({ preventScroll: true })
+    setOpen(false)
+    dismissUpdate(installedVersion)
+  }
   const message = error || (phase === 'failed' ? update.error : '')
   const dshMessage = dshError || (dshPhase === 'failed' ? dsh?.error : '')
   const restartControl = h(RestartDshButton, { update, actions, className: 'bt-update-go' })
@@ -928,16 +944,19 @@ function UpdateNotice({ wide, useUpdate, actions }) {
     : dsh?.available === false && dsh?.blockedBy
       ? t('Update Godbot {version} first.', { version: dsh.blockedBy })
       : t('You have {version}.', { version: dsh?.current })
+  const trigger = h('button', {
+    ref: button, type: 'button', className: wide ? 'bt-update bt-update-notice' : 'bt-round bt-update',
+    'data-phase': cloudPhase, 'aria-label': wide ? undefined : summary, title: summary,
+    'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: toggle,
+  },
+    h(CloudDownloadIcon, { done: phase === 'installed' || phase === 'updated' }),
+    wide ? h('span', { className: 'bt-update-summary' }, summary) : null,
+    wide ? h('span', { className: 'bt-update-chevron', 'aria-hidden': true }, h(ChevronRightIcon)) : null,
+    !wide && (phase === 'failed' || dshPhase === 'failed' || error || dshError) ? h('span', { className: 'bt-update-dot', 'aria-hidden': true }) : null)
   return h(Fragment, null,
-    h('button', {
-      ref: button, type: 'button', className: wide ? 'bt-update bt-update-notice' : 'bt-round bt-update',
-      'data-phase': cloudPhase, 'aria-label': wide ? undefined : summary, title: summary,
-      'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: toggle,
-    },
-      h(CloudDownloadIcon, { done: phase === 'installed' || phase === 'updated' }),
-      wide ? h('span', { className: 'bt-update-summary' }, summary) : null,
-      wide ? h('span', { className: 'bt-update-chevron', 'aria-hidden': true }, h(ChevronRightIcon)) : null,
-      !wide && (phase === 'failed' || dshPhase === 'failed' || error || dshError) ? h('span', { className: 'bt-update-dot', 'aria-hidden': true }) : null),
+    wide ? h('div', { className: 'bt-update-banner' }, trigger, canDismiss ? h('button', {
+      type: 'button', className: 'bt-icon-btn bt-update-dismiss', 'aria-label': t('Dismiss'), title: t('Dismiss'), onClick: dismiss,
+    }, h(CloseIcon)) : null) : trigger,
     shown && box ? createPortal(h('div', {
       ref: focusDetails, className: 'bt-update-pop', role: 'dialog', tabIndex: -1,
       'aria-label': update?.available || phase !== 'idle' ? t('Godbot update') : t('DSH update'), style: box, 'data-leaving': leaving || undefined,
@@ -946,12 +965,13 @@ function UpdateNotice({ wide, useUpdate, actions }) {
         h('div', { className: 'bt-update-title' }, phase === 'installed' || phase === 'updated' ? t('Update installed') : t('Godbot {version}', { version: update.latest })),
         h('div', { className: 'bt-update-text' }, phase === 'installed'
           ? t('Restart DSH to start using Godbot {version}.', { version: update.installed ?? update.latest })
-          : phase === 'updated' ? t('Godbot {version} is installed.', { version: update.installed ?? update.latest })
+          : phase === 'updated' ? t('Godbot {version} is installed.', { version: installedVersion })
             : pending ? sentences(pending, t('You have {version}.', { version: update.current }))
               : t('You have {version}.', { version: update.current })),
         message ? h('div', { className: 'bt-update-error', role: 'alert' }, t('The update did not finish: {reason}', { reason: message })) : null,
         h('div', { className: 'bt-update-actions' },
           update.notesUrl ? h('a', { className: 'bt-update-notes', href: update.notesUrl, target: '_blank', rel: 'noopener noreferrer' }, t("What's new")) : null,
+          !wide && canDismiss ? h('button', { type: 'button', className: 'bt-update-go', onClick: dismiss }, t('Dismiss')) : null,
           phase === 'installed' ? restartControl : phase === 'updated' ? null : h('button', {
             type: 'button', className: 'bt-update-go', disabled: phase === 'installing', onClick: start,
           }, phase === 'installing' ? t('Updating…') : phase === 'failed' ? t('Try again') : phase === 'downloading' ? t('Install when downloaded') : t('Update')))) : null,
@@ -1230,15 +1250,18 @@ export const SIDEBAR_CSS = `
 [class*="_footArea"]:has(.bt-foot-account)>[class*="_settingsArea"] button[class*="_trigger"] [class*="_label"]{display:none!important}
 
 /* Keep the notice above the scrollable list and highlight its rail counterpart. */
-.bt-update{position:relative;animation:bt-update-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+.bt-update{position:relative}
+.bt-update-banner,.bt-round.bt-update{animation:bt-update-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-update>svg{flex:none;width:18px;height:18px;color:var(--bt-accent)}
-.bt-update-notice{display:flex;flex:none;align-items:center;gap:9px;min-height:44px;margin:8px 0 6px;padding:8px 10px;border:1px solid color-mix(in srgb,var(--bt-accent) 30%,transparent);border-radius:10px;background:var(--bt-accent-soft);color:var(--bt-ink);font:600 13px/18px var(--bt-font);text-align:left;cursor:pointer;transition:background-color .12s ease}
+.bt-update-banner{display:flex;flex:none;align-items:center;margin:8px 0 6px;border:1px solid color-mix(in srgb,var(--bt-accent) 30%,transparent);border-radius:10px;background:var(--bt-accent-soft);transition:background-color .12s ease}
+.bt-update-notice{display:flex;flex:1;min-width:0;align-items:center;gap:9px;min-height:42px;padding:8px 10px;border:0;border-radius:inherit;background:transparent;color:var(--bt-ink);font:600 13px/18px var(--bt-font);text-align:left;cursor:pointer}
+.bt-update-banner>.bt-update-dismiss{flex:none;margin-right:6px}
 .bt-update-summary{flex:1;min-width:0;overflow-wrap:anywhere}
 .bt-update-chevron{display:inline-flex;flex:none;color:var(--bt-ink-2)}
 .bt-update-chevron svg{width:14px;height:14px}
-.bt-update-notice:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
+.bt-update-notice:focus-visible,.bt-update-dismiss:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 .bt-round.bt-update{background:var(--bt-accent-soft);border-color:color-mix(in srgb,var(--bt-accent) 30%,transparent)}
-.bt-update-notice:is(:hover,[aria-expanded=true]),.bt-round.bt-update:is(:hover,[aria-expanded=true]){background:color-mix(in srgb,var(--bt-accent) 24%,transparent)}
+.bt-update-banner:has(.bt-update-notice:is(:hover,[aria-expanded=true])),.bt-round.bt-update:is(:hover,[aria-expanded=true]){background:color-mix(in srgb,var(--bt-accent) 24%,transparent)}
 .bt-update:is([data-phase=installed],[data-phase=updated])>svg{color:var(--bt-ink-2)}
 @keyframes bt-update-in{from{opacity:0;transform:translateY(-3px)}}
 .bt-update[data-phase=installing] .bt-cloud-arrow,.bt-update[data-phase=downloading] .bt-cloud-arrow{animation:bt-cloud-drop 1.1s cubic-bezier(.45,0,.55,1) infinite}
@@ -1258,7 +1281,7 @@ export const SIDEBAR_CSS = `
 .bt-update-go:active:not(:disabled){transform:scale(.96)}
 .bt-update-go:disabled{opacity:.6;cursor:default}
 .bt-update-dsh:not(:first-child){margin-top:12px;padding-top:12px;border-top:.5px solid var(--bt-line-2)}
-@media (prefers-reduced-motion:reduce){.bt-update,.bt-update-pop,.bt-update .bt-cloud-arrow{animation:none}}
+@media (prefers-reduced-motion:reduce){.bt-update-banner,.bt-round.bt-update,.bt-update-pop,.bt-update .bt-cloud-arrow{animation:none}}
 
 /* The DSH Agent row and its expanding Session list. The avatar is the
    harness's own mark, so the row reads as "plain dsh" next to the Bot marks. */

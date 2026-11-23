@@ -7,6 +7,7 @@ export const STORAGE = {
   agentSessions: 'godbot:agent-sessions',
   browserWidth: 'godbot:browser-width',
   sidebar: 'godbot:sidebar',
+  dismissedUpdate: 'godbot:dismissed-update',
   browsers: 'godbot.browser.v2',
   notify: 'godbot:notify',
 }
