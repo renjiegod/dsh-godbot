@@ -52,19 +52,20 @@ export function Bubbles({ nativeReport, texts, roster, selfId, actions, streamin
   }
   const cleaned = nativeReport ? (toolsBefore?.size ? texts : [texts.join('\n\n')]) : texts.map(stripToolCallTags).filter(text => text.trim() !== '')
   const reactions = useUi ? useUi(state => (msgKey ? state.reactions?.[msgKey] ?? null : null)) : null
-  return h('div', { className: 'bt-astack', 'data-lead': lead ? '' : undefined, onClickCapture: onClick },
-    cleaned.flatMap((text, index) => {
-      const last = index === cleaned.length - 1
-      return [...(toolsBefore?.get(index) ?? []), h(Bubble, {
-        key: index, text, index, roster, selfId, actions, sessionId, msgKey, mentions, nativeReport,
-        fold: nativeReport ? { chars: Infinity, lines: Infinity } : fold, textInteractionSource,
-        picked: msgKey ? reactions?.[index] ?? [] : [],
-        live: streaming && last,
-        lead: lead && last ? lead : null,
-        whole: last ? whole : undefined,
-      })]
-    }),
-    toolsBefore?.get(cleaned.length),
+  const rows = cleaned.flatMap((text, index) => {
+    const last = index === cleaned.length - 1
+    return [toolsBefore?.get(index), h(Bubble, {
+      key: index, text, index, roster, selfId, actions, sessionId, msgKey, mentions, nativeReport,
+      fold: nativeReport ? { chars: Infinity, lines: Infinity } : fold, textInteractionSource,
+      picked: msgKey ? reactions?.[index] ?? [] : [],
+      live: streaming && last,
+      lead: lead && last ? lead : null,
+      whole: last ? whole : undefined,
+    })]
+  })
+  // The trailing tools keep their React position when the next text arrives.
+  rows.push(toolsBefore?.get(cleaned.length))
+  return h('div', { className: 'bt-astack', 'data-lead': lead ? '' : undefined, onClickCapture: onClick }, rows,
     Number.isFinite(time) ? h('div', { className: 'bt-utime', title: clockLabel(time) }, messageClock(time)) : null)
 }
 
@@ -301,16 +302,18 @@ export function AssistantCell({ node, groupPart, sessionId, openFile, fileMentio
     const entries = ordered.flatMap(step => step.step === data.step ? activity : stepActivity(step, visibleText))
     const slots = bindToolSlots(toolSlots(entries.map(entry => [entry.key, entry.activity])), receipts, hostIds)
     const chatRunning = node.location?.turn?.status === 'open'
+    const eventsBefore = new Map()
     for (const { key, beforeText } of activity) {
       // DSH has separate reasoning and response seats. Keep leading calls in
       // the first seat even while the response seat appears during streaming.
       const event = slots.get(key)
       if (!event || (groupPart === 'reasoning' && beforeText > 0) || (groupPart === 'response' && beforeText === 0)) continue
-      const rows = toolsBefore.get(beforeText) ?? []
-      rows.push(actions.godbot.inlineExecution(key, botId, sessionId, data.turn, chatRunning, [
-        trace ? { ...event, seq: key } : { ...event, seq: key, id: undefined },
-      ]))
-      toolsBefore.set(beforeText, rows)
+      const events = eventsBefore.get(beforeText) ?? []
+      events.push(trace ? { ...event, seq: key } : { ...event, seq: key, id: undefined })
+      eventsBefore.set(beforeText, events)
+    }
+    for (const [index, events] of eventsBefore) {
+      toolsBefore.set(index, actions.godbot.inlineExecution(`tools:${events[0].seq}`, botId, sessionId, data.turn, chatRunning, events))
     }
   }
   const shown = !delegated && thinkingShown(roster.prefs)

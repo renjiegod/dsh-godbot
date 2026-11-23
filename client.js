@@ -13109,6 +13109,9 @@ var ZH = {
   // Shared
   "Main Bot": "主 Bot",
   Working: "进行中",
+  "{count} tool calls": "{count} 次工具调用",
+  "{count} running": "{count} 项进行中",
+  "{count} failed": "{count} 项失败",
   "A new reply is waiting": "有一条新回复",
   "Waiting for your answer": "等你回答",
   "Waiting for {names}": "等 {names} 交回",
@@ -39253,31 +39256,32 @@ function Bubbles({ nativeReport, texts: texts2, roster, selfId, actions, streami
   };
   const cleaned = nativeReport ? toolsBefore?.size ? texts2 : [texts2.join("\n\n")] : texts2.map(stripToolCallTags).filter((text) => text.trim() !== "");
   const reactions = useUi ? useUi((state) => msgKey ? state.reactions?.[msgKey] ?? null : null) : null;
+  const rows2 = cleaned.flatMap((text, index) => {
+    const last = index === cleaned.length - 1;
+    return [toolsBefore?.get(index), (0, import_react37.createElement)(Bubble, {
+      key: index,
+      text,
+      index,
+      roster,
+      selfId,
+      actions,
+      sessionId,
+      msgKey,
+      mentions,
+      nativeReport,
+      fold: nativeReport ? { chars: Infinity, lines: Infinity } : fold,
+      textInteractionSource,
+      picked: msgKey ? reactions?.[index] ?? [] : [],
+      live: streaming && last,
+      lead: lead && last ? lead : null,
+      whole: last ? whole : void 0
+    })];
+  });
+  rows2.push(toolsBefore?.get(cleaned.length));
   return (0, import_react37.createElement)(
     "div",
     { className: "bt-astack", "data-lead": lead ? "" : void 0, onClickCapture: onClick },
-    cleaned.flatMap((text, index) => {
-      const last = index === cleaned.length - 1;
-      return [...toolsBefore?.get(index) ?? [], (0, import_react37.createElement)(Bubble, {
-        key: index,
-        text,
-        index,
-        roster,
-        selfId,
-        actions,
-        sessionId,
-        msgKey,
-        mentions,
-        nativeReport,
-        fold: nativeReport ? { chars: Infinity, lines: Infinity } : fold,
-        textInteractionSource,
-        picked: msgKey ? reactions?.[index] ?? [] : [],
-        live: streaming && last,
-        lead: lead && last ? lead : null,
-        whole: last ? whole : void 0
-      })];
-    }),
-    toolsBefore?.get(cleaned.length),
+    rows2,
     Number.isFinite(time) ? (0, import_react37.createElement)("div", { className: "bt-utime", title: clockLabel(time) }, messageClock(time)) : null
   );
 }
@@ -39534,14 +39538,16 @@ function AssistantCell({ node, groupPart, sessionId, openFile, fileMentions, use
     const entries2 = ordered.flatMap((step) => step.step === data.step ? activity2 : stepActivity(step, visibleText));
     const slots = bindToolSlots(toolSlots(entries2.map((entry) => [entry.key, entry.activity])), receipts, hostIds);
     const chatRunning = node.location?.turn?.status === "open";
+    const eventsBefore = /* @__PURE__ */ new Map();
     for (const { key, beforeText } of activity2) {
       const event = slots.get(key);
       if (!event || groupPart === "reasoning" && beforeText > 0 || groupPart === "response" && beforeText === 0) continue;
-      const rows2 = toolsBefore.get(beforeText) ?? [];
-      rows2.push(actions.godbot.inlineExecution(key, botId, sessionId, data.turn, chatRunning, [
-        trace ? { ...event, seq: key } : { ...event, seq: key, id: void 0 }
-      ]));
-      toolsBefore.set(beforeText, rows2);
+      const events = eventsBefore.get(beforeText) ?? [];
+      events.push(trace ? { ...event, seq: key } : { ...event, seq: key, id: void 0 });
+      eventsBefore.set(beforeText, events);
+    }
+    for (const [index, events] of eventsBefore) {
+      toolsBefore.set(index, actions.godbot.inlineExecution(`tools:${events[0].seq}`, botId, sessionId, data.turn, chatRunning, events));
     }
   }
   const shown = !delegated && thinkingShown(roster.prefs);
@@ -40820,7 +40826,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.33";
+var version = "0.2.0-rc.34";
 
 // src/client/team-ui/about.js
 var import_react40 = require("react");
@@ -61231,6 +61237,127 @@ function RemoteRunActivity({ client, sessionId, live }) {
 // src/client/execution-history.js
 var import_dsh_client_ui_primitives6 = require("@deepseek-ai/dsh-client-ui-primitives");
 var import_react95 = require("react");
+
+// src/client/tool-call-groups.js
+var layouts = /* @__PURE__ */ new WeakMap();
+var containers = '[data-chat-flow], [data-step-process-body], [data-chat-flow-kind], [data-slot="conversation.chat.node"], .bt-astack';
+var concealed = { concealed: true };
+function toolRuns(flow, members) {
+  const runs = [];
+  let run2 = [];
+  const finish = () => {
+    if (run2.length) runs.push(run2);
+    run2 = [];
+  };
+  function visit(container) {
+    for (const child of container.childNodes) {
+      if (child.nodeType !== 1) {
+        if (child.nodeType === 3 && child.textContent.trim()) finish();
+        continue;
+      }
+      const member = members.get(child);
+      if (member) {
+        if (run2.length && run2[0].turn !== member.turn) finish();
+        run2.push(member);
+      } else if (child.hasAttribute("data-step-process")) {
+        const body = child.querySelector(":scope > [data-step-process-body]");
+        if (body) visit(body);
+      } else if (child.matches(containers)) {
+        visit(child);
+      } else if (!child.hasAttribute("hidden")) {
+        finish();
+      }
+    }
+  }
+  visit(flow);
+  finish();
+  return runs;
+}
+function createLayout(flow) {
+  const members = /* @__PURE__ */ new Map();
+  const expanded = /* @__PURE__ */ new Set();
+  let queued = false;
+  function publish(member, view) {
+    const last = member.view;
+    if (last === view || last && view && last.open === view.open && last.count === view.count && last.running === view.running && last.failed === view.failed && last.concealed === view.concealed) return;
+    member.view = view;
+    member.publish(view);
+  }
+  function sync() {
+    const previouslyExpanded = new Set(expanded);
+    expanded.clear();
+    for (const run2 of toolRuns(flow, members)) {
+      let count = 0, running = 0, failed = 0;
+      for (const { element } of run2) {
+        count += Number(element.dataset.gbToolCount);
+        running += Number(element.dataset.gbToolRunning);
+        failed += Number(element.dataset.gbToolFailed);
+      }
+      if (count < 2) {
+        run2[0].grouped = false;
+        publish(run2[0], null);
+        continue;
+      }
+      const [first, ...rest] = run2;
+      const focus = flow.ownerDocument.activeElement;
+      const open = run2.some((member) => previouslyExpanded.has(member) || !member.grouped && member.element.contains(focus));
+      if (open) expanded.add(first);
+      for (const member of run2) member.grouped = true;
+      publish(first, { count, running, failed, open });
+      for (const member of rest) publish(member, open ? null : concealed);
+    }
+  }
+  function schedule() {
+    if (queued) return;
+    queued = true;
+    queueMicrotask(() => {
+      queued = false;
+      if (members.size) sync();
+    });
+  }
+  const observer = new MutationObserver((changes) => {
+    if (changes.some(({ target, type }) => type === "attributes" || target === flow || target.matches?.(containers) || target.hasAttribute?.("data-step-process"))) schedule();
+  });
+  observer.observe(flow, {
+    childList: true,
+    subtree: true,
+    attributeFilter: ["data-gb-tool-count", "data-gb-tool-running", "data-gb-tool-failed"]
+  });
+  return {
+    add(element, turn, update) {
+      const member = { element, turn, publish: update, grouped: false };
+      members.set(element, member);
+      schedule();
+      return {
+        toggle() {
+          if (!expanded.delete(member)) expanded.add(member);
+          sync();
+        },
+        dispose() {
+          members.delete(element);
+          expanded.delete(member);
+          if (members.size) schedule();
+          else {
+            observer.disconnect();
+            layouts.delete(flow);
+          }
+        }
+      };
+    }
+  };
+}
+function observeToolGroups(element, turn, publish) {
+  const flow = element.closest('[data-slot="conversation.chat.flow"]');
+  if (!flow) return;
+  let layout = layouts.get(flow);
+  if (!layout) {
+    layout = createLayout(flow);
+    layouts.set(flow, layout);
+  }
+  return layout.add(element, turn, publish);
+}
+
+// src/client/execution-history.js
 var labels4 = {
   running: "运行中",
   pending: "等待中",
@@ -61242,6 +61369,11 @@ var labels4 = {
 var markdownLabels2 = { code: { copyLabel: "复制", copiedLabel: "已复制" }, footnotes: "脚注" };
 var executionStyle = `
 .gb-execution-inline { align-self: stretch; min-width: 0; margin: 4px 0; color: var(--bt-ink); font-size: 13px; line-height: 1.45; }
+.gb-execution-inline > [hidden],
+:is([data-chat-flow-kind=tool-call], [data-chat-flow-kind=assistant-step]):has(> [data-slot="conversation.chat.node"] > .gb-execution-inline[hidden]:only-child) { display: none !important; }
+.gb-tool-group.gb-execution-button { display: flex; width: 100%; align-items: center; gap: 6px; text-align: start; }
+.gb-tool-group > svg { flex: none; }
+.gb-tool-group .gb-tool-group-failed { color: var(--bt-danger); }
 .gb-execution-list { display: grid; gap: 5px; min-width: 0; }
 .gb-execution-header, .gb-execution-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .gb-execution-header { justify-content: space-between; }
@@ -61433,16 +61565,17 @@ function ToolOutput({ value, truncated }) {
     Object.keys(rest).length > 0 && (0, import_react95.createElement)(Code, { value: rest })
   ));
 }
-function ToolRow({ event, target, running }) {
+function ToolRow({ event, target, running, visible }) {
   const [expanded, setExpanded] = (0, import_react95.useState)(false);
   const { client, botId, sessionId, turn } = target;
   const live = running && (event.status === "running" || event.status === "pending");
   const fetchable = typeof event.id === "string" && event.id !== "";
+  const readDetail = visible && fetchable && expanded;
   const info = useExecution(client, botId, sessionId, {
     turn,
     toolId: event.id,
-    expanded: fetchable && expanded,
-    running: fetchable && expanded && live
+    expanded: readDetail,
+    running: readDetail && live
   });
   const detail = { ...event, ...info.data?.events?.[0] };
   const status = event.status ?? detail.status;
@@ -61492,10 +61625,10 @@ function ToolRow({ event, target, running }) {
     )
   );
 }
-function Rows({ events, target, running, transcript = false }) {
-  return (0, import_react95.createElement)("div", { className: "gb-execution-list" }, events.map((event, index) => {
+function Rows({ events, target, running, transcript = false, visible = true }) {
+  return (0, import_react95.createElement)("div", { className: "gb-execution-list", hidden: !visible }, events.map((event, index) => {
     const key = event.type + ":" + (event.id ?? event.seq ?? index);
-    if (event.type === "tool") return (0, import_react95.createElement)(ToolRow, { key, event, target, running });
+    if (event.type === "tool") return (0, import_react95.createElement)(ToolRow, { key, event, target, running, visible });
     if (!transcript || !event.text) return null;
     if (event.type === "text") return (0, import_react95.createElement)(
       "div",
@@ -61514,7 +61647,46 @@ function Rows({ events, target, running, transcript = false }) {
   }));
 }
 function InlineExecution({ client, botId, sessionId, turn, running, events }) {
-  return (0, import_react95.createElement)("div", { className: "gb-execution-inline" }, (0, import_react95.createElement)(Rows, { events, target: { client, botId, sessionId, turn }, running }));
+  const root = (0, import_react95.useRef)(null);
+  const disclosure = (0, import_react95.useRef)(null);
+  const [group, setGroup] = (0, import_react95.useState)(null);
+  (0, import_react95.useLayoutEffect)(() => {
+    const binding = observeToolGroups(root.current, turn, setGroup);
+    disclosure.current = binding;
+    return () => binding?.dispose();
+  }, [sessionId, turn]);
+  const inProgress = running ? events.filter((event) => event.status === "running" || event.status === "pending").length : 0;
+  const failed = events.filter((event) => event.status === "failed").length;
+  const visible = !group || group.open === true;
+  return (0, import_react95.createElement)(
+    "div",
+    {
+      ref: root,
+      className: "gb-execution-inline",
+      hidden: group?.concealed,
+      "data-gb-tool-count": events.length,
+      "data-gb-tool-running": inProgress,
+      "data-gb-tool-failed": failed
+    },
+    group?.count && (0, import_react95.createElement)(
+      "button",
+      {
+        type: "button",
+        className: "gb-execution-button gb-tool-group",
+        "aria-expanded": group.open,
+        "data-gb-tool-group": "",
+        onClick: (event) => {
+          event.currentTarget.focus({ preventScroll: true });
+          disclosure.current?.toggle();
+        }
+      },
+      (0, import_react95.createElement)(group.open ? ChevronDownIcon : ChevronRightIcon),
+      (0, import_react95.createElement)("span", null, t("{count} tool calls", { count: group.count })),
+      group.running > 0 && (0, import_react95.createElement)("span", { className: "gb-execution-meta" }, t("{count} running", { count: group.running })),
+      group.failed > 0 && (0, import_react95.createElement)("span", { className: "gb-execution-meta gb-tool-group-failed" }, t("{count} failed", { count: group.failed }))
+    ),
+    (0, import_react95.createElement)(Rows, { events, target: { client, botId, sessionId, turn }, running, visible })
+  );
 }
 function TurnHistory({ client, botId, sessionId, turn, running }) {
   const view = useExecution(client, botId, sessionId, { turn, running, live: true });

@@ -60,6 +60,7 @@ export default async function check(context) {
     const capture = name => writeFile(join(context.reportDir, name + '.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
     const gate = name => writeFile(join(host.workspace, name), '')
     const card = (name, status, target = '') => n => n.desc.startsWith(name + ',') && n.desc.endsWith(status) && n.desc.includes(target)
+    const group = (count, status) => n => n.desc === [`${count} tool calls`, status].filter(Boolean).join(', ')
     const text = label => n => n.text === label || n.desc === label
     // FlatList is inverted. Physical screen coordinates establish the reading order.
     const onScreen = async (label, ...matchers) => ui.waitFor(nodes => {
@@ -96,6 +97,10 @@ export default async function check(context) {
     await send(claude, 'GODBOT-CLAUDE-EXECUTION-TRACE ' + id)
     await onScreen('Claude text then first tool', text(before), card('Read', 'Running'))
     await gate('claude-execution-trace-start')
+    const failedGroup = group(2, '1 failed')
+    const collapsed = await onScreen('Collapsed parallel tools between replies', text(before), failedGroup, text(middle), card('Bash', 'Running'))
+    assert.equal(ui.dumpUi().nodes.some(card('Read', 'Done')), false)
+    ui.tap(collapsed[1])
     const order = [text(before), card('Read', 'Done'), card('Grep', 'Failed'), text(middle), card('Bash', 'Running', 'Read fixture version')]
     const visible = await onScreen('parallel results and later running tool', ...order)
     await ui.waitFor(nodes => nodes.some(n => n.text.includes('Running shell commands')), 'current native tool in the activity row')
@@ -107,9 +112,13 @@ export default async function check(context) {
     ui.launch()
     await ui.waitFor(nodes => nodes.some(n => n.cls.endsWith('EditText')), 'reconnected chat', { timeout: 60000 })
     await openChat(claude)
+    ui.tap((await onScreen('Parallel tool group is collapsed after reopening', failedGroup))[0])
     await onScreen('same order after reopening mid-turn', ...order)
     await gate('claude-execution-trace-continue')
     const late = status => [text(rewire), card('Bash', 'Done', 'Read the new fixture route'), card('Bash', status, 'Verify the new fixture route')]
+    const runningGroup = group(2, '1 running')
+    const newGroups = await onScreen('Long run and new calls have separate summaries', group(73, '1 running'), text(rewire), runningGroup)
+    ui.tap(newGroups[2])
     await onScreen('new tools after late commentary', ...late('Running'))
     const live = await rowsOf(claude, id)
     const liveIds = live.filter(row => row.kind === 'tool').map(row => row.timelineId)
@@ -134,6 +143,7 @@ export default async function check(context) {
     await send(acp, 'GODBOT-ACP-EXECUTION-TRACE ' + acpId)
     await onScreen('ACP first tool before any text', card('Read', 'Running'))
     await gate('acp-execution-trace-release')
+    ui.tap((await onScreen('ACP groups the calls after its reply', group(2, '1 failed')))[0])
     await onScreen('ACP saved order', card('Read', 'Done'), text('ACP fixture progress after the read starts.'),
       card('Search', 'Failed'), card('Edit', 'Done'), text('TRACE_COMPLETE ' + acpId))
     await capture('acp-settled')
