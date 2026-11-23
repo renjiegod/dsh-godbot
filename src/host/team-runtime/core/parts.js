@@ -1333,8 +1333,7 @@ export function install(rt) {
     const intended = dir !== undefined && await rt.isFolder(dir) ? dir : rt.teamFolder()
     const freshId = await rt.createSession(room === undefined ? name : bot === undefined ? room.name : `${name} · ${room.name}`, { dir })
     talked.set(freshId, false)
-    // The group's own Session never asks the model, so it takes the team's default; the
-    // earlier part's route may be one DSH no longer serves (#1310).
+    // A fresh group Session uses the internal relay route before messages reach it.
     if (bot === undefined) await rt.selectRoomSession(freshId)
     const picked = bot === undefined ? undefined : await freshRoute(bot, session)
     if (picked !== undefined && !await selectRoute({ name }, freshId, picked) && job.engine) engineRetry.set(freshId, Date.now() + FOLDER_RETRY_MS)

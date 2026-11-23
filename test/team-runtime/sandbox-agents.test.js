@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { SandboxTeamAgents, sandboxRoute, sandboxRouteInfo } from '../../src/host/team-runtime/sandbox-agents.js'
 import { sandboxTeamEngine } from '../../src/host/team-runtime/sandbox-engines.js'
-import { WorkspaceAcpEngine, WorkspaceCodexEngine } from '../../src/host/team-runtime/local-agents.js'
+import { WorkspaceAcpEngine, WorkspaceAgentAdapter, WorkspaceCodexEngine } from '../../src/host/team-runtime/local-agents.js'
 
 const slots = ['test-a', 'test-b']
 const route = sandboxRoute('antigravity', slots[0])
@@ -103,14 +104,19 @@ test('account engine requires fresh mapped session and never attempts a host exe
   })
 })
 
-test('normal DSH chat runs AGY through the selected account and persists native ID, MCP, and guest cwd', async () => {
+test('normal DSH chat sends image blocks through the selected AGY account and persists its native ID', async () => {
   const { rt, bot, registry } = setup()
   rt.connectorTools = { current: () => [], listed() {} }
   const records = rt.state.localAgents.sessions
+  const attachment = { attachmentId: 'fixture-image', mediaType: 'image/png' }
+  const image = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII='
   const deps = { rt, customAgents: () => [], usedModels: () => [], toolsFor: () => [], presetFor: () => 'workspace-write',
+    attachments: { async readImage(ref) {
+      assert.equal(ref, attachment)
+      return { ref, data: Buffer.from(image, 'base64') }
+    } },
     cwdFor: () => { throw Error('host cwd lookup') }, record: key => records[key],
     saveRecord: (key, row) => { records[key] = row }, patchRecord: () => {}, recordUsage: () => {} }
-  const { WorkspaceAgentAdapter } = await import('../../src/host/team-runtime/local-agents.js')
   const outer = new WorkspaceAgentAdapter(deps)
   registry.adapterFor = inner => new WorkspaceAgentAdapter(inner)
   registry.engineFor = (...args) => sandboxTeamEngine(...args, { Acp: WorkspaceAcpEngine, Codex: WorkspaceCodexEngine })
@@ -125,9 +131,13 @@ test('normal DSH chat runs AGY through the selected account and persists native 
   }
   outer.sandboxes = registry
   try {
-    const options = { provider: route, model:'default',sessionId:'part',messages:[{ role:'user',id:'id1',content:[{ type:'text', text:'hi' }]}],signal:AbortSignal.timeout(5000) }
+    assert.equal((await outer.resolveModel(route, 'default')).inputModalities, undefined)
+    assert.equal(opened, 0)
+    const options = { provider: route, model:'default',sessionId:'part',messages:[{ role:'user',id:'id1',content:[
+      { type:'text', text:'hi' }, { type: 'image', attachment },
+    ] }],signal:AbortSignal.timeout(5000) }
     const chunks = await Array.fromAsync(outer.stream(options))
-    assert.ok(chunks.length)
+    assert.ok(chunks.some(chunk => chunk.type === 'block-end' && chunk.block.text?.includes(`images=${JSON.stringify([{ mimeType: 'image/png', data: image }])}`)))
     assert.equal(opened, 1)
     assert.equal(records.part.accountProfileId, bot.accountProfileId)
     assert.equal(records.part.route, route)
@@ -139,6 +149,45 @@ test('normal DSH chat runs AGY through the selected account and persists native 
     assert.equal(opened, 2)
   } finally { await registry.dispose(); await outer.dispose() }
   assert.equal(ended,opened)
+})
+
+test('sandbox image capabilities use the selected account and workspace and preserve model declarations', async () => {
+  const { rt, bot, registry } = setup()
+  const second = { bindingId: 'disk-two', hostCwd: '/host/second', guestCwd: '/guest/second' }
+  const workspaceTag = createHash('sha256').update(JSON.stringify([second.bindingId, second.hostCwd, second.guestCwd])).digest('hex').slice(0, 16)
+  const secondRoute = `${route}_w_${workspaceTag}`
+  const otherAccountRoute = sandboxRoute('antigravity', slots[1])
+  Object.assign(bot, { model: `${secondRoute}/text-model`, workDir: second.hostCwd, sandboxBinding: second })
+  rt.state.bots = { [bot.id]: bot }
+  const accounts = registry.accountList()
+  accounts[0].workspaces.push({ hostPath: second.hostCwd })
+  registry.accountList = () => accounts
+  registry.workspace = ({ cwd }) => cwd === second.hostCwd ? second : testAccount
+  registry.engineFor = (target, _spec, binding) => {
+    assert.deepEqual(binding, target.workspaceTag ? second : testAccount)
+    return {
+      supportsImages: () => target.accountId === slots[0],
+      probeSandboxModels: async () => [
+        { id: 'text-model', name: 'Text model', inputModalities: ['text'] },
+        { id: 'image-model', inputModalities: ['text', 'image'] },
+      ],
+    }
+  }
+  const adapter = new WorkspaceAgentAdapter({ usedModels: () => [] })
+  adapter.sandboxes = registry
+  assert.equal((await adapter.resolveModel(secondRoute, 'default')).inputModalities, undefined)
+  await registry.probeModels(secondRoute, {})
+  assert.deepEqual((await adapter.resolveModel(secondRoute, 'default')).inputModalities, ['text', 'image'])
+  assert.deepEqual((await adapter.resolveModel(secondRoute, 'text-model')).inputModalities, ['text'])
+  assert.equal((await adapter.resolveModel(otherAccountRoute, 'default')).inputModalities, undefined)
+  await registry.probeModels(otherAccountRoute, {})
+  assert.deepEqual((await adapter.resolveModel(otherAccountRoute, 'image-model')).inputModalities, ['text'])
+  assert.equal((await adapter.resolveModel(route, 'default')).inputModalities, undefined)
+  await registry.probeModels(route, {})
+  const shared = await adapter.resolveModel(route, 'text-model')
+  assert.equal(shared.name, 'Text model')
+  assert.equal(shared.inputModalities, undefined)
+  assert.equal((await adapter.resolveModel(route, 'default')).inputModalities, undefined)
 })
 
 test('moving an existing account to a second export rotates its provider and keeps old native records', async () => {
