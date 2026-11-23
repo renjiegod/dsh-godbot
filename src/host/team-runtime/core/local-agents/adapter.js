@@ -10,6 +10,7 @@ import { BACKGROUND_ROLE, SOURCE_KIND } from '../constants.js'
 import { textOf } from '../text.js'
 import { engineOf, cliMode } from './engines.js'
 import { LoopbackMcp } from './mcp.js'
+import { withoutNativeContext } from './native-context.js'
 import { QUOTA_TEXT, SIGN_IN_TEXT } from '../../../../drivers/external/agent-errors.js'
 
 export const DEFAULT_CONTEXT_WINDOW = 200_000
@@ -575,7 +576,12 @@ export class LocalAgentAdapter extends LlmAdapter {
     const messages = options.messages ?? []
     const at = live.handed === undefined ? -1 : messages.findIndex(message => message.id === live.handed)
     let fresh = live.handed === undefined || at === -1
-    const delta = fresh ? [] : messages.slice(at + 1)
+    const cwd = live.cwd ?? await this.deps.cwdFor(sessionId)
+    live.cwd = cwd
+    // DSH's skill catalog and the instruction files the CLI reads itself stay out
+    // of what the CLI is given; the marker still counts every message as handed.
+    const shown = { kind: live.spec.kind, cwd, sandboxed: this.deps.sandbox === true }
+    const delta = fresh ? [] : withoutNativeContext(messages.slice(at + 1), shown)
 
     // Results of the calls the last step emitted answer the suspended CLI calls.
     // A user message never resolves an approve_agent_action pending: only that
@@ -626,8 +632,6 @@ export class LocalAgentAdapter extends LlmAdapter {
     const system = messages.filter(message => message.role === 'system').map(message => textOf(message.content)).join('\n').trim()
     const promptHash = system === '' ? undefined : createHash('sha256').update(system).digest('hex')
     const mcp = await this.ensureMcp(live, () => this.deps.toolsFor(options))
-    const cwd = live.cwd ?? await this.deps.cwdFor(sessionId)
-    live.cwd = cwd
 
     const mode = cliMode(live.spec.kind, preset)
     const instructions = system === '' ? undefined : system
@@ -709,7 +713,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     // session reads them at the head of the replay.
     const replayHead = live.spec.kind === 'acp' && newSession ? system : ''
     let promptBlocks = fresh
-      ? await renderReplay(messages, replayHead, resolveImage)
+      ? await renderReplay(withoutNativeContext(messages, shown), replayHead, resolveImage)
       : await renderDelta(contextText, remaining, resolveImage)
     let sentInstructions = live.spec.kind !== 'acp' && newSession && instructions !== undefined
     // A new CLI session gets its instructions in the open args or the replay;
