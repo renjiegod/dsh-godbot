@@ -970,6 +970,9 @@ export function install(rt) {
     // the CLI when the conversation grows long: condense, write the handoff note, and
     // answer the context steward when the team has no model of its own.
     localAgentContext: sessionId => partAdapter(sessionId).contextOf(String(sessionId)),
+    // A part whose CLI still works in the background (adapter.backgroundWork) is not
+    // idle, though no turn of its Session runs.
+    localAgentBackground: sessionId => partAdapter(sessionId).backgroundWork(String(sessionId)),
     localAgentCompact: (sessionId, signal) => maintenance('compact', sessionId, signal),
     localAgentNote: (sessionId, text, signal) => maintenance('note', sessionId, text, signal),
     localAgentAsk: (sessionId, request) => maintenance('ask', sessionId, request),

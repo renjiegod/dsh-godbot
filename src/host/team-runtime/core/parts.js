@@ -1026,6 +1026,8 @@ export function install(rt) {
     return owner.next ?? threadCurrentOfPart(bot, sessionId) ?? rt.chatOf(owner.botId)
   }
   const grown = (sessionId, tokens, lines) => tokens >= (partBase.get(sessionId) ?? 0) + lines.check / 4
+  // A part's CLI still works with no turn of its Session running (local-agents.js).
+  const cliWorks = sessionId => rt.localAgentBackground?.(sessionId) === true
   // A read-only process (another dsh holds the team) neither condenses nor switches.
   const readOnly = () => rt.readOnly() !== undefined
 
@@ -1454,7 +1456,10 @@ export function install(rt) {
     const { agent } = payload
     const past = rt.pastOwners.get(agent.id)
     if (past !== undefined && !rt.isBotSession(agent.id)) {
-      await forward(past, payload.messages, threadTargetOf(agent.id, past)).catch(error => rt.warn('godbot: input for %s was not handed on: %s', agent.id, error))
+      // A reply the CLI gave by itself belongs to the part whose CLI gave it: another
+      // part's CLI has nothing to show for it, and would answer that nothing came.
+      const handed = payload.messages.filter(message => message?.source?.role !== BACKGROUND_ROLE)
+      await forward(past, handed, threadTargetOf(agent.id, past)).catch(error => rt.warn('godbot: input for %s was not handed on: %s', agent.id, error))
       return takeOverStep(agent, payload)
     }
     const place = placeOf(agent.id)
@@ -2272,7 +2277,9 @@ export function install(rt) {
   // "New session" in a Bot's chat. An idle Bot moves on to a fresh part at once: it opens
   // with the handoff package, put together without the model (the earlier note and the
   // latest messages). While the Bot is working the fresh part opens with nothing carried
-  // over, and the part it replaces keeps running in the background. A part nobody has
+  // over, and the part it replaces keeps running in the background. A part whose CLI
+  // still works on its own (background tasks, or a reply of its own not shown yet) counts
+  // as working: moving on would close that CLI and end its tasks. A part nobody has
   // talked in is already a fresh conversation, and a fresh part on its way will be one:
   // neither gets another empty part, with another handoff, stacked on top of it, and the
   // answer is false.
@@ -2292,7 +2299,7 @@ export function install(rt) {
       if (!await partTalked(agent.id).catch(() => true)) return false
       // The read took a moment: the part may have moved on, or started moving, meanwhile.
       if (rt.chatOf(botId) !== agent.id || switches.has(agent.id)) return false
-      if (agent.status === 'idle') {
+      if (agent.status === 'idle' && !cliWorks(agent.id)) {
         startSwitch(agent, { manual: true })
         return true
       }
@@ -2395,8 +2402,10 @@ export function install(rt) {
     }
     // A part that works, or moves on to a fresh part, is not stopped for the one the user
     // opens: it goes on in the background with its own chain, as a New session leaves it,
-    // and its tasks, cards and schedules stay with it. Only an idle part is archived.
-    if (switches.has(current) || rt.live.get(current)?.turn !== undefined) {
+    // and its tasks, cards and schedules stay with it. So does a part whose CLI still
+    // works with no turn running: archived, the reply the CLI gives when its background
+    // task ends would have nowhere to show. Only an idle part is archived.
+    if (switches.has(current) || rt.live.get(current)?.turn !== undefined || cliWorks(current)) {
       openEarlierBeside(bot, partId)
       rt.chatOwners.set(partId, botId)
       rt.pastOwners.delete(partId)

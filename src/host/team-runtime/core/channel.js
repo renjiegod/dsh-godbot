@@ -171,12 +171,14 @@ export function install(rt) {
     secretStore: rt.secretStoreStatus(),
     secrets: rt.secretsView(),
     activity: rt.activityView(),
-    // Which of a Bot's own chat parts has a turn right now, current or background:
-    // the session list's Running mark reads this, not a guess from the transcript.
+    // Which of a Bot's own chat parts works right now, current or background: a turn
+    // runs in it, or its CLI still works on its own (a background task whose reply is
+    // to come). The session list's Running mark reads this, not a guess from the
+    // transcript.
     partsRunning: Object.fromEntries(Object.values(state.bots)
       .flatMap(bot => [rt.chatOf(bot.id), ...(bot.openParts ?? []).map(part => part.sessionId)])
       .filter((sessionId, index, list) => sessionId !== undefined && list.indexOf(sessionId) === index)
-      .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined)
+      .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined || rt.localAgentBackground?.(sessionId) === true)
       .map(sessionId => [sessionId, true])),
     // Per Bot, where a New session of its own chat stands: 'opening' while a fresh part
     // is on its way, 'empty' while nobody has talked in the current part, so a New

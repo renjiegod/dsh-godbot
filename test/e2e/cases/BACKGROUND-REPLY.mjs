@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { until } from '../host.mjs'
 import { openFullTeam } from '../native-ui.mjs'
 import { member } from '../tickets.mjs'
@@ -70,5 +71,48 @@ else import(${JSON.stringify(fixture.href)}).catch(e => { console.error(e); proc
     return shown.at(-1) === 'reply: next' && shown
   }, bot.name + ' answers the next message', 30_000)
   assert.equal(after.filter(text => text === AUTONOMOUS).length, 1)
-  context.note('background-reply', { botId: bot.id, replies: after.slice(-3), notices: notices.filter(notice => notice.botId === bot.id).length })
+
+  // A session whose CLI still works after its turn ended is not idle. Opening an earlier
+  // session leaves it going on in the background, its task untouched, and the answer its
+  // CLI gives by itself shows in it, not in the session the user opened. A New session
+  // leaves such a session running the same way: moving on would close its CLI.
+  const thread = async () => {
+    const value = (await host.bot('state')).bots.find(entry => entry.id === bot.id)
+    return { current: value.sessionId ?? value.id, open: (value.openParts ?? []).map(part => part.sessionId) }
+  }
+  const working = async id => (await host.bot('state')).partsRunning?.[id] === true
+  const answers = async since => (await host.bot('notices', { boot, since })).notices.filter(notice => notice.kind === 'message' && notice.botId === bot.id)
+  const first = (await thread()).current
+  assert.equal(await host.bot('bot-new-part', { botId: bot.id }), true)
+  const second = await until(async () => { const now = await thread(); return now.current !== first && now.current }, 'a New session opened')
+  const startTask = async (text) => {
+    await host.bot('send', { sessionId: bot.id, text })
+    await until(async () => (await botTexts()).at(-1) === 'started a background task', bot.name + ' started a background task')
+    await until(() => working(second), 'the session reads as working while its task runs')
+  }
+  await startTask('TASK 5000 switch')
+  const switched = (await host.bot('hello', {})).seq
+  assert.equal(await host.bot('bot-open-part', { botId: bot.id, sessionId: first }), true)
+  const beside = await thread()
+  assert.equal(beside.current, first)
+  assert.ok(beside.open.includes(second), 'the session whose task runs went on in the background, not into the archive')
+  const answered = await until(async () => (await answers(switched)).find(notice => notice.text === AUTONOMOUS), 'the CLI answered by itself once its task ended', 30_000)
+  assert.equal(answered.sessionId, second, 'the answer shows in the session whose CLI gave it')
+  await delay(1500)
+  assert.deepEqual((await answers(switched)).filter(notice => notice.sessionId === first), [], 'the session the user opened got nothing of it')
+  assert.equal(await host.bot('bot-open-part', { botId: bot.id, sessionId: second }), true)
+  await until(async () => (await botTexts()).at(-1) === AUTONOMOUS, 'the answer shows back in its own session', 30_000)
+  await row.click()
+  await page.locator('.bt-head .bt-pill-name').filter({ hasText: bot.name }).waitFor()
+  await page.locator('.bt-bot-sub-row').filter({ hasText: 'TASK 5000 switch' }).waitFor()
+  await host.capture('background-reply-switched')
+
+  await startTask('TASK 5000 new session')
+  const moved = (await host.bot('hello', {})).seq
+  assert.equal(await host.bot('bot-new-part', { botId: bot.id }), true)
+  const third = await until(async () => { const now = await thread(); return now.current !== second && now }, 'a New session opened while the task ran')
+  assert.ok(third.open.includes(second), 'a New session left the session whose task runs going on in the background')
+  const again = await until(async () => (await answers(moved)).find(notice => notice.text === AUTONOMOUS), 'the CLI answered once its second task ended', 30_000)
+  assert.equal(again.sessionId, second, 'the second answer shows in the session whose CLI gave it')
+  context.note('background-reply', { botId: bot.id, replies: after.slice(-3), notices: notices.filter(notice => notice.botId === bot.id).length, backgroundSession: second })
 }
