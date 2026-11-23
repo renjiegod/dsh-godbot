@@ -573,7 +573,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     // gone the CLI session is stale or new: it gets a replay instead of a delta.
     const messages = options.messages ?? []
     const at = live.handed === undefined ? -1 : messages.findIndex(message => message.id === live.handed)
-    const fresh = live.handed === undefined || at === -1
+    let fresh = live.handed === undefined || at === -1
     const delta = fresh ? [] : messages.slice(at + 1)
 
     // Results of the calls the last step emitted answer the suspended CLI calls.
@@ -632,7 +632,11 @@ export class LocalAgentAdapter extends LlmAdapter {
     const instructions = system === '' ? undefined : system
 
     const freshCli = live.cliSessionId === undefined
+    // A CLI session that never saw this conversation: a new one, or one opened in
+    // place of a session that could not be resumed.
+    let newSession = freshCli
     if (live.engineSession === undefined) {
+      const resumed = live.cliSessionId
       const openArgs = {
         cwd,
         mcp,
@@ -643,9 +647,9 @@ export class LocalAgentAdapter extends LlmAdapter {
         defaultEffort: live.defaultEffort,
         effort: live.effort,
         // Codex carries the team instructions as developer config on a new
-        // thread; Claude gets them appended at spawn; ACP reads them in the
-        // first prompt below.
-        instructions: live.spec.kind === 'codex' && freshCli ? instructions : undefined,
+        // thread (a resumed one keeps its own); Claude gets them appended at
+        // spawn; ACP reads them in the first prompt below.
+        instructions: live.spec.kind === 'codex' ? instructions : undefined,
         system: live.spec.kind === 'claude' ? instructions : undefined,
       }
       live.engineSession = await live.engine.open(sessionId, openArgs)
@@ -654,6 +658,12 @@ export class LocalAgentAdapter extends LlmAdapter {
       // in the meantime, or a resume that fails would erase it.
       const reportedId = live.engineSession.acpSessionId ?? live.engineSession.threadId ?? live.engineSession.cliSessionId
       if (reportedId !== undefined) live.cliSessionId = reportedId
+      // A resume that failed over to a new session lost the conversation: it is
+      // replayed, and the new session took the instructions it was opened with.
+      if (resumed !== undefined && reportedId !== undefined && reportedId !== resumed) {
+        newSession = true
+        fresh = true
+      }
       if (live.spec.kind === 'acp') {
         if (live.engineSession.defaultEffort !== undefined) live.defaultEffort = live.engineSession.defaultEffort
         live.effort = live.engineSession.effort
@@ -669,7 +679,7 @@ export class LocalAgentAdapter extends LlmAdapter {
           if (live.pumpToken === token && !live.dead) live.push(event)
         }
       })()
-      if (live.spec.kind !== 'acp' && instructions !== undefined) live.promptHash = promptHash
+      if (live.spec.kind !== 'acp' && instructions !== undefined && (newSession || live.spec.kind === 'claude')) live.promptHash = promptHash
       this.deps.saveRecord(sessionId, this.recordOf(live, { cwd, promptHash: live.promptHash ?? promptHash, model: options.model }))
       // Claude reports its session id with `system/init`, after start() resolved:
       // the record above has no id yet, so persist it when it lands or the next
@@ -693,13 +703,17 @@ export class LocalAgentAdapter extends LlmAdapter {
       live.resendContext = false
     }
     if (fresh) live.resendContext = false
+    // Claude and Codex hold the team instructions outside the conversation (the
+    // appended system prompt, the thread's developer instructions): only a new ACP
+    // session reads them at the head of the replay.
+    const replayHead = live.spec.kind === 'acp' && newSession ? system : ''
     let promptBlocks = fresh
-      ? await renderReplay(messages, system, resolveImage)
+      ? await renderReplay(messages, replayHead, resolveImage)
       : await renderDelta(contextText, remaining, resolveImage)
-    let sentInstructions = live.spec.kind !== 'acp' && freshCli && instructions !== undefined
+    let sentInstructions = live.spec.kind !== 'acp' && newSession && instructions !== undefined
     // A new CLI session gets its instructions in the open args or the replay;
     // the "updated" line is only for a session that saw older ones.
-    if (instructions !== undefined && !freshCli && live.promptHash !== promptHash) {
+    if (instructions !== undefined && !newSession && live.promptHash !== promptHash) {
       const updated = `Updated team instructions (replace earlier ones):\n\n${instructions}`
       if (live.spec.kind === 'codex') {
         await live.engine.instruct?.(live.engineSession, updated)
@@ -736,9 +750,9 @@ export class LocalAgentAdapter extends LlmAdapter {
       await this.sendInput(live, promptBlocks, options.signal, options.reasoningEffort, settledText)
       if (sentInstructions) live.promptHash = promptHash
       // ACP only counts instructions once they reach the agent with a prompt.
-      if (live.spec.kind === 'acp' && (freshCli || sentInstructions)) live.promptHash = promptHash
+      if (live.spec.kind === 'acp' && (newSession || sentInstructions)) live.promptHash = promptHash
     }
-    if (live.spec.kind === 'acp' && freshCli && promptBlocks.length === 0 && instructions !== undefined) {
+    if (live.spec.kind === 'acp' && newSession && promptBlocks.length === 0 && instructions !== undefined) {
       await this.sendInput(live, `Follow these instructions from the user's team for everything you do here. They sit on top of your own; when they conflict, these win.\n\n${instructions}`, options.signal, options.reasoningEffort)
       live.promptHash = promptHash
     }
@@ -1359,9 +1373,10 @@ async function renderDelta(contextText, remaining, resolveImage) {
   return mergeTextBlocks(parts)
 }
 
-// The replay a fresh CLI session stands up on: the system prompt, then the
-// recent messages rendered as text and images, newest first, always with the latest input
-// and the handoff a new part opens with, both word for word.
+// The replay a fresh CLI session stands up on: the system prompt when the CLI has
+// no other place for it, then the recent messages rendered as text and images,
+// newest first, always with the latest input and the handoff a new part opens
+// with, both word for word.
 async function renderReplay(messages, system, resolveImage) {
   const picked = []
   let used = 0
