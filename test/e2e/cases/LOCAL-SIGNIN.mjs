@@ -50,6 +50,8 @@ else import(${fixture('fake-gemini-login.mjs')}).catch(e => { console.error(e); 
   await host.install(context.candidate)
   await host.start()
   await openFullTeam(host)
+  // Phones learn of the sign-in endpoints from the handshake.
+  assert.ok((await host.bot('hello', { api: [1] })).capabilities.includes('local-agent-login'), 'hello names local-agent-login')
 
   // Claude Code: the expired sign-in blocks the Bot with a repair card, not a reply.
   const bot = await member(host, 'Signed-out Claude', 'local-claude-code/default')
