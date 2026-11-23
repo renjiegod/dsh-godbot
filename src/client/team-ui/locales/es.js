@@ -1799,8 +1799,7 @@ export const ES = {
   "Open this session": "Abrir esta sesión",
   "Open this running session": "Abrir esta sesión en ejecución",
   "A running session keeps using model calls in the background.": "Una sesión en ejecución sigue usando llamadas al modelo en segundo plano.",
-  "Sessions of {name}": "Sesiones de {name}",
-  "All sessions ({count})": "Todas las sesiones ({count})",
+  "Switch session": "Cambiar de sesión",
   "{count} running in the background": "{count} en ejecución en segundo plano",
 }
 

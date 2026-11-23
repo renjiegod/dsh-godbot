@@ -1,7 +1,17 @@
 // A Bot's chat sessions as the session lists show them: the details panel's list and the
-// one under the Bot's row in the sidebar.
+// menu in the chat's top bar (session-menu.js).
 import { currentPart, relativeShort } from './text.js'
 import { t } from './i18n.js'
+
+// Every part of a Bot's own chat, whichever is current: the current one, each one going
+// on in the background, and the earlier ones of every chain.
+export const ownPartIds = bot => [currentPart(bot), ...(bot.openParts ?? []).map(part => part.sessionId), ...(bot.parts ?? []), ...(bot.openParts ?? []).flatMap(part => part.parts ?? [])]
+  .filter((id, index, list) => typeof id === 'string' && id !== '' && list.indexOf(id) === index)
+
+// When a Bot was last active, for the sidebar's order: the latest activity in any of its
+// sessions (`stamps`: session id → DSH's updatedAt), else when the Bot was made. Opening
+// an older session changes which one is current, not this, so the Bot stays in place.
+export const lastActivity = (bot, stamps) => Math.max(0, ...ownPartIds(bot).map(id => stamps[id] ?? 0)) || bot.createdAt
 
 // Every session of a Bot's own chat: the current one, each one going on in the
 // background, and the earlier ones of every chain, newest first. A session nobody talked
@@ -13,8 +23,7 @@ export function botSessions(bot, roster) {
   const empty = new Set(roster.emptyParts?.[bot.id] ?? [])
   const running = roster.partsRunning ?? {}
   const background = new Set((bot.openParts ?? []).map(part => part.sessionId))
-  const ids = [current, ...background, ...(bot.parts ?? []), ...(bot.openParts ?? []).flatMap(part => part.parts ?? [])]
-    .filter((id, index, list) => typeof id === 'string' && id !== '' && list.indexOf(id) === index)
+  const ids = ownPartIds(bot)
   // The host orders parts by when DSH made them; one it has not ordered yet comes last.
   const order = [...(bot.partOrder ?? []), ...[...ids].reverse()].filter((id, index, list) => list.indexOf(id) === index)
   const numbers = new Map(order.map((id, index) => [id, index + 1]))

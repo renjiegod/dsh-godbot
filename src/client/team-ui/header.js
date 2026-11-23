@@ -11,6 +11,7 @@ import { ActivityIndicator } from './activity-row.js'
 import { clockLabel, openingTurn, unseenSince } from './cells.js'
 import { GoalIsland, goalView } from './goal.js'
 import { NewSessionButton } from './new-session.js'
+import { SessionMenu } from './session-menu.js'
 import { nativeTabs } from '../native-agent-target.js'
 import { viewBottom } from './motion.js'
 import { t } from './i18n.js'
@@ -180,6 +181,10 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
           // A fresh conversation with this Bot: the first tool, and the one with a label.
           bot && currentPart(bot) === sessionId
             ? h(NewSessionButton, { key: 'new-session', bot, roster, actions, sessionId, variant: 'bar' })
+            : null,
+          // Its other sessions, as a list to switch to.
+          bot && currentPart(bot) === sessionId
+            ? h(SessionMenu, { key: 'sessions', bot, roster, actions, useSessions })
             : null,
           search,
           actions.godbot.browserButton(bot, sessionId, roster),

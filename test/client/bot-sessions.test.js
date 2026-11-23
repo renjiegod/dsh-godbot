@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { botSessions, sessionLabel, sessionMeta, shortList } from '../../src/client/team-ui/bot-sessions.js'
+import { botSessions, lastActivity, ownPartIds, sessionLabel, sessionMeta, shortList } from '../../src/client/team-ui/bot-sessions.js'
 
 // The Codex Bot from the report as the host lists it: p4 current and running, p5 a
 // busy-time part nobody talked in, p6 another one still running in the background with
@@ -56,4 +56,14 @@ test('a short list keeps the current, running and waiting sessions, then the new
   assert.deepEqual(shortList(quiet, 2).map(entry => entry.id), ['p6', 'p4'])
   const old = botSessions({ ...bot, sessionId: 'p0', parts: ['p1', 'p2', 'p3', 'p4'], openParts: [{ sessionId: 'p6', parts: [] }] }, { ...roster, partsRunning: {}, questions: {} })
   assert.deepEqual(shortList(old, 2).map(entry => entry.id), ['p6', 'p0'], 'the current session stays in even when it is old')
+})
+
+test('a Bot is as recent as its latest session, whichever one is open', () => {
+  assert.deepEqual(ownPartIds(bot), ['p4', 'p5', 'p6', 'p1', 'p2', 'p3', 'p0'])
+  const stamps = { p1: 100, p2: 200, p3: 300, p4: 900, p5: 400, p6: 700, p0: 50 }
+  assert.equal(lastActivity(bot, stamps), 900)
+  // Opening the oldest session makes it current; the Bot is no less recent for it.
+  const opened = { ...bot, sessionId: 'p1', parts: ['p2', 'p3'], openParts: [...bot.openParts, { sessionId: 'p4', parts: [] }] }
+  assert.equal(lastActivity(opened, stamps), 900)
+  assert.equal(lastActivity({ id: 'new', createdAt: 42 }, {}), 42, 'a Bot with no session activity yet sorts by when it was made')
 })
