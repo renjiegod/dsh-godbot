@@ -12,6 +12,12 @@ const MCP_SERVER = 'godbot'
 const READ_ONLY_TEAM_TOOLS = ['list_members', 'list_tasks', 'send_message', 'report_result']
 const MCP_APPROVAL = 'mcp_tool_call'
 
+export function codexInputModalities(input) {
+  if (!Array.isArray(input)) return undefined
+  const modalities = input.filter(kind => kind === 'text' || kind === 'image' || kind === 'audio')
+  return modalities.length > 0 ? modalities : undefined
+}
+
 // The team adapter and the direct driver use the same app-server request/notice contract.
 // Manual compaction acknowledges with {}, so only its own contextCompaction item can
 // identify the native turn. Inline review can also announce an internal turn/started
@@ -517,11 +523,13 @@ export class CodexEngine {
       const page = await peer.request('model/list', { cursor, limit: 100 }, { timeout: 15_000 })
       for (const entry of page.data ?? page.models ?? []) {
         const id = entry.id ?? entry.model
+        const inputModalities = codexInputModalities(entry.inputModalities)
         if (id && !entry.hidden)
           models.push({
             id,
             name: entry.displayName ?? entry.name ?? id,
             efforts: effortOptions(entry.supportedReasoningEfforts ?? []),
+            ...(inputModalities === undefined ? {} : { inputModalities }),
             ...(entry.defaultReasoningEffort ? { catalogDefaultEffort: entry.defaultReasoningEffort } : {}),
           })
       }
