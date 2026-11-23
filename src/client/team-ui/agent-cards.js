@@ -12,6 +12,7 @@ import { CheckIcon } from './icons.js'
 import { ModelMenu } from './model-menu.js'
 import { Segmented } from './motion.js'
 import { t } from './i18n.js'
+import { LocalSignInPanel, signInRoute } from './local-sign-in.js'
 
 // The CLIs found on this machine and the custom agents, read when the list is about to show.
 export function useLocalAgents(wanted, actions) {
@@ -47,7 +48,7 @@ function cliMeta(agent) {
   return detail ? h('span', { className: 'bt-cli-meta' }, detail) : null
 }
 
-function CliCard({ agent, selected, onPick, actions }) {
+function CliCard({ agent, selected, onPick, actions, onSignIn, signing }) {
   const [copied, setCopied] = useState(false)
   const copySignIn = () => {
     void navigator.clipboard?.writeText(agent.signIn)?.catch(() => {})
@@ -62,9 +63,11 @@ function CliCard({ agent, selected, onPick, actions }) {
         cliMeta(agent)),
       selected ? h('span', { className: 'bt-cli-check', 'aria-hidden': true }, h(CheckIcon)) : null),
     agent.disabled ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openSettings('local-agents') }, '运行账号设置') : null,
-    agent.signedIn === false && agent.signIn
-      ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm bt-cli-login', title: t('Copies the sign-in command'), onClick: copySignIn }, copied ? t('Copied') : t('Sign in'))
-      : null)
+    agent.signedIn === false && agent.signIn && onSignIn
+      ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm bt-cli-login', 'aria-expanded': signing, onClick: onSignIn }, t('Sign in'))
+      : agent.signedIn === false && agent.signIn
+        ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm bt-cli-login', title: t('Copies the sign-in command'), onClick: copySignIn }, copied ? t('Copied') : t('Sign in'))
+        : null)
 }
 
 // The cards, or what to do when this machine has none.
@@ -77,9 +80,21 @@ export function CliList({ agents, known, scanning, refresh, selected, onPick, ac
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: scanning, onClick: refresh }, t('Refresh')),
         h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openSettings?.('local-agents') }, t('Local agents'))))
   }
-  return h('div', { className: 'bt-cli-list' }, agents.map(agent => h(CliCard, {
-    key: agent.route, agent, actions, selected: selected === agent.route, onPick: () => onPick(agent),
-  })))
+  return h(CliCards, { agents, refresh, selected, onPick, actions })
+}
+
+// The cards, and the sign-in panel of the one being signed in.
+function CliCards({ agents, refresh, selected, onPick, actions }) {
+  const [signing, setSigning] = useState(null)
+  const shown = agents.find(agent => agent.route === signing)
+  return h('div', { className: 'bt-cli-wrap' },
+    h('div', { className: 'bt-cli-list' }, agents.map(agent => h(CliCard, {
+      key: agent.route, agent, actions, selected: selected === agent.route, onPick: () => onPick(agent),
+      signing: signing === agent.route,
+      onSignIn: signInRoute(agent.route) ? () => setSigning(route => (route === agent.route ? null : agent.route)) : undefined,
+    }))),
+    shown ? h(LocalSignInPanel, { key: shown.route, route: shown.route, name: shown.name, command: shown.signIn,
+      onDone: () => void refresh?.(), onClose: () => setSigning(null) }) : null)
 }
 
 export const RunModeSwitch = ({ mode, setMode }) => h(Segmented, { label: t('Runs on'), value: mode },
@@ -128,6 +143,7 @@ export function RunModeCard({ bot, roster, actions, run, Card }) {
 }
 
 export const AGENT_CARDS_CSS = `
+.bt-cli-wrap{display:flex;flex-direction:column;gap:10px;min-width:0}
 .bt-cli-list{display:flex;flex-direction:column;gap:8px}
 .bt-cli{display:flex;align-items:center;gap:4px;padding:5px 6px 5px 8px;border:1px solid var(--bt-line);border-radius:12px;background:var(--bt-card);transition:background-color .12s ease,box-shadow .12s ease}
 .bt-cli:hover{background:var(--bt-hover)}

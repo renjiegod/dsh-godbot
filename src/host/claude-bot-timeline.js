@@ -67,6 +67,12 @@ export function attachClaudeBotTimeline(session, { cwd, onControl, usageDelivery
       return
     }
     const content = event?.message?.content
+    // A failed API call's synthetic message ("Failed to authenticate: ...") is the
+    // turn's failure, which the transport reports; its text is not the reply.
+    if (event?.type === 'assistant' && typeof event.error === 'string' && event.error !== '') {
+      receive(line)
+      return
+    }
     if (event?.type === 'assistant' && Array.isArray(content)) {
       const report = delivery && claudeUsageFrame(event)
       if (report) delivery.report = report
