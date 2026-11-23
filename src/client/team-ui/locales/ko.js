@@ -22,6 +22,9 @@ export const KO = {
   "The Relay Server that passes encrypted messages between your phone and this computer. It cannot read them.": "휴대폰과 이 컴퓨터 사이에서 암호화된 메시지를 전달하는 중계 서버입니다. 내용은 읽을 수 없습니다.",
   "The code works once. It stops working in {count} min.": "이 코드는 한 번만 사용할 수 있으며 {count}분 후에 만료됩니다.",
   "Turn on phone access first": "먼저 휴대폰 접근을 켜세요",
+  "A new session is starting; try again in a moment": "새 세션을 여는 중입니다. 잠시 후 다시 시도하세요",
+  "Another session became current meanwhile; open this one again": "그사이 다른 세션이 현재 세션이 되었습니다. 이 세션을 다시 여세요",
+  "The Bot is working; wait for it to finish or stop it first": "Bot이 작업 중입니다. 끝날 때까지 기다리거나 먼저 중지하세요",
   "The Server address must start with ws:// or wss://": "서버 주소는 ws:// 또는 wss://로 시작해야 합니다",
   "Enter the Server address first": "먼저 서버 주소를 입력하세요",
   "This phone is not paired": "이 휴대폰은 페어링되어 있지 않습니다",
@@ -1796,7 +1799,9 @@ export const KO = {
   "Open this session": "이 세션 열기",
   "Open this running session": "실행 중인 세션 열기",
   "A running session keeps using model calls in the background.": "실행 중인 세션은 백그라운드에서 모델 호출을 계속 사용합니다.",
-  "This session is still running. Wait for it to finish, or stop it.": "이 세션은 아직 실행 중입니다. 끝날 때까지 기다리거나 중지하세요.",
+  "Sessions of {name}": "{name}의 세션",
+  "All sessions ({count})": "모든 세션 ({count})",
+  "{count} running in the background": "세션 {count}개가 백그라운드에서 실행 중",
 }
 
 export const HOST_ERRORS_KO = [

@@ -1728,7 +1728,9 @@ const ZH = {
   "Open this session": "打开这个会话",
   "Open this running session": "打开这个正在运行的会话",
   "A running session keeps using model calls in the background.": "运行中的会话会在后台继续消耗模型调用。",
-  "This session is still running. Wait for it to finish, or stop it.": "这个会话还在运行。等它结束，或先停止它。",
+  "Sessions of {name}": "{name} 的会话",
+  "All sessions ({count})": "全部会话（{count}）",
+  "{count} running in the background": "{count} 个会话在后台运行",
 }
 
 // Host errors stay English, since Bots read them too; they are translated where the
@@ -1791,6 +1793,9 @@ const HOST_ERRORS = [
   [/^Memory cannot change now: [\s\S]*$/, '现在不能修改记忆：另一个 dsh 正在使用这个 Bot 团队'],
 ]
 const HOST_ZH = {
+  "A new session is starting; try again in a moment": "新会话正在打开，请稍后再试",
+  "Another session became current meanwhile; open this one again": "期间已切换到另一个会话，请重新打开这个会话",
+  "The Bot is working; wait for it to finish or stop it first": "Bot 正在工作，请等它结束或先停止它",
   'The Server address must start with ws:// or wss://': '服务器地址必须以 ws:// 或 wss:// 开头',
   'Enter the Server address first': '请先填服务器地址',
   'Turn on phone access first': '请先打开手机访问',

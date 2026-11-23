@@ -99,9 +99,77 @@ export function focusOpenPart(bot, sessionId) {
   return true
 }
 
+// Where an earlier part sits: in the current thread's chain, or in the chain of a thread
+// that goes on in the background.
+export function earlierPlace(bot, sessionId) {
+  if (bot === undefined || sessionId === undefined) return undefined
+  const at = (bot.segments ?? []).findIndex(segment => segment?.sessionId === sessionId)
+  if (at !== -1) return { thread: 'current', at, segments: bot.segments }
+  for (const [index, part] of (bot.openParts ?? []).entries()) {
+    const found = (part?.segments ?? []).findIndex(segment => segment?.sessionId === sessionId)
+    if (found !== -1) return { thread: 'open', index, at: found, segments: part.segments }
+  }
+  return undefined
+}
+
+// A chain without one of its parts. The parts on either side of it never followed each
+// other, so the one before it is marked `cut`: pages of the part after it stop there.
+const withoutPart = (segments, at) => segments.flatMap((segment, index) => (index === at ? [] : index === at - 1 ? [{ ...segment, cut: true }] : [segment]))
+
+// Takes an earlier part out of its chain. A chain that loses its first part now begins
+// where that part ended, which is when the next one began. Returns when the part itself
+// began.
+function takeOut(bot, place) {
+  const chainBegun = place.thread === 'current' ? bot.threadStartedAt : bot.openParts[place.index].threadStartedAt
+  const begun = place.at > 0 ? place.segments[place.at - 1]?.endedAt : chainBegun
+  const restBegun = place.at === 0 ? place.segments[0]?.endedAt : chainBegun
+  const rest = withoutPart(place.segments, place.at)
+  if (place.thread === 'current') {
+    bot.segments = rest
+    if (Number.isFinite(restBegun)) bot.threadStartedAt = restBegun
+  } else {
+    bot.openParts[place.index] = { ...bot.openParts[place.index], segments: rest, ...threadBegun(restBegun) }
+  }
+  return begun
+}
+
+// Opening an earlier part while the current one runs: the running part goes on in the
+// background, its turn untouched, with its own chain, as a New session leaves it. The
+// part opened leaves the chain it sat in and becomes current as a thread of its own,
+// begun when the part itself began. Returns false for a part that is in no chain.
+export function openEarlierBeside(bot, sessionId, now = Date.now()) {
+  const place = earlierPlace(bot, sessionId)
+  if (place === undefined) return false
+  const begun = takeOut(bot, place)
+  bot.openParts ??= []
+  bot.openParts.push({ sessionId: currentSession(bot), segments: bot.segments ?? [], startedAt: now, ...threadBegun(bot.threadStartedAt) })
+  bot.sessionId = sessionId
+  bot.segments = []
+  if (Number.isFinite(begun)) bot.threadStartedAt = begun
+  else delete bot.threadStartedAt
+  return true
+}
+
+// Opening an earlier part of a background thread while the current part is idle: it
+// leaves that chain, and the current part joins the current chain's earlier parts in
+// its place. Returns false for a part that is in no background chain.
+export function openEarlierOfThread(bot, sessionId, now = Date.now()) {
+  const place = earlierPlace(bot, sessionId)
+  if (place?.thread !== 'open') return false
+  takeOut(bot, place)
+  ;(bot.segments ??= []).push({ sessionId: currentSession(bot), endedAt: now, cut: true })
+  bot.sessionId = sessionId
+  return true
+}
+
 // Every session this Bot keeps outside its current thread, for cleanup, memory and the
 // session list.
 export const openSessions = bot => (bot?.openParts ?? []).flatMap(part => [part.sessionId, ...(part.segments ?? []).map(segment => segment.sessionId)])
+
+// Every part of a Bot's own chat: the current one, each background thread's current
+// one, and the earlier parts of every chain.
+export const ownChatParts = bot => [currentSession(bot), ...(bot?.segments ?? []).map(segment => segment?.sessionId), ...openSessions(bot)]
+  .filter((id, index, list) => id !== undefined && list.indexOf(id) === index)
 
 // A part that just moved on records a successor only when it belongs to an open thread:
 // the foreground chat keeps its current part in `bot.sessionId`. The thread is read
