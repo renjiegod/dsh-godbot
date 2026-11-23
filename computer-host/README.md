@@ -1,6 +1,12 @@
 # Godbot Computer Host
 
-Pair an Android Godbot app or an owner-authenticated local dsh web profile with this computer. The host connects out to a Godbot link v1 relay. It keeps its own identity and controller grants in an owner-only directory. The default location is `~/.local/share/godbot-computer-host`. Its local administration endpoint is a Unix socket readable only by that account.
+Pair an Android Godbot app or an owner-authenticated local dsh web profile with this computer. The host connects out to your existing Godbot Server using the Godbot link v1 protocol. It keeps its own identity and controller grants in an owner-only directory. The default location is `~/.local/share/godbot-computer-host`. Its local administration endpoint is a Unix socket readable only by that account.
+
+## Enable remote access from Godbot on Mac
+
+On an Apple silicon Mac, install `dsh-godbot` and open **Remote computers → This computer** in DSH Web. Select **Enable remote access**. Godbot verifies and installs its bundled Mac helper and video encoder, then starts the user service. Use **Open macOS permissions** from that screen and allow Screen Recording for viewing and Accessibility for keyboard and mouse control. Create a pairing link there when you want to connect from Godbot Android or another DSH Web profile.
+
+An existing Computer Host login service can be adopted from the same panel. Stop a foreground `godbot-computer start` process before using the panel to manage it. The managed host retains the computer identity and controller approvals. Check Screen Recording and Accessibility after adoption if macOS asks again. When a newer signed host comes with a Godbot update, the service updates automatically once its pending and active sessions have ended. Select **Turn off remote access** to stop and disable the managed service.
 
 ## Install a standalone host
 
@@ -21,7 +27,7 @@ The macOS 0.1.2 prerelease uses an Apple Development identity and has no Apple n
 ## Start and pair
 
 ```sh
-godbot-computer start --relay wss://YOUR-RELAY/v1/link --name "My computer"
+godbot-computer start --relay wss://YOUR-GODBOT-SERVER/v1/link --name "My computer"
 ```
 
 In another trusted local terminal run `godbot-computer pair --qr` to scan the offer with Android. For dsh web, run `godbot-computer pair` and paste the offer in Remote computers. Each offer expires after five minutes and enrolls one controller. Use `pair --out NEW_FILE` to create a private mode-0600 file. A second controller needs its own offer. Use `cancel-pair` to cancel an unused offer. The host blocks new screen capture while an offer or trusted settings is visible. A local development relay can use `ws://127.0.0.1:PORT/v1/link`.
@@ -38,7 +44,7 @@ Use `install-service --relay URL [--headless]` to install a user LaunchAgent on 
 
 ## Graphical runtime
 
-The graphical add-on includes the WebRTC media peer and the target adapter. Install a system FFmpeg with libvpx for VP8 encoding. On macOS, open **Finder → Home → Applications → Godbot Computer Host**. The add-on installer creates a stable `~/Applications/Godbot Computer Host.app` shortcut to the active signed package. In **System Settings → Privacy & Security**, enable this app under **Screen & System Audio Recording** for viewing and **Accessibility** for keyboard and pointer control, then check `status`. If the same-named app already belongs to another installation, the installer prints the active packaged app path. Signed application identity, OS privacy settings, screen lock and login-session state determine availability. Confirm the exact display and the target-side Stop control. On Linux install GTK 3, GStreamer and platform integration for the current seat. Debian and Ubuntu packages include `python3-gi`, `python3-dbus`, `python3-xlib`, `gir1.2-gtk-3.0`, `gir1.2-gstreamer-1.0`, `gstreamer1.0-plugins-good`, `gstreamer1.0-x`, `gstreamer1.0-pipewire`, `xdotool`, `zenity`, and `ffmpeg`. Wayland needs the compositor's ScreenCast and RemoteDesktop portals and a local screen selection where required. On an unsupported or locked seat the controller sees the reason. Headless terminal access remains available with its own grant.
+The graphical add-on includes the WebRTC media peer and the target adapter. The managed Mac installation includes its VP8 encoder. Standalone desktop hosts use a system FFmpeg with libvpx for VP8 encoding. On macOS, open **Finder → Home → Applications → Godbot Computer Host**. The add-on installer creates a stable `~/Applications/Godbot Computer Host.app` shortcut to the active signed package. In **System Settings → Privacy & Security**, enable this app under **Screen & System Audio Recording** for viewing and **Accessibility** for keyboard and pointer control, then check `status`. If the same-named app already belongs to another installation, the installer prints the active packaged app path. Signed application identity, OS privacy settings, screen lock and login-session state determine availability. Confirm the exact display and the target-side Stop control. On Linux install GTK 3, GStreamer and platform integration for the current seat. Debian and Ubuntu packages include `python3-gi`, `python3-dbus`, `python3-xlib`, `gir1.2-gtk-3.0`, `gir1.2-gstreamer-1.0`, `gstreamer1.0-plugins-good`, `gstreamer1.0-x`, `gstreamer1.0-pipewire`, `xdotool`, `zenity`, and `ffmpeg`. Wayland needs the compositor's ScreenCast and RemoteDesktop portals and a local screen selection where required. On an unsupported or locked seat the controller sees the reason. Headless terminal access remains available with its own grant.
 
 ## STUN and TURN
 

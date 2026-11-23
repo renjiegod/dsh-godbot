@@ -2,3 +2,6 @@ node_modules/
 *.tgz
 .DS_Store
 AGENTS.md
+/computer-host/bundled/
+/computer-host/bundled-encoder/
+/.godbot-host-stage-*/

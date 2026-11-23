@@ -26,8 +26,8 @@ if (values.help) {
       return false
     }
   }
-  const release = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'BACKGROUND-REPLY', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5', 'E8', 'E12', 'E13', 'E15', 'E16', 'E17', 'LOCAL-SIGNIN', 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS']
-  const all = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'BACKGROUND-REPLY', 'LOCAL-SIGNIN', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS']
+  const release = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'BACKGROUND-REPLY', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5', 'E8', 'E12', 'E13', 'E15', 'E16', 'E17', 'LOCAL-SIGNIN', 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS', 'BUNDLED-COMPUTER-HOST']
+  const all = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'BACKGROUND-REPLY', 'LOCAL-SIGNIN', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS', 'BUNDLED-COMPUTER-HOST']
   const connectorCases = ['L-CLAUDE', 'L-CODEX']
   const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
   const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS']
@@ -77,7 +77,12 @@ if (values.help) {
           continue
         }
         // PHONE needs a godbot-server relay binary (renjiegod/godbot-server, go build ./cmd/godbot-relay).
-        if ((id.startsWith('PHONE') || id === 'REMOTE-COMPUTERS') && !process.env.GODBOT_RELAY_BIN) {
+        if (id === 'BUNDLED-COMPUTER-HOST' && (process.platform !== 'darwin' || process.arch !== 'arm64')) {
+          row.status = 'skipped'
+          row.reason = 'The bundled host E2E requires an Apple silicon Mac'
+          continue
+        }
+        if ((id.startsWith('PHONE') || id === 'REMOTE-COMPUTERS' || id === 'BUNDLED-COMPUTER-HOST') && !process.env.GODBOT_RELAY_BIN) {
           row.status = 'skipped'
           row.reason = 'Set GODBOT_RELAY_BIN to a godbot-relay binary to run ' + id
           console.log(row.reason)

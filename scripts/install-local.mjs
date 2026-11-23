@@ -14,6 +14,7 @@ const [pack] = JSON.parse(
   execFileSync('npm', ['pack', '--json', '--pack-destination', archives], { cwd: root, encoding: 'utf8' }),
 )
 const archive = resolve(archives, pack.filename)
+execFileSync(process.execPath, ['scripts/check-bundled-host-package.mjs', archive], { cwd: root, stdio: 'inherit' })
 const digest = createHash('sha256').update(readFileSync(archive)).digest('hex').slice(0, 12)
 const target = archive.replace(/\.tgz$/, '-' + digest + '.tgz')
 renameSync(archive, target)

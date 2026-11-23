@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { buildId } from './build-id.js'
 import { RemoteComputers } from './remote-computers.js'
+import { BundledComputerHost } from './bundled-computer-host.js'
 import { BotTerminals } from './bot-terminals.js'
 import { GodbotService, readOnlyWorkspaceSnapshot } from './service.js'
 import { createGodbotRemote } from './dsh-remote.js'
@@ -89,8 +90,21 @@ export async function apply(ctx, config = {}) {
       const service = new GodbotService({ stateDir, config, subprocess, runtime })
       const terminals = new BotTerminals(service, subprocess)
       const computers = new RemoteComputers(stateDir)
-      return { service, terminals, computers, start: () => service.start(child),
-        async close() { try { await computers.close() } finally { try { await terminals.dispose() } finally { await service.close() } } } }
+      const computerHost = new BundledComputerHost({ stateDir })
+      return {
+        service, terminals, computers, computerHost,
+        async start() {
+          await service.start(child)
+          computerHost.start()
+        },
+        async close() {
+          try {
+            await computerHost.close()
+          } finally {
+            try { await computers.close() } finally { try { await terminals.dispose() } finally { await service.close() } }
+          }
+        },
+      }
     }, error => child.logger.warn('Could not activate Bot workspace operations: %s', error.message))
     current = scope
     child.effect(() => () => {
@@ -116,6 +130,11 @@ export async function apply(ctx, config = {}) {
       const scope = workspace()
       await scope.ready()
       return scope.existing({ write: true }).computers.handle(request, peer, signal)
+    },
+    machineHost: async request => {
+      const scope = workspace()
+      await scope.ready()
+      return scope.existing({ write: request.action !== 'status' }).computerHost.handle(request)
     },
     terminalStatus: async request => (await workspace().ready())?.terminals.status(request) ?? { active: false, closing: false },
     terminalOpen: async request => {

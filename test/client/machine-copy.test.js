@@ -16,6 +16,12 @@ test('machine recovery, accessibility and transport labels exist in every regist
   }))
 
   const labels = [
+    'This computer',
+    'Hosting with this Godbot installation requires a Mac with Apple silicon. You can still connect to another computer.',
+    'Enable remote access',
+    'Open macOS permissions',
+    'Copy pairing link',
+    'Turn off remote access? Current sessions can finish.',
     'Get a new offer on the computer',
     'Access ended by the computer',
     'Sharing paused for a private prompt',

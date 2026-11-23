@@ -399,3 +399,47 @@
   background: var(--bt-bubble);
   font-weight: 640;
 }
+
+.gb-machine-list > .gb-local-host-nav {
+  margin-bottom: 8px;
+}
+.gb-local-host .gb-machine-ready {
+  margin: 14px 0 0;
+}
+.gb-local-host form label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+.gb-local-host input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  margin: 5px 0 12px;
+  padding: 8px;
+  border: 1px solid var(--gb-machine-control-line);
+  border-radius: 8px;
+  background: var(--bt-main);
+  color: inherit;
+  font: inherit;
+}
+.gb-local-host input[readonly] {
+  background: var(--bt-card);
+}
+.gb-local-host-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.gb-local-host-permission {
+  display: contents;
+}
+.gb-local-host .gb-machine-stats {
+  margin-top: 8px;
+  gap: 6px 20px;
+}
+.gb-local-host h4 {
+  margin: 0;
+}
