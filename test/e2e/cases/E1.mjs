@@ -57,6 +57,7 @@ export default async function E1(context) {
     }
     context.note('terminal-buttons-after-chat-switch', { headers, sameChatUpdates: 2 })
     await verifyDelegatedTrace(host, codex, claude, context.note)
+    await verifyNativeToolGroups(host, dsh)
   } finally { await tickets.close() }
 }
 
@@ -106,6 +107,18 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   }
   const verifySteps = async expected => {
     for (const tool of expected) await verifyTool(flow, tool)
+  }
+  const groupFor = row => row.locator('xpath=../..').locator(':scope > [data-gb-tool-group]')
+  const openGroup = async (row, count, collapsed = false) => {
+    const group = groupFor(row)
+    await group.getByText(`${count} 次工具调用`, { exact: true }).waitFor()
+    if (collapsed) {
+      assert.equal(await group.getAttribute('aria-expanded'), 'false')
+      await row.waitFor({ state: 'hidden' })
+    }
+    if (await group.getAttribute('aria-expanded') !== 'true') await group.click()
+    await row.waitFor()
+    return group
   }
   const verifyOrder = async (scope, sequence) => {
     let previous
@@ -167,9 +180,20 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   }
   assert.equal(await step(flow, 'Grep', 'running').count(), 0, 'Claude is paused before the complete assistant frame')
   await writeFile(join(host.workspace, 'claude-execution-trace-start'), '')
+  const read = step(flow, 'Read', 'completed')
+  const readGroup = await openGroup(read, 2, true)
+  await readGroup.getByText('1 项失败', { exact: true }).waitFor()
+  await readGroup.press('Space')
+  await read.waitFor({ state: 'hidden' })
+  await flow.getByText(middle, { exact: true }).waitFor()
+  await readGroup.press('Enter')
   await verifySteps([...claudeTools, bashRunning])
   await verifyOrder(flow, [progress, ['Read', 'completed'], ['Grep', 'failed'], middle, ['Bash', 'running', 'Read fixture version']])
   await writeFile(join(host.workspace, 'claude-execution-trace-continue'), '')
+  const bash = step(flow, 'Bash', 'running', 'Read fixture version')
+  const late = status => step(flow, 'Bash', status, 'Verify the new fixture route')
+  await openGroup(bash, 73)
+  await openGroup(late('running'), 2, true)
   await verifyOrder(flow, claudeOrder('running', 'running'))
   assert.equal(await flow.locator('details[data-gb-execution-tool]').filter({ has: page.getByText('Bash', { exact: true }) }).count(), 75)
   assert.equal(await flow.getByText(progress, { exact: true }).count(), 1, 'Claude streamed its progress once')
@@ -180,6 +204,9 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   await page.reload()
   await openFullTeam(host)
   await openChat(claude)
+  await openGroup(read, 2, true)
+  await openGroup(bash, 73, true)
+  await openGroup(late('running'), 2, true)
   await verifySteps([...claudeTools, bashRunning])
   await verifyOrder(flow, claudeOrder('running', 'running'))
   await writeFile(join(host.workspace, 'claude-execution-trace-release'), '')
@@ -208,6 +235,8 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   assert.equal(await flow.getByText(acpProgress).count(), 0, 'ACP tool is visible before any response text')
   await writeFile(join(host.workspace, 'acp-execution-trace-release'), '')
   const acpReply = await acpRun.waitForReply()
+  const search = step(flow, 'Search', 'failed')
+  await openGroup(search, 2, true)
   await verifySteps(acpTools)
   await verifyReport(acpRun.marker)
 
@@ -219,6 +248,12 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
     [acpTarget, acpTools, acpRun, [['Read', 'completed', 'acp-fixture-trace.txt'], acpProgress, ['Search', 'failed'], ['Edit', 'completed'], reportHeading]],
   ]) {
     await openChat(bot)
+    if (bot === claude) {
+      await openGroup(read, 2, true)
+      await openGroup(step(flow, 'Bash', 'failed', 'Read fixture version'), 73, true)
+      await openGroup(late('completed'), 2, true)
+    }
+    if (bot === acpTarget) await openGroup(search, 2, true)
     await verifySteps(tools)
     await verifyReport(delegated.marker)
     await verifyOrder(flow, order)
@@ -240,4 +275,51 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
     acp: { requestId: acpRun.requestId, replyId: acpReply, steps: acpTools.length },
     recoveredAfterRestart: true,
   })
+}
+
+async function verifyNativeToolGroups(host, bot) {
+  const { page } = host
+  const id = randomUUID()
+  const reply = host.model.reply
+  const progress = 'Native fixture prose between calls.'
+  const final = 'Native tool grouping complete.'
+  const toolId = index => `toolu_${id.replaceAll('-', '')}_${index}`
+  const call = index => ({ type: 'tool_use', id: toolId(index), name: 'mcp__tickets__read', input: { query: { id: `${id}-${index}` } } })
+  let step = 0
+  host.model.reply = (body, request) => {
+    if (!JSON.stringify(body.messages).includes(id)) return reply(body, request)
+    switch (++step) {
+      case 1: return [call(1)]
+      case 2: return [call(2)]
+      case 3: return [{ type: 'text', text: progress }, call(3)]
+      default: return final
+    }
+  }
+  try {
+    await page.locator('.bt-row-title').filter({ hasText: bot.name }).click()
+    await page.locator('.bt-head .bt-pill-name').filter({ hasText: bot.name }).waitFor()
+    await host.bot('send', { sessionId: bot.id, text: 'Run native tool grouping fixture ' + id })
+    const flow = page.locator('[data-slot="conversation.chat.flow"]')
+    await flow.getByText(final, { exact: true }).waitFor()
+    const receipt = index => flow.locator(`details[data-gb-execution-tool="${toolId(index)}"]`)
+    const first = receipt(1)
+    const group = first.locator('xpath=../..').getByRole('button', { name: '2 次工具调用', exact: true })
+    await group.waitFor()
+    assert.equal(await group.getAttribute('aria-expanded'), 'false')
+    await first.waitFor({ state: 'hidden' })
+    await receipt(2).waitFor({ state: 'hidden' })
+    await flow.getByText(progress, { exact: true }).waitFor()
+    await receipt(3).waitFor()
+    await group.click()
+    await first.waitFor()
+    await receipt(2).waitFor()
+    await receipt(2).locator('summary').click()
+    await receipt(2).getByRole('heading', { name: '输出', exact: true }).waitFor()
+    await group.click()
+    await receipt(2).waitFor({ state: 'hidden' })
+    await group.click()
+    await receipt(2).getByRole('heading', { name: '输出', exact: true }).waitFor()
+  } finally {
+    host.model.reply = reply
+  }
 }
