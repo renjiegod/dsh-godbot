@@ -250,7 +250,8 @@ test('a local agent CLI is not shown DSH\'s skill catalog', () => {
 test('Claude Code is not shown the CLAUDE.md files it reads itself', () => {
   const root = project({ 'CLAUDE.md': 'claude rules', 'AGENTS.md': 'agent rules', 'app/AGENTS.md': 'app rules', 'app/CLAUDE.md': '->AGENTS.md' })
   const cwd = join(root, 'app')
-  const message = workspaceInstructions('w', [['~/.agents/AGENTS.md', 'global rules'], ['CLAUDE.md', 'claude rules'], ['AGENTS.md', 'agent rules'], ['app/AGENTS.md', 'app rules']])
+  // Files end with a line break, which leaves a blank line before the next heading.
+  const message = workspaceInstructions('w', [['~/.agents/AGENTS.md', 'global rules\n'], ['CLAUDE.md', 'claude rules\n'], ['AGENTS.md', 'agent rules\n'], ['app/AGENTS.md', 'app rules\n']])
   const [out] = withoutNativeContext([message], { kind: 'claude', cwd })
   const shown = kept([out])
   assert.match(shown, /^<system-reminder>\nThe following workspace instructions/)
@@ -286,7 +287,7 @@ test('Claude Code\'s replay and later input leave out what it has of its own', {
   const recordPath = join(mkdtempSync(join(tmpdir(), 'godbot-instructions-')), 'record.jsonl')
   const adapter = adapterWith(['--knows-prompt-file'], recordPath, root)
   t.after(() => adapter.dispose())
-  const rules = workspaceInstructions('w0', [['~/.agents/AGENTS.md', 'global rules'], ['CLAUDE.md', 'claude rules']])
+  const rules = workspaceInstructions('w0', [['~/.agents/AGENTS.md', 'global rules\n'], ['CLAUDE.md', 'claude rules\n']])
   const first = [system('You are Ada.'), user('u0', 'earlier'), said('a0', 'noted'), rules, catalog('k0'), user('u1', 'hello')]
   await ask(adapter, first)
   await ask(adapter, [...first, said('a1', 'hi'), catalog('k1'), workspaceInstructions('w1', [['CLAUDE.md', 'claude rules, changed']]), user('u2', 'next')])
