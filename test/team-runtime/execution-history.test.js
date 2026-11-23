@@ -126,7 +126,7 @@ test('execution history preserves assistant and tool positions after updates and
   let seq = 0
   const observe = (type, data = {}) => history.observe('part', { type, data: { ...data, turn: 2 }, seq: ++seq })
   observe('turn/start')
-  history.record('part', { type: 'tool', id: 'a', name: 'Read', status: 'running' })
+  history.record('part', { type: 'tool', id: 'a', name: 'Read', status: 'running', activityKind: 'skill' })
   history.record('part', { type: 'tool', id: 'b', name: 'Read', status: 'running' })
   assert.deepEqual((await history.read({ ...part, onlyTools: true })).events.map(row => row.status), ['running', 'running'])
   history.record('part', { type: 'tool', id: 'b', status: 'completed' })
@@ -145,9 +145,11 @@ test('execution history preserves assistant and tool positions after updates and
   observe('assistant/message', { message: { content: [{ type: 'text', text: 'Finished' }] } })
   observe('turn/end')
   history.close()
-
   const reopened = new ExecutionHistory(rt)
   t.after(() => reopened.close())
+  const tools = (await reopened.read({ ...part, onlyTools: true })).events
+  assert.equal(tools.find(tool => tool.id === 'a').activityKind, 'skill')
+
   assert.deepEqual((await reopened.read(part)).events.map(row => row.type === 'text' ? row.text : [row.id, row.status]), [
     'Starting', ['a', 'failed'], 'Continuing', ['b', 'completed'], ['godbot-host', 'completed'], 'Finished',
   ])

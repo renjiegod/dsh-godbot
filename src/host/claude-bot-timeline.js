@@ -1,6 +1,7 @@
 import { claudeUsageFrame } from '../drivers/external/claude-usage-data.js'
 import { claudeToolResult } from '../drivers/external/tool-results.js'
 import { commandLabel, toolActivity } from './team-runtime/tool-activity.js'
+import { skillNameFromPath, toolKind } from './team-runtime/shared/tool-kind.js'
 
 // Stream-json emits each content block in order, then repeats its complete
 // value in one or more assistant frames (often one frame per block).
@@ -13,14 +14,17 @@ export function attachClaudeBotTimeline(session, { cwd, onControl, usageDelivery
   function reportTool(block, parentId, partial) {
     if (block.name?.startsWith('mcp__godbot__')) return // The host records this call.
     const { id, name, input } = block
-    const target = input?.file_path ?? input?.path ?? input?.description ?? commandLabel(input?.command)
+    const path = input?.file_path ?? input?.path
+    const activityKind = name === 'Task' ? 'agent' : toolKind(name, path)
+    const target = (activityKind === 'skill' ? input?.skill ?? skillNameFromPath(path) : undefined)
+      ?? path ?? input?.description ?? commandLabel(input?.command)
     if (typeof id !== 'string' || !id) {
       if (!partial) session.emit(toolActivity(name, target, 'started'))
       return
     }
     const known = calls.get(id)
     if (partial && known) return
-    const trace = { type: 'tool', id, name, cwd, parentId, text: target,
+    const trace = { type: 'tool', id, name, activityKind, cwd, parentId, text: target,
       ...(!partial ? { input } : {}), ...(!known ? { status: 'running' } : {}) }
     calls.set(id, { name, filePath: input?.file_path ?? known?.filePath })
     session.emit({ ...(known ? { type: 'execution-trace' } : toolActivity(name, target, 'started')), trace })

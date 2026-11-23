@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { until } from '../host.mjs'
-import { openFullTeam } from '../native-ui.mjs'
+import { openBotChat, openFullTeam } from '../native-ui.mjs'
 import { ticketEnvironment, member, sendTicket, replyOf, verifyMemberRead } from '../tickets.mjs'
 
 export default async function E1(context) {
@@ -58,6 +58,7 @@ export default async function E1(context) {
     context.note('terminal-buttons-after-chat-switch', { headers, sameChatUpdates: 2 })
     await verifyDelegatedTrace(host, codex, claude, context.note)
     await verifyNativeToolGroups(host, dsh)
+    await verifyCodexConversation(host, codex, context.note)
   } finally { await tickets.close() }
 }
 
@@ -188,9 +189,11 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   await flow.getByText(middle, { exact: true }).waitFor()
   await readGroup.press('Enter')
   await verifySteps([...claudeTools, bashRunning])
+  const bash = step(flow, 'Bash', 'running', 'Read fixture version')
+  assert.equal(await read.getAttribute('data-gb-tool-kind'), 'read')
+  assert.equal(await bash.getAttribute('data-gb-tool-kind'), 'command')
   await verifyOrder(flow, [progress, ['Read', 'completed'], ['Grep', 'failed'], middle, ['Bash', 'running', 'Read fixture version']])
   await writeFile(join(host.workspace, 'claude-execution-trace-continue'), '')
-  const bash = step(flow, 'Bash', 'running', 'Read fixture version')
   const late = status => step(flow, 'Bash', status, 'Verify the new fixture route')
   await openGroup(bash, 73)
   await openGroup(late('running'), 2, true)
@@ -232,12 +235,15 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   const acpRun = await delegate(acpTarget, 'ACP')
   await openChat(acpTarget)
   await verifyOrder(flow, [['Read', 'running', 'acp-fixture-trace.txt']])
+  assert.equal(await step(flow, 'Read', 'running', 'acp-fixture-trace.txt').getAttribute('data-gb-tool-kind'), 'read')
   assert.equal(await flow.getByText(acpProgress).count(), 0, 'ACP tool is visible before any response text')
   await writeFile(join(host.workspace, 'acp-execution-trace-release'), '')
   const acpReply = await acpRun.waitForReply()
   const search = step(flow, 'Search', 'failed')
   await openGroup(search, 2, true)
   await verifySteps(acpTools)
+  assert.equal(await search.getAttribute('data-gb-tool-kind'), 'search')
+  assert.equal(await step(flow, 'Edit', 'completed', 'acp-fixture-trace.txt').getAttribute('data-gb-tool-kind'), 'edit')
   await verifyReport(acpRun.marker)
 
   await host.restart()
@@ -275,6 +281,50 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
     acp: { requestId: acpRun.requestId, replyId: acpReply, steps: acpTools.length },
     recoveredAfterRestart: true,
   })
+}
+
+async function verifyCodexConversation(host, bot, note) {
+  const { page } = host
+  await host.bot('set-prefs', { layout: 'conversation', thinking: true })
+  await openBotChat(host, bot)
+  const editor = page.locator('[data-composer-card] [role=textbox]')
+  await editor.fill('Verify the Codex conversation layout')
+  await editor.press('Enter')
+  const flow = page.locator('[data-slot="conversation.chat.flow"]')
+  const answer = flow.getByRole('heading', { name: 'Conversation check completed' })
+  await answer.waitFor()
+  const verify = async () => {
+    const rows = [
+      flow.getByText('I will check the review instructions.', { exact: true }).first(),
+      flow.locator('[data-gb-execution-tool="process-skill"]'),
+      flow.getByText('The instructions are ready. I can run the checks.', { exact: true }).first(),
+      flow.locator('[data-gb-execution-tool="process-shell"]'),
+      answer,
+    ]
+    for (const row of rows) await row.waitFor()
+    await until(() => rows[1].evaluate(element => !element.closest('[hidden]')),
+      'skill row exposed to browser accessibility')
+    for (let i = 1; i < rows.length; i++) {
+      const next = await rows[i].elementHandle()
+      assert.ok(await rows[i - 1].evaluate((previous, next) =>
+        Boolean(previous.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING), next))
+    }
+    assert.equal(await rows[1].getAttribute('data-gb-tool-kind'), 'skill')
+    assert.equal(await rows[3].getAttribute('data-gb-tool-kind'), 'command')
+    await rows[1].locator('summary').getByText('加载技能', { exact: true }).waitFor()
+    await rows[3].locator('summary').getByText('运行命令', { exact: true }).waitFor()
+    assert.equal(await flow.locator('.bt-think summary').filter({ hasText: 'qa-review' }).count(), 0)
+  }
+  await verify()
+  await host.capture('codex-conversation-process')
+  const skill = flow.locator('details[data-gb-execution-tool="process-skill"]')
+  await skill.locator('summary').click()
+  await skill.locator('pre').filter({ hasText: 'Review instructions loaded.' }).waitFor()
+  await host.restart()
+  await openFullTeam(host)
+  await openBotChat(host, bot)
+  await verify()
+  note('codex-conversation-process', { categories: ['thinking', 'skill', 'thinking', 'command', 'answer'], afterRestart: true })
 }
 
 async function verifyNativeToolGroups(host, bot) {

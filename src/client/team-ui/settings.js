@@ -84,7 +84,7 @@ function SetRow({ label, hint, children, className = '' }) {
     children ? h('div', { className: 'bt-set-control' }, children) : null)
 }
 
-const LAYOUTS = [['bubble', 'Bubble'], ['flat', 'Flat']]
+const LAYOUTS = [['conversation', 'Conversation'], ['bubble', 'Bubble'], ['flat', 'Flat']]
 const EFFECTS = [['full', 'Full'], ['reduced', 'Reduced'], ['off', 'None']]
 
 function Choice({ label, value, options, pick }) {
@@ -162,8 +162,7 @@ function GeneralPage({ roster, actions, run, dsh }) {
           h('label', { className: 'bt-swatch bt-swatch-custom', title: t('Custom accent'), 'data-on': Boolean(prefs.accent) && !ACCENT_INKS.some(ink => INKS[ink][0] === prefs.accent) },
             h('input', { type: 'color', value: custom, 'aria-label': t('Custom accent'), onChange: event => pickCustom(event.target.value) })))),
       h(SetRow, { label: t('Message layout') }, h(Choice, { label: t('Message layout'), value: layoutOf(prefs), options: LAYOUTS, pick: id => run(actions.setPrefs({ layout: id })) })),
-      // The flat layout's text has a width of its own; the bubble width stays for the user's messages.
-      layoutOf(prefs) === 'flat' ? h(SetRow, { label: t('Text width') }, h(WidthSlider, { label: t('Text width'), value: flatWidthOf(prefs), save: flatWidth => run(actions.setPrefs({ flatWidth })) })) : null,
+      layoutOf(prefs) !== 'bubble' ? h(SetRow, { label: t('Text width') }, h(WidthSlider, { label: t('Text width'), value: flatWidthOf(prefs), save: flatWidth => run(actions.setPrefs({ flatWidth })) })) : null,
       h(SetRow, { label: t('Bubble width') }, h(WidthSlider, { label: t('Bubble width'), value: widthOf(prefs), save: width => run(actions.setPrefs({ width })) })),
       h(SetRow, { label: t('Interface motion') }, h(Choice, { label: t('Interface motion'), value: effectsOf(prefs), options: EFFECTS, pick: id => run(actions.setPrefs({ effects: id })) })),
       h(SetRow, { label: t('Show thinking') }, h(Switch, { label: t('Show thinking'), on: thinkingShown(prefs), onChange: thinking => run(actions.setPrefs({ thinking })) })),

@@ -258,9 +258,9 @@ export function install(rt) {
       else throw invalid('Effects must be full, reduced or off')
     }
     if (body.layout !== undefined) {
-      if (body.layout === null || body.layout === 'bubble') delete state.prefs.layout
-      else if (body.layout === 'flat') state.prefs.layout = body.layout
-      else throw invalid('Layout must be bubble or flat')
+      if (body.layout === null || body.layout === 'conversation') delete state.prefs.layout
+      else if (body.layout === 'bubble' || body.layout === 'flat') state.prefs.layout = body.layout
+      else throw invalid('Layout must be conversation, bubble or flat')
     }
     if (body.width !== undefined) {
       if (body.width === null || body.width === 80) delete state.prefs.width
