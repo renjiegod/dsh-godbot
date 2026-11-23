@@ -1728,8 +1728,7 @@ const ZH = {
   "Open this session": "打开这个会话",
   "Open this running session": "打开这个正在运行的会话",
   "A running session keeps using model calls in the background.": "运行中的会话会在后台继续消耗模型调用。",
-  "Sessions of {name}": "{name} 的会话",
-  "All sessions ({count})": "全部会话（{count}）",
+  "Switch session": "切换会话",
   "{count} running in the background": "{count} 个会话在后台运行",
 }
 
