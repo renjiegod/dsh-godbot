@@ -19,7 +19,7 @@ import { LoopbackMcp } from '../../team/mcp.js'
 import { serviceOf } from './core/services.js'
 import { splitRef } from './core/text.js'
 import { output } from './core/tools.js'
-import { LocalAgentAdapter, DEFAULT_CONTEXT_WINDOW } from './core/local-agents/adapter.js'
+import { LocalAgentAdapter, DEFAULT_CONTEXT_WINDOW, nativeInputModalities } from './core/local-agents/adapter.js'
 import { AcpEngine, ownToolCall } from './core/local-agents/acp.js'
 import { CodexEngine } from './core/local-agents/codex.js'
 import { createWorkspaceClaudeEngine } from '../workspace-agent-controls.js'
@@ -500,9 +500,13 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     if (this.sandboxes && sandboxRouteInfo(route)) {
       const target = sandboxRouteInfo(route)
       if (!this.sandboxes.routes().some(row => row.route === 'local-sandbox-' + target.kind + '-' + target.accountId)) return []
-      const reported = this.sandboxes.models.get(route) ?? []
+      const { rows: reported = [], supportsImages } = this.sandboxes.models.get(route) ?? {}
       const ids = new Set(['default', ...reported.map(row => row.id), ...this.deps.usedModels(route)])
-      return [...ids].map(id => reported.find(row => row.id === id) ?? { id, provider: route, name: id === 'default' ? 'CLI default' : id })
+      return [...ids].map(id => {
+        const row = reported.find(row => row.id === id) ?? { id, provider: route, name: id === 'default' ? 'CLI default' : id }
+        const inputModalities = nativeInputModalities(row.inputModalities, supportsImages)
+        return inputModalities === undefined ? row : { ...row, inputModalities }
+      })
     }
     const rows = await super.listModels(route)
     const reasoning = this.modelCache.has(route) && this.engines.get(route)?.defaultReasoning
@@ -514,7 +518,11 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
       const rows = await this.listModels(route)
       if (!rows.length) throw new Error('该沙箱账号当前不可用。')
       const selected = rows.find(row => row.id === model)
-      return { ...selected, provider: route, id: model, name: selected?.name ?? model, inputModalities: ['text'],
+      const inputModalities = selected === undefined
+        ? nativeInputModalities(undefined, this.sandboxes.models.get(route)?.supportsImages)
+        : selected.inputModalities
+      return { ...selected, provider: route, id: model, name: selected?.name ?? model,
+        ...(inputModalities === undefined ? {} : { inputModalities }),
         context: { contextWindow: DEFAULT_CONTEXT_WINDOW } }
     }
     if (ENGINES[route]?.kind === 'claude' && !this.modelCache.has(route)) await this.probeModels(route)
@@ -813,6 +821,7 @@ export function install(rt) {
       }
       case 'local-agent-refresh': {
         adapter.dropModelCache()
+        sandboxes.models.clear()
         for (const entry of found.values()) delete entry.signedIn
         await scan()
         await rt.catalog?.({ fresh: true })

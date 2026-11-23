@@ -168,3 +168,36 @@ test('a restored Claude model resolves its native thinking levels without probin
   assert.deepEqual(probes, [route])
   await adapter.dispose()
 })
+
+test('native route admission preserves model modalities and negotiated ACP support', async t => {
+  let acpImages
+  const codex = 'local-codex-cli'
+  const acp = 'local-antigravity'
+  const adapter = new WorkspaceAgentAdapter({
+    customAgents: () => [],
+    probeCwd: tmpdir,
+    spawnEngine(kind) {
+      return {
+        listModels: async () => kind === 'acp'
+          ? [{ id: 'gemini-3.8-flash' }]
+          : [{ id: 'text-model', inputModalities: ['text'] }, { id: 'vision-model', inputModalities: ['text', 'image'] }],
+        ...(kind === 'acp' ? { supportsImages: () => acpImages } : {}),
+        close: async () => {},
+      }
+    },
+  })
+  t.after(() => adapter.dispose())
+
+  assert.equal((await adapter.resolveModel(acp, 'gemini-3.8-flash')).inputModalities, undefined)
+  acpImages = true
+  await adapter.probeModels(acp)
+  assert.deepEqual((await adapter.resolveModel(acp, 'gemini-3.8-flash')).inputModalities, ['text', 'image'])
+  acpImages = false
+  assert.deepEqual((await adapter.resolveModel(acp, 'gemini-3.8-flash')).inputModalities, ['text'])
+  assert.deepEqual((await adapter.listModels(acp)).find(row => row.id === 'gemini-3.8-flash').inputModalities, ['text'])
+
+  await adapter.probeModels(codex)
+  assert.deepEqual((await adapter.resolveModel(codex, 'text-model')).inputModalities, ['text'])
+  assert.deepEqual((await adapter.resolveModel(codex, 'vision-model')).inputModalities, ['text', 'image'])
+  assert.equal((await adapter.resolveModel(codex, 'default')).inputModalities, undefined)
+})
