@@ -132,6 +132,16 @@ export function createLocalSignIn({ target, probe, signedIn, terminals, spawn = 
     setTimeout(() => sessions.delete(session.id), KEEP_MS).unref?.()
   }
 
+  // Signed in. What the sign-in changes (the CLI's old processes closed, its Bots
+  // unblocked) is done before the page hears of it, so that a turn the page then
+  // runs again finds the new sign-in.
+  async function succeed(session, verified) {
+    if (finished(session)) return
+    session.verified = verified
+    try { await signedIn(session.route) } catch {}
+    end(session, 'done')
+  }
+
   // The CLI is done: its own check says whether it is signed in now.
   async function confirm(session, { exitCode, manual = false } = {}) {
     if (finished(session)) return
@@ -149,9 +159,7 @@ export function createLocalSignIn({ target, probe, signedIn, terminals, spawn = 
       end(session, 'failed', { reason: 'exit', ...(session.lastLine ? { detail: session.lastLine } : {}) })
       return result
     }
-    session.verified = result === true
-    end(session, 'done')
-    try { await signedIn(session.route) } catch {}
+    await succeed(session, result === true)
     return result
   }
 
@@ -261,7 +269,7 @@ export function createLocalSignIn({ target, probe, signedIn, terminals, spawn = 
         session.running = false
         void probe(session.route).catch(() => null).then((result) => {
           if (finished(session)) return
-          if (result === true) { session.verified = true; end(session, 'done'); void Promise.resolve(signedIn(session.route)).catch(() => {}) }
+          if (result === true) void succeed(session, true)
           else { session.state = 'exited'; changed(session) }
         })
         return
@@ -271,9 +279,7 @@ export function createLocalSignIn({ target, probe, signedIn, terminals, spawn = 
       void probe(session.route).catch(() => null).then((result) => {
         session.checking = false
         if (result !== true || finished(session)) return
-        session.verified = true
-        end(session, 'done')
-        void Promise.resolve(signedIn(session.route)).catch(() => {})
+        void succeed(session, true)
       })
     }, TERMINAL_CHECK_MS)
   }
