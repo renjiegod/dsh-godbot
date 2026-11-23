@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -99,6 +100,9 @@ test('Claude Code reads the instructions from a private file it knows, and the f
   assert.ok(first.user.includes(memory), 'the runtime context arrives in full')
   assert.ok(first.user.indexOf(memory) < first.user.indexOf('The conversation so far'))
   assert.doesNotMatch(first.user, /User: The following information/)
+  // The appended system prompt holds the instructions: the replay does not repeat them.
+  assert.doesNotMatch(first.user, /team instructions|You are Ada/)
+  assert.match(first.user, /User: earlier/)
 
   const { child } = adapter.live.get('part').engineSession
   await adapter.closeSession('part')
@@ -156,4 +160,63 @@ test('Codex keeps the developer instructions of the user\'s own config, on a new
 test('without own developer instructions Codex gets the team\'s alone', () => {
   assert.equal(withOwnInstructions('You are Ada.', undefined), 'You are Ada.')
   assert.equal(withOwnInstructions('You are Ada.', ''), 'You are Ada.')
+})
+
+function codexAdapter(recordPath, saved = {}) {
+  return new LocalAgentAdapter({
+    customAgents: () => [], usedModels: () => [], probeCwd: tmpdir, cwdFor: async () => tmpdir(),
+    presetFor: () => 'danger-full-access', toolsFor: () => [],
+    record: id => saved[id], saveRecord: (id, row) => { saved[id] = row }, patchRecord: () => {},
+    spawnEngine: (_kind, id, spec) => new CodexEngine(id, { ...spec, args: [fixture('fake-codex.mjs'), '--record', recordPath] }, { findExecutable: () => process.execPath }),
+  })
+}
+
+const askCodex = (adapter, messages) => Array.fromAsync(adapter.stream({
+  provider: 'local-codex-cli', model: 'default', sessionId: 'part', messages, signal: AbortSignal.timeout(10_000),
+}))
+
+const turnText = call => call.params.input.filter(item => item.type === 'text').map(item => item.text).join('\n')
+
+test('a new Codex thread holds the instructions as developer config, not in the replay', { timeout: 20_000 }, async (t) => {
+  const recordPath = join(mkdtempSync(join(tmpdir(), 'godbot-codex-')), 'record.jsonl')
+  const adapter = codexAdapter(recordPath)
+  t.after(() => adapter.dispose())
+  await askCodex(adapter, [system('You are Ada.'), user('u0', 'earlier'), said('a0', 'noted'), user('u1', 'hello')])
+
+  const calls = records(recordPath)
+  assert.equal(calls.find(call => call.method === 'thread/start').params.developerInstructions, 'You are Ada.')
+  const turn = turnText(calls.find(call => call.method === 'turn/start'))
+  assert.match(turn, /^The conversation so far \(oldest first\):/)
+  assert.doesNotMatch(turn, /You are Ada|team instructions/)
+  assert.equal(calls.some(call => call.method === 'thread/inject_items'), false)
+})
+
+test('a Codex thread that cannot be resumed is replaced by one with the instructions and the conversation', { timeout: 20_000 }, async (t) => {
+  const recordPath = join(mkdtempSync(join(tmpdir(), 'godbot-codex-')), 'record.jsonl')
+  const promptHash = createHash('sha256').update('You are Ada.').digest('hex')
+  const adapter = codexAdapter(recordPath, { part: { cliSessionId: 'missing', handedId: 'a0', promptHash } })
+  t.after(() => adapter.dispose())
+  await askCodex(adapter, [system('You are Ada.'), user('u0', 'earlier'), said('a0', 'noted'), user('u1', 'hello')])
+
+  const calls = records(recordPath)
+  assert.equal(calls.find(call => call.method === 'thread/resume').params.threadId, 'missing')
+  assert.equal(calls.find(call => call.method === 'thread/start').params.developerInstructions, 'You are Ada.')
+  const turn = turnText(calls.find(call => call.method === 'turn/start'))
+  assert.match(turn, /User: earlier[\s\S]+You: noted[\s\S]+User: hello/, 'the new thread hears the conversation it lost')
+  assert.doesNotMatch(turn, /You are Ada/)
+  assert.equal(calls.some(call => call.method === 'thread/inject_items'), false)
+})
+
+test('a resumed Codex thread hears about instructions that changed while it was away', { timeout: 20_000 }, async (t) => {
+  const recordPath = join(mkdtempSync(join(tmpdir(), 'godbot-codex-')), 'record.jsonl')
+  const promptHash = createHash('sha256').update('You are Ada.').digest('hex')
+  const adapter = codexAdapter(recordPath, { part: { cliSessionId: 'thr-old', handedId: 'a0', promptHash } })
+  t.after(() => adapter.dispose())
+  await askCodex(adapter, [system('You are Ada, renamed.'), user('u0', 'earlier'), said('a0', 'noted'), user('u1', 'hello')])
+
+  const calls = records(recordPath)
+  assert.equal(calls.some(call => call.method === 'thread/start'), false)
+  const injected = calls.find(call => call.method === 'thread/inject_items')
+  assert.match(injected.params.items[0].text, /^Updated team instructions \(replace earlier ones\):\n\nYou are Ada, renamed\.$/)
+  assert.equal(turnText(calls.find(call => call.method === 'turn/start')), 'hello')
 })
