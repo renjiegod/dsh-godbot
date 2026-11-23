@@ -50,7 +50,9 @@ function withoutNativeFiles(message, isNative) {
   const lead = []
   const sections = []
   for (const block of blocks) {
-    const heading = SECTION.exec(block.split('\n', 1)[0])
+    // A file that ends with a line break leaves a blank line before the next
+    // file's heading.
+    const heading = SECTION.exec(block.replace(/^\n+/, '').split('\n', 1)[0])
     if (heading !== null) sections.push({ path: heading[1].trim(), blocks: [block] })
     else if (sections.length === 0) lead.push(block)
     else sections.at(-1).blocks.push(block)
