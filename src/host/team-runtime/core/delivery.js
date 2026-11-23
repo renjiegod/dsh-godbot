@@ -163,8 +163,12 @@ export function install(rt) {
   // never reaches the CLI (local-agents/adapter.js). Behind a turn under way it waits
   // for the next one. It carries the origin of the turn that left the work running, so
   // the calls the CLI makes in it meet the same rules. False for a Session outside the team.
+  // A reply a Bot's CLI gave by itself shows in the Session whose CLI gave it. An earlier
+  // part that was archived has no turn to show it in, and another part's CLI knows
+  // nothing of it, so the CLI drops it (adapter.js dropBackground) rather than have it
+  // handed on.
   async function deliverBackground(sessionId, background) {
-    if (rt.selfOf(sessionId) === undefined) return false
+    if (!rt.isBotSession(sessionId)) return false
     const agent = await resolveAgent(sessionId)
     const origin = rt.governance?.lastOrigin(sessionId)
     agent.followup(createUserMessage({

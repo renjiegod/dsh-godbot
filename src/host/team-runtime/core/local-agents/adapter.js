@@ -460,6 +460,18 @@ export class LocalAgentAdapter extends LlmAdapter {
     return live.showing !== undefined || [...live.backgrounds.values()].some(turn => !turn.claimed)
   }
 
+  // Whether a Session's CLI still works with no turn of the Session's running: background
+  // tasks it runs (Claude Code's shells, Monitors and subagents), or a reply it gave by
+  // itself that the Session has yet to show. Such a Session is not idle: archiving it
+  // would leave that reply nowhere to show, and closing its process ends the tasks.
+  backgroundWork(sessionId) {
+    const live = this.live.get(String(sessionId))
+    if (live === undefined || live.dead) return false
+    if (this.backgroundWaits(live)) return true
+    const session = live.engineSession
+    return session !== undefined && (live.engine.backgroundTasks?.(session)?.length ?? 0) > 0
+  }
+
   // A turn no Session turn will show.
   dropBackground(live, turn) {
     turn.claimed = true
