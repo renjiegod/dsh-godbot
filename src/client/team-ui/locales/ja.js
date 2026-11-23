@@ -779,8 +779,6 @@ export const JA = {
   "Start a new session with {name}": "{name} と新しいセッションを開始",
   "New session · {time}": "新しいセッション · {time}",
   "{name} starts afresh here, with nothing carried over from the last session — send a message to begin.": "{name} はここで前のセッションの内容を持たずに新しく始めます。メッセージを送って始めましょう。",
-  "Previous session: “{title}”": "前のセッション：「{title}」",
-  "Open the previous session": "前のセッションを開く",
   "Context handed over · {time}": "コンテキストを引き継ぎ · {time}",
   "Context handed over": "コンテキストを引き継ぎ",
   "The conversation goes on in a fresh session with a handoff note. The messages above stay here.": "会話は引き継ぎメモを持って新しいセッションで続きます。上のメッセージはここに残ります。",

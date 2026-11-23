@@ -940,9 +940,8 @@ export function install(rt) {
     'Nothing needs an answer now; wait for the next message.',
   ].join('\n')
   // A handoff in every other way (hidden, not talk, acknowledged without the model);
-  // `opening` tells the chat that nothing came over with it, and `fromPart` names the
-  // part the user left, still live in the background.
-  const openingSource = fromPart => ({ kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'Godbot', exchangeId: randomUUID(), handoff: true, opening: true, fromPart })
+  // `opening` tells the chat that nothing came over with it.
+  const openingSource = () => ({ kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'Godbot', exchangeId: randomUUID(), handoff: true, opening: true })
 
   // Carries any active IM turn origin onto a synthetic switch/resume source without
   // replaying a stale request rpcId that the earlier part already consumed.
@@ -955,14 +954,12 @@ export function install(rt) {
   }
 
   // A turn stopped for a switch goes on with its own source, so its reply still
-  // reaches whoever asked. `fromPart` names the part the package came from: the chat
-  // shows each part as a session of its own and links back to that one, and `manual`
-  // tells it the user asked for the fresh part.
-  const handoffSource = (job, resume, fromPart) => carryOriginSource(job, {
+  // reaches whoever asked. `manual` tells the chat the user asked for the fresh part,
+  // which it shows as a session of its own.
+  const handoffSource = (job, resume) => carryOriginSource(job, {
     ...(resume && job.info ? job.info : { kind: SOURCE_KIND, form: 'relay', role: 'handoff', senderName: 'Godbot' }),
     exchangeId: job.info?.exchangeId ?? randomUUID(),
     handoff: true,
-    fromPart,
     ...(job.manual === true ? { manual: true } : {}),
     ...(resume ? { resume: true } : {}),
     ...(resume && job.joined?.length ? { joined: job.joined } : {}),
@@ -1415,7 +1412,7 @@ export function install(rt) {
       const text = job.manual && !resume ? NEW_SESSION_PACKAGE
         : handoffPackage({ room, self: bot === undefined, segment, lines: carried, number: number + 1, resume, overflow: job.overflow, cutoff: job.cutoff === true, failed: job.failed, bare: job.bare, folder, manual: job.manual, engine })
       freshParts.set(freshId, estimateTokens(text))
-      fresh.followup(createUserMessage({ content: [{ type: 'text', text }], source: handoffSource(job, resume, agent.id) }))
+      fresh.followup(createUserMessage({ content: [{ type: 'text', text }], source: handoffSource(job, resume) }))
       await ctx.sessions.flush(fresh.session)
       carry.push(...job.carry.splice(0))
       await forward(job, [...carry, ...held], freshId)
@@ -2347,7 +2344,7 @@ export function install(rt) {
       await rt.ensureCapabilities(freshId)
       const fresh = await rt.resolveAgent(freshId)
       freshParts.set(freshId, estimateTokens(OPENING_PACKAGE))
-      fresh.followup(createUserMessage({ content: [{ type: 'text', text: OPENING_PACKAGE }], source: openingSource(agent.id) }))
+      fresh.followup(createUserMessage({ content: [{ type: 'text', text: OPENING_PACKAGE }], source: openingSource() }))
       await ctx.sessions.flush(fresh.session)
     } catch (error) {
       rt.warn('godbot: the new part of %s did not open with its first turn: %s', bot.name, error)
