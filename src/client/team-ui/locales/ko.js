@@ -781,8 +781,6 @@ export const KO = {
   'Start a new session with {name}': '{name}와(과) 새 세션 시작',
   'New session · {time}': '새 세션 · {time}',
   '{name} starts afresh here, with nothing carried over from the last session — send a message to begin.': '{name}은(는) 이전 세션의 내용 없이 여기서 새로 시작합니다. 메시지를 보내 시작하세요.',
-  'Previous session: “{title}”': '이전 세션: “{title}”',
-  'Open the previous session': '이전 세션 열기',
   'Context handed over · {time}': '컨텍스트 인계됨 · {time}',
   'Context handed over': '컨텍스트 인계됨',
   'The conversation goes on in a fresh session with a handoff note. The messages above stay here.': '대화는 인계 메모와 함께 새 세션에서 이어집니다. 위의 메시지는 그대로 남아 있습니다.',

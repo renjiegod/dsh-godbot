@@ -64,15 +64,13 @@ export default async function newSession({ makeHost, candidate, note }) {
   await line.waitFor()
   await until(async () => /^新会话 · /u.test(await line.innerText()), 'the fresh part\'s line says when it began')
   await page.locator('.bt-part-fresh').waitFor()
-  // Sessions show apart, as in DSH: nothing of the session it left is drawn above the
-  // line, only a way back to it.
+  // Sessions show apart, as in DSH: nothing of the session it left is drawn under the
+  // line, not even a link to it. The top bar's session menu opens that one.
   const scroller = page.locator('[data-conversation-scroll]')
   assert.equal(await scroller.locator('.bt-earlier').count(), 0, 'no earlier session is stacked above the new one')
   assert.equal(await scroller.getByText('First question ' + tag, { exact: true }).count(), 0, 'the earlier session\'s messages stay in it')
-  const back = page.locator('.bt-part-from button')
-  await back.waitFor()
-  assert.match(await back.innerText(), /上一个会话/u, 'the new session links to the one the user left')
-  await until(async () => (await back.innerText()).includes('First question ' + tag), 'the link names the session by its first message')
+  assert.equal(await page.locator('.bt-part-start button').count(), 0, 'the new session draws no link to the one the user left')
+  await page.locator('.bt-head .bt-smenu-btn').waitFor()
   await host.capture('new-session-fresh-part')
 
   // Nothing in it yet: the button (quiet, but still clickable) and the host both leave

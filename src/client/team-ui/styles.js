@@ -1509,9 +1509,6 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-part-line[data-fresh]::before,.bt-part-line[data-fresh]::after{background:color-mix(in srgb,var(--bt-accent) 45%,transparent)}
 .bt-part-fresh{max-width:28rem;margin:0 auto 12px;font-size:12.5px;line-height:18px;text-align:center;color:var(--bt-ink-2)}
 .bt-part-start>.bt-part-line:first-child{margin-top:17px}
-.bt-part-from{display:flex;flex-direction:column;align-items:center;gap:4px;margin:0 auto 12px;max-width:28rem}
-.bt-part-from>.bt-soft{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bt-part-from-error{font-size:12px;line-height:16px;text-align:center;color:var(--bt-danger,#d33)}
 /* The dock wrapper also holds the context meter, so it stays hidden until a side question is in it. */
 [data-composer-dock]:has(.bt-btw){display:flex!important;flex-direction:column;align-items:center;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
 [data-composer-dock]:has(.bt-btw)>:not([data-slot="conversation.composer.dock"]){display:none!important}
