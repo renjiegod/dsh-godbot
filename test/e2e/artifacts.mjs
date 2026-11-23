@@ -35,7 +35,7 @@ export async function inspectArchive(file) {
 }
 
 async function pack(staging, destination) {
-  const [entry] = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', destination], { cwd: staging, encoding: 'utf8' }))
+  const [entry] = JSON.parse(execFileSync('npm', ['pack', '--json', '--no-foreground-scripts', '--pack-destination', destination], { cwd: staging, encoding: 'utf8' }))
   const from = join(destination, entry.filename)
   const content = await inspectArchive(from)
   const path = join(destination, content.sha256 + '.tgz')

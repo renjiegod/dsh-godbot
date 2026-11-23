@@ -11,7 +11,7 @@ const archives = join(homedir(), '.local/share/dsh-godbot/packages')
 mkdirSync(archives, { recursive: true, mode: 0o700 })
 execFileSync('npm', ['run', 'build'], { cwd: root, stdio: 'inherit' })
 const [pack] = JSON.parse(
-  execFileSync('npm', ['pack', '--json', '--pack-destination', archives], { cwd: root, encoding: 'utf8' }),
+  execFileSync('npm', ['pack', '--json', '--no-foreground-scripts', '--pack-destination', archives], { cwd: root, encoding: 'utf8' }),
 )
 const archive = resolve(archives, pack.filename)
 execFileSync(process.execPath, ['scripts/check-bundled-host-package.mjs', archive], { cwd: root, stdio: 'inherit' })

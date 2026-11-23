@@ -47,7 +47,9 @@ jobs:
         shell: bash
         run: |
           mkdir -p verify
-          package=$(npm pack --pack-destination verify --silent)
+          version=$(node -p "require('./package.json').version")
+          package="dsh-godbot-$version.tgz"
+          npm pack --pack-destination verify --silent
           node scripts/check-bundled-host-package.mjs "verify/$package" --require-encoder
           npm run test:e2e -- --artifact "$PWD/verify/$package" --suite release --report-dir "$PWD/verify/release"
       - uses: actions/upload-artifact@v4
