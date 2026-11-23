@@ -73,6 +73,13 @@ function digestChunks(messages) {
 // Marks the one retry of a turn whose saved Claude conversation was gone.
 const RESUME_RETRIED = Symbol('resume retried')
 
+// ACP negotiates image blocks per connection. Some engines also list the
+// modalities for individual models. An absent declaration leaves admission open.
+export function nativeInputModalities(inputModalities, supportsImages) {
+  if (supportsImages === false) return ['text']
+  return inputModalities ?? (supportsImages === true ? ['text', 'image'] : undefined)
+}
+
 export class LocalAgentAdapter extends LlmAdapter {
   // deps: {rt, findExecutable, spawnEngine(kind,route,engine), record(sessionId),
   //        saveRecord, dropRecord, presetFor(sessionId), toolsFor(options), signInHint(route),
@@ -112,7 +119,11 @@ export class LocalAgentAdapter extends LlmAdapter {
     if (engineOf(route, this.deps.customAgents()) === undefined) return []
     const listed = [{ provider: route, id: 'default', name: 'CLI default' }, ...(this.modelCache.get(route) ?? [])]
     const used = (this.deps.usedModels?.(route) ?? []).filter(id => !listed.some(model => model.id === id))
-    return [...listed, ...used.map(id => ({ provider: route, id, name: id }))]
+    const supportsImages = this.engines.get(route)?.supportsImages?.()
+    return [...listed, ...used.map(id => ({ provider: route, id, name: id }))].map(model => {
+      const inputModalities = nativeInputModalities(model.inputModalities, supportsImages)
+      return inputModalities === undefined ? model : { ...model, inputModalities }
+    })
   }
 
   // Asks one CLI what it serves, once. A failure is not kept, so the next look tries
@@ -134,25 +145,36 @@ export class LocalAgentAdapter extends LlmAdapter {
     try {
       const models = await engine.listModels({ cwd: this.deps.probeCwd(), mcp: undefined })
       this.modelCache.set(route, (models ?? []).filter(model => model.id !== 'default')
-        .map(model => ({ provider: route, id: model.id, name: model.name ?? model.id, ...(model.reasoning ? { reasoning: model.reasoning } : {}) })))
+        .map(({ id, name, reasoning, inputModalities }) => ({
+          provider: route, id, name: name ?? id,
+          ...(reasoning ? { reasoning } : {}),
+          ...(inputModalities === undefined ? {} : { inputModalities }),
+        })))
     } catch { /* the menu still has the CLI's default */ }
     if (!this.engineInUse(engine)) await engine.close?.().catch(() => {})
   }
 
   dropModelCache(route) {
-    if (route === undefined) this.modelCache.clear()
-    else this.modelCache.delete(route)
+    if (route !== undefined) {
+      this.modelCache.delete(route)
+      this.engines.get(route)?.clearImageProbe?.()
+      return
+    }
+    this.modelCache.clear()
+    for (const engine of this.engines.values()) engine.clearImageProbe?.()
   }
 
   async resolveModel(route, model) {
     const spec = engineOf(route, this.deps.customAgents())
     const listed = (await this.listModels(route).catch(() => [])).find(entry => entry.id === model)
-    const supportsImage = spec?.kind !== 'acp' || this.engines.get(route)?.supportsImages?.() !== false
+    const inputModalities = listed
+      ? listed.inputModalities
+      : nativeInputModalities(undefined, this.engines.get(route)?.supportsImages?.())
     return {
       provider: route,
       id: model,
       name: listed?.name ?? model,
-      inputModalities: supportsImage ? ['text', 'image'] : ['text'],
+      ...(inputModalities === undefined ? {} : { inputModalities }),
       context: { contextWindow: spec?.contextWindow ?? DEFAULT_CONTEXT_WINDOW },
       // The thinking levels the engine advertises for this model, if any.
       ...(listed?.reasoning ? { reasoning: listed.reasoning } : {}),
@@ -590,6 +612,10 @@ export class LocalAgentAdapter extends LlmAdapter {
         // The CLI may have finished while this call waited; the answer is then a
         // settled result the turn below has to carry, like a tool result (#1513).
         if (live.showing === undefined) settled.push({ name: openCall[1].name, text: answer, isError: false })
+        // The bridged reply carries only text. Forward its attachments through
+        // the native prompt path so they are visible with the answer.
+        const images = (Array.isArray(message.content) ? message.content : []).filter(block => block?.type === 'image')
+        if (images.length > 0) remaining.push({ ...message, content: images })
         answered = true
       } else {
         remaining.push(message)

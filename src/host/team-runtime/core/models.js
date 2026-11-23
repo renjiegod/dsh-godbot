@@ -2,13 +2,14 @@
 // Models. Every Bot runs on one model of its own, fixed when it is created and changed
 // only in its settings or by a Main Bot. The team's first Main Bot has none until the
 // user picks one in its chat. The Session keeps the selection durably.
-import { BlockAssembler, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
+import { BlockAssembler, LlmAdapter, LlmError, resolveRetryPolicy } from '@deepseek-ai/dsh-llm'
 import { normalize, splitRef } from './text.js'
 import { serviceOf } from './services.js'
 import { ownChatSessions } from './threads.js'
 
 const CATALOG_TTL_MS = 10_000
 const ROUTE_WAIT_MS = 30_000
+const GROUP_RELAY = Object.freeze({ provider: 'godbot-group-relay', model: 'relay' })
 // The DeepSeek account's sign-in grant (dsh-deepseek-account-platform).
 const ACCOUNT_RECORD = 'deepseek-account-platform/default'
 const TRANSIENT_LLM_CODES = new Set(['TRANSPORT', 'TIMEOUT'])
@@ -386,27 +387,71 @@ export function install(rt) {
     return ref
   }
 
-  // A group's own Session never asks the model (groups.js synthesizes its relay step),
-  // but DSH resolves the Session's selection before every step. One left on a model the
-  // provider no longer serves fails with UNKNOWN_MODEL whatever its members run on, so
-  // it is kept on the model new Bots start on. The record is by Session, so a part moved
-  // on to a fresh Session is selected again.
+  // DSH checks a group's own Session at prompt admission, before groups.js can
+  // relay the original attachments to its members. Keep that Session on an
+  // internal route that accepts its full input. Its empty catalog keeps the route
+  // out of model pickers. Non-relay title and compaction calls keep the team default.
+  const relay = new class extends LlmAdapter {
+    providerInfo(provider) { return { id: provider, name: 'Godbot group relay' } }
+
+    async resolveModel(provider, model, signal) {
+      if (model !== GROUP_RELAY.model) throw new LlmError('Unknown group relay model', 'UNKNOWN_MODEL')
+      const route = splitRef(await defaultBotModel())
+      const fallback = route && await llm()?.resolveModelInfo(route.provider, route.model, signal).catch(() => undefined)
+      return {
+        provider, id: model, name: 'Group relay', inputModalities: ['text', 'image'],
+        ...(fallback?.context === undefined ? {} : { context: fallback.context }),
+        ...(fallback?.defaultMaxTokens === undefined ? {} : { defaultMaxTokens: fallback.defaultMaxTokens }),
+        ...(fallback?.reasoning === undefined ? {} : { reasoning: fallback.reasoning }),
+      }
+    }
+
+    async *stream(options) {
+      const past = rt.pastOwners?.get(options.sessionId)
+      const previousRoom = past?.roomId !== undefined && past.botId === undefined ? rt.roomOf(past.roomId) : undefined
+      const room = rt.roomOf(options.sessionId) ?? previousRoom
+      if (!room || (options.purpose === undefined && !rt.ownRequest?.(options))) {
+        throw new LlmError('Group relay requests must use the group Session', 'INVALID_REQUEST')
+      }
+      const route = splitRef(await defaultBotModel())
+      const service = llm()
+      if (!route || !service) throw new LlmError('No model is available for the group request', 'NO_ADAPTER')
+      yield* service.stream({ ...options, ...route })
+    }
+  }()
+  let relayRegistration
+  ctx.effect?.(() => {
+    relayRegistration = llm()?.registerAdapter?.([GROUP_RELAY.provider], relay)
+    return relayRegistration
+  }, 'godbot: group relay model')
+
+  function selectRoomAgent(agent) {
+    // DSH's direct Agent model selection writes only this Session. The controller
+    // path also writes the profile default and requires a public catalog entry.
+    const current = agent.model.current()
+    if (current?.provider !== GROUP_RELAY.provider || current.model !== GROUP_RELAY.model) agent.model.select(GROUP_RELAY)
+  }
+  ctx.on?.('agent/created', async ({ agent }) => {
+    try {
+      await rt.load()
+      if (relayRegistration && rt.readOnly?.() === undefined && rt.roomOf(agent.id)) selectRoomAgent(agent)
+    } catch (error) {
+      rt.warn('godbot: model for the group Session %s not applied: %s', agent.id, error)
+    }
+  })
+
   // The Sessions whose selection failed. The models may not change again, so the next
   // sync tries them once more instead of waiting for a change that never comes.
   const roomRetry = new Set()
   async function selectRoomSession(sessionId) {
-    const ref = await defaultBotModel()
-    if (ref === undefined) return
-    const route = splitRef(ref)
-    const applied = sessionSelections.get(sessionId)
-    if (applied !== undefined && sameSelection(applied, route)) return
-    await selectSessionModel(sessionId, route).then(
-      () => { roomRetry.delete(sessionId) },
-      (error) => {
-        roomRetry.add(sessionId)
-        rt.warn('godbot: model for the group Session %s not applied: %s', sessionId, error)
-      },
-    )
+    if (!relayRegistration || llm() === undefined) return
+    try {
+      selectRoomAgent(await rt.resolveAgent(sessionId))
+      roomRetry.delete(sessionId)
+    } catch (error) {
+      roomRetry.add(sessionId)
+      rt.warn('godbot: model for the group Session %s not applied: %s', sessionId, error)
+    }
   }
   async function syncRoomSessions() {
     const current = new Set(Object.values(state.rooms ?? {}).map(room => rt.sessionOfRoom(room)))
