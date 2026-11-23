@@ -28,7 +28,8 @@ import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, split
 import { pageThinkingMs } from './thinking.js'
 import { mobileToolRows, openChatPage, withLiveAttempt } from '../mobile-tool-timeline.js'
 import { viaOf } from '../shared/im-platforms.js'
-import { focusOpenPart, isOpenPart, ownChatSessions, pushThreadPart, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
+import { earlierPlace, focusOpenPart, isOpenPart, openEarlierBeside, openEarlierOfThread, ownChatSessions, pushThreadPart, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
+import { firstPrompt, partTitle } from './part-titles.js'
 import { checkShownView, normalizeView, readViewReply, viewCardText, viewReply, viewReplyText } from 'deep-view/core'
 
 // An ask_user card as the user saw it. The user's reply is often just an option label,
@@ -1332,7 +1333,7 @@ export function install(rt) {
     const dir = rt.workDirOf(job)
     const intended = dir !== undefined && await rt.isFolder(dir) ? dir : rt.teamFolder()
     const freshId = await rt.createSession(room === undefined ? name : bot === undefined ? room.name : `${name} · ${room.name}`, { dir })
-    talked.set(freshId, false)
+    freshPart(freshId, { own: bot !== undefined && room === undefined })
     // A fresh group Session uses the internal relay route before messages reach it.
     if (bot === undefined) await rt.selectRoomSession(freshId)
     const picked = bot === undefined ? undefined : await freshRoute(bot, session)
@@ -2168,6 +2169,106 @@ export function install(rt) {
     return false
   }
 
+  // A part's name in the session list is the first thing the user asked in it
+  // (part-titles.js). DSH's turn outline says which turn the user's first message opened,
+  // and a short page at that turn's start holds the whole message. Each part is read
+  // once, a few at a time, then kept; a part read with no message from the user yet, or
+  // made here, takes its name from the first one that lands.
+  const titles = new Map()
+  const untitled = new Set()
+  const titleReads = new Map()
+  const titleRetry = new Map()
+  const titleQueue = []
+  let titleReading = 0
+  const TITLE_WINDOW = 24
+  const TITLE_READS_AT_ONCE = 2
+  const isPrompt = event => event?.type === 'user/message' && event.data?.source?.kind === 'user'
+  async function readTitle(sessionId) {
+    const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
+    const projected = await ctx.sessionController.projections({ sessionId }, signal)
+    const first = firstPrompt(projected?.values?.turnOutline)
+    if (first === undefined) return ''
+    if (first.seq === undefined) return partTitle(first.preview)
+    const page = await ctx.sessionController.page({
+      address: { kind: 'session', sessionId }, beforeSeq: first.seq + TITLE_WINDOW, maxMessages: TITLE_WINDOW,
+    }, signal)
+    const prompt = page.records.map(record => record.event).find(event => event?.seq >= first.seq && isPrompt(event))
+    return partTitle(prompt === undefined ? first.preview : textOf(prompt.data.content)) || partTitle(first.preview)
+  }
+  function pumpTitles() {
+    while (titleReading < TITLE_READS_AT_ONCE && titleQueue.length > 0) {
+      const { sessionId, done } = titleQueue.shift()
+      titleReading += 1
+      readTitle(sessionId).then(done.resolve, done.reject).finally(() => {
+        titleReading -= 1
+        pumpTitles()
+      })
+    }
+  }
+  function startTitleRead(sessionId) {
+    const done = Promise.withResolvers()
+    const reading = done.promise.then((title) => {
+      if (titles.has(sessionId)) return
+      if (title !== '') {
+        titles.set(sessionId, title)
+        untitled.delete(sessionId)
+      } else untitled.add(sessionId)
+      titleRetry.delete(sessionId)
+    }, () => { titleRetry.set(sessionId, Date.now() + TALK_RETRY_MS) }).finally(() => titleReads.delete(sessionId))
+    titleReads.set(sessionId, reading)
+    titleQueue.push({ sessionId, done })
+    pumpTitles()
+  }
+  // A part's own name, or undefined while it has none or is still being read.
+  function ownTitle(sessionId) {
+    if (sessionId === undefined) return undefined
+    if (titles.has(sessionId)) return titles.get(sessionId)
+    if (!untitled.has(sessionId) && !titleReads.has(sessionId) && Date.now() >= (titleRetry.get(sessionId) ?? 0)) startTitleRead(sessionId)
+    return undefined
+  }
+  ctx.on('session/event', (session, event) => {
+    if (!isPrompt(event) || titles.has(session.id)) return
+    if (untitled.has(session.id)) {
+      const title = partTitle(textOf(event.data.content))
+      if (title === '') return
+      titles.set(session.id, title)
+      untitled.delete(session.id)
+      return
+    }
+    // A read on its way may have looked before this message: once it is done, a part it
+    // found unnamed is read again.
+    titleReads.get(session.id)?.then(() => {
+      if (titles.has(session.id) || !untitled.delete(session.id)) return
+      startTitleRead(session.id)
+    })
+  })
+  // Each part of a Bot's own chat with its name. A part the user has not asked anything
+  // in yet goes on the conversation of the part before it in its chain, unless a New
+  // session or an opened session began it (sessionFloor), and is named after that one.
+  rt.chatPartTitles = (bot) => {
+    const chains = [
+      [...(bot.segments ?? []), { sessionId: rt.chatOf(bot.id) }],
+      ...(bot.openParts ?? []).map(part => [...(part.segments ?? []), { sessionId: part.sessionId }]),
+    ]
+    const named = []
+    for (const chain of chains) {
+      let carried
+      chain.forEach((part, index) => {
+        const before = chain[index - 1]
+        const goesOn = before !== undefined && before.manual !== true && before.cut !== true && before.fallback !== 'manual'
+        const title = ownTitle(part?.sessionId) ?? (goesOn ? carried : undefined)
+        if (title !== undefined && part?.sessionId !== undefined) named.push([part.sessionId, title])
+        carried = title
+      })
+    }
+    return named
+  }
+  // A part made here has no message from the user yet.
+  const freshPart = (sessionId, { own = true } = {}) => {
+    talked.set(sessionId, false)
+    if (own) untitled.add(sessionId)
+  }
+
   // "New session" in a Bot's chat. An idle Bot moves on to a fresh part at once: it opens
   // with the handoff package, put together without the model (the earlier note and the
   // latest messages). While the Bot is working the fresh part opens with nothing carried
@@ -2214,7 +2315,7 @@ export function install(rt) {
   async function openPartNow(bot, agent) {
     const dir = rt.workDirOf({ botId: bot.id })
     const freshId = await rt.createSession(bot.name, { dir })
-    talked.set(freshId, false)
+    freshPart(freshId)
     const picked = await freshRoute(bot, agent.session)
     if (picked !== undefined) await selectRoute({ name: bot.name }, freshId, picked)
     await rt.applyPermission(bot, freshId, undefined)
@@ -2267,8 +2368,8 @@ export function install(rt) {
     if (bot === undefined) throw Object.assign(new Error('Unknown Bot'), { code: 'bot/not-found' })
     const current = rt.chatOf(botId)
     if (partId === current) return false
-    const busy = () => Object.assign(new Error('The Bot is working; wait for it to finish or stop it first'), { code: 'bot/busy' })
-    if (newParts.has(botId)) throw busy()
+    // A New session on its way is about to be the current part; the pick waits for it.
+    if (newParts.has(botId)) throw Object.assign(new Error('A new session is starting; try again in a moment'), { code: 'bot/busy' })
     // A part opened while the Bot was busy is live. Making it current swaps the two
     // threads; both stay live and neither is archived or stopped.
     if (isOpenPart(bot, partId)) {
@@ -2278,29 +2379,42 @@ export function install(rt) {
       await rt.save()
       return true
     }
-    const segments = bot.segments ?? []
-    const at = segments.findIndex(segment => segment.sessionId === partId)
-    if (at === -1) throw Object.assign(new Error('Unknown part'), { code: 'bot/not-found' })
-    const stillIdle = () => !switches.has(current) && rt.live.get(current)?.turn === undefined
-    if (!stillIdle()) throw busy()
+    // An earlier part, of the current thread or of one going on in the background.
+    if (earlierPlace(bot, partId) === undefined) throw Object.assign(new Error('Unknown part'), { code: 'bot/not-found' })
     // DSH turns away every step of an archived Session and every task aimed at it, so
     // the part leaves the archive before it becomes current.
     const wasArchived = ctx.workspaceRegistry.archivedSessionIds.includes(partId)
     await ctx.workspaceRegistry.unarchiveSession(partId)
-    if (rt.botOf(botId) !== bot || rt.chatOf(botId) !== current || !stillIdle()) {
+    const place = earlierPlace(bot, partId)
+    if (rt.botOf(botId) !== bot || rt.chatOf(botId) !== current || place === undefined || newParts.has(botId)) {
       if (wasArchived && rt.pastOwners.get(partId)?.botId === botId) {
         await ctx.workspaceRegistry.archiveSession(partId)
           .catch(error => rt.warn('godbot: earlier part %s not archived: %s', partId, error))
       }
-      throw busy()
+      throw Object.assign(new Error('Another session became current meanwhile; open this one again'), { code: 'bot/busy' })
     }
-    segments.splice(at, 1)
-    // The swap leaves the thread out of order: the part that left takes the opened one's
-    // place, and the opened one follows the last earlier part. `cut` keeps pages of
-    // earlier parts (sessionFloor) from reading across either seam.
-    segments.splice(at, 0, { sessionId: current, endedAt: Date.now(), cut: true })
-    segments[segments.length - 1] = { ...segments.at(-1), cut: true }
-    bot.sessionId = partId
+    // A part that works, or moves on to a fresh part, is not stopped for the one the user
+    // opens: it goes on in the background with its own chain, as a New session leaves it,
+    // and its tasks, cards and schedules stay with it. Only an idle part is archived.
+    if (switches.has(current) || rt.live.get(current)?.turn !== undefined) {
+      openEarlierBeside(bot, partId)
+      rt.chatOwners.set(partId, botId)
+      rt.pastOwners.delete(partId)
+      await rt.applyModel(bot, { force: true }).catch(error => rt.warn('godbot: model for %s not applied: %s', bot.name, error))
+      await rt.applyPermission(bot, partId, undefined).catch(() => {})
+      await rt.save()
+      return true
+    }
+    if (place.thread === 'current') {
+      const segments = place.segments
+      segments.splice(place.at, 1)
+      // The swap leaves the thread out of order: the part that left takes the opened one's
+      // place, and the opened one follows the last earlier part. `cut` keeps pages of
+      // earlier parts (sessionFloor) from reading across either seam.
+      segments.splice(place.at, 0, { sessionId: current, endedAt: Date.now(), cut: true })
+      segments[segments.length - 1] = { ...segments.at(-1), cut: true }
+      bot.sessionId = partId
+    } else openEarlierOfThread(bot, partId)
     rt.chatOwners.delete(current)
     rt.chatOwners.set(partId, botId)
     rt.pastOwners.delete(partId)

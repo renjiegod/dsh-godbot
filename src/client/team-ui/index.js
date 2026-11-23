@@ -39,7 +39,6 @@ import { ConnectorDock, MailDock, CONNECTOR_CSS } from './connectors.js'
 import { CONNECTORS_PAGE_CSS } from './connectors-page.js'
 import { LearningDock, LearningTurnTail, LEARNING_CSS } from './learning-card.js'
 import { MODEL_CSS, ModelChoiceDock, DeepSeekSignIn } from './model-menu.js'
-import { ReadOnlyDock, READ_ONLY_CSS } from './read-only-dock.js'
 import { BOT_SETTINGS_CSS } from './bot-settings.js'
 import { BOT_MODELS_CSS } from './bot-models-page.js'
 import { AGENT_CARDS_CSS } from './agent-cards.js'
@@ -92,7 +91,7 @@ export function apply(ctx, godbot) {
   let seenAt = seenStore.read()
   // `details` is the panel's subject (a Session id); `view` picks details or the
   // subject Bot's browser inside it.
-  const ui = createSource({ details: null, view: 'details', readOnlyPart: null, renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, paste: {}, pendingOpen: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false, bootFailed: false, goalCompose: null, goalOpen: null })
+  const ui = createSource({ details: null, view: 'details', renaming: false, tab: null, side: null, newChat: null, exchange: null, menu: null, voice: null, palette: null, quote: null, paste: {}, pendingOpen: null, settings: null, memory: null, toast: null, signIn: null, renameAgent: null, unread: unreadStore.read(), reactions: reactionStore.read(), visits: {}, panelYield: false, leftDrawer: false, bootFailed: false, goalCompose: null, goalOpen: null })
   // The left column's kept preference, and the frame geometry the layout rules
   // in frame-layout.js read: the window and the shell's collapsed track come from
   // installFrameWatch, the open column's width is the user's own.
@@ -220,6 +219,7 @@ export function apply(ctx, godbot) {
     if (value.partsRunning !== undefined && JSON.stringify(value.partsRunning) !== JSON.stringify(current.partsRunning ?? {})) live.partsRunning = value.partsRunning
     if (value.newSessions !== undefined && JSON.stringify(value.newSessions) !== JSON.stringify(current.newSessions ?? {})) live.newSessions = value.newSessions
     if (value.emptyParts !== undefined && JSON.stringify(value.emptyParts) !== JSON.stringify(current.emptyParts ?? {})) live.emptyParts = value.emptyParts
+    if (value.partTitles !== undefined && JSON.stringify(value.partTitles) !== JSON.stringify(current.partTitles ?? {})) live.partTitles = value.partTitles
     if (value.secretStore !== undefined && JSON.stringify(value.secretStore) !== JSON.stringify(current.secretStore ?? {})) live.secretStore = value.secretStore
     if (value.secrets !== undefined && JSON.stringify(value.secrets) !== JSON.stringify(current.secrets ?? [])) live.secrets = value.secrets
     if (value.connectors !== undefined && JSON.stringify(value.connectors) !== JSON.stringify(current.connectors ?? [])) live.connectors = value.connectors
@@ -674,11 +674,10 @@ export function apply(ctx, godbot) {
     godbot,
     ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
     // Reopening an archived part can clear the shell's main view. Reserve the exact
-    // destination before asking the Host to switch, then open it once it is live.
-    openPart: (botId, sessionId, running = false) => sessionSelection.open(sessionId, (target) => {
-      ui.set(state => ({ ...state, readOnlyPart: running ? target : null }))
-      show(target)
-    }, () => after(call('bot-open-part', { botId, sessionId }))),
+    // destination before asking the Host to switch, then open it once it is live. A part
+    // that runs takes input like the current one always does: the composer queues or
+    // steers, while the part the user left goes on in the background.
+    openPart: (botId, sessionId) => sessionSelection.open(sessionId, show, () => after(call('bot-open-part', { botId, sessionId }))),
     // The follow starts before the ask: DSH can clear the view before the answer lands.
     newPart: async (botId) => {
       const follow = followFreshPart(botId, partFor(botId))
@@ -1363,7 +1362,7 @@ export function apply(ctx, godbot) {
     () => shadow('shell.overlay', { id: 'bot-toast', order: 60, inject: face }, ErrorToast),
   ]
   const installConversation = () => [
-    () => installCompiledStyles(CONVERSATION_CSS + READ_ONLY_CSS, 'conversation'),
+    () => installCompiledStyles(CONVERSATION_CSS, 'conversation'),
     () => installCompiledStyles(TURN_ERROR_CSS, 'turn-errors'),
     () => installCompiledStyles(QUEUE_CSS, 'queue'),
     () => installCompiledStyles(ANNOTATION_CSS, 'text-annotation'),
@@ -1423,7 +1422,6 @@ export function apply(ctx, godbot) {
     () => shadow('conversation.input.dock', { id: 'bot-paste', order: -130, inject: face }, PasteDock),
     () => shadow('conversation.input.dock', { id: 'bot-members', order: -120, inject: face }, MemberDock),
     () => shadow('conversation.input.dock', { id: 'bot-model', order: -110, inject: face }, ModelChoiceDock),
-    () => shadow('conversation.input.dock', { id: 'bot-readonly', order: -105, inject: face }, ReadOnlyDock),
     () => shadow('conversation.input.dock', { id: 'bot-question', order: -100, inject: face }, QuestionDock),
     () => shadow('conversation.input.dock', { id: 'bot-view', order: -95, inject: face }, WidgetDock),
     () => shadow('conversation.input.dock', { id: 'bot-secret', order: -90, inject: face }, SecretDock),

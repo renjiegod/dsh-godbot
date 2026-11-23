@@ -6,6 +6,7 @@ import { WorkspaceMark } from './workspace-mark.js'
 import { inkFill } from './inks.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
+import { botSessions, sessionLabel, sessionMeta, sessionTime, shortList } from './bot-sessions.js'
 import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, SignInIcon, SignOutIcon, SlidersIcon, ChevronRightIcon, CloseIcon, DotsIcon, FolderIcon } from './icons.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
@@ -63,11 +64,51 @@ const waitingFor = (roster, waits) => {
   return names.length === 0 ? '' : t('Waiting for {names}', { names: names.join(t(' and ')) })
 }
 
+// Under the Bot whose chat is open, once it has more than one: its sessions, by the first
+// thing the user asked in each, with the ones running or waiting for an answer marked.
+// One click moves between them, the running ones included; the details panel holds the
+// whole list when it is longer than this one shows.
+const SIDEBAR_SESSIONS = 6
+function BotSessionList({ bot, roster, actions, useSessions, tile = false }) {
+  const entries = botSessions(bot, roster)
+  const rows = useSessions(list => entries.map(entry => ({ title: list.byId?.[entry.id]?.title, at: list.byId?.[entry.id]?.updatedAt ?? list.byId?.[entry.id]?.createdAt })),
+    (a, b) => a.length === b.length && a.every((row, index) => row.title === b[index].title && row.at === b[index].at))
+  if (entries.length < 2) return null
+  const shown = shortList(entries, SIDEBAR_SESSIONS)
+  const hidden = entries.length - shown.length
+  const open = (entry) => {
+    if (entry.current) return
+    void Promise.resolve(actions.openPart(bot.id, entry.id)).catch(error => actions.reportError(error, 'open-session'))
+  }
+  return h('div', { className: `bt-agent-sub bt-bot-sub${tile ? ' bt-bot-sub-tile' : ''}`, 'data-open': '' },
+    h('div', { className: 'bt-agent-sub-in', role: 'group', 'aria-label': t('Sessions of {name}', { name: bot.name }) },
+      shown.map((entry, index) => {
+        const row = rows[entries.indexOf(entry)]
+        const label = sessionLabel(entry, { bot, roster, rowTitle: row?.title })
+        const meta = sessionMeta(entry, row?.at)
+        return h('button', {
+          key: entry.id, type: 'button', className: 'bt-agent-sub-row bt-bot-sub-row', style: { '--i': index },
+          'aria-current': entry.current ? 'page' : undefined, 'data-tone': meta.tone,
+          title: [label, sessionTime(row?.at)].filter(Boolean).join('\n'),
+          onClick: () => open(entry),
+        },
+        h('span', { className: 'bt-bot-sub-mark', 'aria-hidden': true }),
+        h('span', { className: 'bt-agent-sub-title' }, label),
+        h('span', { className: 'bt-agent-sub-time' }, meta.text))
+      }),
+      hidden > 0
+        ? h('button', { type: 'button', className: 'bt-agent-sub-row bt-agent-new', style: { '--i': shown.length }, onClick: () => actions.showDetails(currentPart(bot)) },
+          h('span', { className: 'bt-agent-sub-title' }, t('All sessions ({count})', { count: entries.length })))
+        : null))
+}
+
 function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessionRetainInfo, useActivity, useWork, wide, marked, onDragStart }) {
   const id = bot.id
   const part = currentPart(bot)
   const preview = useSessions(list => previewOf(list, part, roster.exchangeTurns[part]))
   const running = useSessionStatus(map => map.get(part)?.running === true)
+  // Sessions of its own chat that go on in the background while another one is open.
+  const background = (bot.openParts ?? []).filter(entry => roster.partsRunning?.[entry.sessionId] === true).length
   const active = useSessionRetainInfo(part, info => (info?.retainedBy?.mainView ?? 0) > 0)
   const unread = useSessionStatus(map => map.get(part)?.completionUnread === true || map.get(part)?.pendingInteraction !== undefined) || (marked && !active)
   useMarkedUnread(id, active, marked, actions)
@@ -79,9 +120,10 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
   // Work in a group runs in a Session of its own, so the Bot's chat stays idle meanwhile.
   const groups = useGroupWork(useWork, rooms => Object.entries(rooms).flatMap(([roomId, entries]) => entries.filter(entry => entry.botId === id).map(entry => ({ id: roomId, ...doingOf(entry) }))))
   const away = !running && groups.length > 0
-  const state = botState(running || away, doing, alert)
+  const state = botState(running || away || background > 0, doing, alert)
   // A Bot running in its own chat previews what it is doing, like a group's row.
   const runningLine = running && doing ? doingLine(doing) : null
+  const backgroundLine = !running && background > 0 ? h(Shimmer, null, t('{count} running in the background', { count: background })) : null
   const awayLine = away ? workLine(roster.roomsById[groups[0].id]?.name ?? t('a group chat'), groups[0], groups.length - 1) : null
   const waitsRaw = useWork ? useWork(work => JSON.stringify(work.waiting?.[id] ?? null)) : 'null'
   const waits = useMemo(() => JSON.parse(waitsRaw), [waitsRaw])
@@ -92,17 +134,19 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
     actions.openMenu({ kind: 'bot', id, x: event.clientX, y: event.clientY })
   }
   const pinned = bot.pinned === true && !tile
-  const label = [bot.name, main ? t('Main Bot') : '', pinned ? t('Pinned') : '', running || away ? t('Working') : '', waitsFor, approval ? t('Waiting for your approval') : alert ? t('Waiting for your answer') : '', unread ? t('Unread activity') : ''].filter(Boolean).join(', ')
+  const label = [bot.name, main ? t('Main Bot') : '', pinned ? t('Pinned') : '', running || away || background > 0 ? t('Working') : '', waitsFor, approval ? t('Waiting for your approval') : alert ? t('Waiting for your answer') : '', unread ? t('Unread activity') : ''].filter(Boolean).join(', ')
+  // The open Bot lists its sessions under its row; the rail has no room for them.
+  const sessions = wide && active ? h(BotSessionList, { bot, roster, actions, useSessions, tile }) : null
   if (tile && wide) {
-    return h('div', { className: 'bt-tile-wrap' }, h('button', {
+    return h(Fragment, null, h('div', { className: 'bt-tile-wrap' }, h('button', {
       type: 'button', className: 'bt-tile', 'aria-label': label, 'aria-current': active ? 'page' : undefined,
       'data-bot-id': id, title: preview || bot.name, onClick: () => actions.openSession(id), onContextMenu,
     },
     h(BotAvatar, { bot, size: 36, state, main: true }),
     h('span', { className: 'bt-tile-name' }, bot.name),
-    bot.role ? h('span', { className: 'bt-chip' }, bot.role) : null))
+    bot.role ? h('span', { className: 'bt-chip' }, bot.role) : null)), sessions)
   }
-  return h('button', {
+  return h(Fragment, null, h('button', {
     type: 'button', className: 'bt-row', 'aria-label': label, 'aria-current': active ? 'page' : undefined,
     'data-bot-id': id, title: wide ? undefined : bot.name,
     draggable: wide && !tile && onDragStart ? true : undefined,
@@ -115,10 +159,12 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
     h('span', { className: 'bt-row-name' }, h('span', { className: 'bt-row-title' }, bot.name), bot.engine ? h(AgentBadge, { engine: bot.engine }) : null, pinned ? h(PinMark) : null),
     runningLine ? h('span', { className: 'bt-row-preview' }, runningLine)
       : awayLine ? h('span', { className: 'bt-row-preview' }, awayLine)
-        : waitsFor ? h('span', { className: 'bt-row-preview' }, waitsFor)
-          : preview ? h('span', { className: 'bt-row-preview' }, preview) : null) : null,
+        : backgroundLine ? h('span', { className: 'bt-row-preview' }, backgroundLine)
+          : waitsFor ? h('span', { className: 'bt-row-preview' }, waitsFor)
+            : preview ? h('span', { className: 'bt-row-preview' }, preview) : null) : null,
   wide && unread && !active ? h('span', { className: 'bt-unread', 'aria-hidden': true })
-    : !wide && !active && (alert || unread) ? h('span', { className: `bt-dot${alert ? ' bt-dot-wait' : ''}`, 'aria-hidden': true }) : null)
+    : !wide && !active && (alert || unread) ? h('span', { className: `bt-dot${alert ? ' bt-dot-wait' : ''}`, 'aria-hidden': true }) : null),
+  sessions)
 }
 
 function RoomRow({ room, roster, actions, useSessions, useSessionStatus, useSessionRetainInfo, useWork, wide, marked, onDragStart }) {
@@ -1305,6 +1351,15 @@ export const SIDEBAR_CSS = `
 .bt-agent-sub[data-open] .bt-agent-sub-row{animation:bt-agent-row-in .24s ease both;animation-delay:calc(var(--i, 0)*30ms)}
 @keyframes bt-agent-row-in{from{opacity:0;filter:var(--bt-fx-blur-4,blur(4px))}to{opacity:1;filter:none}}
 @media (prefers-reduced-motion:reduce){.bt-agent-sub{transition:none}.bt-agent-sub .bt-agent-sub-row{animation:none}}
+/* The open Bot's sessions under its row: the DSH Agent's list, with a dot on the ones
+   that run (green, breathing) or wait for an answer. */
+.bt-bot-sub-mark{flex:none;width:6px;height:6px;margin-left:2px;border-radius:50%;background:var(--bt-line-2)}
+.bt-bot-sub-row[aria-current=page] .bt-bot-sub-mark{background:var(--bt-ink-2)}
+.bt-bot-sub-row[data-tone=run] .bt-bot-sub-mark{background:var(--bt-green);animation:bt-agent-pulse 1.4s ease-in-out infinite}
+.bt-bot-sub-row[data-tone=wait] .bt-bot-sub-mark{background:var(--bt-warn)}
+.bt-bot-sub-row[data-tone=wait] .bt-agent-sub-time{color:var(--bt-warn)}
+.bt-bot-sub-tile .bt-agent-sub-in{margin:-6px 6px 10px}
+@media (prefers-reduced-motion:reduce){.bt-bot-sub-row[data-tone=run] .bt-bot-sub-mark{animation:none}}
 
 /* Sidebar sections: collapsible header with a 3D character pile and live status when
    folded, active conversation peek, drag-and-drop highlight, and 88px rail cluster. */

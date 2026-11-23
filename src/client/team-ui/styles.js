@@ -1498,6 +1498,11 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-agent-session.is-current{background:var(--bt-hover);cursor:default;font-weight:600}
 .bt-agent-session-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .bt-agent-session-meta{flex:0 0 auto;font-size:12px;font-weight:400;color:var(--bt-ink-3,var(--bt-ink-2))}
+.bt-agent-session-meta[data-tone=wait]{color:var(--bt-warn)}
+.bt-agent-session-run{display:inline-flex;align-items:center;gap:5px;color:var(--bt-ink-2)}
+.bt-session-pulse{flex:none;width:6px;height:6px;border-radius:50%;background:var(--bt-green);animation:bt-session-pulse 1.4s ease-in-out infinite}
+@keyframes bt-session-pulse{0%,100%{opacity:1}50%{opacity:.45}}
+@media (prefers-reduced-motion:reduce){.bt-session-pulse{animation:none}}
 .bt-part-line{display:flex;align-items:center;gap:10px;margin:14px 0 8px;font-size:11.5px;line-height:14px;font-weight:500;color:var(--bt-ink-2)}
 .bt-part-line::before,.bt-part-line::after{content:"";flex:1;height:1px;background:var(--bt-line)}
 .bt-part-line[data-fresh]{color:var(--bt-accent)}
