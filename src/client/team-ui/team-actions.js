@@ -184,11 +184,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     computerUserActive: idleSeconds => call('computer-user-active', { idleSeconds }),
     stopMemberWork: (roomId, botId) => after(call('stop-member-work', { roomId, botId })),
     newPart: botId => after(call('bot-new-part', { botId })),
-    clearReadOnlyPart: () => ui.set(state => (state.readOnlyPart === null ? state : { ...state, readOnlyPart: null })),
-    stopChat: botId => {
-      ui.set(state => (state.readOnlyPart === null ? state : { ...state, readOnlyPart: null }))
-      return after(call('stop-chat', { botId }))
-    },
+    stopChat: botId => after(call('stop-chat', { botId })),
     stopRoomWork: roomId => after(call('stop-room-work', { roomId })),
     goalDraft: (roomId, text) => after(call('goal-draft', { roomId, text })),
     goalControl: (roomId, goalId, action, stopWork) => after(call('goal-control', { roomId, goalId, action, ...(stopWork ? { stopWork: true } : {}) })),

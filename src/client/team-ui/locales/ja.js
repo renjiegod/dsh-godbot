@@ -22,6 +22,9 @@ export const JA = {
   "The Relay Server that passes encrypted messages between your phone and this computer. It cannot read them.": "スマートフォンとこのコンピューターの間で暗号化されたメッセージを中継するサーバーです。内容は読めません。",
   "The code works once. It stops working in {count} min.": "このコードは 1 回だけ使えます。{count} 分後に無効になります。",
   "Turn on phone access first": "先にスマートフォンからのアクセスをオンにしてください",
+  "A new session is starting; try again in a moment": "新しいセッションを開いています。少し待ってからもう一度お試しください",
+  "Another session became current meanwhile; open this one again": "その間に別のセッションが現在のセッションになりました。このセッションをもう一度開いてください",
+  "The Bot is working; wait for it to finish or stop it first": "Bot が作業中です。終了を待つか、先に停止してください",
   "The Server address must start with ws:// or wss://": "サーバーのアドレスは ws:// または wss:// で始める必要があります",
   "Enter the Server address first": "先にサーバーのアドレスを入力してください",
   "This phone is not paired": "このスマートフォンはペアリングされていません",
@@ -1761,7 +1764,9 @@ export const JA = {
   "Open this session": "このセッションを開く",
   "Open this running session": "実行中のセッションを開く",
   "A running session keeps using model calls in the background.": "実行中のセッションはバックグラウンドでモデル呼び出しを続けます。",
-  "This session is still running. Wait for it to finish, or stop it.": "このセッションはまだ実行中です。終了を待つか、停止してください。",
+  "Sessions of {name}": "{name} のセッション",
+  "All sessions ({count})": "すべてのセッション（{count}）",
+  "{count} running in the background": "{count} 件のセッションがバックグラウンドで実行中",
 }
 
 export const HOST_ERRORS_JA = [

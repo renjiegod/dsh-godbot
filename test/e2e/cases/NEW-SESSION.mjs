@@ -8,7 +8,8 @@ import { openBotChat, openFullTeam } from '../native-ui.mjs'
 // details panel and the sidebar menu each start one fresh part, the view stays on the
 // Bot, and a part nobody has talked in yet (a greeting, or a New session just made)
 // gets no second one on top. While the Bot works, the part it leaves keeps running in
-// the background and the fresh one still opens as the Bot's own chat.
+// the background and the fresh one still opens as the Bot's own chat. Sessions are named
+// by the first thing the user asked in them, and any of them opens while another works.
 export default async function newSession({ makeHost, candidate, note }) {
   const host = await makeHost()
   await host.install(candidate)
@@ -67,10 +68,11 @@ export default async function newSession({ makeHost, candidate, note }) {
   // line, only a way back to it.
   const scroller = page.locator('[data-conversation-scroll]')
   assert.equal(await scroller.locator('.bt-earlier').count(), 0, 'no earlier session is stacked above the new one')
-  assert.equal(await scroller.getByText('First question ' + tag).count(), 0, 'the earlier session\'s messages stay in it')
+  assert.equal(await scroller.getByText('First question ' + tag, { exact: true }).count(), 0, 'the earlier session\'s messages stay in it')
   const back = page.locator('.bt-part-from button')
   await back.waitFor()
   assert.match(await back.innerText(), /上一个会话/u, 'the new session links to the one the user left')
+  await until(async () => (await back.innerText()).includes('First question ' + tag), 'the link names the session by its first message')
   await host.capture('new-session-fresh-part')
 
   // Nothing in it yet: the button (quiet, but still clickable) and the host both leave
@@ -100,16 +102,17 @@ export default async function newSession({ makeHost, candidate, note }) {
   assert.equal(await panelButton.getAttribute('data-state'), 'ready')
 
   const rows = page.locator('.bt-agent-session')
-  const openEarlier = async ({ number, session, message, otherMessage }) => {
-    const label = `会话 ${number}`
+  // Each session is listed by the first thing the user asked in it.
+  const openEarlier = async ({ session, message, otherMessage }) => {
+    const label = message + tag
     await rows.getByText(label, { exact: true }).click()
     await until(async () => (await partsOf()).current === session, `${label} became the Bot's current part`)
     await scroller.getByText(message + tag, { exact: true }).waitFor()
     assert.equal(await scroller.getByText(otherMessage + tag, { exact: true }).count(), 0, 'the other transcript stays in its own session')
-    assert.equal(await page.locator('.bt-agent-session.is-current .bt-agent-session-name').innerText(), label, 'the active row keeps the label the user clicked')
+    assert.equal(await page.locator('.bt-agent-session.is-current .bt-agent-session-name').innerText(), label, 'the active row keeps the name the user clicked')
   }
-  const firstSession = { number: 1, session: first.current, message: 'First question ', otherMessage: 'Second question ' }
-  const secondSession = { number: 2, session: second.current, message: 'Second question ', otherMessage: 'First question ' }
+  const firstSession = { session: first.current, message: 'First question ', otherMessage: 'Second question ' }
+  const secondSession = { session: second.current, message: 'Second question ', otherMessage: 'First question ' }
   await openEarlier(firstSession)
   await openEarlier(secondSession)
 
@@ -155,13 +158,17 @@ export default async function newSession({ makeHost, candidate, note }) {
   }, 'the sidebar menu started a fresh part')
   await waitState('empty', 'the menu part reads as a new session')
 
-  // The session list: the empty current session first, then the earlier ones by number.
+  // The session list: newest first, the empty current session named for what it is and
+  // every other one by the first thing the user asked in it.
   await openPanel()
   assert.equal(await panelButton.getAttribute('aria-disabled'), 'true')
   await until(async () => (await rows.count()) === 5, 'the panel lists the five sessions')
-  const names = await page.locator('.bt-agent-session .bt-agent-session-name').allInnerTexts()
-  assert.equal(names[0], '新会话', 'the empty current session is named for what it is')
-  assert.deepEqual(names.slice(1), ['会话 4', '会话 3', '会话 2', '会话 1'], 'earlier sessions keep their creation order')
+  const named = ['Fourth question ' + tag, 'Third question ' + tag, 'Second question ' + tag, 'First question ' + tag]
+  let names
+  await until(async () => {
+    names = await page.locator('.bt-agent-session .bt-agent-session-name').allInnerTexts()
+    return JSON.stringify(names) === JSON.stringify(['新会话', ...named])
+  }, 'the sessions are named by their first message, newest first').catch((error) => { throw new Error(error.message + ' ' + JSON.stringify(names)) })
   await host.capture('new-session-details-panel')
 
   // While the Bot is working, a New session leaves the part it works in running in the
@@ -222,7 +229,10 @@ export default async function newSession({ makeHost, candidate, note }) {
   assert.equal(opened.sessionId, busy.after.current)
   assert.ok(!opened.items.some(item => item.kind === 'bot'), 'the opening shows no reply: ' + JSON.stringify(opened.items))
   await openPanel()
-  await until(async () => (await rows.count()) === 2, 'the panel lists the new session and the one still running')
+  // The earlier sessions went on with the running one's thread and stay in the list.
+  await until(async () => JSON.stringify(await page.locator('.bt-agent-session .bt-agent-session-name').allInnerTexts()) === JSON.stringify(['新会话', busyText, ...named]),
+    'the panel lists the new session, the one still running and the earlier ones')
+  assert.equal(await rows.nth(1).locator('.bt-agent-session-run').count(), 1, 'the background session is marked running')
   await page.locator('.bt-agent-sessions-warn').waitFor()
   await host.capture('new-session-busy-fresh-part')
 
@@ -262,6 +272,58 @@ export default async function newSession({ makeHost, candidate, note }) {
   assert.ok(freshCalls.every(text => !text.includes(againText) && !text.includes(busyText)), 'nothing from the part it left came over')
   again.release()
   await until(async () => (await state()).partsRunning?.[again.left] !== true, 'the second background part finished its answer')
+
+  // While the Bot works, any earlier session opens, one of the background thread's
+  // included: the session at work goes on in the background, and the one opened takes the
+  // user's messages at once instead of waiting for the other to finish.
+  const parallelText = 'Parallel question ' + tag
+  let releaseParallel
+  holds.set(parallelText, new Promise(resolve => { releaseParallel = resolve }))
+  const working = (await threadNow()).current
+  await host.bot('send', { sessionId: bot.id, text: parallelText })
+  await until(() => host.model.calls.some(call => JSON.stringify(call.body.messages.at(-1) ?? '').includes(parallelText)), 'the Bot is working on ' + parallelText)
+  await openPanel()
+  await rows.filter({ hasText: 'First question ' + tag }).click()
+  await until(async () => (await threadNow()).current === first.current, 'an earlier session opened while the Bot works')
+  assert.ok((await threadNow()).open.includes(working), 'the session at work went on in the background')
+  assert.equal((await state()).partsRunning?.[working], true, 'and is still working')
+  await scroller.getByText('First question ' + tag, { exact: true }).waitFor()
+  assert.equal(await page.locator('.bt-error[role=alert]').count(), 0, 'opening it reported no error')
+  const composer = page.locator('[data-composer-card] [role=textbox]')
+  const meanwhile = 'Meanwhile ' + tag
+  await composer.fill(meanwhile)
+  await composer.press('Enter')
+  await until(() => host.model.calls.some(call => call.sessionId === first.current && JSON.stringify(call.body.messages).includes(meanwhile)), 'the opened session answers while the other one works')
+  assert.equal((await state()).partsRunning?.[working], true, 'the background session is still working')
+  // The sidebar lists the open Bot's sessions under its row, the running one marked.
+  const sideRows = page.locator('.bt-bot-sub-row')
+  const workingRow = sideRows.filter({ hasText: 'After the busy one ' + tag })
+  await until(async () => (await workingRow.getAttribute('data-tone').catch(() => null)) === 'run', 'the sidebar marks the session at work')
+  assert.equal(await sideRows.filter({ hasText: 'First question ' + tag }).getAttribute('aria-current'), 'page', 'the sidebar marks the open session')
+  await host.capture('new-session-open-earlier-while-busy')
+  releaseParallel()
+  await until(async () => (await state()).partsRunning?.[working] !== true, 'the background session finished its answer')
+  await until(async () => (await state()).partsRunning?.[first.current] !== true, 'the opened session finished its answer')
+  // Back to it from the sidebar; its answer is there.
+  await workingRow.click()
+  await until(async () => (await threadNow()).current === working, 'the sidebar opened the session that worked in the background')
+  await scroller.getByText('Answer to ' + parallelText).first().waitFor()
+  // An earlier session of a background thread opens while the Bot is idle too: the idle
+  // one joins the earlier sessions.
+  await openPanel()
+  await rows.filter({ hasText: 'Second question ' + tag }).click()
+  await until(async () => (await threadNow()).current === second.current, 'an earlier session of a background thread opened')
+  assert.ok((await threadNow()).earlier.includes(working), 'the idle session joined the earlier ones')
+
+  // The names come back after a restart: each one is read from its session's record,
+  // archived sessions included, as for sessions made before names were kept.
+  await host.restart()
+  const expected = { [first.current]: 'First question ' + tag, [second.current]: 'Second question ' + tag, [third.current]: 'Third question ' + tag, [fourth.current]: 'Fourth question ' + tag, [working]: 'After the busy one ' + tag }
+  let restored
+  await until(async () => {
+    restored = (await host.bot('state')).partTitles ?? {}
+    return Object.entries(expected).every(([id, title]) => restored[id] === title)
+  }, 'the session names were read back after a restart').catch((error) => { throw new Error(error.message + ' ' + JSON.stringify(restored)) })
 
   // A New session opens at once: none of them asked the model for a handoff note.
   const noteAsks = host.model.calls.filter(call => JSON.stringify(call.body).includes('Your conversation is long')).length

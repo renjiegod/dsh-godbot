@@ -6,7 +6,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { install as installBtw } from './btw.js'
 import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'
-import { threadCurrentOfPart } from './threads.js'
+import { ownChatParts, threadCurrentOfPart } from './threads.js'
 import { validateViewAnswer } from 'deep-view/core'
 import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
 import { dshRestart } from './dsh-restart.js'
@@ -188,10 +188,13 @@ export function install(rt) {
       return rt.partEmpty?.(rt.chatOf(bot.id)) ? [[bot.id, 'empty']] : []
     })),
     emptyParts: Object.fromEntries(Object.values(state.bots).flatMap((bot) => {
-      const parts = [...(bot.segments ?? []), ...(bot.openParts ?? [])].map(part => part?.sessionId)
+      const parts = ownChatParts(bot).filter(sessionId => sessionId !== rt.chatOf(bot.id))
       const empty = parts.filter(sessionId => rt.partEmpty?.(sessionId))
       return empty.length > 0 ? [[bot.id, empty]] : []
     })),
+    // Each part of a Bot's own chat by the first thing the user asked in it, for the
+    // session lists; a part not read yet, or not asked anything yet, has no entry.
+    partTitles: Object.fromEntries(Object.values(state.bots).flatMap(bot => rt.chatPartTitles?.(bot) ?? [])),
     work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
     memoryNews: rt.memoryNews(),
     memoryReviews: rt.memoryReviews(),
