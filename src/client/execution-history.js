@@ -5,6 +5,8 @@ import { Icon } from './chat-ui.js'
 import { ChevronDownIcon, ChevronRightIcon } from './team-ui/icons.js'
 import { t } from './team-ui/i18n.js'
 import { observeToolGroups } from './tool-call-groups.js'
+import { skillNameFromPath, toolKind } from '../host/team-runtime/shared/tool-kind.js'
+import { ProcessIcon, processLabel } from './team-ui/process-activity.js'
 
 const labels = {
   running: '运行中',
@@ -38,6 +40,8 @@ export const executionStyle = `
 :is(.gb-execution-tool > summary, .gb-execution-legacy) > span:last-child { margin-inline-end: 0; }
 .gb-execution-state, .gb-execution-meta, .gb-execution-note { color: var(--bt-ink-2); font-size: 12px; }
 .gb-execution-tool[data-status=failed] .gb-execution-state, .gb-execution-error { color: var(--bt-danger); }
+.gb-execution-action { display: inline-flex; align-items: center; gap: 5px; color: var(--bt-ink-2); }
+.gb-execution-action > svg { flex: none; width: 14px; height: 14px; }
 .gb-execution-body { display: grid; gap: 8px; padding: 6px 8px 9px; border-top: 1px solid var(--bt-line); min-width: 0; }
 .gb-execution-body h4 { margin: 0 0 3px; font-size: 12px; }
 .gb-execution-code { max-height: 14rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; box-sizing: border-box; margin: 0; padding: 6px 8px; border-radius: 6px; background: var(--bt-hover); font: 12px/1.5 ui-monospace, monospace; }
@@ -231,7 +235,10 @@ function ToolRow({ event, target, running, visible }) {
   const status = event.status ?? detail.status
   const statusLabel = !running && (status === 'running' || status === 'pending')
     ? '终态未记录' : labels[status] ?? '状态未报告'
-  const toolTarget = targetOf(detail)
+  const targetText = targetOf(detail)
+  const activityKind = detail.activityKind ?? toolKind(detail.name, targetText)
+  const skill = detail.input?.skill ?? detail.input?.name ?? skillNameFromPath(targetText)
+  const toolTarget = activityKind === 'skill' ? skill ?? targetText : targetText
   const locations = Array.isArray(detail.locations) ? detail.locations.map(locationText).filter(Boolean) : []
   const truncated = key => detail.truncatedFields?.includes(key)
   const outcome = [
@@ -242,19 +249,21 @@ function ToolRow({ event, target, running, visible }) {
   const output = detail.output ?? detail.outputDelta
   const changes = detail.changes != null || /^(?:Edit|MultiEdit|Write|WriteFile|ApplyPatch|apply_patch|FileChange)$/iu.test(detail.name ?? '')
   const heading = [
-    h('span', { key: 'name' }, detail.name || event.id || '工具'),
-    typeof toolTarget === 'string' && h('span', { key: 'target', className: 'gb-execution-meta' }, toolTarget),
+    h('span', { key: 'action', className: 'gb-execution-action' }, h(ProcessIcon, { kind: activityKind }), processLabel(activityKind)),
+    h('span', { key: 'name', className: 'gb-execution-name' }, detail.name || event.id || '工具'),
+    typeof toolTarget === 'string' && h('span', { key: 'target', className: 'gb-execution-meta gb-execution-target', title: toolTarget }, toolTarget),
     h('span', { key: 'status', className: 'gb-execution-state' }, statusLabel),
     outcome.length > 0 && h('span', { key: 'outcome', className: 'gb-execution-meta' }, outcome.join(' · ')),
   ]
-  if (!fetchable) return h('div', { className: 'gb-execution-tool gb-execution-legacy', 'data-status': status }, heading)
+  const attributes = { className: 'gb-execution-tool', 'data-status': status, 'data-gb-tool-kind': activityKind ?? 'tool' }
+  if (!fetchable) return h('div', { ...attributes, className: 'gb-execution-tool gb-execution-legacy' }, heading)
   return h('details', {
-    className: 'gb-execution-tool', open: expanded,
-    'data-gb-execution-tool': event.id ?? '', 'data-status': status,
+    ...attributes, open: expanded,
+    'data-gb-execution-tool': event.id ?? '',
     'data-child': detail.parentId != null ? '' : undefined,
     onToggle: e => setExpanded(e.currentTarget.open),
   },
-  h('summary', null, heading),
+  h('summary', { title: detail.name }, heading),
   expanded && h('div', { className: 'gb-execution-body' },
     info.loading && !info.data && h('p', { role: 'status', className: 'gb-execution-note' }, '正在读取工具详情…'),
     info.error && h('p', { role: 'alert', className: 'gb-execution-error' }, '无法读取工具详情。', press('重试', info.reload)),

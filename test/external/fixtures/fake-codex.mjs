@@ -89,6 +89,23 @@ function runTurn(thread, turnId, text, effort, images = []) {
     return
   }
   const dir = process.env.GODBOT_E2E_GATE_DIR
+  if (dir && text.includes('Verify the Codex conversation layout')) {
+    const emit = (method, payload) => notice(method, { threadId: thread.id, turnId, ...payload })
+    const complete = item => emit('item/completed', { item })
+    const skillPath = 'fixture/skills/qa-review/SKILL.md'
+    emit('item/reasoning/summaryTextDelta', { itemId: 'process-thought', summaryIndex: 0, delta: 'I will check ' })
+    complete({ id: 'process-thought', type: 'reasoning', summary: ['I will check the review instructions.'] })
+    complete({ id: 'process-skill', type: 'commandExecution', command: 'cat ' + skillPath,
+      commandActions: [{ type: 'read', path: skillPath }], status: 'completed', exitCode: 0, aggregatedOutput: 'Review instructions loaded.' })
+    complete({ id: 'process-updated', type: 'reasoning', summary: ['The instructions are ready. I can run the checks.'] })
+    complete({ id: 'process-shell', type: 'commandExecution', command: 'npm test',
+      commandActions: [{ type: 'unknown', command: 'npm test' }], status: 'completed', exitCode: 0, aggregatedOutput: 'Fixture tests passed.' })
+    complete({ id: 'process-answer', type: 'agentMessage',
+      text: '## Conversation check completed\n\nI loaded the review skill and ran the workspace tests.\n\n- Skill guidance was available.\n- All fixture tests passed.' })
+    thread.turn = undefined
+    emit('turn/completed', { turn: { id: turnId, status: 'completed' } })
+    return
+  }
   const trace = dir && text.match(/GODBOT-CODEX-EXECUTION-TRACE ([a-f\d-]+)/u)
   if (trace) {
     const emit = (method, payload) => notice(method, { threadId: thread.id, turnId, ...payload })

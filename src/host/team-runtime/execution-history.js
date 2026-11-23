@@ -9,7 +9,7 @@ import { bindToolSlots, mirroredTools, readToolActivity, toolSlots } from './sha
 const fieldLimit = 256 * 1024
 const turnPageSize = 12
 const toolDetails = ['input', 'output', 'changes', 'error']
-const persistedFields = ['name', 'status', 'text', 'layout', 'cwd', 'exitCode', 'durationMs', 'locations', 'parentId', ...toolDetails]
+const persistedFields = ['name', 'activityKind', 'status', 'text', 'layout', 'cwd', 'exitCode', 'durationMs', 'locations', 'parentId', ...toolDetails]
 const now = () => new Date().toISOString()
 const eventTime = event => Number.isFinite(event.time) ? new Date(event.time).toISOString() : now()
 const chronological = (a, b) => b.startedAt.localeCompare(a.startedAt) || (b.nativeOrder ?? 0) - (a.nativeOrder ?? 0) || String(b.turn).localeCompare(String(a.turn))

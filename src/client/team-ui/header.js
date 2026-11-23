@@ -15,6 +15,7 @@ import { SessionMenu } from './session-menu.js'
 import { nativeTabs } from '../native-agent-target.js'
 import { viewBottom } from './motion.js'
 import { t } from './i18n.js'
+import { usesConversationLayout } from './themes.js'
 
 // -------------------------------------------------------------------------
 // Conversation header
@@ -99,6 +100,11 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
   const doing = useActivity(map => map[owner])
   const bot = roster.byId[sessionId]
   const room = roster.roomsById[sessionId]
+  const conversation = usesConversationLayout(roster, sessionId)
+  useLayoutEffect(() => {
+    document.body.toggleAttribute('data-gb-conversation', conversation)
+    return () => document.body.removeAttribute('data-gb-conversation')
+  }, [conversation])
   const terminalActive = actions.godbot.useNativeTerminalActive(bot, sessionId, roster, running)
   const goal = room?.goal
   // Goal panels are keyed by the group, never by its current Session: `composeGoal` and

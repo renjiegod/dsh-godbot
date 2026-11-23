@@ -22,7 +22,7 @@ export function opensReply(steps, current, withReasoning = true) {
 // counts its clock from `step.time`, the time its first visible chunk arrived.
 export const thinkingStep = steps => steps.find(thinkingLive)
 
-const thinkingLive = step => step.status === 'running' && texts(step).length === 0 && step.blocks.some(block => block.kind === 'reasoning')
+const thinkingLive = step => step.status === 'running' && texts(step).length === 0 && stepReasoning(step) !== ''
 
 const texts = step => step.blocks.filter(block => block.kind === 'text' && block.text.trim() !== '')
 
@@ -44,16 +44,28 @@ const isActivity = line => line.startsWith(ACTIVITY)
 const reasoningText = step => step.blocks.filter(block => block.kind === 'reasoning').map(block => visibleReasoning(block.text)).join('\n')
 const stepReasoning = step => reasoningText(step).split('\n').filter(line => !isActivity(line)).join('\n').trim()
 
-export function stepActivity(step, visibleText) {
+export function stepProcess(step, visibleText) {
   const entries = []
   let beforeText = 0
   for (const [index, block] of step.blocks.entries()) {
     if (block.kind === 'text' && visibleText(block.text)) beforeText++
     if (block.kind !== 'reasoning') continue
-    for (const [lineNumber, line] of visibleReasoning(block.text).split('\n').entries()) {
+    const lines = visibleReasoning(block.text).split('\n')
+    let start = 0
+    const thought = end => {
+      const reasoning = lines.slice(start, end).join('\n').trim()
+      if (reasoning) entries.push({ key: `${step.step}:${index}:${start}`, beforeText, reasoning })
+    }
+    for (const [lineNumber, line] of lines.entries()) {
+      if (!isActivity(line)) continue
+      thought(lineNumber)
       const activity = readToolActivity(line)
       if (activity) entries.push({ key: `${step.step}:${index}:${lineNumber}`, beforeText, activity })
+      start = lineNumber + 1
     }
+    thought(lines.length)
   }
   return entries
 }
+
+export const stepActivity = (step, visibleText) => stepProcess(step, visibleText).filter(entry => entry.activity)

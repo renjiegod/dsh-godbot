@@ -7,11 +7,13 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { once } from 'node:events'
+import { randomUUID } from 'node:crypto'
 import { claimTeamTerminal, TerminalLeases } from './terminal-lease.js'
 import { SandboxTeamAgents, sandboxRouteInfo } from './sandbox-agents.js'
 import { sandboxTeamEngine } from './sandbox-engines.js'
 import { commandLabel, toolActivity } from './tool-activity.js'
 import { toolReference } from './shared/tool-timeline.js'
+import { skillNameFromPath, toolKind } from './shared/tool-kind.js'
 import { readBoundCodexHistory } from './codex-execution-history.js'
 import { acpToolExitCode, acpToolStatus } from '../../drivers/external/tool-results.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -75,6 +77,9 @@ const toolPaths = items => Array.isArray(items)
 // ACP descriptors for exactly as long as that session's name array is live.
 const acpMenus = new WeakMap()
 const acpToolNames = { read: 'Read', edit: 'Edit', delete: 'Delete', move: 'Move', search: 'Search', execute: 'Shell', fetch: 'Fetch', think: 'Think' }
+const acpToolKinds = new Map(Object.entries({
+  execute: 'command', read: 'read', edit: 'edit', delete: 'edit', move: 'edit', search: 'search', fetch: 'webFetch', think: 'plan',
+}))
 
 function acpExecution(id, name, call, status, exitCode) {
   if (typeof id !== 'string' || id === '') return undefined
@@ -100,7 +105,11 @@ function recordAcpTool(sessions, { sessionId, update }) {
   const reportedStatus = acpToolStatus(call, exitCode)
   const status = ['failed', 'completed', 'declined', 'interrupted'].includes(reportedStatus) ? reportedStatus : 'started'
   const name = call.name ?? call.toolName ?? acpToolNames[call.kind] ?? '工具'
+  const input = call.rawInput ?? call.args
+  const path = call.locations?.[0]?.path ?? input?.file_path ?? input?.path ?? input?.Path ?? input?.TargetFile
+  const activityKind = toolKind(name, path) ?? toolKind(name, path, acpToolKinds.get(call.kind))
   const trace = acpExecution(id, name, call, reportedStatus, exitCode)
+  if (trace) trace.activityKind = activityKind
   const bridged = ownToolCall(call)
   // The loopback bridge publishes its own live DSH node. Keep provider
   // failures as well, since a failed transport may never reach the bridge.
@@ -109,10 +118,10 @@ function recordAcpTool(sessions, { sessionId, update }) {
     if (trace) session.push({ type: 'execution-trace', trace })
     return
   }
-  const input = call.rawInput
-  const target = toolPaths(call.locations) || (call.kind === 'execute'
-    ? input?.toolSummary ?? input?.description ?? commandLabel(input?.command ?? input?.cmd ?? input?.CommandLine)
-    : input?.file_path ?? input?.path ?? input?.Path ?? input?.TargetFile)
+  const target = (activityKind === 'skill' ? input?.skill ?? input?.name ?? skillNameFromPath(path) : undefined)
+    ?? (toolPaths(call.locations) || (activityKind === 'command'
+      ? input?.toolSummary ?? input?.description ?? commandLabel(input?.command ?? input?.cmd ?? input?.CommandLine)
+      : path))
   session.push({ ...toolActivity(name, target, status), trace })
 }
 
@@ -136,8 +145,17 @@ export class WorkspaceAcpEngine extends AcpEngine {
     return result
   }
   onNotice(method, params) {
-    if (method === 'session/update' && ['tool_call', 'tool_call_update'].includes(params?.update?.sessionUpdate)) {
+    const update = params?.update
+    if (method === 'session/update' && ['tool_call', 'tool_call_update'].includes(update?.sessionUpdate)) {
       recordAcpTool(this.sessions, params)
+      return
+    }
+    if (method === 'session/update' && update?.sessionUpdate === 'plan') {
+      const session = [...this.sessions.values()].find(entry => entry.acpSessionId === params.sessionId)
+      if (Array.isArray(update.entries) && update.entries.length) session?.push({
+        ...toolActivity('Plan', undefined, 'completed'),
+        trace: { type: 'tool', id: randomUUID(), name: 'Plan', activityKind: 'plan', status: 'completed', output: update.entries },
+      })
       return
     }
     super.onNotice(method, params)
@@ -148,19 +166,31 @@ export class WorkspaceAcpEngine extends AcpEngine {
   }
 }
 
-function codexTool({ type, tool, changes, commandActions, command, scriptPath, path }) {
+const codexCommandKinds = new Map([['read', 'read'], ['listFiles', 'read'], ['search', 'search']])
+
+function codexTool({ type, tool, changes, commandActions, command, scriptPath, path, arguments: args }) {
   switch (type) {
     case 'commandExecution': {
-      const parsed = Array.isArray(commandActions) ? commandActions.find(action => typeof action?.command === 'string')?.command : undefined
-      return ['Shell', toolPaths(commandActions) || scriptPath || commandLabel(parsed ?? command)]
+      const actions = Array.isArray(commandActions) ? commandActions : []
+      const parsed = actions.find(action => typeof action?.command === 'string')?.command
+      const action = actions.length === 1 ? actions[0] : undefined
+      const kind = codexCommandKinds.get(action?.type)
+      const activityKind = toolKind('Shell', action?.path, kind)
+      return ['Shell', (activityKind === 'skill' && skillNameFromPath(action?.path)) ||
+        toolPaths(actions) || scriptPath || commandLabel(parsed ?? command), kind === undefined ? undefined : activityKind]
     }
-    case 'fileChange': return ['Edit', toolPaths(changes)]
+    case 'fileChange': return ['Edit', toolPaths(changes), 'edit']
     case 'mcpToolCall':
-    case 'dynamicToolCall':
-    case 'collabAgentToolCall': return [tool ?? type]
-    case 'webSearch': return ['WebSearch']
-    case 'imageView': return ['ImageView', path]
-    case 'imageGeneration': return ['ImageGeneration']
+    case 'dynamicToolCall': {
+      const activityKind = toolKind(tool, args?.file_path ?? args?.path)
+      const target = activityKind === 'skill' ? args?.skill ?? args?.name ?? skillNameFromPath(args?.path ?? args?.file_path) : undefined
+      return [tool ?? type, target, activityKind]
+    }
+    case 'collabAgentToolCall':
+    case 'subAgentActivity': return [tool ?? type, undefined, 'agent']
+    case 'webSearch': return ['WebSearch', undefined, 'webSearch']
+    case 'imageView': return ['ImageView', path, 'read']
+    case 'imageGeneration': return ['ImageGeneration', undefined, 'image']
     default: return undefined
   }
 }
@@ -172,11 +202,11 @@ function codexToolStatus(method, item) {
   return 'completed'
 }
 
-function codexExecution(item, name, status) {
+function codexExecution(item, name, status, activityKind) {
   if (typeof item.id !== 'string' || item.id === '') return undefined
   const input = item.command ?? item.arguments ?? item.prompt ?? item.query ?? item.path
   const output = item.aggregatedOutput ?? item.error ?? item.result ?? item.contentItems ?? item.agentsStates ?? item.action
-  return { type: 'tool', id: item.id, name, status: status === 'started' ? 'running' : status,
+  return { type: 'tool', id: item.id, name, activityKind, status: status === 'started' ? 'running' : status,
     input, output, cwd: item.cwd, changes: item.changes, exitCode: item.exitCode, durationMs: item.durationMs }
 }
 
@@ -204,10 +234,18 @@ function codexTurnItems(thread, turnId) {
   const turns = thread.noticeItems ??= new Map()
   let items = turns.get(turnId)
   if (!items) {
-    items = { messages: new Map(), tools: new Set(), bridgedTools: new Set() }
+    items = { messages: new Map(), thoughts: new Map(), tools: new Set(), bridgedTools: new Set() }
     turns.set(turnId, items)
   }
   return items
+}
+
+function codexThought(thread, turnId, index, text, parts) {
+  if (!text) return
+  const length = parts.get(index)
+  const separator = length === undefined && parts.size ? '\n\n' : ''
+  parts.set(index, (length ?? 0) + text.length)
+  thread.push({ type: 'thought', text: separator + text, turnId })
 }
 
 // Keep the team's sandbox, approvals and session lifecycle. Share the native
@@ -234,6 +272,18 @@ export class WorkspaceCodexEngine extends CodexEngine {
     if (!thread) return super.onNotice(method, params)
     if (method === 'turn/completed') thread.noticeItems?.delete(params?.turn?.id)
     const { item, turnId } = params ?? {}
+    if (method === 'item/reasoning/summaryTextDelta') {
+      const { itemId, summaryIndex, delta } = params
+      if (typeof itemId === 'string' && Number.isSafeInteger(summaryIndex) && typeof delta === 'string' && delta) {
+        const thoughts = codexTurnItems(thread, turnId).thoughts
+        const parts = thoughts.get(itemId)
+        if (parts === null) return
+        const streamed = parts ?? new Map()
+        thoughts.set(itemId, streamed)
+        codexThought(thread, turnId, summaryIndex, delta, streamed)
+      }
+      return
+    }
     if (method === 'item/agentMessage/delta' || method === 'item/plan/delta') {
       const { itemId, delta } = params ?? {}
       if (typeof itemId === 'string' && typeof delta === 'string' && delta !== '') {
@@ -253,6 +303,21 @@ export class WorkspaceCodexEngine extends CodexEngine {
       return
     }
     if ((method === 'item/started' || method === 'item/completed') && item) {
+      if (item.type === 'reasoning') {
+        if (method === 'item/completed') {
+          const thoughts = codexTurnItems(thread, turnId).thoughts
+          const streamed = thoughts.get(item.id)
+          if (streamed === null) return
+          if (typeof item.id === 'string') thoughts.set(item.id, null)
+          const summary = Array.isArray(item.summary) && item.summary.some(part => typeof part === 'string' && part !== '')
+            ? item.summary : streamed ? [] : Array.isArray(item.content) && item.content.length ? item.content : [item.text]
+          const parts = streamed ?? new Map()
+          summary.forEach((part, index) => {
+            if (typeof part === 'string') codexThought(thread, turnId, index, part.slice(parts.get(index) ?? 0), parts)
+          })
+        }
+        return
+      }
       if (item.type === 'agentMessage' || item.type === 'agent_message' || item.type === 'plan') {
         if (method === 'item/completed') {
           const messages = codexTurnItems(thread, turnId).messages
@@ -269,7 +334,7 @@ export class WorkspaceCodexEngine extends CodexEngine {
       }
       const tool = codexTool(item)
       if (tool) {
-        const [name, target] = tool
+        const [name, target, activityKind] = tool
         const status = codexToolStatus(method, item)
         // The `godbot` loopback sends its own DSH tool/call and tool/result
         // events. Codex reports transport errors separately from MCP results.
@@ -278,7 +343,7 @@ export class WorkspaceCodexEngine extends CodexEngine {
         if (bridged && typeof item.id === 'string') items.bridgedTools.add(item.id)
         const transportFailed = method === 'item/completed' && item.error != null && item.result == null
         if (bridged && !transportFailed) return
-        const trace = codexExecution(item, name, status)
+        const trace = codexExecution(item, name, status, activityKind)
         if (trace && items.tools.has(trace.id)) {
           thread.push({ type: 'execution-trace', trace, turnId })
           return
@@ -396,7 +461,7 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
         const tool = codexTool(item)
         if (!tool) return
         const status = item.status === 'inProgress' ? 'started' : codexToolStatus('item/completed', item)
-        return codexExecution(item, tool[0], status)
+        return codexExecution(item, tool[0], status, tool[2])
       } })
     } catch {
       return []
