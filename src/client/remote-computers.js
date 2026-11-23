@@ -3,6 +3,7 @@ import { GodbotModal } from './modal.js'
 import { Icon } from './chat-ui.js'
 import { MachineConfirmation } from './machine-confirm.js'
 import { MachineTerminal } from './machine-terminal.js'
+import { LocalMachineHost } from './machine-local-host.js'
 import { MachineDesktop } from './machine-desktop.js'
 import { m } from './machine-copy.js'
 import style from './remote-computers.css'
@@ -28,6 +29,7 @@ const initial = {
   recovery: null,
   busy: false,
   pairing: false,
+  thisComputer: false,
   confirm: null,
 }
 
@@ -174,7 +176,7 @@ function Computers({ client, close }) {
   }, [sid, exited, rpc, failed, update])
   useEffect(() => {
     if (!view.pairing) heading.current?.focus()
-  }, [id, view.pairing])
+  }, [id, view.pairing, view.thisComputer])
   async function work(fn) {
     if (current.current.busy) return
     const token = ++run.current
@@ -191,7 +193,7 @@ function Computers({ client, close }) {
   async function connect(machine) {
     await drop('')
     setDrawer(false)
-    update({ target: machine, hello: null, pairing: false })
+    update({ target: machine, hello: null, pairing: false, thisComputer: false })
     await work(async (still) => {
       let hello
       try {
@@ -228,7 +230,7 @@ function Computers({ client, close }) {
     setDrawer(false)
     setOffer('')
     setReview(null)
-    update({ pairing: true, status: '', recovery: null, confirm: null })
+    update({ pairing: true, thisComputer: false, status: '', recovery: null, confirm: null })
   }
   async function start(mode, reconnect = false) {
     await work(async (still) => {
@@ -289,6 +291,21 @@ function Computers({ client, close }) {
         () => connect(machine),
       )
     else void connect(machine)
+  }
+  function thisComputer() {
+    setDrawer(false)
+    if (view.thisComputer) return
+    const open = async () => {
+      const token = run.current + 1
+      await drop('')
+      if (!live.current || token !== run.current) return
+      if (id) void local('leave').catch(() => {})
+      setOffer('')
+      setReview(null)
+      update({ thisComputer: true, pairing: false, target: null, hello: null })
+    }
+    if (view.session && !exited) confirm(m('End this session and open this computer’s settings?'), open)
+    else void open()
   }
   function add() {
     setDrawer(false)
@@ -555,6 +572,11 @@ function Computers({ client, close }) {
         h('strong', null, m('Computers')),
         button('+', add, { title: m('Pair computer'), 'aria-label': m('Pair computer'), disabled: busy }),
       ),
+      button(h(Fragment, null, h(Icon, { name: 'sliders' }), m('This computer')), thisComputer, {
+        className: view.thisComputer ? 'selected gb-local-host-nav' : 'gb-local-host-nav',
+        'aria-current': view.thisComputer ? 'page' : undefined,
+        disabled: busy,
+      }),
       view.machines.map((item) => {
         const currentHello = id === item.id && !view.pairing ? hello : null
         const facts = currentHello || item
@@ -616,7 +638,9 @@ function Computers({ client, close }) {
             },
           }),
         view.status && h('div', { className: 'gb-machine-status', role: 'status' }, m(view.status)),
-        view.pairing
+        view.thisComputer
+          ? h(LocalMachineHost, { client, heading })
+          : view.pairing
           ? pairing()
           : !machine
             ? h(

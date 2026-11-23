@@ -40,8 +40,9 @@ export function serviceDefinition(platform, options, home = homedir()) {
   const { home: directory, relay, name, headless, noPrompts } = options
   const id = createHash('sha256').update(directory).digest('hex').slice(0, 12)
   const label = 'io.github.godbot.computer.' + id
-  const entry = process.env.GODBOT_MACHINE_LAUNCHER
-    ? [process.env.GODBOT_MACHINE_LAUNCHER]
+  const launcher = options.launcher || process.env.GODBOT_MACHINE_LAUNCHER
+  const entry = launcher
+    ? [launcher]
     : [process.execPath, cli]
   const args = [
     ...entry,
@@ -68,7 +69,9 @@ export function serviceDefinition(platform, options, home = homedir()) {
         '</string>\n<key>ProgramArguments</key><array>\n' +
         args.map((arg) => '<string>' + xml(arg) + '</string>').join('\n') +
         '\n</array>\n' +
-        '<key>EnvironmentVariables</key><dict><key>PATH</key><string>' +
+        '<key>EnvironmentVariables</key><dict><key>HOME</key><string>' + xml(home) + '</string>' +
+        (options.encoder ? '<key>GODBOT_DESKTOP_FFMPEG</key><string>' + xml(options.encoder) + '</string>' : '') +
+        '<key>PATH</key><string>' +
         xml(pathEnv) +
         '</string></dict>\n' +
         '<key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>\n' +

@@ -50,9 +50,13 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          package=$(npm pack --pack-destination dist --silent)
-          test "$package" = "dsh-godbot-$VERSION.tgz"
+          package="dsh-godbot-$VERSION.tgz"
+          npm pack --pack-destination dist --silent
+          test -s "dist/$package"
+          node scripts/check-bundled-host-package.mjs "dist/$package" --require-encoder
           (cd dist && shasum -a 256 "$package" > "$package.sha256" && cat "$package.sha256")
+          node --input-type=module -e "import { verifyEncoderDistribution } from './computer-host/bundled-encoder.js'; verifyEncoderDistribution(undefined, { sources: true })"
+          (cd computer-host/bundled-encoder && shasum -a 256 ffmpeg-8.0.1.tar.xz libvpx-v1.17.0.tar.gz) > dist/godbot-mac-encoder-source.sha256
       - name: Publish the release
         shell: bash
         env:
@@ -60,9 +64,24 @@ jobs:
         run: |
           flags=()
           case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          assets=(
+            "dist/dsh-godbot-$VERSION.tgz"
+            "dist/dsh-godbot-$VERSION.tgz.sha256"
+            computer-host/bundled-encoder/ffmpeg-8.0.1.tar.xz
+            computer-host/bundled-encoder/libvpx-v1.17.0.tar.gz
+            dist/godbot-mac-encoder-source.sha256
+          )
+          source_notes='The corresponding source for the bundled Mac video encoder is attached as `ffmpeg-8.0.1.tar.xz` and `libvpx-v1.17.0.tar.gz`. Their checksums are in `godbot-mac-encoder-source.sha256`.'
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "dist/dsh-godbot-$VERSION.tgz" "dist/dsh-godbot-$VERSION.tgz.sha256" --clobber
+            gh release upload "$TAG" "${assets[@]}" --clobber
+            notes=$(mktemp)
+            gh release view "$TAG" --json body --jq .body > "$notes"
+            if ! grep -Fq "$source_notes" "$notes"; then
+              printf '\n%s\n' "$source_notes" >> "$notes"
+              gh release edit "$TAG" --notes-file "$notes"
+            fi
+            rm -f "$notes"
           else
-            gh release create "$TAG" "dist/dsh-godbot-$VERSION.tgz" "dist/dsh-godbot-$VERSION.tgz.sha256" \
-              --title "Godbot $VERSION" --generate-notes --verify-tag "${flags[@]}"
+            gh release create "$TAG" "${assets[@]}" --title "Godbot $VERSION" \
+              --generate-notes --notes "$source_notes" --verify-tag "${flags[@]}"
           fi

@@ -1,6 +1,6 @@
 {
   "name": "dsh-godbot",
-  "version": "0.2.0-rc.28",
+  "version": "0.2.0-rc.29",
   "description": "Control native agent sessions and collaborate in a local dsh team.",
   "license": "MIT",
   "repository": {
@@ -19,6 +19,9 @@
   "files": [
     "bin",
     "computer-host",
+    "!computer-host/bundled-encoder/ffmpeg-8.0.1.tar.xz",
+    "!computer-host/bundled-encoder/libvpx-v1.17.0.tar.gz",
+    "scripts/stage-bundled-host.mjs",
     "src/host",
     "src/drivers",
     "src/team",
@@ -44,6 +47,7 @@
   },
   "scripts": {
     "build": "node scripts/build-link.mjs && node scripts/build-client.mjs",
+    "prepack": "node scripts/stage-bundled-host.mjs",
     "test": "node --test test/**/*.test.js",
     "test:e2e": "node scripts/e2e.mjs",
     "typecheck": "tsc -p src/link"
