@@ -40820,7 +40820,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.31";
+var version = "0.2.0-rc.32";
 
 // src/client/team-ui/about.js
 var import_react40 = require("react");
@@ -60165,7 +60165,7 @@ function LoginCommand({ value, opened }) {
     } }, copied ? "已复制" : "复制命令"), error && (0, import_react89.createElement)("small", { role: "status" }, error))
   );
 }
-function AccountRow({ account, provider, kind, change, busy, readOnly, usageProps, SignIn, route, name }) {
+function AccountRow({ account, provider, kind, change, busy, readOnly, usageProps, SignIn, route, name, refresh }) {
   const [editing, setEditing] = (0, import_react89.useState)(false);
   const [alias, setAlias] = (0, import_react89.useState)("");
   const [login, setLogin] = (0, import_react89.useState)(null);
@@ -60295,10 +60295,11 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
       identityKey: [identity2.status, identity2.email, identity2.checkedAt].join("|")
     }),
     login?.command && (0, import_react89.createElement)(LoginCommand, { key: login.command, value: login.command, opened: login.opened }),
-    signing && inPage && (0, import_react89.createElement)(SignIn, { route, name, onDone: () => void act("check"), onClose: () => setSigning(false) })
+    // Signed in: the account's identity, and the CLI's own status on the provider list.
+    signing && inPage && (0, import_react89.createElement)(SignIn, { route, name, onDone: () => void act("check").then(() => refresh?.()), onClose: () => setSigning(false) })
   );
 }
-function ProviderAccounts({ row: row2, change, busy, readOnly, enabled, usageProps, SignIn }) {
+function ProviderAccounts({ row: row2, change, busy, readOnly, enabled, usageProps, SignIn, refresh }) {
   const [adding, setAdding] = (0, import_react89.useState)(false);
   const [slot, setSlot] = (0, import_react89.useState)("");
   const [alias, setAlias] = (0, import_react89.useState)("");
@@ -60318,7 +60319,8 @@ function ProviderAccounts({ row: row2, change, busy, readOnly, enabled, usagePro
     usageProps,
     SignIn,
     route: row2.route,
-    name: row2.name
+    name: row2.name,
+    refresh
   });
   return (0, import_react89.createElement)(
     "section",
@@ -60455,7 +60457,7 @@ function ProviderDetail({ row: row2, AgentLogo: AgentLogo2, AgentForm: AgentForm
         )
       )
     ),
-    row2.accounts ? (0, import_react89.createElement)(ProviderAccounts, { row: row2, change, busy, readOnly, enabled, SignIn, usageProps: { client, route: row2.route, consumption, period } }) : (0, import_react89.createElement)(AccountUsage, { client, route: row2.route, accountId: null, consumption, period, disabled: !row2.installed, readOnly }),
+    row2.accounts ? (0, import_react89.createElement)(ProviderAccounts, { row: row2, change, busy, readOnly, enabled, SignIn, refresh, usageProps: { client, route: row2.route, consumption, period } }) : (0, import_react89.createElement)(AccountUsage, { client, route: row2.route, accountId: null, consumption, period, disabled: !row2.installed, readOnly }),
     (0, import_react89.createElement)(ProviderUsageSummary, { provider: consumption, period, history: true, accountList: row2.accounts?.accounts ?? [] })
   );
 }

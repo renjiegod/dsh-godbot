@@ -24,7 +24,7 @@ function LoginCommand({ value, opened }) {
     } }, copied ? '已复制' : '复制命令'), error && h('small', { role:'status' }, error)))
 }
 
-function AccountRow({ account, provider, kind, change, busy, readOnly, usageProps, SignIn, route, name }) {
+function AccountRow({ account, provider, kind, change, busy, readOnly, usageProps, SignIn, route, name, refresh }) {
   const [editing, setEditing] = useState(false)
   const [alias, setAlias] = useState('')
   const [login, setLogin] = useState(null)
@@ -87,10 +87,11 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
     h(AccountUsage, { ...usageProps,accountId:account.id,disabled:!available || busy,readOnly,
       identityKey:[identity.status,identity.email,identity.checkedAt].join('|') }),
     login?.command && h(LoginCommand, { key:login.command, value:login.command, opened:login.opened }),
-    signing && inPage && h(SignIn, { route, name, onDone:() => void act('check'), onClose:() => setSigning(false) }))
+    // Signed in: the account's identity, and the CLI's own status on the provider list.
+    signing && inPage && h(SignIn, { route, name, onDone:() => void act('check').then(() => refresh?.()), onClose:() => setSigning(false) }))
 }
 
-function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, SignIn }) {
+function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, SignIn, refresh }) {
   const [adding, setAdding] = useState(false)
   const [slot, setSlot] = useState('')
   const [alias,setAlias] = useState('')
@@ -100,7 +101,7 @@ function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, Si
   const selected = unadded.find(a => a.id === slot) ?? unadded[0]
   const environments = unadded.filter(a => !a.removed)
   const render = account => h(AccountRow, { key:account.id === null ? 'host' : 'slot-' + account.id, account,
-    provider:row.accounts, kind:row.kind, change, busy, readOnly, usageProps, SignIn, route:row.route, name:row.name })
+    provider:row.accounts, kind:row.kind, change, busy, readOnly, usageProps, SignIn, route:row.route, name:row.name, refresh })
   return h('section', { className:'gb-pr-section' },
     h('div', { className:'gb-pr-heading' }, h('h4', null, '运行账号'),
       !readOnly && h(Button, { 'data-agent-action':'add-account', disabled:busy || adding, onClick:() => {
@@ -165,7 +166,7 @@ function ProviderDetail({ row, AgentLogo, AgentForm, back, change, customAction,
             typeof row.signedIn === 'boolean' && h('span', { className:'gb-pr-muted' }, row.signedIn ? 'CLI 已登录' : 'CLI 未登录'),
             command && h(LoginCommand, { value:command }),
             signing && inPage && h(SignIn, { route:row.route, name:row.name, command:row.signIn, onDone:() => void refresh(), onClose:() => setSigning(false) })))),
-    row.accounts ? h(ProviderAccounts, { row, change, busy, readOnly, enabled, SignIn, usageProps:{client,route:row.route,consumption,period} }) :
+    row.accounts ? h(ProviderAccounts, { row, change, busy, readOnly, enabled, SignIn, refresh, usageProps:{client,route:row.route,consumption,period} }) :
       h(AccountUsage, {client,route:row.route,accountId:null,consumption,period,disabled:!row.installed,readOnly}),
     h(ProviderUsageSummary,{provider:consumption,period,history:true,accountList:row.accounts?.accounts ?? []}))
 }
