@@ -10,6 +10,7 @@ import { BACKGROUND_ROLE, SOURCE_KIND } from '../constants.js'
 import { textOf } from '../text.js'
 import { engineOf, cliMode } from './engines.js'
 import { LoopbackMcp } from './mcp.js'
+import { QUOTA_TEXT, SIGN_IN_TEXT } from '../../../../drivers/external/agent-errors.js'
 
 export const DEFAULT_CONTEXT_WINDOW = 200_000
 // The replay window when a CLI session is new or its resume failed.
@@ -1425,10 +1426,13 @@ function toLlmError(error, live) {
   const text = String(error?.message ?? error)
   // A CLI whose context is past its window: the part moves on the way an overflow does.
   const overflow = /prompt is too long|context.?(window|length).?(exceeded|is full)|context_length_exceeded|exceeds the (model's )?(maximum )?context|too many tokens/i
+  // A driver that already knows (Claude's typed API errors) has said so.
+  const typed = error?.code === 'LOCAL_AGENT_SIGNIN' || error?.code === 'LOCAL_AGENT_QUOTA' ? error.code : undefined
   const code = error?.code === 'NO_ADAPTER' ? 'LOCAL_AGENT_MISSING'
+    : typed !== undefined ? typed
     : overflow.test(text) ? 'CONTEXT_WINDOW_EXCEEDED'
-      : /not signed in|not logged in|login required|unauthorized|authentication/i.test(text) ? 'LOCAL_AGENT_SIGNIN'
-        : /quota|rate.?limit|usage limit|exceeded/i.test(text) ? 'LOCAL_AGENT_QUOTA'
+      : SIGN_IN_TEXT.test(text) ? 'LOCAL_AGENT_SIGNIN'
+        : QUOTA_TEXT.test(text) || /exceeded/i.test(text) ? 'LOCAL_AGENT_QUOTA'
           : /exited|spawn|ENOENT/i.test(text) ? 'LOCAL_AGENT_EXIT'
             : error?.code ?? 'LOCAL_AGENT_ERROR'
   const hint = code === 'LOCAL_AGENT_SIGNIN' ? ` Sign in with: ${live?.spec?.signIn ?? `${live?.spec?.command ?? 'the CLI'} login`}.` : ''

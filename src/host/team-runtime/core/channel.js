@@ -913,6 +913,14 @@ export function install(rt) {
         case 'local-agent-add':
         case 'local-agent-update':
         case 'local-agent-remove':
+        case 'local-agent-login-start':
+        case 'local-agent-login-wait':
+        case 'local-agent-login-input':
+        case 'local-agent-login-check':
+        case 'local-agent-login-cancel':
+        case 'local-agent-login-term-read':
+        case 'local-agent-login-term-write':
+        case 'local-agent-login-term-resize':
           await rt.load()
           return ok(await rt.localAgentsEndpoint(endpoint, body))
         // "New session" and "open an earlier session" on an abot's chat: ordinary

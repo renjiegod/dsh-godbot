@@ -26,8 +26,8 @@ if (values.help) {
       return false
     }
   }
-  const release = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'BACKGROUND-REPLY', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5', 'E8', 'E12', 'E13', 'E15', 'E16', 'E17', 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS']
-  const all = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'BACKGROUND-REPLY', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS']
+  const release = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'BACKGROUND-REPLY', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5', 'E8', 'E12', 'E13', 'E15', 'E16', 'E17', 'LOCAL-SIGNIN', 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS']
+  const all = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'BACKGROUND-REPLY', 'LOCAL-SIGNIN', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS']
   const connectorCases = ['L-CLAUDE', 'L-CODEX']
   const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
   const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS']

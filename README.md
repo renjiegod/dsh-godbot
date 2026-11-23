@@ -45,7 +45,7 @@
 | 操作系统 | macOS（首版支持范围） |
 | Node.js | 24.9 或以上，并准备好 npm 和 pnpm |
 | DSH | DSH Web `0.2.2-rc.5` |
-| Agent CLI | 需要使用的 Claude Code、Codex 或 Antigravity，并已在**同一系统用户**的终端中完成正常登录 |
+| Agent CLI | 需要使用的 Claude Code、Codex 或 Antigravity，安装在运行 DSH 的**同一系统用户**下。没登录的 CLI 可以在 Godbot 页面里登录，见「在页面中登录本机 CLI」 |
 | 原生 dsh 成员 | 目标 profile 中至少配置一条可用的模型路由 |
 
 ## 快速开始
@@ -289,6 +289,18 @@ DSH Web 0.2.2-rc.1 的网页搜索设置页提供内置 DeepSeek 选项。要选
 - **设为默认** 后，为新 Bot 选择该提供商时会使用首选账号。也可以给不同 Bot 显式选择不同账号和允许挂载的工作目录，既有会话继续使用已绑定的账号。
 - **更多操作** 可以编辑名称、查看目录和登录命令，或将账号从该提供商的列表移出。已登记的环境可以再次添加，账号盘上的厂商登录仍可使用。
 
+### 在页面中登录本机 CLI
+
+本机 CLI 没登录或登录过期时，Bot 的这一轮会以修复卡片结束，卡片上有 **登录**。也可以在 **设置 → 本地 Agent** 的 CLI 详情（Claude Code、Codex 是本机账号那一行）或新建 Bot 时 CLI 卡片上点 **登录**。Godbot 在宿主上运行 CLI 自己的登录命令，把它给出的链接、一次性码或登录界面放到页面上。凭据由 CLI 自己保存，Godbot 不读取也不保存。登录成功后，修复卡片上的 **重试** 会重新运行失败的那一轮。
+
+| CLI | Godbot 运行的命令 | 页面上怎么完成 |
+| --- | --- | --- |
+| Claude Code | `claude auth login --claudeai` | 页面和宿主在同一台电脑上时，打开登录页面，浏览器完成后自动结束。在其他设备上打开时，登录页面会显示授权码，把它粘贴回 Godbot。 |
+| Codex | `codex login --device-auth` | 打开 `auth.openai.com/codex/device`，输入页面显示的一次性码。账号不允许设备码登录时，可以改用浏览器登录（`codex login`）。 |
+| 其他内置 CLI（Gemini、Cursor、Devin、Qwen 等） | 该 CLI 的登录命令 | 页面里打开一个终端，按 CLI 自己的登录界面操作，链接可以直接点开。 |
+
+自定义 ACP Agent 没有已知的登录命令，需要按它自己的文档登录。沙箱账号仍用下面的 `godbot sandbox login`。
+
 ### 在沙箱中登录 CLI
 
 在运行 Godbot Host 的机器上查看账号，并在交互终端给需要的 CLI 登录，登录可以在创建第一个聊天前完成。下例使用已登记的账号 ID `sandbox-agy-a`。用本地安装脚本安装时，可通过 `~/.dsh/profiles/web/node_modules/.bin/godbot` 调用该命令。
@@ -467,7 +479,7 @@ godbot workspace restore --home /new/dsh --profile web --file team.godbot --pass
 
 | 现象 | 处理 |
 | --- | --- |
-| **CLI 启动失败** | 以运行 DSH 的系统用户检查 `codex --version`、`claude --version` 或 `agy --version` 及登录状态，然后在该 Bot 的私聊重试。登录和授权交给原生 CLI，无需把订阅凭据填入团队聊天。 |
+| **CLI 启动失败** | 以运行 DSH 的系统用户检查 `codex --version`、`claude --version` 或 `agy --version` 及登录状态，然后在该 Bot 的私聊重试。没登录或登录过期时，点修复卡片上的 **登录**。登录和授权交给原生 CLI，无需把订阅凭据填入团队聊天。 |
 | **会话中断或投递状态待核对** | 先用原生会话 ID 检查历史与工作区，再决定是否重发。原会话无法恢复时，用交接摘要新开会话，保留新旧会话的关联。刷新浏览器会从 Host 重新读取状态。 |
 | **终端仍控制会话** | 在该 Bot 的原生面板点击「交还聊天」。终端确认退出后，等待中的 Bot 消息才会继续。 |
 | **DSH 模型报错** | 查看成员实际使用的 provider、model、HTTP 状态和错误信息，也可在普通 dsh 会话中用同一路由对照。确认另一条路由可用后，可在空闲成员面板显式切换。 |

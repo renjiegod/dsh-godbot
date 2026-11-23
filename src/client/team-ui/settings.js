@@ -26,6 +26,7 @@ import { FeedbackIcon, FeedbackPage } from './feedback.js'
 import { AboutPage } from './about.js'
 import { ProvidersPage } from './providers-page.js'
 import { AgentLogo } from './agent-cards.js'
+import { LocalSignInPanel } from './local-sign-in.js'
 import { ENGINES } from '../../host/team-runtime/core/local-agents/engines.js'
 import { call } from './api.js'
 import { AgentForm } from './agent-form.js'
@@ -395,7 +396,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
           shown === 'models' && !advanced ? h(ProvidersPage, { actions, run, roster, Section: SetSection, advanced: hasSection(dsh, 'models') ? () => actions.openSettings('models', 'advanced') : null }) : null,
           advanced ? h('div', { className: 'bt-dsh-section' }, dsh.renderSlot('settings.section', { close }, { only: 'models' })) : null,
           section ? h('div', { className: 'bt-dsh-section' }, dsh.renderSlot('settings.section', { close }, { only: section.id })) : null,
-          shown === 'local-agents' ? actions.godbot.providerAgents({ call, AgentLogo, AgentForm, readOnly: roster.readOnly, builtins }) : null,
+          shown === 'local-agents' ? actions.godbot.providerAgents({ call, AgentLogo, AgentForm, readOnly: roster.readOnly, builtins, SignIn: roster.readOnly ? undefined : LocalSignInPanel }) : null,
           bot ? h('div', { className: 'bt-settings-form' }, h(BotSettingsForm, { key: bot.id, bot, roster, actions, run })) : null,
           shown === 'bots' && !bot ? h(BotsPage, { roster, actions, run }) : null,
           shown === 'bot-models' ? h(BotModelsPage, { roster, actions, run, Section: SetSection }) : null,

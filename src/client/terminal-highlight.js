@@ -410,7 +410,7 @@ export function linkUrl(text) {
 
 /** Underline web links on hover. A Cmd or Ctrl click opens them, matching
  * how desktop terminals keep a plain click for focus and selection. */
-export function attachTerminalLinks(terminal, { open, hint }) {
+export function attachTerminalLinks(terminal, { open, hint, plainClick = false }) {
   const cell = terminal.buffer.active.getNullCell()
   return terminal.registerLinkProvider({
     provideLinks(lineNumber, callback) {
@@ -431,7 +431,7 @@ export function attachTerminalLinks(terminal, { open, hint }) {
             end: { x: line.cols[last] + line.widths[last], y: line.rows[last] + 1 },
           },
           decorations: { pointerCursor: true, underline: true },
-          activate(event) { if (event.metaKey || event.ctrlKey) open(linkUrl(text)) },
+          activate(event) { if (plainClick || event.metaKey || event.ctrlKey) open(linkUrl(text)) },
           hover() { hint(true) },
           leave() { hint(false) },
         })
