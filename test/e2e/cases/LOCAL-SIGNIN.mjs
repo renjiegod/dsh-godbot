@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { writeFile } from 'node:fs/promises'
+import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { until } from '../host.mjs'
 import { openFullTeam } from '../native-ui.mjs'
@@ -11,6 +11,8 @@ import { member } from '../tickets.mjs'
 // which must be the turn's failure (a repair card with Sign in), never the Bot's
 // reply. The card's sign-in runs `claude auth login`, takes the code the user pastes,
 // and once the CLI is signed in the Bot is unblocked and its greeting goes out.
+// When the sign-in expires later in the conversation, the user's message fails the
+// same way; once signed in from the card, the Bot answers it without a Retry click.
 // Codex: Settings → Local agents signs it in with the device code `codex login
 // --device-auth` prints. Gemini CLI: its own sign-in screen runs in a terminal on
 // the page, and the sign-in ends once the CLI's check finds its credential.
@@ -29,7 +31,7 @@ const run = file => import(file).catch(e => { console.error(e); process.exit(1);
 if (args.includes('--version')) console.log('2.1.0 fixture');
 else if (args[0] === 'auth' && args[1] === 'status') console.log(JSON.stringify({ loggedIn: existsSync(flag) }));
 else if (args[0] === 'auth' && args[1] === 'login') run(${fixture('fake-claude-login.mjs')});
-else run(existsSync(flag) ? ${fixture('fake-claude-turns.mjs')} : ${fixture('fake-claude-signed-out.mjs')});
+else run(${fixture('fake-claude-signed-out.mjs')});
 `, { mode: 0o700 })
   await writeFile(join(host.bin, 'codex'), `#!/usr/bin/env node
 const { existsSync } = require('node:fs');
@@ -81,6 +83,23 @@ else import(${fixture('fake-gemini-login.mjs')}).catch(e => { console.error(e); 
   // card settles: the turn it was about has been moved past.
   await until(async () => (await items()).some(item => item.kind === 'bot' && /^reply: /u.test(item.text ?? '')), bot.name + ' answers once signed in', 40_000)
   await until(async () => await page.locator('.bt-fail [data-fix="local-sign-in"]').count() === 0, 'the repair card settles once the Bot answered')
+
+  // The sign-in expires in the middle of the conversation: the user's message fails,
+  // and signing in from its card answers it, with no Retry.
+  await rm(claudeFlag, { force: true })
+  const replies = async () => (await items()).filter(item => item.kind === 'bot' && /^reply: /u.test(item.text ?? '')).length
+  const before = await replies()
+  await host.bot('send', { sessionId: bot.id, text: 'Are you still there?' })
+  await until(async () => (await host.bot('state')).bots.find(row => row.id === bot.id)?.blocked?.code === 'LOCAL_AGENT_SIGNIN', bot.name + ' blocked again')
+  const again = page.locator('.bt-fail').filter({ has: page.locator('[data-fix="local-sign-in"]') }).last()
+  await again.waitFor()
+  await again.locator('[data-fix="local-sign-in"]').click()
+  const panelAgain = again.locator('[data-local-sign-in="local-claude-code"]')
+  await panelAgain.locator('input').fill('e2e-code#s2')
+  await panelAgain.locator('button[type="submit"]').click()
+  await until(async () => await replies() === before + 1, bot.name + ' answers the failed message on its own after the sign-in', 40_000)
+  await new Promise(resolve => setTimeout(resolve, 3_000))
+  assert.equal(await replies(), before + 1, 'the Bot answers once')
 
   // Codex: Settings → Local agents → Codex CLI → the host account's Sign in.
   const view = await openProviderSettingsFromTeam(host)

@@ -23,7 +23,8 @@ function harness(t, { route = 'local-claude-code', script = 'fake-claude-login.m
   const signIns = createLocalSignIn({
     target: name => (name === route ? { route, spec, path: fixture(script) } : undefined),
     probe: async () => existsSync(flag),
-    signedIn: async name => { lifted.push(name) },
+    // Slow on purpose: the page hears "done" only once the sign-in has taken effect.
+    signedIn: async name => { await new Promise(resolve => setTimeout(resolve, 300)); lifted.push(name) },
     terminals: () => undefined,
     spawn: (file, list, options) => spawnAgent(process.execPath, [file, ...list], options),
     timeoutMs,
