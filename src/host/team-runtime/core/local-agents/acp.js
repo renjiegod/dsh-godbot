@@ -56,6 +56,7 @@ export class AcpEngine {
     this.starting = undefined
     this.sessions = new Map()
     this.caps = {}
+    this.probedCapabilities = {}
     // The modes, options and models this CLI listed last, for a reply that lists none.
     this.listed = { modes: [], configOptions: [], models: [] }
     // The commands each agent session lists, by the agent's session id.
@@ -272,7 +273,6 @@ export class AcpEngine {
       const session = await worker.open(dshSessionId, openArgs)
       session._worker = worker
       this.sessionWorkers.set(dshSessionId, worker)
-      this.caps.image = worker.caps.image
       return session
     } catch (error) {
       if (created && !reused && ![...this.sessionWorkers.values()].includes(worker)) {
@@ -414,8 +414,27 @@ export class AcpEngine {
     }
   }
 
+  connectionImageSupport() {
+    if (this.peer !== undefined && this.starting === undefined) return this.caps.image
+  }
+
+  clearImageProbe() {
+    // In-flight probes retain the old object, so they cannot refill this cache.
+    this.probedCapabilities = {}
+  }
+
   supportsImages(session) {
-    return (this.workerOf(session) ?? this).caps.image
+    if (session !== undefined) {
+      if (session.dead) return undefined
+      return (this.workerOf(session) ?? this).connectionImageSupport()
+    }
+    if (this.peer !== undefined) return this.connectionImageSupport()
+    const workers = [...this.workers.values()].filter(worker => worker.peer !== undefined)
+    if (workers.length > 0) {
+      const supported = workers[0].connectionImageSupport()
+      return workers.every(worker => worker.connectionImageSupport() === supported) ? supported : undefined
+    }
+    return this.probedCapabilities.image
   }
 
   async prompt(session, blocks, { signal, effort } = {}) {
@@ -532,21 +551,17 @@ export class AcpEngine {
 
   // Models (and per-model thinking levels) the agent advertises on a probe session.
   async listModels({ cwd, mcp }) {
+    const capabilities = this.probedCapabilities
     if (this.engine.cwdPerProcess) {
       const live = this.activeWorker()
-      if (live !== undefined) {
-        const target = live.engine.spawnCwd && existsSync(live.engine.spawnCwd) ? live.engine.spawnCwd : cwd
-        const models = await live.listModels({ cwd: target, mcp })
-        this.caps.image = live.caps.image
-        return models
-      }
-      const temp = this.spawnWorker(cwd)
+      const worker = live ?? this.spawnWorker(cwd)
+      const target = live?.engine.spawnCwd && existsSync(live.engine.spawnCwd) ? live.engine.spawnCwd : cwd
       try {
-        const models = await temp.listModels({ cwd, mcp })
-        this.caps.image = temp.caps.image
+        const models = await worker.listModels({ cwd: target, mcp })
+        capabilities.image = worker.probedCapabilities.image
         return models
       } finally {
-        await temp.close()
+        if (live === undefined) await worker.close()
       }
     }
     const peer = await this.ensure()
@@ -556,7 +571,9 @@ export class AcpEngine {
       if (this.caps.close) await peer.request('session/close', { sessionId: probe.sessionId }, { timeout: 15_000 }).catch(() => {})
     }
     this.remember(probe)
-    return modelsFromProbe(probe)
+    const models = modelsFromProbe(probe)
+    capabilities.image = this.peer === peer ? this.connectionImageSupport() : undefined
+    return models
   }
 }
 

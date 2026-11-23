@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as wait } from 'node:timers/promises'
+import { PNG } from 'pngjs'
 import { openFullTeam, verifyModalTheme } from '../native-ui.mjs'
 import { until } from '../host.mjs'
 
@@ -39,6 +40,7 @@ async function checkInboxDialog(host, note) {
 
 export default async function E9({ makeHost, candidate, note }) {
   const host = await makeHost()
+  host.model.models = ['deepseek-flash', 'deepseek-v4-pro']
   await host.install(candidate)
   await host.start()
   await openFullTeam(host)
@@ -103,9 +105,45 @@ export default async function E9({ makeHost, candidate, note }) {
       }))), 'the model received the selected answer in ' + card.label + '\'s original chat')
   }
 
+  const teamDefault = 'deepseek-official/deepseek-v4-pro'
+  const { models } = await host.bot('state')
+  assert.deepEqual(models.find(row => row.ref === teamDefault)?.input, ['text'])
+  assert.ok(models.every(row => row.provider !== 'godbot-group-relay'))
+  await host.bot('set-prefs', { defaultBotModel: teamDefault })
   const room = await host.bot('create-room', { name: 'E9 editorial', members: [lead.id, worker.id], admin: lead.id })
   assert.equal(room.mode, 'admin')
   assert.equal(room.admin, lead.id)
+
+  const imagePrompt = 'room-image-' + randomUUID()
+  const imageReply = 'The group member received the image'
+  const png = new PNG({ width: 24, height: 16 })
+  png.data.fill(255)
+  png.data.set([0, 155, 90, 255])
+  host.model.reply = body => {
+    const blocks = body.messages.flatMap(message => message.content)
+    return blocks.some(block => block?.type === 'text' && block.text.includes(imagePrompt))
+      && blocks.some(block => block?.type === 'image') ? imageReply : 'acknowledged'
+  }
+  await dialog.getByRole('button', { name: '关闭', exact: true }).click()
+  await host.page.locator(`[data-room-id="${room.id}"]`).click()
+  const composer = host.page.locator('[data-composer-card]')
+  const input = composer.locator('[role="textbox"]')
+  await input.fill('@Publisher ' + imagePrompt)
+  await input.evaluate((element, data) => {
+    const clipboardData = new DataTransfer()
+    clipboardData.items.add(new File([Uint8Array.from(atob(data), char => char.charCodeAt(0))], 'room.png', { type: 'image/png' }))
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
+  }, PNG.sync.write(png).toString('base64'))
+  await composer.locator('img').first().waitFor()
+  await composer.getByRole('button', { name: /^(发送消息|Send message)$/u }).click()
+  const imageRow = await until(async () => {
+    const { rows } = await host.bot('group-rows', { roomId: room.id, from: 0, to: 2_000_000_000 })
+    return rows.find(row => row.text === imageReply)
+  }, 'image delivered to a vision-capable group member with a text-only team default')
+  assert.equal(imageRow.botId, worker.id)
+  note('room-image', { roomId: room.id, responder: worker.id, teamDefault })
+
+  await host.page.getByRole('button', { name: '工作台收件箱' }).click()
   await dialog.getByText('群聊自动分派', { exact: true }).click()
   await dialog.getByRole('checkbox', { name: room.name }).click()
   await until(async () => (await inbox()).rooms.find(r => r.id === room.id)?.enabled, 'room routing enabled from owner UI')

@@ -3,6 +3,7 @@
 // JSON-RPC process per route that multiplexes threads. Godbot Sessions map to
 // threads; turns stream item notifications back.
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
+import { codexInputModalities } from '../../../../drivers/external/codex.js'
 import { cleanEnv, findEngineExecutable, spawnAgent, terminateChild } from '../../../../drivers/external/discover.js'
 
 // The name the loopback MCP server is registered under in each thread's config.
@@ -319,9 +320,11 @@ export class CodexEngine {
     const peer = await this.ensure()
     const reply = await peer.request('model/list', {}, { timeout: 30_000 })
     return (reply?.data ?? reply?.models ?? []).map((entry) => {
+      const inputModalities = codexInputModalities(entry.inputModalities)?.filter(kind => kind !== 'audio')
       const model = {
         id: String(entry.id ?? entry.model),
         name: String(entry.displayName ?? entry.name ?? entry.id ?? entry.model),
+        ...(inputModalities === undefined ? {} : { inputModalities }),
       }
       // The app-server advertises the levels each model takes. Its default is
       // left out on purpose: DSH would send it on every turn, and the level the

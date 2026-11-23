@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
+import { PNG } from 'pngjs'
 import { until } from '../host.mjs'
-import { openFullTeam } from '../native-ui.mjs'
+import { openBotChat, openFullTeam } from '../native-ui.mjs'
 import { openProviderSettingsFromTeam } from '../provider-settings.mjs'
 import { prepareProviderAccounts } from '../fixtures/provider-account-setup.mjs'
 
@@ -86,6 +87,34 @@ else {
   await owner('provider-account-default',{kind:'antigravity',accountId:'test-alpha'})
   const bot=await host.bot('create-bot',{name:'Metered team Bot',model:'local-antigravity/default',workDir:roots.alpha})
   await settleBotPrompt(host,bot,'Metered Bot fixture grow:125')
+  await openBotChat(host, bot)
+  const png = new PNG({ width: 24, height: 16 })
+  for (let i = 0; i < png.data.length; i += 4) png.data.set([47, 128, 211, 255], i)
+  const bytes = PNG.sync.write(png)
+  const composer = host.page.locator('[data-composer-card] [role=textbox]')
+  const imagePrompt = 'Read the sandbox image'
+  await composer.fill(imagePrompt)
+  await composer.evaluate((input, data) => {
+    const clipboardData = new DataTransfer()
+    clipboardData.items.add(new File([Uint8Array.from(atob(data), c => c.charCodeAt(0))], 'sandbox.png', { type: 'image/png' }))
+    input.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }))
+  }, bytes.toString('base64'))
+  await host.page.locator('[data-composer-card] img').first().waitFor()
+  await host.page.locator('[data-composer-card]').getByRole('button', { name: /^(发送消息|Send message)$/u }).click()
+  const receipt = await until(async () => {
+    const unsupported = host.page.getByText(/当前模型不支持图片|The current model does not support images/u)
+    assert.equal(await unsupported.count(), 0, 'the composer rejected the sandbox route as text-only')
+    const { items } = await host.bot('chat', { botId: bot.id })
+    const user = items.find(item => item.kind === 'user' && item.text === imagePrompt)
+    return user && items.find(item => item.kind === 'bot' && item.turn === user.turn && item.text?.includes(' images='))
+  }, 'image pasted in Web reached the sandbox ACP prompt')
+  const [image] = JSON.parse(receipt.text.split(' images=')[1])
+  assert.equal(image.mimeType, 'image/png')
+  const received = PNG.sync.read(Buffer.from(image.data, 'base64'))
+  assert.equal(received.width, png.width)
+  assert.equal(received.height, png.height)
+  assert.deepEqual(received.data, png.data)
+  note('sandbox-web-image', { mimeType: image.mimeType, width: received.width, height: received.height })
   await until(async()=>{
     const result=await read()
     return route(result,agy)?.accounts.find(a=>a.accountId==='test-alpha')?.periods.today.tokens>0 && result

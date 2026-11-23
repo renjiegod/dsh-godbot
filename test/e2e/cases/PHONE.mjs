@@ -1,8 +1,12 @@
 // PHONE: a phone pairs with Godbot through a godbot-server relay, calls the team endpoints over the
-// end-to-end encrypted link, hands over its push key, and gets an encrypted push through (fake) FCM
+// end-to-end encrypted link, sends a photo to a sandbox ACP agent, and gets an encrypted push through (fake) FCM
 // for a Bot reply while it is offline. Removing the phone on the computer locks it out.
 import assert from 'node:assert/strict'
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import { PNG } from 'pngjs'
 import { saveEvidence } from '../artifacts.mjs'
+import { prepareProviderAccounts } from '../fixtures/provider-account-setup.mjs'
 import { until } from '../host.mjs'
 import { startRelay } from '../phone-relay.mjs'
 import {
@@ -48,7 +52,10 @@ async function openLink(offer, phone, pairingCode) {
 export default async function check({ makeHost, candidate, reportDir, scratch, note }) {
   const relay = await startRelay(scratch, note)
   try {
-    const host = await makeHost()
+    const registry = join(scratch, 'phone-account-registry')
+    await mkdir(registry, { mode: 0o700 })
+    const host = await makeHost({ env: { GODBOT_SANDBOX_ACCOUNTS_DIR: registry } })
+    const { roots } = await prepareProviderAccounts(scratch, host, registry)
     await host.install(candidate)
     await host.start()
 
@@ -71,6 +78,7 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     const hello = await first.bot('hello', { api: [1] })
     assert.equal(hello.api, 1)
     assert.equal(hello.plugin.name, 'dsh-godbot')
+    assert.ok(hello.capabilities.includes('send-images'))
     await first.close()
     const paired = await until(async () => (await channel(host, 'phone-set', {})).phones.find(row => row.id === phone.deviceId), 'the paired phone on the computer')
     assert.equal(paired.name, 'E2E Pixel')
@@ -83,6 +91,26 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     assert.ok(lead, 'the team has a Main Bot')
     const big = await link.client.rpc('bot', { endpoint: 'hello', payload: { api: [1], pad: 'x'.repeat(300_000) } })
     assert.equal(big.ok, true, 'a 300 KB call crosses the relay in fragments')
+
+    const owner = request => host.rpc('godbot/dispatch', { request })
+    await owner({ action: 'sandbox-settings-set', enabled: true })
+    await owner({ action: 'provider-account-default', kind: 'antigravity', accountId: 'test-alpha' })
+    const imageBot = await host.bot('create-bot', { name: 'Phone ACP', model: 'local-antigravity/default', workDir: roots.alpha })
+    assert.equal((await link.bot('state', {})).bots.find(row => row.id === imageBot.id)?.accountProfileId, 'test-alpha')
+    const png = new PNG({ width: 24, height: 16 })
+    png.data.fill(255)
+    png.data.set([0, 155, 90, 255])
+    const data = PNG.sync.write(png).toString('base64')
+    const mediaType = 'image/png'
+    const photo = await link.bot('stage-image', { mediaType, data })
+    const imageMarker = 'PHONE-image-' + Date.now()
+    assert.equal(await link.bot('send', { sessionId: imageBot.sessionId ?? imageBot.id, text: imageMarker, images: [photo.id] }), true)
+    const imageReceipt = await until(async () => {
+      const { items } = await link.bot('chat', { botId: imageBot.id })
+      return items.find(row => row.kind === 'bot' && row.text?.includes(imageMarker) && row.text?.includes(' images='))
+    }, 'the ACP reply with the actual photo content block', 40_000)
+    assert.deepEqual(JSON.parse(imageReceipt.text.split(' images=')[1]), [{ mimeType: mediaType, data }])
+    note('photo-reached-acp', { mediaType, width: png.width, height: png.height })
 
     // Push: the key goes to the computer inside the link; the token goes to the relay.
     assert.equal(link.relay.pushAvailable, true)

@@ -122,14 +122,20 @@ export class SandboxTeamAgents {
     if (!target || !this.enabled()) throw unavailable()
     const account = this.accountList().find(a => a.id === target.accountId && a.kinds.includes(target.kind))
     if (!account?.workspaces.length) throw unavailable()
-    const input = { accountId: account.id, kind: target.kind, cwd: account.workspaces[0].hostPath }
+    const bot = target.workspaceTag && Object.values(this.rt.state.bots ?? {}).find(bot => provider(bot.model) === route)
+    const input = { accountId: account.id, kind: target.kind, cwd: bot?.workDir ?? account.workspaces[0].hostPath }
     const current = this.workspace(input)
+    if (target.workspaceTag && target.workspaceTag !== workspaceTag(current)) throw unavailable()
     const engine = this.engineFor(target, baseSpec, current, () => this.launch(input))
     const rows = await engine.probeSandboxModels()
     if (!this.enabled()) throw unavailable()
     matchBinding(current, this.workspace(input))
-    this.models.set(route, rows.filter(row => typeof row.id === 'string' && row.id !== 'default')
-      .map(({ id, name, reasoning }) => ({ id, name: name ?? id, provider: route, ...(reasoning ? { reasoning } : {}) })))
+    // A base route can be shared by Bots on different exports of the account.
+    const workspaceSpecific = target.workspaceTag !== undefined || account.workspaces.length === 1
+    const models = rows.filter(row => typeof row.id === 'string' && row.id !== 'default')
+      .map(({ id, name, reasoning, inputModalities }) => ({ id, name: name ?? id, provider: route,
+        ...(reasoning ? { reasoning } : {}), ...(workspaceSpecific && inputModalities ? { inputModalities } : {}) }))
+    this.models.set(route, { rows: models, supportsImages: workspaceSpecific ? engine.supportsImages?.() : undefined })
   }
   async bind({ botId, accountProfileId, kind, cwd }) {
     const rt = this.rt
