@@ -20,18 +20,3 @@ test('with every earlier part loaded, a line with nothing above it is left out',
   assert.deepEqual(withoutEmptyParts(items, { complete: false })[0], line(20))
   assert.deepEqual(withoutEmptyParts([said('greeting', 5)], { complete: true }), [said('greeting', 5)])
 })
-
-test('a New session links only to the part its package names, while the list can open it', async () => {
-  const { previousPart } = await import('../../src/client/team-ui/part-dividers.js')
-  const bot = { id: 'b', sessionId: 'p3', parts: ['p1', 'p2'], openParts: [{ sessionId: 'o1', parts: ['o0'] }] }
-  assert.equal(previousPart(bot, 'p3', { handoff: true, fromPart: 'p2' }), 'p2')
-  assert.equal(previousPart(bot, 'p3', { handoff: true, fromPart: 'o1' }), 'o1')
-  // A package from before `fromPart` names nothing; the thread order is no guide.
-  assert.equal(previousPart(bot, 'p3', { handoff: true }), undefined)
-  // An open thread's own earlier part is not in the list, nor is the session itself.
-  assert.equal(previousPart(bot, 'p3', { handoff: true, fromPart: 'o0' }), undefined)
-  assert.equal(previousPart(bot, 'p3', { handoff: true, fromPart: 'p3' }), undefined)
-  // A New session opened while the Bot was busy links to the part still running.
-  assert.equal(previousPart(bot, 'p3', { handoff: true, opening: true, fromPart: 'o1' }), 'o1')
-  assert.equal(previousPart(undefined, 'p3', { fromPart: 'p2' }), undefined)
-})

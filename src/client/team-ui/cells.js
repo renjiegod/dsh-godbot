@@ -19,7 +19,7 @@ import { AppAccessCall, ComputerCallRow, ComputerHandoffCall } from './computer.
 import { mdLabels, t } from './i18n.js'
 import { call } from './api.js'
 import { failureLabel } from './diagnostics.js'
-import { previousPart, withoutEmptyParts } from './part-dividers.js'
+import { withoutEmptyParts } from './part-dividers.js'
 import { turnReasoning, thinkingStep, opensReply, stepActivity } from './turn-reasoning.js'
 import { parseReplies, relayRange, stackReplies } from '../../host/team-runtime/shared/group-replies.js'
 import { bindToolSlots, toolSlots } from '../../host/team-runtime/shared/tool-timeline.js'
@@ -661,36 +661,20 @@ function EarlierParts({ sessionId, roster, actions }) {
 }
 
 // Where a New session of a Bot's own chat begins. Sessions show apart, as DSH shows
-// its own: nothing of an earlier session is drawn above this line or carried into it,
-// and every one of them stays in the session list (details-drawer.js BotSessions). It
-// links to the session the user left; opening that one makes it current.
-function PartStart({ sessionId, source, time, roster, useSessions, actions }) {
+// its own: nothing of an earlier session is drawn above this line or carried into it.
+// Every one of them stays in the session lists, which open it again: the top bar's
+// (session-menu.js) and the details panel's (details-drawer.js BotSessions).
+function PartStart({ sessionId, source, time, roster }) {
   const bot = roster.byId[sessionId]
-  const from = previousPart(bot, sessionId, source)
-  // The session is named by the first thing the user asked in it; a part is made under
-  // the Bot's name, so a DSH title only names it when it is its own.
-  const named = useSessions(list => (from === undefined ? '' : (list.byId?.[from]?.title ?? '').trim()))
-  const title = (from === undefined ? '' : roster.partTitles?.[from]) || (named === bot.name ? '' : named)
-  const [state, setState] = useState({ busy: false, error: '' })
   const opening = source.opening === true
   // A New session nobody has talked in yet says what it is under its line.
   const fresh = currentPart(bot) === sessionId && roster.newSessions?.[bot.id] === 'empty'
-  const open = () => {
-    if (state.busy || from === undefined) return
-    setState({ busy: true, error: '' })
-    Promise.resolve(actions.openPart !== undefined ? actions.openPart(bot.id, from) : call('bot-open-part', { botId: bot.id, sessionId: from }))
-      .then(() => setState({ busy: false, error: '' }), failure => setState({ busy: false, error: failure?.message ?? String(failure) }))
-  }
   return h('div', { className: 'bt-part-start' },
     h(PartLine, { time, start: true, fresh }),
     fresh ? h('p', { className: 'bt-part-fresh', role: 'note', 'data-opening': opening || undefined },
       opening
         ? t('The earlier conversation carries on in the session list. {name} starts afresh here — send a message to begin.', { name: bot.name })
-        : t('{name} starts afresh here, with nothing carried over from the last session — send a message to begin.', { name: bot.name })) : null,
-    from === undefined ? null : h('div', { className: 'bt-part-from' },
-      h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: state.busy, onClick: open, title: t('Open this earlier session') },
-        title !== '' ? t('Previous session: “{title}”', { title }) : t('Open the previous session')),
-      state.error !== '' ? h('span', { className: 'bt-part-from-error', role: 'alert' }, state.error) : null))
+        : t('{name} starts afresh here, with nothing carried over from the last session — send a message to begin.', { name: bot.name })) : null)
 }
 
 // A Bot chat's entries as the host lists them (the `earlier` and `chat` endpoints): the
@@ -814,7 +798,7 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
       // itself has its earlier parts right above it.
       if (source.handoff === true) {
         if ((source.manual === true || source.opening === true) && roster.roomsById[sessionId] === undefined && roster.byId[sessionId] !== undefined) {
-          return h(PartStart, { sessionId, source, time: data.time, roster, useSessions, actions })
+          return h(PartStart, { sessionId, source, time: data.time, roster })
         }
         return h(EarlierParts, { sessionId, roster, actions })
       }
