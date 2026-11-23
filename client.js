@@ -50974,6 +50974,9 @@ function FailureCell({ node, sessionId, useRoster, useTurnClock, actions }) {
     const expanded = toggles ? keying : fix === "local-sign-in" ? signing : void 0;
     return (0, import_react64.createElement)("button", { key: fix, type: "button", className, "data-fix": fix, "aria-expanded": expanded, onClick: () => runs[fix]() }, FIX_LABELS[fix](signedIn));
   };
+  const afterSignIn = () => {
+    if (!asked && typeof actions.resume === "function" && retry === "idle") resume();
+  };
   const retryButton = (primary) => (0, import_react64.createElement)("button", { key: "retry", type: "button", "data-fix": "retry", className: primary ? "bt-send bt-fail-go" : "bt-soft bt-soft-sm", disabled: retry !== "idle", onClick: resume }, retry === "idle" ? t("Retry") : t("Retrying…"));
   const row2 = retryFirst ? [retryButton(true), ...fixes.map((fix) => button6(fix, false))] : [...fixes.map((fix, index) => button6(fix, index === 0)), retrying ? retryButton(false) : null];
   if (!row2.some(Boolean)) return settled();
@@ -50983,7 +50986,7 @@ function FailureCell({ node, sessionId, useRoster, useTurnClock, actions }) {
     (0, import_react64.createElement)("div", { className: "bt-fail-head" }, (0, import_react64.createElement)("span", { className: "bt-fail-dot", "aria-hidden": true }), (0, import_react64.createElement)("span", { className: "bt-fail-text" }, text)),
     (0, import_react64.createElement)("div", { className: "bt-fail-actions" }, row2),
     keying && keyHere ? (0, import_react64.createElement)(ModelKeyCard, { model: { provider, providerName: providerName(roster, provider) }, actions, onSaved: () => setKeying(false) }) : null,
-    signing && localSignIn ? (0, import_react64.createElement)(LocalSignInPanel, { route: provider, name: providerName(roster, provider), command: signInCommand(provider), onClose: () => setSigning(false) }) : null,
+    signing && localSignIn ? (0, import_react64.createElement)(LocalSignInPanel, { route: provider, name: providerName(roster, provider), command: signInCommand(provider), onDone: afterSignIn, onClose: () => setSigning(false) }) : null,
     error ? (0, import_react64.createElement)("div", { className: "bt-fail-error", role: "alert" }, error) : null,
     (0, import_react64.createElement)(TechnicalDetails, { facts })
   );

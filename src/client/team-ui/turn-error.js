@@ -252,6 +252,12 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
     const expanded = toggles ? keying : fix === 'local-sign-in' ? signing : undefined
     return h('button', { key: fix, type: 'button', className, 'data-fix': fix, 'aria-expanded': expanded, onClick: () => runs[fix]() }, FIX_LABELS[fix](signedIn))
   }
+  // Signed in from this card: the Bot goes on with the turn that failed, as Retry
+  // would (the host has lifted the block by now; a held greeting it sent again
+  // already is not sent twice).
+  const afterSignIn = () => {
+    if (!asked && typeof actions.resume === 'function' && retry === 'idle') resume()
+  }
   const retryButton = primary => h('button', { key: 'retry', type: 'button', 'data-fix': 'retry', className: primary ? 'bt-send bt-fail-go' : 'bt-soft bt-soft-sm', disabled: retry !== 'idle', onClick: resume }, retry === 'idle' ? t('Retry') : t('Retrying…'))
   const row = retryFirst
     ? [retryButton(true), ...fixes.map(fix => button(fix, false))]
@@ -262,7 +268,7 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
     h('div', { className: 'bt-fail-head' }, h('span', { className: 'bt-fail-dot', 'aria-hidden': true }), h('span', { className: 'bt-fail-text' }, text)),
     h('div', { className: 'bt-fail-actions' }, row),
     keying && keyHere ? h(ModelKeyCard, { model: { provider, providerName: providerName(roster, provider) }, actions, onSaved: () => setKeying(false) }) : null,
-    signing && localSignIn ? h(LocalSignInPanel, { route: provider, name: providerName(roster, provider), command: signInCommand(provider), onClose: () => setSigning(false) }) : null,
+    signing && localSignIn ? h(LocalSignInPanel, { route: provider, name: providerName(roster, provider), command: signInCommand(provider), onDone: afterSignIn, onClose: () => setSigning(false) }) : null,
     error ? h('div', { className: 'bt-fail-error', role: 'alert' }, error) : null,
     h(TechnicalDetails, { facts }))
 }
