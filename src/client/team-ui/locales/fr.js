@@ -779,8 +779,6 @@ export const FR = {
   "Start a new session with {name}": "Démarrer une nouvelle session avec {name}",
   "New session · {time}": "Nouvelle session · {time}",
   "{name} starts afresh here, with nothing carried over from the last session — send a message to begin.": "{name} repart de zéro ici, sans rien de la session précédente ; envoyez un message pour commencer.",
-  "Previous session: “{title}”": "Session précédente : « {title} »",
-  "Open the previous session": "Ouvrir la session précédente",
   "Context handed over · {time}": "Contexte transmis · {time}",
   "Context handed over": "Contexte transmis",
   "The conversation goes on in a fresh session with a handoff note. The messages above stay here.": "La conversation continue dans une nouvelle session avec une note de passation. Les messages au-dessus restent ici.",

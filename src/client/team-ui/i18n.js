@@ -797,8 +797,6 @@ const ZH = {
   'Start a new session with {name}': '和 {name} 开启新会话',
   'New session · {time}': '新会话 · {time}',
   '{name} starts afresh here, with nothing carried over from the last session — send a message to begin.': '{name} 在这里从零开始，不带上一个会话的任何内容，发条消息开始吧。',
-  'Previous session: “{title}”': '上一个会话：「{title}」',
-  'Open the previous session': '打开上一个会话',
   'Context handed over · {time}': '上下文已交接 · {time}',
   'Context handed over': '上下文已交接',
   'The conversation goes on in a fresh session with a handoff note. The messages above stay here.': '对话在新的会话里带着交接摘要继续，上面的消息都还在。',

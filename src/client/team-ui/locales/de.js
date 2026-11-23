@@ -781,8 +781,6 @@ export const DE = {
   'Start a new session with {name}': 'Neue Sitzung mit {name} starten',
   'New session · {time}': 'Neue Sitzung · {time}',
   '{name} starts afresh here, with nothing carried over from the last session — send a message to begin.': '{name} beginnt hier neu, ohne etwas aus der letzten Sitzung – schick eine Nachricht, um loszulegen.',
-  'Previous session: “{title}”': 'Vorherige Sitzung: „{title}“',
-  'Open the previous session': 'Vorherige Sitzung öffnen',
   'Context handed over · {time}': 'Kontext übergeben · {time}',
   'Context handed over': 'Kontext übergeben',
   'The conversation goes on in a fresh session with a handoff note. The messages above stay here.': 'Das Gespräch geht in einer neuen Sitzung mit einer Übergabenotiz weiter. Die Nachrichten oben bleiben hier.',
