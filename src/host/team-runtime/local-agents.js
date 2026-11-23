@@ -28,6 +28,8 @@ import { listSlashCommands } from '../slash-catalog.js'
 import { resolveSlash, slashInput, teamSlashMessage } from '../slash.js'
 import { ENGINES, customRoute, isLocalAgentRoute as isBaseLocalRoute, validateCustom } from './core/local-agents/engines.js'
 import { cleanEnv, findEngineExecutable, findExecutable, probeSignIn, probeVersion, refreshSearchDirs } from '../../drivers/external/discover.js'
+import { createLocalSignIn } from './core/local-agents/sign-in.js'
+import { TerminalService } from '../terminal-service.js'
 
 const isLocalAgentRoute = route => isBaseLocalRoute(route) || Boolean(sandboxRouteInfo(route))
 
@@ -739,10 +741,42 @@ export function install(rt) {
   void rt.load?.().then(() => { if (!disposed) applyRoutes() }).catch(() => {})
   // The callback returns the disposer: running adapter.dispose() inside the
   // setup would leave the adapter disposed from the moment it installs.
+  // Signing a CLI in from the page (sign-in.js). Its sign-in terminals are its own,
+  // apart from the Bots' terminals.
+  let loginTerminals
+  const signIns = createLocalSignIn({
+    target: (route) => {
+      const entry = found.get(route)
+      return entry === undefined ? undefined : { route, spec: ENGINES[route], path: entry.path }
+    },
+    probe: async (route) => {
+      const entry = found.get(route)
+      if (entry === undefined) return null
+      const result = await probeSignIn(entry.path, ENGINES[route].signedIn)
+      entry.signedIn = result
+      entry.signedInAt = Date.now()
+      return result
+    },
+    signedIn: async (route) => {
+      // A CLI process that ran before the sign-in may still hold the old credential.
+      for (const live of [...adapter.live.values()]) {
+        if (live.route === route && live.state === 'idle' && live.pending.size === 0) await adapter.closeLive(live, { idle: true }).catch(() => {})
+      }
+      rt.unblockBots?.({ localSignedIn: route })
+    },
+    terminals: () => {
+      const subprocess = ctx.get?.('subprocess')
+      if (!subprocess?.spawnTerminal) return undefined
+      loginTerminals ??= new TerminalService(subprocess, { replayBytes: 256 * 1024, scrollback: 500 })
+      return loginTerminals
+    },
+  })
+
   ctx.effect(() => async () => {
     disposed = true
     registration?.()
-    await Promise.all([initialScan, adapter.dispose(), sandboxes.dispose()])
+    await signIns.dispose()
+    await Promise.all([initialScan, adapter.dispose(), sandboxes.dispose(), loginTerminals?.dispose().catch(() => {})])
   }, 'godbot: local agents')
 
   // ---------------------------------------------------------------------------
@@ -802,7 +836,7 @@ export function install(rt) {
   // ---------------------------------------------------------------------------
   // The Settings page's endpoints.
 
-  const detected = () => [...found.values()].map(entry => ({ route: entry.route, name: entry.name, path: entry.path, version: entry.version ?? null, signIn: entry.signIn, signedIn: entry.signedIn ?? null }))
+  const detected = () => [...found.values()].map(entry => ({ route: entry.route, name: entry.name, path: entry.path, version: entry.version ?? null, signIn: entry.signIn, signedIn: entry.signedIn ?? null, signInMethods: signIns.methodsOf(ENGINES[entry.route]) }))
   const customView = () => store().custom.map(agent => ({ ...agent, route: customRoute(agent.id) }))
 
   // One CLI's models: the first look starts that CLI, later ones read what it said.
@@ -826,6 +860,28 @@ export function install(rt) {
         await scan()
         await rt.catalog?.({ fresh: true })
         return freshList()
+      }
+      case 'local-agent-login-start': {
+        if (ENGINES[body.route] === undefined) throw new Error('This agent has no sign-in Godbot can run. Sign in the way its documentation describes.')
+        await scan()
+        return signIns.start({ route: body.route, method: body.method, cols: body.cols, rows: body.rows })
+      }
+      case 'local-agent-login-wait': return signIns.wait({ loginId: body.loginId, version: body.version, waitMs: body.waitMs })
+      case 'local-agent-login-input': return signIns.input({ loginId: body.loginId, text: body.text })
+      case 'local-agent-login-check': return signIns.check({ loginId: body.loginId })
+      case 'local-agent-login-cancel': return signIns.cancel({ loginId: body.loginId })
+      // The page's view of a sign-in terminal: the same calls as a Bot's terminal.
+      case 'local-agent-login-term-read': {
+        const { service, terminalId } = signIns.terminalOf(body.loginId)
+        return service.read(terminalId, { cursor: Number(body.cursor) || 0, waitMs: Math.min(Number(body.waitMs) || 0, 5_000) })
+      }
+      case 'local-agent-login-term-write': {
+        const { service, terminalId } = signIns.terminalOf(body.loginId)
+        return service.write(terminalId, String(body.data ?? ''))
+      }
+      case 'local-agent-login-term-resize': {
+        const { service, terminalId } = signIns.terminalOf(body.loginId)
+        return service.resize(terminalId, Number(body.cols), Number(body.rows))
       }
       case 'local-agent-models': {
         const models = await localAgentModels(String(body.route ?? ''))

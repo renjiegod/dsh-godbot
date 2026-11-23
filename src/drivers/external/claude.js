@@ -9,6 +9,7 @@ import { cleanEnv, findEngineExecutable, spawnAgent } from './discover.js'
 import { claudeToolResult } from './tool-results.js'
 import { ClaudeTurns } from './claude-turns.js'
 import { tasksNeedingProcess } from './claude-tasks.js'
+import { claudeResultFailed, claudeTurnError } from './agent-errors.js'
 
 // Claude Code tools that only read; the rest may change files or run something.
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead'])
@@ -254,6 +255,12 @@ class ClaudeSession extends ClaudeControlSession {
           const used = ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens'].reduce((sum, key) => sum + (usage[key] ?? 0), 0)
           if (used > 0) this.emit({ type: 'context', used })
         }
+        // A failed API call comes back as a synthetic message whose text is the
+        // error ("Failed to authenticate: ..."): it is the turn's failure, not its answer.
+        if (typeof event.error === 'string' && event.error !== '') {
+          this.apiError = event.error
+          break
+        }
         const partial = this.partialIds?.delete(event.message?.id)
         const report = claudeUsageFrame(event)
         for (const block of event.message?.content ?? []) {
@@ -347,19 +354,21 @@ class ClaudeSession extends ClaudeControlSession {
       event.stop_reason === 'interrupted' || this.interruptAcknowledged)
     this.interruptPending = undefined
     this.interruptAcknowledged = false
-    const failed = !interrupted && event.subtype !== 'success' && event.is_error === true
+    const failed = !interrupted && claudeResultFailed(event)
+    const apiError = this.apiError
+    this.apiError = undefined
     const usage = usageOf(event.usage)
     // An interrupted prompt ends here even if a steer still waits behind it.
     if (interrupted && !finished.includes(turn)) finished.push(turn)
     if (!finished.includes(turn)) {
-      if (failed) this.emit({ type: 'error', error: new Error(event.result ?? 'the agent failed'), turnId: turn })
+      if (failed) this.emit({ type: 'error', error: claudeTurnError(event, apiError), turnId: turn })
       else if (usage !== undefined) this.emit({ type: 'usage', usage, turnId: turn })
     }
     for (const id of finished) {
       if (id !== turn) this.emit({ type: 'done', reason: 'stop', turnId: id })
       else if (interrupted) this.emit({ type: 'done', reason: 'interrupted', turnId: id })
       else this.emit(failed
-        ? { type: 'error', error: new Error(event.result ?? 'the agent failed'), turnId: id }
+        ? { type: 'error', error: claudeTurnError(event, apiError), turnId: id }
         : { type: 'done', reason: 'stop', usage, turnId: id })
     }
   }

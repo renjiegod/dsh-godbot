@@ -17,7 +17,8 @@ import { usageChunk } from './usage.js'
 // Failures only the user can fix: a key, a sign-in, a balance. They block the Bot
 // until it is fixed (`bot.blocked`, for the repair card).
 export const BLOCKING_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH', 'QUOTA', 'ACCOUNT_QUOTA', 'ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID', 'LOCAL_AGENT_MISSING', 'LOCAL_AGENT_SIGNIN', 'LOCAL_AGENT_QUOTA', 'LOCAL_AGENT_EXIT'])
-// The ones a key set outside a turn can fix, and the ones a sign-in can (unblockBots).
+// The ones a key set outside a turn can fix, and the ones a sign-in can (unblockBots);
+// a local agent's sign-in lifts LOCAL_AGENT_SIGNIN for its own route.
 // A balance only a turn that completes shows fixed, as Retry runs one.
 const KEY_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH'])
 const SIGN_IN_CODES = new Set(['ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'ACCOUNT_TOKEN_INVALID'])
@@ -761,13 +762,15 @@ export function install(rt) {
   // of the providers that read it; one whose provider names no key, or that failed on
   // a provider not known, lifts on any key. A host that only reads the team leaves it
   // to the one that holds it.
-  function unblockBots({ ref, signedIn = false, keyed } = {}) {
+  function unblockBots({ ref, signedIn = false, keyed, localSignedIn } = {}) {
     if (rt.readOnly?.() !== undefined) return
     let refs
     try { refs = ref === undefined ? undefined : rt.keyRefs?.() } catch {}
     const fixes = ({ code, provider }) => (signedIn && SIGN_IN_CODES.has(code))
       || (ref !== undefined && KEY_CODES.has(code) && (refs?.get(provider) ?? ref) === ref)
       || (code === 'MISSING_CREDENTIAL' && provider !== undefined && keyed?.has(provider) === true)
+      // A local agent CLI signed in from the page lifts its own Bots' sign-in failures.
+      || (localSignedIn !== undefined && code === 'LOCAL_AGENT_SIGNIN' && (provider === undefined || provider === localSignedIn))
     const lifted = Object.values(state.bots ?? {}).filter(bot => bot.blocked !== undefined && fixes(bot.blocked))
     if (lifted.length === 0) return
     for (const bot of lifted) delete bot.blocked
