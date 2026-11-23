@@ -50,3 +50,11 @@ MIT-licensed implementation. See the MIT notice in licenses/DS-Bot-NOTICE.txt.
 xterm.js
 The browser terminal bundles @xterm/xterm and @xterm/addon-fit (MIT).
 Copyright and license texts are in licenses/xterm-MIT.txt.
+
+Mac desktop encoder
+The managed Mac host invokes the separate FFmpeg 8.0.1 executable (LGPL 2.1
+or later), built with libvpx 1.17.0 (BSD). The packaged encoder directory
+contains the licenses and build recipe. The corresponding source archives
+are provided alongside the plugin in the GitHub release.
+https://ffmpeg.org/legal.html
+https://chromium.googlesource.com/webm/libvpx/

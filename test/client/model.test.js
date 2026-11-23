@@ -27,6 +27,9 @@ test('reads the remote envelope and preserves the owner RPC argument shape', asy
     ['/api', 'godbot/snapshot', { args: {} }],
     ['/api', 'godbot/dispatch', { args: { request: draft } }],
   ])
+  const hosting = { action: 'status' }
+  await api.machineHost(hosting)
+  assert.deepEqual(requests.at(-1), ['/api', 'godbot/machineHost', { args: { request: hosting } }])
   const read = { terminalId: 'pty', cursor: 0, waitMs: 5000 }
   const { signal } = new AbortController()
   await api.terminalRead(read, signal)

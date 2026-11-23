@@ -64,7 +64,7 @@ dsh web
 
 安装脚本会：
 
-1. 构建浏览器插件，把带内容摘要的 `.tgz` 写到 `~/.local/share/dsh-godbot/packages/`；
+1. 构建浏览器插件，校验随包附带的 Apple 芯片 Mac 主机组件，把带内容摘要的 `.tgz` 写到 `~/.local/share/dsh-godbot/packages/`；
 2. 安装到指定 profile（上例为 `web`）；
 3. 把插件的 DSH 依赖链接到当前运行的 dsh 安装。工具权限依赖同一份作用域注册表，升级或移动 dsh 后重新运行脚本即可重建链接。
 
@@ -209,7 +209,9 @@ DSH、Claude Code 和 Codex 成员可从当前会话调用已授权的应用工�
 
 ### 远程控制自己的 Mac 和 Linux 电脑
 
-在目标电脑安装 Godbot Computer Host，在 Godbot 工作台侧栏打开 **远程电脑 / Remote computers**。首次使用时，在目标端运行 `godbot-computer manage`，选择 **Pair controller**。安卓 App 通过 **Computers → Remote computers** 扫码，本机 dsh web 粘贴配对链接并核对指纹。每个控制端使用单独的一次性配对链接。
+在 Apple 芯片 Mac 上，安装 `dsh-godbot` 后打开 **远程电脑 → 本机 → 开启远程访问**。Godbot 会启动随包提供的签名组件。通过 **打开 macOS 权限设置** 授予屏幕录制和辅助功能权限。已开启的电脑端组件会随 Godbot 自动更新，等当前会话结束后再切换。
+
+在 Linux 目标端安装 Godbot Computer Host，运行 `godbot-computer manage`，选择 **Pair controller**。Mac 可以直接在 **本机** 面板创建配对链接。用 Android App 或另一台电脑的 DSH Web 粘贴配对链接并核对指纹。每个控制端使用单独的一次性配对链接。
 
 有图形会话时可以 **查看桌面**，电脑所有者同意后才能使用鼠标和键盘。无桌面的 Linux 服务器可以 **打开终端**。终端以目标账号运行。目标端可以随时结束会话、移除已记住的权限或撤销控制端。参见[电脑端安装、权限、网络和升级说明](computer-host/README.md)。
 
@@ -519,11 +521,13 @@ npm pack --dry-run
 
 仓库的 GitHub Actions（`.github/workflows/verification.yml`）在每次 push 和 Pull Request 时于 macOS 上运行单元测试、构建和 `npm pack --dry-run`。对打包产物执行 `release` E2E 套件耗时较长，需在 Actions 页面选择 **Verify Godbot package → Run workflow** 手动触发。
 
+正式打包时，`npm pack` 会暂存并校验来自 [v0.2.0-rc.22](https://github.com/renjiegod/dsh-godbot/releases/tag/v0.2.0-rc.22) 的签名版 Mac 主机组件。设置 `GODBOT_BUNDLED_HOST_ASSETS_DIR` 为现有下载文件所在目录可离线暂存，仍使用相同的签名和校验和。Apple 芯片 Mac 首次打包还会使用 Xcode 命令行工具构建视频编码器，后续打包复用已校验的文件。单元测试、类型检查和客户端构建无需这些资产。
+
 ### 发布新版本
 
 1. 修改 `package.json` 的 `version`，运行 `npm run build` 并提交。
 2. 推送同名 tag，例如 `git tag v0.2.0 && git push origin v0.2.0`。
-3. `.github/workflows/release.yml` 核对 tag 与 `package.json` 版本一致，运行测试和构建，再创建 GitHub Release 并上传 `dsh-godbot-<version>.tgz` 及其 `.sha256`。版本号带 `-`（如 `0.2.0-rc.4`）时标记为预发布。
+3. `.github/workflows/release.yml` 核对 tag 与 `package.json` 版本一致，运行测试和构建，校验安装包内的 Mac 主机和编码器，再发布 `dsh-godbot-<version>.tgz`、校验和及 Mac 视频编码器对应的源码包。版本号带 `-`（如 `0.2.0-rc.4`）时标记为预发布。
 
 已安装的 Godbot 会在下一次检查时发现这个版本（见 [更新](#更新)）。
 
