@@ -1799,8 +1799,7 @@ export const KO = {
   "Open this session": "이 세션 열기",
   "Open this running session": "실행 중인 세션 열기",
   "A running session keeps using model calls in the background.": "실행 중인 세션은 백그라운드에서 모델 호출을 계속 사용합니다.",
-  "Sessions of {name}": "{name}의 세션",
-  "All sessions ({count})": "모든 세션 ({count})",
+  "Switch session": "세션 전환",
   "{count} running in the background": "세션 {count}개가 백그라운드에서 실행 중",
 }
 

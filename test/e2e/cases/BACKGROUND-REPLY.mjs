@@ -104,7 +104,9 @@ else import(${JSON.stringify(fixture.href)}).catch(e => { console.error(e); proc
   await until(async () => (await botTexts()).at(-1) === AUTONOMOUS, 'the answer shows back in its own session', 30_000)
   await row.click()
   await page.locator('.bt-head .bt-pill-name').filter({ hasText: bot.name }).waitFor()
-  await page.locator('.bt-bot-sub-row').filter({ hasText: 'TASK 5000 switch' }).waitFor()
+  await page.locator('.bt-head .bt-smenu-btn').click()
+  await page.locator('.bt-smenu-item').filter({ hasText: 'TASK 5000 switch' }).waitFor()
+  await delay(400)
   await host.capture('background-reply-switched')
 
   await startTask('TASK 5000 new session')
