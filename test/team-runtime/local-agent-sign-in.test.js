@@ -46,6 +46,7 @@ test('the CLI output gives the sign-in link, the device code and the callback po
   assert.equal(callbackPortOf('https://claude.com/cai/oauth/authorize?redirect_uri=http%3A%2F%2Flocalhost%3A60730%2Fcallback'), 60730)
   assert.equal(callbackPortOf('https://evil.example/?redirect_uri=http%3A%2F%2Fevil.example%3A80%2Fcallback'), undefined)
   assert.equal(redactLine('ok\nError at https://x.example/a?code=1 with ABCD-EFGH12 and aaaaaaaaaaaaaaaaaaaaaaaa#state'), 'Error at <link> with <code> and <code>')
+  assert.equal(redactLine('Paste code here if prompted > Couldn\'t log in: Couldn\'t save your login.'), 'Couldn\'t log in: Couldn\'t save your login.')
 })
 
 test('a sign-in command names the CLI\'s own program, or one on the PATH', () => {

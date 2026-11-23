@@ -59,7 +59,8 @@ export function callbackPortOf(link) {
 // A CLI's last words for the page, without links or codes in them.
 export function redactLine(text) {
   const lines = stripAnsi(text).split('\n').map(line => line.trim()).filter(Boolean)
-  const last = lines.at(-1) ?? ''
+  // A prompt the CLI printed without a newline ("Paste code here if prompted > ") is not its words.
+  const last = (lines.at(-1) ?? '').replace(/^Paste code here if prompted\s*>\s*/iu, '')
   return last.replace(/https?:\/\/\S+/g, '<link>').replace(DEVICE_CODE, '<code>')
     .replace(/[A-Za-z0-9_.~-]{20,}#[A-Za-z0-9_.~-]+/g, '<code>').slice(0, 300)
 }
