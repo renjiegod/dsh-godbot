@@ -41076,7 +41076,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.0-rc.38";
+var version = "0.2.0-rc.39";
 
 // src/client/team-ui/about.js
 var import_react42 = require("react");
