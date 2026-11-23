@@ -178,10 +178,12 @@ for (const cwdPerProcess of [false, true]) {
     ])
     const read = notices.map(event => event.trace).filter(trace => trace?.id === 'read')
     assert.deepEqual(read.map(trace => trace.status), ['pending', 'running', 'completed', 'completed'])
+    assert.ok(read.every(trace => trace.activityKind === 'read'))
     assert.equal(read.at(-1).output, 'fixture text omitted from activity')
     assert.deepEqual(read.at(-1).locations, [{ path: 'src/a.js' }])
     const shell = notices.at(-1).trace
     assert.equal(shell.status, 'failed')
+    assert.equal(shell.activityKind, 'command')
     assert.deepEqual(shell.input, { command: 'npm test -- private-arg' })
     assert.equal(shell.output, 'fixture error omitted from activity')
   })
@@ -202,6 +204,27 @@ test('ACP command results expose a nonzero process exit even when the agent comp
   assert.deepEqual(notices.map(notice => notice.trace.status), ['pending', 'failed', 'failed'])
   assert.equal(notices[1].trace.exitCode, 127)
   assert.deepEqual(notices.map(notice => notice.type), ['activity', 'execution-trace', 'execution-trace'])
+})
+
+test('Codex records typed file and skill reads separately from exposed reasoning', () => {
+  const engine = new WorkspaceCodexEngine('codex-fixture', {}, {})
+  const thread = engine.threadFor('part')
+  thread.threadId = 'native'
+  const events = []
+  thread.push = event => events.push(event)
+  const notice = (method, params) => engine.onNotice(method, { threadId: thread.threadId, turnId: 'turn', ...params })
+  notice('item/reasoning/summaryTextDelta', { itemId: 'thought', summaryIndex: 0, delta: 'Reading ' })
+  notice('item/completed', { item: { id: 'thought', type: 'reasoning', summary: ['Reading guidance.'], content: ['Other reasoning.'] } })
+  for (const [id, path] of [['read', 'README.md'], ['skill', '/fixture/skills/qa/SKILL.md']]) {
+    notice('item/started', { item: { id, type: 'commandExecution', command: 'cat ' + path, commandActions: [{ type: 'read', path }] } })
+    notice('item/completed', { item: { id, type: 'commandExecution', status: 'completed' } })
+  }
+  notice('item/completed', { item: { id: 'search', type: 'webSearch', query: 'fixture' } })
+  assert.equal(events.filter(event => event.type === 'thought').map(event => event.text).join(''), 'Reading guidance.')
+  const tools = events.filter(event => event.type === 'activity')
+  assert.deepEqual(tools.map(event => event.trace.activityKind), ['read', 'skill', 'webSearch'])
+  assert.match(tools[1].text, /▸ Shell · qa · 调用/u)
+  assert.equal(events.filter(event => event.type === 'execution-trace').length, 2)
 })
 
 test('Codex Bot records rich tool updates during its matching turn without streaming raw output into the model', async () => {
@@ -233,7 +256,7 @@ test('Codex Bot records rich tool updates during its matching turn without strea
     { type: 'tool', id: command.id, name: 'Shell', status: 'running', input: command.command, cwd: '/work' },
     { type: 'tool', id: command.id, outputDelta: 'fixture test output' },
     { type: 'tool', id: command.id, name: 'Shell', status: 'failed', input: command.command, cwd: '/work', exitCode: 7, durationMs: 200, output: 'fixture test output\nError' },
-    { type: 'tool', id: 'edit-1', name: 'Edit', status: 'completed', changes },
+    { type: 'tool', id: 'edit-1', name: 'Edit', activityKind: 'edit', status: 'completed', changes },
   ])
   const activity = chunks.filter(chunk => chunk.type === 'reasoning-delta').map(chunk => chunk.text).join('')
   assert.match(activity, /▸ Shell · npm test · 调用\ttool="command-1"/)
