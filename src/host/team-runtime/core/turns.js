@@ -245,6 +245,14 @@ export function install(rt) {
   // Exchanges whose promise-only opening the group already got before the retry: the
   // retried turn counts it as shown, so a [PASS] there still hands the result back.
   const promisedOpenings = new Set()
+  // Bots told to go on with a failed turn (goOn) whose turn has not ended yet: a second
+  // Retry, or a client's resume after a sign-in the host already went on from, does not
+  // ask them to answer twice.
+  const goingOn = new Set()
+  // Bots the host went on with after a fix, with no turn failed since: the Retry of a
+  // page or phone that saw the fix itself (app 0.1.10 sends one once its sign-in ends)
+  // comes after that and has nothing left to answer, even when the answer is out.
+  const wentOn = new Set()
 
   const STOPPED_KEPT = 200
   const rememberStopped = (set, value) => {
@@ -735,8 +743,9 @@ export function install(rt) {
   // turn of it completes, a change that can fix it (unblockBots), or its model changes
   // (roster.js). Never the message: a provider may echo part of the key. The provider
   // is the failing route's, which is the Session's last request, else the model the
-  // Bot runs on.
-  const blockBot = (id, session, failure) => {
+  // Bot runs on. `answering` marks a failed turn that was answering the user in the
+  // Bot's own chat, which a fix the host sees (a local sign-in) goes on with.
+  const blockBot = (id, session, failure, answering = false) => {
     const bot = rt.botOf(rt.selfOf(id))
     if (bot === undefined || !BLOCKING_CODES.has(failure.code)) return false
     const provider = session?.requestHeader?.()?.config?.provider ?? splitRef(bot.appliedModel)?.provider
@@ -745,6 +754,7 @@ export function install(rt) {
       ...(failure.status === undefined ? {} : { status: failure.status }),
       ...(failure.requestId === undefined ? {} : { requestId: failure.requestId }),
       ...(provider ? { provider } : {}),
+      ...(answering ? { answering: true } : {}),
       at: Date.now(),
     }
     void rt.save().catch(() => {})
@@ -761,7 +771,9 @@ export function install(rt) {
   // fix lift, and a greeting held for one goes out again. A key lifts the key failures
   // of the providers that read it; one whose provider names no key, or that failed on
   // a provider not known, lifts on any key. A host that only reads the team leaves it
-  // to the one that holds it.
+  // to the one that holds it. A local agent CLI signed in, from the card, Settings or a
+  // phone, also goes on with the user's message its Bots failed on, as Retry would:
+  // the sign-in is the user's fix, wherever they made it.
   function unblockBots({ ref, signedIn = false, keyed, localSignedIn } = {}) {
     if (rt.readOnly?.() !== undefined) return
     let refs
@@ -773,23 +785,44 @@ export function install(rt) {
       || (localSignedIn !== undefined && code === 'LOCAL_AGENT_SIGNIN' && (provider === undefined || provider === localSignedIn))
     const lifted = Object.values(state.bots ?? {}).filter(bot => bot.blocked !== undefined && fixes(bot.blocked))
     if (lifted.length === 0) return
+    const blocks = new Map(lifted.map(bot => [bot, bot.blocked]))
     for (const bot of lifted) delete bot.blocked
     void rt.save().catch(() => {})
-    for (const bot of lifted) void rt.releaseKickoff(bot).catch(error => rt.warn('godbot: greeting of %s not sent again: %s', bot.name, error))
+    for (const bot of lifted) {
+      const { code, answering } = blocks.get(bot)
+      const goesOn = localSignedIn !== undefined && code === 'LOCAL_AGENT_SIGNIN' && answering === true
+      if (goesOn) wentOn.add(bot.id)
+      void (async () => {
+        if (await rt.releaseKickoff(bot)) return
+        if (goesOn) await goOn(bot, code)
+      })().catch(error => rt.warn('godbot: %s did not go on after the fix: %s', bot.name, error))
+    }
+  }
+
+  // The Bot answers the user's last message, which is not sent again. A greeting on its
+  // way, a turn under way in the Bot's chat, or a go-on not yet ended answers already:
+  // a turn on top answers twice.
+  async function goOn(bot, code) {
+    if (goingOn.has(bot.id) || rt.greetingOut?.(bot.id) || live.get(rt.chatOf(bot.id))?.turn !== undefined) return
+    goingOn.add(bot.id)
+    try {
+      await rt.deliver({
+        toId: bot.id,
+        role: 'continue',
+        text: `Your last turn failed${code ? ` (${code})` : ''} and the user has fixed it. Answer the user's last unanswered message.`,
+      })
+    } catch (error) {
+      goingOn.delete(bot.id)
+      throw error
+    }
   }
 
   // The repair card's Retry. A greeting that failed goes out again; otherwise the Bot
-  // answers the user's last message, which is not sent again. A greeting on its way, or
-  // a turn under way in the Bot's chat, answers already: a turn on top answers twice.
+  // goes on with the user's last message, unless the host went on after the fix.
   async function resumeBot(bot) {
     if (await rt.releaseKickoff(bot)) return
-    if (rt.greetingOut?.(bot.id) || live.get(rt.chatOf(bot.id))?.turn !== undefined) return
-    const code = bot.blocked?.code
-    await rt.deliver({
-      toId: bot.id,
-      role: 'continue',
-      text: `Your last turn failed${code ? ` (${code})` : ''} and the user has fixed it. Answer the user's last unanswered message.`,
-    })
+    if (wentOn.has(bot.id)) return
+    await goOn(bot, bot.blocked?.code)
   }
   ctx.on?.('subagent/start', (info) => {
     const childId = info?.id
@@ -1209,14 +1242,17 @@ export function install(rt) {
         const premature = cutOff && prematureCutOff(usage, route)
         rt.noteCutOffTurn?.(id, { withoutText: wroteNothing, premature })
         if (cutOff) noteCutOffTurn(id, { session, wroteNothing, ...(premature ? { outputTokens } : {}) })
+        // A turn the user opened in the Bot's own chat, or a go-on that answers the user.
+        const answering = owner !== undefined && (info === undefined || info.role === 'continue')
+        if (answering) goingOn.delete(owner)
         if (failure !== undefined) {
+          wentOn.delete(rt.selfOf(id))
           if (watched) rememberFailure(id, turn, failure, session)
-          if (blockBot(id, session, failure) && owner !== undefined && info?.role === 'kickoff') rt.holdKickoffAgain(owner)
+          if (blockBot(id, session, failure, answering) && owner !== undefined && info?.role === 'kickoff') rt.holdKickoffAgain(owner)
         } else if (reason?.kind === 'completed') {
           forgetFailure(id)
           unblockBot(rt.selfOf(id))
-          // A turn the user opened, or the Retry that answers the user.
-          if (owner !== undefined && (info === undefined || info.role === 'continue')) rt.userAnswered(owner)
+          if (answering) rt.userAnswered(owner)
         }
         // A model that writes its tool call as text ends the turn as if it were done,
         // though nothing ran. It gets one more turn on the same trigger, so a waiting
