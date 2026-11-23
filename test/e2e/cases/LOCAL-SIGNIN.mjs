@@ -12,7 +12,8 @@ import { member } from '../tickets.mjs'
 // reply. The card's sign-in runs `claude auth login`, takes the code the user pastes,
 // and once the CLI is signed in the Bot is unblocked and its greeting goes out.
 // When the sign-in expires later in the conversation, the user's message fails the
-// same way; once signed in from the card, the Bot answers it without a Retry click.
+// same way; once signed in from the card or from Settings, the Bot answers it without
+// a Retry click, and only once.
 // Codex: Settings → Local agents signs it in with the device code `codex login
 // --device-auth` prints. Gemini CLI: its own sign-in screen runs in a terminal on
 // the page, and the sign-in ends once the CLI's check finds its credential.
@@ -101,8 +102,35 @@ else import(${fixture('fake-gemini-login.mjs')}).catch(e => { console.error(e); 
   await new Promise(resolve => setTimeout(resolve, 3_000))
   assert.equal(await replies(), before + 1, 'the Bot answers once')
 
-  // Codex: Settings → Local agents → Codex CLI → the host account's Sign in.
+  // Expired once more, and signed in from Settings → Local agents instead of the card:
+  // the host goes on with the failed message all the same. A phone that saw the sign-in
+  // end sends the card's Retry after it (app 0.1.10 does), which is not a second answer,
+  // even once the answer is out. (The card above sends one before it.)
+  await rm(claudeFlag, { force: true })
+  const beforeSettings = await replies()
+  await host.bot('send', { sessionId: bot.id, text: 'And now?' })
+  await until(async () => (await host.bot('state')).bots.find(row => row.id === bot.id)?.blocked?.code === 'LOCAL_AGENT_SIGNIN', bot.name + ' blocked a third time')
   const view = await openProviderSettingsFromTeam(host)
+  const claudeRow = view.locator('[data-provider-route="local-claude-code"]')
+  await view.locator('[data-agent-action="refresh"]').click()
+  await until(async () => /本机未登录/u.test(await claudeRow.textContent()), 'Claude Code listed as signed out')
+  await claudeRow.click()
+  const claudeDetail = view.locator('[data-provider-detail="local-claude-code"]')
+  await claudeDetail.waitFor()
+  await claudeDetail.locator('[data-account-id="local"] [data-account-action="login"]').click()
+  const claudeSettings = claudeDetail.locator('[data-local-sign-in="local-claude-code"]')
+  await claudeSettings.locator('input').fill('e2e-code#s3')
+  await claudeSettings.locator('button[type="submit"]').click()
+  await claudeSettings.locator('[data-signin-done]').waitFor({ timeout: 20_000 })
+  await until(async () => await replies() === beforeSettings + 1, bot.name + ' answers the failed message after a sign-in from Settings', 40_000)
+  await host.bot('resume', { botId: bot.id })
+  await new Promise(resolve => setTimeout(resolve, 3_000))
+  assert.equal(await replies(), beforeSettings + 1, 'a Retry after the host went on is not a second answer')
+  // The provider list reads the CLI as signed in again, not only the account.
+  await view.getByRole('button', { name: '返回提供商列表' }).click()
+  await until(async () => /本机已登录/u.test(await claudeRow.textContent()), 'Claude Code listed as signed in')
+
+  // Codex: Settings → Local agents → Codex CLI → the host account's Sign in.
   await view.locator('[data-provider-route="local-codex-cli"]').click()
   const detail = view.locator('[data-provider-detail="local-codex-cli"]')
   await detail.waitFor()
