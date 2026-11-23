@@ -8,6 +8,11 @@ export const KINDS = ['acp', 'codex', 'claude']
 // `args` run verbatim (no shell). `env` merges over the sanitized environment.
 // `signedIn` says how to tell whether the CLI is signed in: a command that prints
 // it, or a credential file under the home folder (see probeSignIn).
+// `signIn` is the command a user runs to sign in. `login` lists the sign-ins Godbot
+// runs on pipes for its page (sign-in.js): the arguments, whether the CLI prints a
+// device code, and what the user may paste back ('code' for an authorization code
+// or a callback address, 'callback' for a callback address). A CLI without `login`
+// signs in through its `signIn` command in a terminal on the page.
 // Local-agent routes live under their own prefix. Before it they shared the
 // provider namespace, so a CLI named like a provider DSH or another plugin
 // ships (`opencode`) took that provider's name and the LLM service failed to
@@ -16,8 +21,10 @@ export const ROUTE_PREFIX = 'local-'
 
 const CLIS = {
   'devin-cli': { name: 'Devin CLI', kind: 'acp', command: 'devin', args: ['acp'], version: ['--version'], signIn: 'devin auth login', signedIn: { args: ['auth', 'status'] } },
-  'claude-code': { name: 'Claude Code', kind: 'claude', command: 'claude', args: [], version: ['--version'], signIn: 'claude', signedIn: { args: ['auth', 'status'], fallback: { file: ['.claude', '.credentials.json'] } } },
-  'codex-cli': { name: 'Codex CLI', kind: 'codex', command: 'codex', args: ['app-server', '--listen', 'stdio://'], version: ['--version'], signIn: 'codex login', signedIn: { args: ['login', 'status'] } },
+  'claude-code': { name: 'Claude Code', kind: 'claude', command: 'claude', args: [], version: ['--version'], signIn: 'claude auth login', signedIn: { args: ['auth', 'status'], fallback: { file: ['.claude', '.credentials.json'] } },
+    login: [{ id: 'browser', args: ['auth', 'login', '--claudeai'], paste: 'code' }] },
+  'codex-cli': { name: 'Codex CLI', kind: 'codex', command: 'codex', args: ['app-server', '--listen', 'stdio://'], version: ['--version'], signIn: 'codex login --device-auth', signedIn: { args: ['login', 'status'] },
+    login: [{ id: 'device', args: ['login', '--device-auth'], code: true }, { id: 'browser', args: ['login'], paste: 'callback' }] },
   'cursor-cli': { name: 'Cursor CLI', kind: 'acp', command: 'cursor-agent', args: ['acp'], version: ['--version'], signIn: 'cursor-agent login', signedIn: { args: ['status'] } },
   'copilot-cli': { name: 'GitHub Copilot', kind: 'acp', command: 'copilot', args: ['--acp'], version: ['--version'], signIn: 'copilot' },
   'gemini-cli': { name: 'Gemini CLI', kind: 'acp', command: 'gemini', args: ['--acp'], version: ['--version'], signIn: 'gemini', signedIn: { file: ['.gemini', 'oauth_creds.json'] } },

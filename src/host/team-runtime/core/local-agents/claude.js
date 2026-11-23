@@ -10,6 +10,7 @@ import { join } from 'node:path'
 import { cleanEnv, findEngineExecutable, launchOf, spawnAgent } from '../../../../drivers/external/discover.js'
 import { ClaudeTurns } from '../../../../drivers/external/claude-turns.js'
 import { tasksNeedingProcess } from '../../../../drivers/external/claude-tasks.js'
+import { claudeResultFailed, claudeTurnError } from '../../../../drivers/external/agent-errors.js'
 
 // Whether a Claude Code takes `--append-system-prompt-file`, asked once per
 // executable from its help. The instructions then stay off the command line,
@@ -270,6 +271,12 @@ class ClaudeSession {
           const used = ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens', 'output_tokens'].reduce((sum, key) => sum + (usage[key] ?? 0), 0)
           if (used > 0) this.emit({ type: 'context', used })
         }
+        // A failed API call comes back as a synthetic message whose text is the
+        // error ("Failed to authenticate: ..."): it is the turn's failure, not its answer.
+        if (typeof event.error === 'string' && event.error !== '') {
+          this.apiError = event.error
+          break
+        }
         for (const block of event.message?.content ?? []) {
           if (block.type === 'text') this.emit({ type: 'text', text: block.text ?? '' })
           else if (block.type === 'thinking') this.emit({ type: 'thought', text: block.thinking ?? '' })
@@ -327,16 +334,18 @@ class ClaudeSession {
       return
     }
     const { turn, finished } = answer
-    const failed = event.subtype !== 'success' && event.is_error === true
+    const failed = claudeResultFailed(event)
+    const apiError = this.apiError
+    this.apiError = undefined
     const usage = usageOf(event.usage)
     if (!finished.includes(turn)) {
-      if (failed) this.emit({ type: 'error', error: new Error(event.result ?? 'the agent failed'), turnId: turn })
+      if (failed) this.emit({ type: 'error', error: claudeTurnError(event, apiError), turnId: turn })
       else if (usage !== undefined) this.emit({ type: 'usage', usage, turnId: turn })
     }
     for (const id of finished) {
       if (id !== turn) this.emit({ type: 'done', reason: 'stop', turnId: id })
       else this.emit(failed
-        ? { type: 'error', error: new Error(event.result ?? 'the agent failed'), turnId: id }
+        ? { type: 'error', error: claudeTurnError(event, apiError), turnId: id }
         : { type: 'done', reason: 'stop', usage, turnId: id })
     }
   }

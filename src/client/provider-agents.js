@@ -24,11 +24,15 @@ function LoginCommand({ value, opened }) {
     } }, copied ? '已复制' : '复制命令'), error && h('small', { role:'status' }, error)))
 }
 
-function AccountRow({ account, provider, kind, change, busy, readOnly, usageProps }) {
+function AccountRow({ account, provider, kind, change, busy, readOnly, usageProps, SignIn, route, name }) {
   const [editing, setEditing] = useState(false)
   const [alias, setAlias] = useState('')
   const [login, setLogin] = useState(null)
   const [removing, setRemoving] = useState(false)
+  // The host's own CLI signs in on this page (the sign-in panel); a sandbox account
+  // signs in from a terminal on the host.
+  const [signing, setSigning] = useState(false)
+  const inPage = account.local && typeof SignIn === 'function' && !!route
   const current = provider.defaultAvailable !== false && account.id === provider.defaultAccountId
   const identity = account.identity ?? {}
   const available = account.available !== false
@@ -49,6 +53,7 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
     h('div', { className:'gb-pr-actions' },
       button('check','核验身份', () => act('check'), !available),
       identity.status !== 'signed-in' && button('login','登录', async () => {
+        if (inPage) { setLogin(null); setSigning(true); return }
         const answer = await act('login',{ open:true }); if (answer) setLogin(answer)
       }, !available)),
     h('details', { className:'gb-pr-more' },
@@ -59,6 +64,7 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
         h('div', { className:'gb-pr-actions' },
           button('login-command','查看登录命令', async () => { const answer = await act('login'); if (answer) setLogin(answer) }, !available),
           identity.status === 'signed-in' && button('login','重新登录', async () => {
+            if (inPage) { setLogin(null); setSigning(true); return }
             const answer = await act('login',{ open:true }); if (answer) setLogin(answer)
           }, !available),
           !editing && button('edit','编辑名称', () => { setAlias(account.customName ?? ''); setEditing(true) }),
@@ -80,10 +86,11 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
             h('div', null, h('code', { className:'gb-pr-muted' }, folder.guestPath))))))),
     h(AccountUsage, { ...usageProps,accountId:account.id,disabled:!available || busy,readOnly,
       identityKey:[identity.status,identity.email,identity.checkedAt].join('|') }),
-    login?.command && h(LoginCommand, { key:login.command, value:login.command, opened:login.opened }))
+    login?.command && h(LoginCommand, { key:login.command, value:login.command, opened:login.opened }),
+    signing && inPage && h(SignIn, { route, name, onDone:() => void act('check'), onClose:() => setSigning(false) }))
 }
 
-function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps }) {
+function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, SignIn }) {
   const [adding, setAdding] = useState(false)
   const [slot, setSlot] = useState('')
   const [alias,setAlias] = useState('')
@@ -93,7 +100,7 @@ function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps }) 
   const selected = unadded.find(a => a.id === slot) ?? unadded[0]
   const environments = unadded.filter(a => !a.removed)
   const render = account => h(AccountRow, { key:account.id === null ? 'host' : 'slot-' + account.id, account,
-    provider:row.accounts, kind:row.kind, change, busy, readOnly, usageProps })
+    provider:row.accounts, kind:row.kind, change, busy, readOnly, usageProps, SignIn, route:row.route, name:row.name })
   return h('section', { className:'gb-pr-section' },
     h('div', { className:'gb-pr-heading' }, h('h4', null, '运行账号'),
       !readOnly && h(Button, { 'data-agent-action':'add-account', disabled:busy || adding, onClick:() => {
@@ -121,8 +128,10 @@ function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps }) 
 
 }
 
-function ProviderDetail({ row, AgentLogo, AgentForm, back, change, customAction, busy, readOnly, refresh, enabled, client, consumption, period, setPeriod, usageError }) {
+function ProviderDetail({ row, AgentLogo, AgentForm, back, change, customAction, busy, readOnly, refresh, enabled, client, consumption, period, setPeriod, usageError, SignIn }) {
   const [command, setCommand] = useState('')
+  const [signing, setSigning] = useState(false)
+  const inPage = typeof SignIn === 'function' && row.signInMethods?.length > 0
   const [editing, setEditing] = useState(false)
   const [remove, setRemove] = useState(false)
   const title = useRef(null)
@@ -152,10 +161,11 @@ function ProviderDetail({ row, AgentLogo, AgentForm, back, change, customAction,
               h('a', { href:installGuide(row.kind),target:'_blank',rel:'noreferrer' }, row.kind ? '安装指南' : '查看 ACP 安装目录')),
             h('div', { className:'gb-pr-actions' }, h(Button, { 'data-agent-action':'refresh', disabled:busy, onClick:refresh }, '刷新检测'),
               !row.accounts && row.installed && row.signIn && row.signedIn !== true &&
-                h(Button, { onClick:() => setCommand(row.signIn) }, '登录')),
+                h(Button, { 'data-agent-action':'sign-in', onClick:() => { if (inPage) { setCommand(''); setSigning(true) } else setCommand(row.signIn) } }, '登录')),
             typeof row.signedIn === 'boolean' && h('span', { className:'gb-pr-muted' }, row.signedIn ? 'CLI 已登录' : 'CLI 未登录'),
-            command && h(LoginCommand, { value:command })))),
-    row.accounts ? h(ProviderAccounts, { row, change, busy, readOnly, enabled, usageProps:{client,route:row.route,consumption,period} }) :
+            command && h(LoginCommand, { value:command }),
+            signing && inPage && h(SignIn, { route:row.route, name:row.name, command:row.signIn, onDone:() => void refresh(), onClose:() => setSigning(false) })))),
+    row.accounts ? h(ProviderAccounts, { row, change, busy, readOnly, enabled, SignIn, usageProps:{client,route:row.route,consumption,period} }) :
       h(AccountUsage, {client,route:row.route,accountId:null,consumption,period,disabled:!row.installed,readOnly}),
     h(ProviderUsageSummary,{provider:consumption,period,history:true,accountList:row.accounts?.accounts ?? []}))
 }
@@ -178,7 +188,7 @@ function ProviderList({ rows, AgentLogo, select, focusRoute }) {
   }))
 }
 
-export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentForm, readOnly }) {
+export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentForm, readOnly, SignIn }) {
   const [view, setView] = useState(null)
   const [catalog, setCatalog] = useState(null)
   const [route, setRoute] = useState('')
@@ -254,7 +264,7 @@ export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentFor
     error && h('div', { role:'alert', className:'bt-error' }, error, ' ', h(Button, { onClick:() => load(), disabled:loading }, '重试')),
     !current && h('div',{className:'gb-pr-periods',role:'group','aria-label':'本地 Agent 视图'},
       ['providers','usage'].map(id=>h('button',{key:id,type:'button','data-agent-action':id,'aria-pressed':section===id,onClick:()=>setSection(id)},id==='usage'?'用量':'提供商'))),
-    current ? h(ProviderDetail, { key:route,row:current, AgentLogo,AgentForm, back,change,customAction,busy:busy || loading,readOnly,refresh,
+    current ? h(ProviderDetail, { key:route,row:current, AgentLogo,AgentForm, back,change,customAction,busy:busy || loading,readOnly,refresh,SignIn,
       enabled:catalog?.enabled,client,consumption,period,setPeriod,usageError:localUsage.error }) :
       section==='usage' ? h(UsageOverview,{rows,usage:localUsage,period,setPeriod,select:setRoute,client,readOnly}) :
       h(Fragment, null,

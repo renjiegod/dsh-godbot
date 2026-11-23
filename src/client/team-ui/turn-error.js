@@ -3,6 +3,7 @@ import { currentPart, isHiddenTurn } from './text.js'
 import { CheckIcon, CopyIcon } from './icons.js'
 import { ModelKeyCard, manageModels } from './model-menu.js'
 import { knownFailure } from './diagnostics.js'
+import { LocalSignInPanel, agentName, signInCommand, signInRoute } from './local-sign-in.js'
 import { hostText, t } from './i18n.js'
 
 // -------------------------------------------------------------------------
@@ -21,8 +22,9 @@ const SIGNED_OUT = new Set(['ACCOUNT_SIGN_IN_REQUIRED', 'ACCOUNT_SIGNED_OUT', 'A
 // Failures of an API key route; the account route never has them.
 const KEY_CODES = new Set(['MISSING_CREDENTIAL', 'INVALID_CREDENTIAL', 'AUTH'])
 // Until the credentials change the host keeps these on the Bot, and a retry would fail
-// the same way, so Retry waits for the fix.
-const CREDENTIAL_CODES = new Set([...KEY_CODES, ...SIGNED_OUT])
+// the same way, so Retry waits for the fix. A local agent CLI's sign-in is one: the
+// host lifts it once the CLI signs in from the page.
+const CREDENTIAL_CODES = new Set([...KEY_CODES, ...SIGNED_OUT, 'LOCAL_AGENT_SIGNIN'])
 
 // The sentence for one failure. `status` is the HTTP status, when the host has it.
 export function failureText(code, { name, provider, status }) {
@@ -48,6 +50,10 @@ export function failureText(code, { name, provider, status }) {
     case 'SERVER': return t('The model service failed.')
     case 'INTERRUPTED': return t('DeepSeek Harness stopped before this turn finished.')
     case 'MODEL_SWITCH_COMPACTION_FAILED': return t("The conversation could not be compacted for this model. Try again or choose another model.")
+    case 'LOCAL_AGENT_SIGNIN': return t('{agent} is not signed in, or its sign-in has expired.', { agent: provider })
+    case 'LOCAL_AGENT_QUOTA': return t('{agent} is out of usage or quota for now.', { agent: provider })
+    case 'LOCAL_AGENT_MISSING': return t('{agent} is not installed on this computer.', { agent: provider })
+    case 'LOCAL_AGENT_EXIT': return t('{agent} stopped before this turn finished.', { agent: provider })
     default: return knownFailure(code) ?? t('This turn failed.')
   }
 }
@@ -55,8 +61,9 @@ export function failureText(code, { name, provider, status }) {
 // The fixes one failure offers, the one to try first leading. Each is offered only
 // where this window can carry it out. A Bot moved onto the account route since a key
 // failure has nothing left to fix there.
-export function fixesFor(code, { canSignIn, official, topUp, onAccount = false }) {
+export function fixesFor(code, { canSignIn, official, topUp, onAccount = false, localSignIn = false }) {
   if (onAccount && KEY_CODES.has(code)) return []
+  if (code === 'LOCAL_AGENT_SIGNIN') return [localSignIn ? 'local-sign-in' : null, 'model'].filter(Boolean)
   if (SIGNED_OUT.has(code)) return canSignIn ? ['sign-in-again'] : ['model']
   switch (code) {
     case 'MISSING_CREDENTIAL': return ['key', canSignIn ? 'sign-in' : null, 'model'].filter(Boolean)
@@ -82,6 +89,7 @@ const FIX_LABELS = {
   'sign-in-again': () => t('Sign in again'),
   model: () => t('Pick another model'),
   'top-up': () => t('Top up ↗'),
+  'local-sign-in': () => t('Sign in'),
 }
 
 const NO_SUBSCRIBE = () => () => {}
@@ -121,6 +129,7 @@ const KNOWN_PROVIDERS = { 'deepseek-official': 'DeepSeek', 'deepseek-account': '
 const providerName = (roster, provider) => (provider === undefined
   ? t('The model service')
   : (roster.models ?? []).find(model => model.provider === provider)?.providerName
+    ?? agentName(provider)
     ?? (KNOWN_PROVIDERS[provider] ? t(KNOWN_PROVIDERS[provider]) : provider))
 
 // What Technical details lists, and copies in English for a report.
@@ -164,6 +173,8 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
   const signedIn = account?.status === 'credential-stored'
   const topUp = topUpOf(account)
   const [keying, setKeying] = useState(false)
+  // The sign-in panel of a local agent CLI, open below the card.
+  const [signing, setSigning] = useState(false)
   const [retry, setRetry] = useState('idle')
   const [error, setError] = useState('')
   // A sign-in started here to leave a failing key route, with the model the Bot was on.
@@ -216,8 +227,10 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
     'sign-in-again': () => actions.signIn(),
     model: actions.showDetails ? () => actions.showDetails(sessionId) : undefined,
     'model-settings': manageModels(actions),
+    'local-sign-in': () => setSigning(value => !value),
   }
-  const fixes = fixesFor(data.code, { canSignIn, official, topUp: topUp !== undefined, onAccount: provider === ACCOUNT }).filter(fix => fix === 'top-up' || runs[fix] !== undefined)
+  const localSignIn = signInRoute(provider)
+  const fixes = fixesFor(data.code, { canSignIn, official, topUp: topUp !== undefined, onAccount: provider === ACCOUNT, localSignIn }).filter(fix => fix === 'top-up' || runs[fix] !== undefined)
   // A turn another Bot asked for answers that Bot, which was already told it failed.
   // Retry would answer the user's last message instead, so it is not offered.
   const asked = isHiddenTurn(roster, sessionId, data.turn)
@@ -236,9 +249,10 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
       return h('a', { key: fix, className: `${className} bt-fail-link`, href: data.code === 'ACCOUNT_QUOTA' ? topUp : TOP_UP_URL, target: '_blank', rel: 'noopener noreferrer' }, FIX_LABELS[fix]())
     }
     const toggles = keyHere && (fix === 'key' || fix === 'rekey')
-    return h('button', { key: fix, type: 'button', className, 'aria-expanded': toggles ? keying : undefined, onClick: () => runs[fix]() }, FIX_LABELS[fix](signedIn))
+    const expanded = toggles ? keying : fix === 'local-sign-in' ? signing : undefined
+    return h('button', { key: fix, type: 'button', className, 'data-fix': fix, 'aria-expanded': expanded, onClick: () => runs[fix]() }, FIX_LABELS[fix](signedIn))
   }
-  const retryButton = primary => h('button', { key: 'retry', type: 'button', className: primary ? 'bt-send bt-fail-go' : 'bt-soft bt-soft-sm', disabled: retry !== 'idle', onClick: resume }, retry === 'idle' ? t('Retry') : t('Retrying…'))
+  const retryButton = primary => h('button', { key: 'retry', type: 'button', 'data-fix': 'retry', className: primary ? 'bt-send bt-fail-go' : 'bt-soft bt-soft-sm', disabled: retry !== 'idle', onClick: resume }, retry === 'idle' ? t('Retry') : t('Retrying…'))
   const row = retryFirst
     ? [retryButton(true), ...fixes.map(fix => button(fix, false))]
     : [...fixes.map((fix, index) => button(fix, index === 0)), retrying ? retryButton(false) : null]
@@ -248,6 +262,7 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
     h('div', { className: 'bt-fail-head' }, h('span', { className: 'bt-fail-dot', 'aria-hidden': true }), h('span', { className: 'bt-fail-text' }, text)),
     h('div', { className: 'bt-fail-actions' }, row),
     keying && keyHere ? h(ModelKeyCard, { model: { provider, providerName: providerName(roster, provider) }, actions, onSaved: () => setKeying(false) }) : null,
+    signing && localSignIn ? h(LocalSignInPanel, { route: provider, name: providerName(roster, provider), command: signInCommand(provider), onClose: () => setSigning(false) }) : null,
     error ? h('div', { className: 'bt-fail-error', role: 'alert' }, error) : null,
     h(TechnicalDetails, { facts }))
 }
@@ -263,6 +278,8 @@ export const TURN_ERROR_CSS = `
 .bt-fail-actions .bt-fail-go{height:28px;padding:0 12px;font:inherit;font-size:12px}
 .bt-fail-link{display:inline-flex;align-items:center;box-sizing:border-box;text-decoration:none}
 .bt-fail:has(.bt-model-key){width:min(480px,86%)}
+.bt-fail:has(.bt-signin){width:min(620px,92%)}
+.bt-fail .bt-signin{margin-left:15px}
 .bt-fail .bt-q.bt-model-key{margin:0 0 0 15px;width:auto;padding:0;background:none;box-shadow:none;border-radius:0;animation:none}
 .bt-fail-error{margin-left:15px;font-size:12px;line-height:17px;color:var(--bt-danger);overflow-wrap:anywhere}
 .bt-fail-tech{margin-left:15px;font-size:12px;line-height:17px;color:var(--bt-ink-2)}
