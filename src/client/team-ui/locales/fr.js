@@ -22,6 +22,9 @@ export const FR = {
   "The Relay Server that passes encrypted messages between your phone and this computer. It cannot read them.": "Le serveur relais qui transmet les messages chiffrés entre votre téléphone et cet ordinateur. Il ne peut pas les lire.",
   "The code works once. It stops working in {count} min.": "Le code ne sert qu’une fois. Il expire dans {count} min.",
   "Turn on phone access first": "Activez d’abord l’accès depuis le téléphone",
+  "A new session is starting; try again in a moment": "Une nouvelle session s’ouvre ; réessayez dans un instant",
+  "Another session became current meanwhile; open this one again": "Une autre session est devenue active entre-temps ; rouvrez celle-ci",
+  "The Bot is working; wait for it to finish or stop it first": "Le Bot travaille ; attendez qu’il termine ou arrêtez-le d’abord",
   "The Server address must start with ws:// or wss://": "L’adresse du serveur doit commencer par ws:// ou wss://",
   "Enter the Server address first": "Saisissez d’abord l’adresse du serveur",
   "This phone is not paired": "Ce téléphone n’est pas associé",
@@ -1761,7 +1764,9 @@ export const FR = {
   "Open this session": "Ouvrir cette session",
   "Open this running session": "Ouvrir cette session en cours",
   "A running session keeps using model calls in the background.": "Une session en cours continue d’utiliser des appels au modèle en arrière-plan.",
-  "This session is still running. Wait for it to finish, or stop it.": "Cette session est toujours en cours. Attendez la fin ou arrêtez-la.",
+  "Sessions of {name}": "Sessions de {name}",
+  "All sessions ({count})": "Toutes les sessions ({count})",
+  "{count} running in the background": "{count} en cours en arrière-plan",
 }
 
 export const HOST_ERRORS_FR = [

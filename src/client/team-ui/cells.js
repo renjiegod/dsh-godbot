@@ -667,9 +667,10 @@ function EarlierParts({ sessionId, roster, actions }) {
 function PartStart({ sessionId, source, time, roster, useSessions, actions }) {
   const bot = roster.byId[sessionId]
   const from = previousPart(bot, sessionId, source)
-  // A part is made under the Bot's name; only a title of its own names it.
+  // The session is named by the first thing the user asked in it; a part is made under
+  // the Bot's name, so a DSH title only names it when it is its own.
   const named = useSessions(list => (from === undefined ? '' : (list.byId?.[from]?.title ?? '').trim()))
-  const title = named === bot.name ? '' : named
+  const title = (from === undefined ? '' : roster.partTitles?.[from]) || (named === bot.name ? '' : named)
   const [state, setState] = useState({ busy: false, error: '' })
   const opening = source.opening === true
   // A New session nobody has talked in yet says what it is under its line.
@@ -677,8 +678,7 @@ function PartStart({ sessionId, source, time, roster, useSessions, actions }) {
   const open = () => {
     if (state.busy || from === undefined) return
     setState({ busy: true, error: '' })
-    const running = roster.partsRunning?.[from] === true
-    Promise.resolve(actions.openPart !== undefined ? actions.openPart(bot.id, from, running) : call('bot-open-part', { botId: bot.id, sessionId: from }))
+    Promise.resolve(actions.openPart !== undefined ? actions.openPart(bot.id, from) : call('bot-open-part', { botId: bot.id, sessionId: from }))
       .then(() => setState({ busy: false, error: '' }), failure => setState({ busy: false, error: failure?.message ?? String(failure) }))
   }
   return h('div', { className: 'bt-part-start' },
