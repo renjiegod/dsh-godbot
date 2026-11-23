@@ -52,6 +52,9 @@ export const CAPABILITIES = [
   'markdown-image',
   'file-download-chunks',
   'write-state',
+  // local-agent-login-start/-wait/-input/-check/-cancel: a local agent CLI signs in
+  // from the phone (Claude Code's code page, Codex's device code).
+  'local-agent-login',
 ]
 export const NOTICE_KINDS = ['message', 'group', 'done', 'question', 'view', 'approval']
 
