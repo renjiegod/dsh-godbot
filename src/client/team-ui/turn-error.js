@@ -252,9 +252,9 @@ export function FailureCell({ node, sessionId, useRoster, useTurnClock, actions 
     const expanded = toggles ? keying : fix === 'local-sign-in' ? signing : undefined
     return h('button', { key: fix, type: 'button', className, 'data-fix': fix, 'aria-expanded': expanded, onClick: () => runs[fix]() }, FIX_LABELS[fix](signedIn))
   }
-  // Signed in from this card: the Bot goes on with the turn that failed, as Retry
-  // would (the host has lifted the block by now; a held greeting it sent again
-  // already is not sent twice).
+  // Signed in from this card: the host has lifted the block and gone on with the turn
+  // that failed by now. The card shows it as a Retry, which the host does not answer
+  // twice.
   const afterSignIn = () => {
     if (!asked && typeof actions.resume === 'function' && retry === 'idle') resume()
   }
