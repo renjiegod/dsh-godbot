@@ -295,18 +295,42 @@ export default async function newSession({ makeHost, candidate, note }) {
   await composer.press('Enter')
   await until(() => host.model.calls.some(call => call.sessionId === first.current && JSON.stringify(call.body.messages).includes(meanwhile)), 'the opened session answers while the other one works')
   assert.equal((await state()).partsRunning?.[working], true, 'the background session is still working')
-  // The sidebar lists the open Bot's sessions under its row, the running one marked.
-  const sideRows = page.locator('.bt-bot-sub-row')
-  const workingRow = sideRows.filter({ hasText: 'After the busy one ' + tag })
-  await until(async () => (await workingRow.getAttribute('data-tone').catch(() => null)) === 'run', 'the sidebar marks the session at work')
-  assert.equal(await sideRows.filter({ hasText: 'First question ' + tag }).getAttribute('aria-current'), 'page', 'the sidebar marks the open session')
+  // The chat's top bar lists the Bot's sessions in a menu, the running one marked and the
+  // open one checked; the sidebar lists none.
+  const menuButton = page.locator('.bt-head .bt-smenu-btn')
+  const menuItems = page.locator('.bt-smenu-item')
+  const openMenu = async () => {
+    if (await menuItems.count() > 0) return
+    await menuButton.click()
+    await menuItems.first().waitFor()
+  }
+  const closeMenu = async () => {
+    if (await menuItems.count() === 0) return
+    await menuButton.click()
+    await menuItems.first().waitFor({ state: 'detached' })
+  }
+  await until(async () => (await menuButton.locator('.bt-smenu-dot').count()) === 1, 'the menu button shows a session at work elsewhere')
+  await openMenu()
+  const workingItem = menuItems.filter({ hasText: 'After the busy one ' + tag })
+  await until(async () => (await workingItem.getAttribute('data-tone').catch(() => null)) === 'run', 'the menu marks the session at work')
+  assert.equal(await menuItems.filter({ hasText: 'First question ' + tag }).getAttribute('aria-checked'), 'true', 'the menu checks the open session')
+  assert.equal(await page.locator('.bt-bot-sub-row, .bt-bot-sub').count(), 0, 'the sidebar lists no sessions')
+  // Once it has settled, every row is on top: the transcript under the top bar never
+  // draws over the list.
+  await delay(400)
+  assert.ok(await menuItems.evaluateAll(items => items.every((item) => {
+    const box = item.getBoundingClientRect()
+    return item.contains(document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2))
+  })), 'the session menu is drawn above the transcript')
   await host.capture('new-session-open-earlier-while-busy')
+  await closeMenu()
   releaseParallel()
   await until(async () => (await state()).partsRunning?.[working] !== true, 'the background session finished its answer')
   await until(async () => (await state()).partsRunning?.[first.current] !== true, 'the opened session finished its answer')
-  // Back to it from the sidebar; its answer is there.
-  await workingRow.click()
-  await until(async () => (await threadNow()).current === working, 'the sidebar opened the session that worked in the background')
+  // Back to it from the menu; its answer is there.
+  await openMenu()
+  await workingItem.click()
+  await until(async () => (await threadNow()).current === working, 'the menu opened the session that worked in the background')
   await scroller.getByText('Answer to ' + parallelText).first().waitFor()
   // An earlier session of a background thread opens while the Bot is idle too: the idle
   // one joins the earlier sessions.
@@ -314,6 +338,23 @@ export default async function newSession({ makeHost, candidate, note }) {
   await rows.filter({ hasText: 'Second question ' + tag }).click()
   await until(async () => (await threadNow()).current === second.current, 'an earlier session of a background thread opened')
   assert.ok((await threadNow()).earlier.includes(working), 'the idle session joined the earlier ones')
+
+  // Opening an older session leaves the Bot where it is in the sidebar: Bots sort by
+  // their latest activity in any of their sessions, not by the one that is open.
+  const witness = await host.bot('create-bot', { name: 'Order Witness', model: 'deepseek-official/deepseek-flash' })
+  await until(async () => (await host.bot('chat', { botId: witness.id })).items?.some(item => item.kind === 'bot'), 'the second Bot greeted the user')
+  await talk('Latest ' + tag)
+  const rowOrder = () => page.locator('.bt-row[data-bot-id]').evaluateAll(found => found.map(row => row.dataset.botId))
+  await until(async () => {
+    const ids = await rowOrder()
+    return ids.includes(witness.id) && ids.indexOf(bot.id) < ids.indexOf(witness.id)
+  }, 'the Bot that talked last is listed first')
+  const orderBefore = await rowOrder()
+  await openMenu()
+  await menuItems.filter({ hasText: 'First question ' + tag }).click()
+  await until(async () => (await threadNow()).current === first.current, 'the oldest session opened from the menu')
+  await delay(1500)
+  assert.deepEqual(await rowOrder(), orderBefore, 'opening an older session left the Bot where it was in the sidebar')
 
   // The names come back after a restart: each one is read from its session's record,
   // archived sessions included, as for sessions made before names were kept.

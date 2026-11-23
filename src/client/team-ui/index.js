@@ -39,6 +39,7 @@ import { ConnectorDock, MailDock, CONNECTOR_CSS } from './connectors.js'
 import { CONNECTORS_PAGE_CSS } from './connectors-page.js'
 import { LearningDock, LearningTurnTail, LEARNING_CSS } from './learning-card.js'
 import { MODEL_CSS, ModelChoiceDock, DeepSeekSignIn } from './model-menu.js'
+import { SESSION_MENU_CSS } from './session-menu.js'
 import { BOT_SETTINGS_CSS } from './bot-settings.js'
 import { BOT_MODELS_CSS } from './bot-models-page.js'
 import { AGENT_CARDS_CSS } from './agent-cards.js'
@@ -1363,6 +1364,7 @@ export function apply(ctx, godbot) {
   ]
   const installConversation = () => [
     () => installCompiledStyles(CONVERSATION_CSS, 'conversation'),
+    () => installCompiledStyles(SESSION_MENU_CSS, 'session-menu'),
     () => installCompiledStyles(TURN_ERROR_CSS, 'turn-errors'),
     () => installCompiledStyles(QUEUE_CSS, 'queue'),
     () => installCompiledStyles(ANNOTATION_CSS, 'text-annotation'),

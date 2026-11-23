@@ -1764,8 +1764,7 @@ export const FR = {
   "Open this session": "Ouvrir cette session",
   "Open this running session": "Ouvrir cette session en cours",
   "A running session keeps using model calls in the background.": "Une session en cours continue d’utiliser des appels au modèle en arrière-plan.",
-  "Sessions of {name}": "Sessions de {name}",
-  "All sessions ({count})": "Toutes les sessions ({count})",
+  "Switch session": "Changer de session",
   "{count} running in the background": "{count} en cours en arrière-plan",
 }
 

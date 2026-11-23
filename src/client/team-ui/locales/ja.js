@@ -1764,8 +1764,7 @@ export const JA = {
   "Open this session": "このセッションを開く",
   "Open this running session": "実行中のセッションを開く",
   "A running session keeps using model calls in the background.": "実行中のセッションはバックグラウンドでモデル呼び出しを続けます。",
-  "Sessions of {name}": "{name} のセッション",
-  "All sessions ({count})": "すべてのセッション（{count}）",
+  "Switch session": "セッションを切り替え",
   "{count} running in the background": "{count} 件のセッションがバックグラウンドで実行中",
 }
 
