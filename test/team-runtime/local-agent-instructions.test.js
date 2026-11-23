@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -8,6 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { LocalAgentAdapter } from '../../src/host/team-runtime/core/local-agents/adapter.js'
 import { CodexEngine, withOwnInstructions } from '../../src/host/team-runtime/core/local-agents/codex.js'
+import { withoutNativeContext } from '../../src/host/team-runtime/core/local-agents/native-context.js'
 import { botPrompt } from '../../src/host/team-runtime/core/prompt.js'
 import { localAgentPresentation, MEMORY_CONTEXT } from '../../src/host/team-runtime/local-agents.js'
 import { createWorkspaceClaudeEngine } from '../../src/host/workspace-agent-controls.js'
@@ -68,10 +69,10 @@ test('a local agent keeps Godbot\'s section and contexts; the memory moves to th
   assert.equal(empty.contexts.some(entry => entry.name === MEMORY_CONTEXT), false)
 })
 
-function adapterWith(flags, recordPath) {
+function adapterWith(flags, recordPath, cwd = tmpdir()) {
   const saved = {}
   return new LocalAgentAdapter({
-    customAgents: () => [], usedModels: () => [], probeCwd: tmpdir, cwdFor: async () => tmpdir(),
+    customAgents: () => [], usedModels: () => [], probeCwd: tmpdir, cwdFor: async () => cwd,
     presetFor: () => 'danger-full-access', toolsFor: () => [],
     record: id => saved[id], saveRecord: (id, row) => { saved[id] = row }, patchRecord: () => {},
     spawnEngine: (_kind, id, spec) => createWorkspaceClaudeEngine(id, { ...spec, args: [fixture('fake-claude-record.mjs'), '--record', recordPath, ...flags] }, { findExecutable: () => process.execPath }),
@@ -219,4 +220,82 @@ test('a resumed Codex thread hears about instructions that changed while it was 
   const injected = calls.find(call => call.method === 'thread/inject_items')
   assert.match(injected.params.items[0].text, /^Updated team instructions \(replace earlier ones\):\n\nYou are Ada, renamed\.$/)
   assert.equal(turnText(calls.find(call => call.method === 'turn/start')), 'hello')
+})
+
+// DSH's own context messages, as its skill and workspace-instruction plugins write them.
+const catalog = id => ({ role: 'user', id, source: { kind: 'skill-catalog', entries: [] }, content: text('<system-reminder>\nA skill is a reusable set of task-specific instructions. The following skills are available in this session:\n\n<available_skills>\n- `dsh-doc`: DSH facts\n</available_skills>\n</system-reminder>') })
+const workspaceInstructions = (id, files) => ({
+  role: 'user', id, source: { kind: 'agent-instructions', form: 'instructions', baseline: true, changes: [] },
+  content: text(['<system-reminder>', ['The following workspace instructions may be relevant to your work.', ...files.map(([path, body]) => `Instructions from: ${path}\n\n${body}`)].join('\n\n'), '</system-reminder>'].join('\n')),
+})
+function project(files) {
+  const root = mkdtempSync(join(tmpdir(), 'godbot-project-'))
+  mkdirSync(join(root, '.git'))
+  for (const [path, body] of Object.entries(files)) {
+    mkdirSync(join(root, path, '..'), { recursive: true })
+    if (body.startsWith('->')) symlinkSync(body.slice(2), join(root, path))
+    else writeFileSync(join(root, path), body)
+  }
+  return root
+}
+const kept = messages => messages.map(message => message.content.map(block => block.text).join('\n')).join('\n---\n')
+
+test('a local agent CLI is not shown DSH\'s skill catalog', () => {
+  for (const kind of ['claude', 'codex', 'acp']) {
+    const out = withoutNativeContext([catalog('k'), user('u', 'hello')], { kind, cwd: tmpdir() })
+    assert.deepEqual(out.map(message => message.id), ['u'])
+  }
+})
+
+test('Claude Code is not shown the CLAUDE.md files it reads itself', () => {
+  const root = project({ 'CLAUDE.md': 'claude rules', 'AGENTS.md': 'agent rules', 'app/AGENTS.md': 'app rules', 'app/CLAUDE.md': '->AGENTS.md' })
+  const cwd = join(root, 'app')
+  const message = workspaceInstructions('w', [['~/.agents/AGENTS.md', 'global rules'], ['CLAUDE.md', 'claude rules'], ['AGENTS.md', 'agent rules'], ['app/AGENTS.md', 'app rules']])
+  const [out] = withoutNativeContext([message], { kind: 'claude', cwd })
+  const shown = kept([out])
+  assert.match(shown, /^<system-reminder>\nThe following workspace instructions/)
+  assert.match(shown, /Instructions from: ~\/\.agents\/AGENTS\.md\n\nglobal rules/, 'no CLI reads the user-wide file')
+  assert.match(shown, /Instructions from: AGENTS\.md\n\nagent rules/, 'Claude Code does not read AGENTS.md')
+  assert.doesNotMatch(shown, /claude rules/)
+  assert.doesNotMatch(shown, /app rules/, 'the AGENTS.md its CLAUDE.md links to is read through the link')
+  assert.match(shown, /<\/system-reminder>$/)
+  // Nothing left but the files it reads: the message goes.
+  assert.deepEqual(withoutNativeContext([workspaceInstructions('w', [['CLAUDE.md', 'claude rules']]), user('u', 'hi')], { kind: 'claude', cwd }).map(m => m.id), ['u'])
+})
+
+test('Codex is not shown the AGENTS.md files it reads itself', () => {
+  const root = project({ 'AGENTS.md': 'agent rules', 'CLAUDE.md': 'claude rules', 'svc/AGENTS.md': 'svc rules', 'svc/AGENTS.override.md': 'override' })
+  const message = workspaceInstructions('w', [['AGENTS.md', 'agent rules'], ['CLAUDE.md', 'claude rules'], ['svc/AGENTS.md', 'svc rules']])
+  const shown = kept(withoutNativeContext([message], { kind: 'codex', cwd: join(root, 'svc') }))
+  assert.doesNotMatch(shown, /agent rules/)
+  assert.match(shown, /claude rules/)
+  assert.match(shown, /svc rules/, 'an AGENTS.override.md takes the place of that AGENTS.md in Codex')
+})
+
+test('ACP agents, sandboxed CLIs and unknown layouts keep the workspace instructions', () => {
+  const root = project({ 'CLAUDE.md': 'claude rules', 'AGENTS.md': 'agent rules' })
+  const message = workspaceInstructions('w', [['CLAUDE.md', 'claude rules'], ['AGENTS.md', 'agent rules']])
+  assert.equal(withoutNativeContext([message], { kind: 'acp', cwd: root })[0], message)
+  assert.equal(withoutNativeContext([message], { kind: 'claude', cwd: root, sandboxed: true })[0], message)
+  const odd = { ...message, content: text('Instructions from: CLAUDE.md\n\nclaude rules') }
+  assert.equal(withoutNativeContext([odd], { kind: 'claude', cwd: root })[0], odd)
+})
+
+test('Claude Code\'s replay and later input leave out what it has of its own', { timeout: 20_000 }, async (t) => {
+  const root = project({ 'CLAUDE.md': 'claude rules' })
+  const recordPath = join(mkdtempSync(join(tmpdir(), 'godbot-instructions-')), 'record.jsonl')
+  const adapter = adapterWith(['--knows-prompt-file'], recordPath, root)
+  t.after(() => adapter.dispose())
+  const rules = workspaceInstructions('w0', [['~/.agents/AGENTS.md', 'global rules'], ['CLAUDE.md', 'claude rules']])
+  const first = [system('You are Ada.'), user('u0', 'earlier'), said('a0', 'noted'), rules, catalog('k0'), user('u1', 'hello')]
+  await ask(adapter, first)
+  await ask(adapter, [...first, said('a1', 'hi'), catalog('k1'), workspaceInstructions('w1', [['CLAUDE.md', 'claude rules, changed']]), user('u2', 'next')])
+
+  const users = records(recordPath).filter(row => row.user !== undefined).map(row => row.user)
+  assert.equal(users.length, 2)
+  assert.match(users[0], /User: earlier/)
+  assert.match(users[0], /global rules/)
+  assert.doesNotMatch(users[0], /claude rules|available_skills/)
+  assert.doesNotMatch(users[1], /claude rules|available_skills/)
+  assert.match(users[1], /next/)
 })
