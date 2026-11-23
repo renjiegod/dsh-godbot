@@ -53,7 +53,8 @@ export async function buildArchive(destination, revision) {
   }
   // Include current worktree edits and new application files without writing generated files into it.
   const pkg = JSON.parse(await readFile(join(repository, 'package.json'), 'utf8'))
-  const paths = new Set(['src', 'scripts', 'package.json', 'package-lock.json', ...(pkg.files ?? []), ...Object.values(pkg.bin ?? {})])
+  const packageFiles = (pkg.files ?? []).filter(name => !name.startsWith('!'))
+  const paths = new Set(['src', 'scripts', 'package.json', 'package-lock.json', ...packageFiles, ...Object.values(pkg.bin ?? {})])
   for (const name of paths) {
     await cp(join(repository, name), join(staging, name), { recursive: true, force: true })
   }

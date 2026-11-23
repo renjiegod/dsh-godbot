@@ -40,7 +40,7 @@ function portalFileStamp(stat) {
   if (stat.birthtimeNs > 0n && stat.ino > 0n) return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`
 }
 
-function relayUrl(value) {
+export function relayUrl(value) {
   const url = new URL(value)
   if (
     url.username ||
@@ -291,6 +291,8 @@ export async function startComputerHost(options = {}) {
   const claimInput = options.claimInput ?? claimComputerInput
   const grants = (id) => cfg.grants[id] ?? []
   const managers = new Map()
+  let maintenance
+  const maintaining = () => Boolean(maintenance && maintenance.expiresAt > Date.now())
   let changing = 0
   let releasePrivateInput
   const privateActive = () => {
@@ -323,9 +325,23 @@ export async function startComputerHost(options = {}) {
   const management = createManagementSocket(async (method, args) => {
     if (!link || stopping) throw new Error('Host is starting or shutting down')
     const [id, scope] = args
+    if (method === 'maintenance-begin' || method === 'maintenance-end') {
+      if (!id || !/^[a-f0-9-]{36}$/.test(id)) throw new Error('Invalid maintenance lease')
+      if (method === 'maintenance-end') {
+        if (maintenance?.id === id) maintenance = undefined
+        return { ok: true }
+      }
+      if ((maintaining() && maintenance.id !== id) || privateActive() ||
+          sessions.closing.size || [...sessions.records.values()].some(s => s.state === 'approved' || s.state === 'pending')) {
+        return { ok: false, busy: true }
+      }
+      maintenance = { id, expiresAt: Date.now() + 15_000 }
+      return { ok: true }
+    }
     if (method === 'status')
       return {
         version: 1,
+        maintenanceSupported: true,
         deviceId: cfg.identity.deviceId,
         name: cfg.name,
         fingerprint: identityFingerprint(cfg.identity.publicKey),
@@ -492,6 +508,7 @@ export async function startComputerHost(options = {}) {
       grants,
       portalMemory,
       localPrivate: privateActive,
+      maintaining,
       claimInput,
       peerName: (id) => describePeer(device(id)).name,
       issueIce: iceProvider(networkConfig(directory)),

@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { until } from '../host.mjs'
 import { openFullTeam } from '../native-ui.mjs'
+import { checkLocalHostPanel } from '../local-host-panel.mjs'
 import { startRelay } from '../phone-relay.mjs'
 
 export default async function remoteComputers({ makeHost, candidate, scratch, reportDir, note }) {
@@ -41,6 +42,9 @@ export default async function remoteComputers({ makeHost, candidate, scratch, re
     assert.equal(await remoteComputersButton.locator('svg').count(), 1, 'the sidebar button shows one icon')
     await remoteComputersButton.click()
     const panel = page.getByRole('dialog', { name: /^(?:Remote computers|远程电脑)$/u, exact: true })
+    await checkLocalHostPanel(page, panel)
+    note('local-host-web-ui', { management: 'intercepted owner RPC', explicitEnable: true,
+      pairingLinkOutsideDom: true, copyOnClick: true, confirmedDeferredDisable: true, unsupportedPlatform: true })
     await panel
       .getByRole('button', { name: /^(?:Pair computer|配对电脑)$/u, exact: true })
       .last()

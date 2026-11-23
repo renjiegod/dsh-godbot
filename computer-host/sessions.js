@@ -32,6 +32,7 @@ export class MachineSessions {
     peerName,
     claimInput = claimComputerInput,
     localPrivate = () => false,
+    maintaining = () => false,
     iceNow = Date.now,
     issueIce = async () => ({ host: [], viewer: [] }),
     createTerminal = (size) => new UserTerminal(size),
@@ -43,6 +44,7 @@ export class MachineSessions {
     this.peerName = peerName
     this.claimInput = claimInput
     this.localPrivate = localPrivate
+    this.maintaining = maintaining
     this.ask = ask
     this.audit = audit
     this.iceNow = iceNow
@@ -149,6 +151,8 @@ export class MachineSessions {
       if (!seat.available) throw fault('DESKTOP_UNAVAILABLE', seat.reason || 'No graphical session')
     }
     if (peer.signal.aborted) throw fault('SESSION_CLOSED', 'The connection closed')
+    // Check after the asynchronous display probe and before recording either mode.
+    if (this.maintaining()) throw fault('BUSY', 'The target is updating its computer host')
     this.collect()
     const records = [...this.records.values()]
     const existing = records.find(

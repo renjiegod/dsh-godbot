@@ -119,6 +119,9 @@ export function createClient(connection) {
     return result.value
   }
   return {
+    machineHost: request => request.action === 'enable' || request.action === 'disable'
+      ? call('machineHost', { request }, AbortSignal.timeout(120000))
+      : call('machineHost', { request }),
     machine: (request, signal) => {
       const chooser = request.method === 'desktop.requestControl' ||
         (request.method === 'desktop.signal' && request.params?.signal?.type === 'offer')
