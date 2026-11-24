@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import { dirname } from 'node:path'
 import { findExecutable } from '../src/drivers/external/discover.js'
+import { satisfiesDshRange } from '../src/host/dsh-compatibility.js'
 
 function findHostManifest(executable) {
   const resolveApp = entry => createRequire(realpathSync(entry)).resolve('@deepseek-ai/dsh/package.json')
@@ -27,19 +28,23 @@ function findHostManifest(executable) {
   throw new Error('Cannot locate the DSH installation launched by ' + executable)
 }
 
-// DSH scope keys and layer registries are process-local. The same npm version
-// at a different path is a different instance and may register Bot tools globally.
+// The optional peer declarations keep pnpm's transitive resolution on the
+// DSH release track. Profile links use the modules from the DSH installation
+// itself to share its scope keys and layer registries.
 export function hostPeerSpecs(pkg, executable = findExecutable('dsh')) {
   if (!executable) throw new Error('Cannot find the DSH executable on PATH')
   const manifest = findHostManifest(executable)
   const app = JSON.parse(readFileSync(manifest, 'utf8'))
-  if (app.version !== pkg.engines.dsh) throw new Error('Godbot requires DSH ' + pkg.engines.dsh + ', found ' + app.version)
+  const range = pkg.engines?.dsh
+  if (!satisfiesDshRange(app.version, range)) throw new Error('Godbot requires DSH ' + range + ', found ' + app.version)
   const fromHost = createRequire(manifest)
-  return Object.entries(pkg.peerDependencies).map(([name, version]) => {
+  return Object.entries(pkg.peerDependencies ?? {}).map(([name, peerRange]) => {
     const owner = realpathSync(fromHost.resolve(name + '/package.json'))
     const actual = JSON.parse(readFileSync(owner, 'utf8'))
-    if (actual.name !== name || actual.version !== version) {
-      throw new Error('Expected ' + name + '@' + version + ' from ' + manifest + ', found ' + actual.name + '@' + actual.version)
+    const hostSupplied = pkg.peerDependenciesMeta?.[name]?.optional === true && name.startsWith('@deepseek-ai/dsh-')
+    const expected = hostSupplied ? app.version : peerRange
+    if (actual.name !== name || !satisfiesDshRange(actual.version, expected)) {
+      throw new Error('Expected ' + name + '@' + expected + ' from ' + manifest + ', found ' + actual.name + '@' + actual.version)
     }
     return name + '@link:' + dirname(owner)
   })

@@ -6,13 +6,16 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { gzipSync } from 'node:zlib'
+import { verifiedDshVersion } from '../../src/host/dsh-compatibility.js'
 import { IDLE_MS, RETRY_MS, install, profileCommand, sourceOf } from '../../src/host/team-runtime/core/update.js'
+import { install as installDshUpdate } from '../../src/host/team-runtime/core/dsh-update.js'
 import { dshRestart } from '../../src/host/team-runtime/core/dsh-restart.js'
 import {
   GITHUB_API, archiveManifest, compatibility, downloadArchive, newer, newestRelease, releasesApi, sidecarDigest,
 } from '../../src/host/team-runtime/core/update-release.js'
 
 const PKG = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
+const DSH = PKG.godbot.verifiedDsh
 const [major, minor, patch] = PKG.version.split('-')[0].split('.').map(Number)
 // A stable release newer than whatever this checkout is: offered on either channel.
 const NEXT = `${major}.${minor}.${patch + 1}`
@@ -47,7 +50,10 @@ function tarEntry(name, body, type = '0') {
   return Buffer.concat([header, body, Buffer.alloc((512 - (body.length % 512)) % 512)])
 }
 const tgz = entries => gzipSync(Buffer.concat([...entries.map(([name, body, type]) => tarEntry(name, Buffer.from(body), type)), Buffer.alloc(1024)]))
-const manifestFor = (version, extra = {}) => JSON.stringify({ name: PKG.name, version, engines: PKG.engines, peerDependencies: PKG.peerDependencies, ...extra })
+const manifestFor = (version, extra = {}) => JSON.stringify({
+  name: PKG.name, version, engines: PKG.engines, peerDependencies: PKG.peerDependencies,
+  peerDependenciesMeta: PKG.peerDependenciesMeta, ...extra,
+})
 const archiveFor = (version, extra) => tgz([['package/README.md', '# Godbot\n'], ['package/package.json', manifestFor(version, extra)]])
 
 function release(version, { data = archiveFor(version), digest = true, prerelease = version.includes('-'), draft = false, sidecar = false } = {}) {
@@ -86,7 +92,7 @@ function fakeDsh({ name = '@deepseek-ai/dsh' } = {}) {
   const dir = scratch()
   mkdirSync(join(dir, 'lib'))
   writeFileSync(join(dir, 'lib/bin.js'), '')
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version: PKG.engines.dsh, bin: { dsh: 'lib/bin.js' } }))
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name, version: DSH, bin: { dsh: 'lib/bin.js' } }))
   return join(dir, 'package.json')
 }
 
@@ -116,7 +122,7 @@ function fakeSpawn({ code = 0, output = '', install } = {}) {
 // The team runtime's update module with the profile, plugin manager, network and clock it reads.
 // `hmr` gives the host DSH's in-place reload service; `cli` the profile facts and the
 // installed DSH that DSH's CLI is found from; `spawn` runs that CLI.
-function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = Object.keys(PKG.peerDependencies), install: answer, home = scratch(), hmr = false, cli = false, spawn, profileVersion, effect = () => {} } = {}) {
+function harness({ releases, routes = {}, mode, dsh = DSH, peers = [], install: answer, home = scratch(), hmr = false, cli = false, spawn, profileVersion, effect = () => {} } = {}) {
   const dshHome = scratch()
   const profile = join(dshHome, 'profiles', 'web')
   mkdirSync(profile, { recursive: true })
@@ -247,9 +253,50 @@ test('an archive installs only for the running DSH and the peers the profile lin
   assert.equal(compatibility(manifest, want), null)
   assert.deepEqual(compatibility({ ...manifest, engines: { dsh: '0.3.0' } }, want), { reason: 'dsh', dsh: '0.3.0', current: '0.2.2' })
   assert.deepEqual(compatibility({ ...manifest, peerDependencies: { '@deepseek-ai/dsh-new': '0.2.2' } }, want), { reason: 'peers', peers: ['@deepseek-ai/dsh-new'] })
+  assert.equal(compatibility({ ...manifest, peerDependenciesMeta: { '@deepseek-ai/dsh-web': { optional: true } } },
+    { ...want, linked: [] }), null)
   assert.equal(compatibility({ ...manifest, version: '1.0.1' }, want).reason, 'mismatch')
   assert.equal(newer('0.2.0', '0.2.0-rc.3'), true)
   assert.equal(newer('0.2.0-rc.10', '0.2.0-rc.9'), true)
+})
+
+test('a release range accepts compatible DSH versions and excludes the next prerelease series', () => {
+  const range = '>=0.2.2-rc.2 <0.2.3-0'
+  const manifest = { name: PKG.name, version: NEXT, engines: { dsh: range } }
+  const wanted = { name: PKG.name, version: NEXT }
+  for (const dsh of ['0.2.2-rc.2', '0.2.2-rc.5', '0.2.2']) {
+    assert.equal(compatibility(manifest, { ...wanted, dsh }), null, dsh)
+  }
+  for (const dsh of ['0.2.2-rc.1', '0.2.3-alpha.2', '0.2.3']) {
+    assert.deepEqual(compatibility(manifest, { ...wanted, dsh }), { reason: 'dsh', dsh: range, current: dsh })
+  }
+  assert.equal(compatibility({ ...manifest, engines: { dsh: 'broken range' } }, { ...wanted, dsh: '0.2.2' }).reason, 'dsh')
+})
+
+test('a DSH update recommendation names an exact version inside the release range', () => {
+  const engines = { dsh: '>=0.2.2-rc.2 <0.2.3-0' }
+  assert.equal(verifiedDshVersion(PKG), DSH)
+  assert.equal(verifiedDshVersion({ engines }), null)
+  assert.equal(verifiedDshVersion({ engines, godbot: { verifiedDsh: '0.2.3-alpha.2' } }), null)
+  assert.equal(verifiedDshVersion({ engines: { dsh: '0.2.2-rc.5' } }), '0.2.2-rc.5')
+})
+
+test('a newer running DSH receives no downgrade recommendation', async t => {
+  let current = '0.2.2'
+  t.mock.method(globalThis, 'fetch', async () => Response.json(PKG))
+  const services = {
+    loader: { import: async () => ({ getDshRuntimeVersion: () => current }) },
+    pluginManager: { listBundles: async () => [{ name: PKG.name, source: `${PKG.name}@${PKG.version}` }] },
+  }
+  const rt = { ctx: { get: name => services[name], effect() {} }, config: {}, warn() {} }
+  installDshUpdate(rt)
+  const newerHost = await rt.dshUpdateCheck()
+  assert.equal(newerHost.verified, null)
+  assert.equal(newerHost.available, false)
+  current = '0.2.2-rc.2'
+  const olderHost = await rt.dshUpdateCheck({ fresh: true })
+  assert.equal(olderHost.verified, DSH)
+  assert.equal(olderHost.available, true)
 })
 
 test('auto mode downloads a release, waits until Godbot is idle, then installs it', async () => {
@@ -375,7 +422,7 @@ test('a release built for another DSH is shown but never installed', async () =>
   await rt.updateTick()
   await rt.updatePrepare()
   const view = rt.updateView()
-  assert.deepEqual(view.blocked, { reason: 'dsh', dsh: '9.9.9', current: PKG.engines.dsh })
+  assert.deepEqual(view.blocked, { reason: 'dsh', dsh: '9.9.9', current: DSH })
   assert.equal(view.available, false)
   clock.now += IDLE_MS * 3
   await rt.updateTick()

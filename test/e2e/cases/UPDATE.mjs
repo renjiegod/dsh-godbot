@@ -51,7 +51,9 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     const pnpm = findExecutable('pnpm')
     if (!pnpm) throw new EnvironmentError('pnpm is required for the DSH plugin manager to install the update')
     const store = execFileSync(pnpm, ['store', 'path'], { encoding: 'utf8' }).trim()
-    const host = await makeHost({ env: { GODBOT_UPDATE_CHECK: '1', GODBOT_UPDATE_API: base, pnpm_config_store_dir: store, GODBOT_E2E_RELOAD_TRAP: trap } })
+    const host = await makeHost({ linkHostPeers: false,
+      env: { GODBOT_UPDATE_CHECK: '1', GODBOT_UPDATE_API: base, pnpm_config_store_dir: store, GODBOT_E2E_RELOAD_TRAP: trap },
+    })
     await symlink(realpathSync(pnpm), join(host.bin, 'pnpm'))
     await host.install(candidate)
     await host.start()
@@ -64,7 +66,7 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
         && response.request().postDataJSON()?.endpoint === 'update-check'),
     ])
     const documentStart = await page.evaluate(() => performance.timeOrigin)
-    assert.equal(await page.locator('.bt-update-banner').count(), 0)
+    assert.equal(await page.locator('.bt-update-banner').getByRole('button', { name: /Godbot \d/u }).count(), 0)
 
     // A different caller can discover a release while this page stays open.
     published = true
@@ -118,7 +120,7 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     await notice.click()
     // From here on the release cannot load into this DSH.
     await writeFile(trap, 'set while the installing DSH runs\n')
-    await details.getByRole('button', { name: /^(更新|Update)$/u }).click()
+    await details.locator(':scope > .bt-update-actions').getByRole('button', { name: /^(更新|Update)$/u }).click()
     // The running version installs the release for the next start and keeps answering.
     let failure
     const installed = await until(async () => {
@@ -186,7 +188,7 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
 
     const banner = page.locator('.bt-leftcol[data-left=open] .bt-update-banner')
     await banner.getByRole('button', { name: dismissLabel }).click()
-    await banner.waitFor({ state: 'hidden' })
+    await banner.getByRole('button', { name: completedLabel }).waitFor({ state: 'hidden' })
     assert.ok(await page.locator('.bt-leftcol[data-left=open] .bt-side-collapse').evaluate(button => button === document.activeElement), 'dismissing the notice returns focus to the sidebar')
 
     await page.reload()

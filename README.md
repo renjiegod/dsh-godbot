@@ -10,7 +10,7 @@
 
 <p><strong><a href="#快速开始">快速开始</a></strong> · <a href="docs/user-guide.zh-CN.md">使用指南</a> · <a href="https://github.com/renjiegod/dsh-godbot/releases">发布版本</a> · <a href="https://github.com/renjiegod/godbot-app#readme">Android</a> · <a href="README.en.md">English</a></p>
 
-<p><sub>macOS · DSH Web · MIT</sub></p>
+<p><sub>macOS 和 Linux · DSH Web · MIT</sub></p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workbench-dark.png">
@@ -23,10 +23,11 @@
 
 ## 快速开始
 
-需要 macOS、Node.js 24.9 或以上、npm 和 pnpm。Godbot 安装到 DSH Web 的 `web` profile。
+Godbot 工作台可在 macOS 和 Linux 上运行。需要 Node.js 24.9 或以上、npm 和 pnpm，以及 DSH `0.2.2-rc.2` 或该系列的更新版本。已有兼容的 DSH 可以直接安装插件。
+
+首次安装 DSH 和 pnpm 时，可以运行 `npm install -g @deepseek-ai/dsh@0.2.2-rc.5 pnpm@11.1.2`。
 
 ```sh
-npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 git clone https://github.com/renjiegod/dsh-godbot.git
 cd dsh-godbot
 npm ci
@@ -35,6 +36,8 @@ dsh web
 ```
 
 用 DSH 提供的登录入口打开网页，点击侧栏的 **Godbot**（`/#/godbot`）。为 GodBot 选择模型，再新建团队成员。原生 DSH 成员需要该 profile 中配置可用的模型。
+
+无桌面的 Linux 主机可用 `dsh web --no-open` 启动。
 
 如果安装后提示 `This DSH profile uses a separate copy`，请按步骤修复原 profile 的依赖链接。[安装故障排查](docs/user-guide.zh-CN.md#安装后提示-dsh-依赖有两份)
 
