@@ -21,11 +21,11 @@
 | 并行与汇总 | `coordinate_bots` 可以并行派工，成员结果回到发起者。 | 管理员一次点名多名成员可并行派工。团队工作流支持在多个前置任务通过验收后，把相应证据一并交给下游。 |
 | 保存和复跑 | 团队文件配置 Bot、团队和房间；CLI 可发起工作并等待团队回报。 | 任务板可编辑节点、条件连线和汇合规则。一个定义可以在界面、固定版本的定时计划、CLI 或 MCP 中重复使用。 |
 
-对照了该版本的 [OpenMausBot 群目标执行循环](https://github.com/milind-soni/OpenMausBot/blob/ecabd15caa08f674877e155d03c553c30a35a63b/server/group-goal-run.ts#L301) 和 [团队文件结构](https://github.com/milind-soni/OpenMausBot/blob/ecabd15caa08f674877e155d03c553c30a35a63b/server/headless/team-file.ts#L109)。Godbot 的安装包验收覆盖两条相反分支、验收后接力、模板迁移、定时派工和跨 CLI/MCP 的请求去重。[工作流操作说明](README.md#可重复运行的多-bot-工作流) · [图形编辑与分支执行](test/e2e/cases/E16.mjs) · [定时和 CI 入口](test/e2e/cases/E17.mjs)
+对照了该版本的 [OpenMausBot 群目标执行循环](https://github.com/milind-soni/OpenMausBot/blob/ecabd15caa08f674877e155d03c553c30a35a63b/server/group-goal-run.ts#L301) 和 [团队文件结构](https://github.com/milind-soni/OpenMausBot/blob/ecabd15caa08f674877e155d03c553c30a35a63b/server/headless/team-file.ts#L109)。Godbot 的安装包验收覆盖两条相反分支、验收后接力、模板迁移、定时派工和跨 CLI/MCP 的请求去重。[工作流操作说明](docs/user-guide.zh-CN.md#可重复运行的多-bot-工作流) · [图形编辑与分支执行](test/e2e/cases/E16.mjs) · [定时和 CI 入口](test/e2e/cases/E17.mjs)
 
 ## 宿主与账户条件
 
-- 桌面面板通过 Electron 桥控制宿主。Godbot 的 DSH Web 另提供每 Bot 服务端 Chromium 和可接管的独立容器桌面。前者需要 Host 安装 Chromium，后者需要 Docker 和桌面镜像。云端设备需配置专用远程 Docker context。[运行环境与接管](README.md#通过-web-使用-bot-的浏览器和桌面)
+- 桌面面板通过 Electron 桥控制宿主。Godbot 的 DSH Web 另提供每 Bot 服务端 Chromium 和可接管的独立容器桌面。前者需要 Host 安装 Chromium，后者需要 Docker 和桌面镜像。云端设备需配置专用远程 Docker context。[运行环境与接管](docs/user-guide.zh-CN.md#bot-的浏览器和桌面)
 - IM、远程 MCP、邮箱和手机配对各自需要相应服务。账号授权、真实外部消息收发和系统输入，均由用户从相应设置发起。Godbot 自身的更新默认从 GitHub Releases 下载、校验后在空闲时安装，可在「关于 Godbot」改为下载后询问或手动检查。[更新](README.md#更新) · [更新流程测试](test/team-runtime/update.test.js)。开发验收使用隔离账号夹具、协议测试和本机回环服务。
 - 桌面程序、安装器、移动客户端及 Office 桌面渲染引擎的分发属于相应宿主。Godbot 的交付物是 dsh 插件。
 - 如果同一 profile 已由其他插件提供冲突的团队服务，Godbot 会在工作台显示原因。需要同时运行两个团队服务时，可为它们分别使用独立的 DSH profile。

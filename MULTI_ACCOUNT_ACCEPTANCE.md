@@ -18,7 +18,7 @@
 
 2026-11-20，首轮安装验收使用 DSH 本机 `web` profile 的 `dsh-godbot 0.2.0-rc.3`，当时的 Host build 为 `c8482a8283ebf277`。在 3080 端口实际加载的 Host 和浏览器客户端均与安装包匹配。原生 Agent 和完整 Bot 团队都显示同一个按 profile 保存的开关。日常 profile 保持默认关闭，验收成员与测试聊天使用独立的 DSH profile。已安装的服务与客户端（`~/.local/state/dsh-godbot/sandbox-install-e2e-y_w7vss4/installed-web.json`） · 实际设置界面（`~/.local/state/dsh-godbot/sandbox-install-e2e-y_w7vss4/installed-settings.png`）
 
-两个入口都能绑定沙箱账号及其 VirtioFS 工作目录。账号、机器或挂载来源变动时需重新绑定。团队 Bot 的后台记忆整理会跳过沙箱对话，普通本机 Bot 可以继续自动整理。手动记忆仍可读写。[设置及增加共享目录](README.md#在设置中管理本地-agent-和账号) · [后台模型调用回归](test/team-runtime/sandbox-privacy.test.js)
+两个入口都能绑定沙箱账号及其 VirtioFS 工作目录。账号、机器或挂载来源变动时需重新绑定。团队 Bot 的后台记忆整理会跳过沙箱对话，普通本机 Bot 可以继续自动整理。手动记忆仍可读写。[设置及增加共享目录](docs/user-guide.zh-CN.md#宿主账号清单) · [后台模型调用回归](test/team-runtime/sandbox-privacy.test.js)
 
 该构建的真实 AGY 测试使用三个已登录账号。A、B 由原生 Agent 发送，C 经完整 Bot 团队发送。B、C 开始前已停机。每个账号都从自己的工作目录读取一个此前未提供给模型的随机值，其中 C 读取宿主共享项目的只读挂载。验收核对了三份不同的原生会话 ID、工作目录和 C 的持久化账号绑定，并等待后台记忆任务结束。测试对话没有进入宿主模型。三账号工作台 E2E（`~/.local/state/dsh-godbot/sandbox-install-e2e-y_w7vss4/verified-agy/report.json`）
 
