@@ -5,6 +5,11 @@ import { NativeCommandReport } from './native-command-report.js'
 import { TerminalPanel } from './terminal-panel.js'
 import { botNativeTarget, nativeTabs } from './native-agent-target.js'
 import { PanelMenu } from './team-ui/browser-pane.js'
+import { AgentLogo } from './team-ui/agent-cards.js'
+import { AgentForm } from './team-ui/agent-form.js'
+import { LocalSignInPanel } from './team-ui/local-sign-in.js'
+import { call } from './team-ui/api.js'
+import { ENGINES } from '../host/team-runtime/core/local-agents/engines.js'
 import { ChatsIcon, TerminalIcon } from './team-ui/icons.js'
 import { installStyles } from './team-ui/styles.js'
 import { SandboxBinding } from './sandbox-settings.js'
@@ -27,6 +32,7 @@ import { AutomationSetupPage } from './automation-setup.js'
 import { ComponentSettings, GovernanceSettings, RemoteAgentSettings } from './platform-settings.js'
 
 const lastSessionKey = 'dsh.godbot.bot-session.v1'
+const builtins = Object.entries(ENGINES).map(([route, { name, command }]) => ({ route, name, command }))
 const controlsStyle = `
 .bt-side .bt-side-top { flex-wrap: wrap; gap: 2px; padding: 3px 0; }
 .bt-side-top > .bt-round {
@@ -187,6 +193,18 @@ button.gb-bot-model:focus-visible,
   pointer-events: auto;
 }
 .gb-chat-tools > .bt-icon-btn svg, .gb-chat-tools .gb-native-button svg { width: 17px; height: 17px; }
+.gb-usage-label { display: none; }
+@container (width > 560px) {
+  .gb-chat-tools > .gb-usage-button {
+    display: inline-flex;
+    width: auto;
+    gap: 5px;
+    padding-inline: 8px;
+    font: 500 12px/16px var(--bt-font);
+    white-space: nowrap;
+  }
+  .gb-usage-label { display: inline; }
+}
 .gb-chat-tools .bt-pmenu-pop { pointer-events: auto; }
 .gb-chat-tools > .bt-icon-btn:hover, .gb-chat-tools .gb-native-button:hover,
 .gb-chat-tools .gb-native-button[aria-expanded=true] { background: var(--bt-hover); color: var(--bt-ink); }
@@ -303,7 +321,10 @@ function mountProduct(ctx, client, navigation, target, ready) {
     inlineExecution: (key, botId, sessionId, turn, running, events) => h(InlineExecution, {
       key, client, botId, sessionId, turn, running, events,
     }),
-    providerAgents: props => h(ProviderAgentsPage, { client, ...props }),
+    providerAgents: ({ readOnly, ...props }) => h(ProviderAgentsPage, {
+      client, call, builtins, AgentLogo, AgentForm, readOnly,
+      SignIn: readOnly ? undefined : LocalSignInPanel, ...props,
+    }),
     taskSettings: (page, focus, actions, readOnly) => h(TaskSettings, { client, actions, page, focus, readOnly }),
     platformSettings(page, roster, actions, initial, ui = {}) {
       const pages = { automation: AutomationSetupPage, components: ComponentSettings, governance: GovernanceSettings, 'remote-agents': RemoteAgentSettings }

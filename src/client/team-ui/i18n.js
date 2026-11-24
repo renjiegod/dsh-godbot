@@ -300,6 +300,7 @@ const ZH = {
   'Change and start a new part': '更换并开新的一段',
   // Local agents page
   'Local agents': '本地 Agent',
+  'Local agent usage': '本地 Agent 用量',
   // Add-provider form
   'Still needed: {fields}': '还差：{fields}',
   'At least one model': '至少一个模型',

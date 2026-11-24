@@ -298,6 +298,7 @@ export const DE = {
   'Change and start a new part': 'Ändern und neuen Abschnitt starten',
   // Local agents page
   'Local agents': 'Lokale Agenten',
+  'Local agent usage': 'Nutzung lokaler Agenten',
   // Add-provider form
   'Still needed: {fields}': 'Noch nötig: {fields}',
   'At least one model': 'Mindestens ein Modell',

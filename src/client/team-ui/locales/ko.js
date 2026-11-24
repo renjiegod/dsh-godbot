@@ -298,6 +298,7 @@ export const KO = {
   'Change and start a new part': '변경 후 새 구간 시작',
   // Local agents page
   'Local agents': '로컬 Agent',
+  'Local agent usage': '로컬 Agent 사용량',
   // Add-provider form
   'Still needed: {fields}': '아직 필요: {fields}',
   'At least one model': '모델 하나 이상',

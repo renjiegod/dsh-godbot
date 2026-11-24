@@ -25,18 +25,12 @@ import { publishSchedules } from './schedules.js'
 import { FeedbackIcon, FeedbackPage } from './feedback.js'
 import { AboutPage } from './about.js'
 import { ProvidersPage } from './providers-page.js'
-import { AgentLogo } from './agent-cards.js'
-import { LocalSignInPanel } from './local-sign-in.js'
-import { ENGINES } from '../../host/team-runtime/core/local-agents/engines.js'
-import { call } from './api.js'
-import { AgentForm } from './agent-form.js'
 import { BotModelsPage } from './bot-models-page.js'
 import { FolderMenu } from './folder-menu.js'
 import { ModelMenu } from './model-menu.js'
 import { isLocalRoute } from './agent-routes.js'
 import { t } from './i18n.js'
 
-const builtins = Object.entries(ENGINES).map(([route, { name, command }]) => ({ route, name, command }))
 const capitalize = word => word[0].toUpperCase() + word.slice(1)
 
 // Settings dialog: a 198px page list beside the page. Bots and group chats each list
@@ -399,8 +393,9 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
           shown === 'models' && !advanced ? h(ProvidersPage, { actions, run, roster, Section: SetSection, advanced: hasSection(dsh, 'models') ? () => actions.openSettings('models', 'advanced') : null }) : null,
           advanced ? h('div', { className: 'bt-dsh-section' }, dsh.renderSlot('settings.section', { close }, { only: 'models' })) : null,
           section ? h('div', { className: 'bt-dsh-section' }, dsh.renderSlot('settings.section', { close }, { only: section.id })) : null,
-          shown === 'local-agents' ? actions.godbot.providerAgents({ call, AgentLogo, AgentForm, readOnly: roster.readOnly, builtins,
-            initialSection: localAgentUsage ? 'usage' : 'providers', SignIn: roster.readOnly ? undefined : LocalSignInPanel }) : null,
+          shown === 'local-agents' ? actions.godbot.providerAgents({
+            readOnly: roster.readOnly, initialSection: localAgentUsage ? 'usage' : 'providers',
+          }) : null,
           bot ? h('div', { className: 'bt-settings-form' }, h(BotSettingsForm, { key: bot.id, bot, roster, actions, run })) : null,
           shown === 'bots' && !bot ? h(BotsPage, { roster, actions, run }) : null,
           shown === 'bot-models' ? h(BotModelsPage, { roster, actions, run, Section: SetSection }) : null,

@@ -298,6 +298,7 @@ export const ES = {
   'Change and start a new part': 'Cambiar e iniciar nueva sección',
   // Local agents page
   'Local agents': 'Agentes locales',
+  'Local agent usage': 'Uso de agentes locales',
   // Add-provider form
   "Still needed: {fields}": "Falta: {fields}",
   "At least one model": "Al menos un modelo",

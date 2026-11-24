@@ -2,7 +2,7 @@
 import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { currentPart, latestMemoryChange } from './text.js'
-import { ArrowUpIcon, CloseIcon, ArrowDownIcon, GoalIcon, MemoryIcon, SearchIcon } from './icons.js'
+import { ArrowUpIcon, CloseIcon, ArrowDownIcon, GaugeIcon, GoalIcon, MemoryIcon, SearchIcon } from './icons.js'
 import { botState, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
 import { Caret, modelOf, servedOf, useEfforts } from './model-menu.js'
@@ -12,6 +12,7 @@ import { clockLabel, openingTurn, unseenSince } from './cells.js'
 import { GoalIsland, goalView } from './goal.js'
 import { NewSessionButton } from './new-session.js'
 import { SessionMenu } from './session-menu.js'
+import { GodbotModal } from '../modal.js'
 import { nativeTabs } from '../native-agent-target.js'
 import { viewBottom } from './motion.js'
 import { t } from './i18n.js'
@@ -70,6 +71,19 @@ function BotHeaderModel({ bot, roster, actions, sessionId }) {
     h('span', { className: 'gb-bot-model-name' }, name ?? label),
     model ? h('span', { className: 'gb-bot-model-effort' }, level) : null),
   !roster.readOnly && h(Caret))
+}
+
+function BotUsageButton({ actions }) {
+  const [open, setOpen] = useState(false)
+  const label = t('Local agent usage')
+  return h(Fragment, null,
+    h('button', {
+      type: 'button', className: 'bt-icon-btn gb-usage-button', title: label,
+      'aria-label': label, 'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: () => setOpen(true),
+    }, h(GaugeIcon), h('span', { className: 'gb-usage-label' }, t('Usage'))),
+    open ? createPortal(h(GodbotModal, {
+      title: label, close: () => setOpen(false), closeLabel: t('Close'), dismissOnBackdrop: true,
+    }, actions.godbot.providerAgents({ usageOnly: true })), document.body) : null)
 }
 
 export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSession, useActivity, useMemoryNews, useTurnClock, useUi, useLive, useWork, useStore, useConversationViews, selectView, actions }) {
@@ -184,7 +198,7 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
             ? h(BotHeaderModel, { key: bot.appliedModel ?? bot.model, bot, roster, actions, sessionId })
             : null),
         !away && h('div', { className: 'gb-chat-tools' },
-          // A fresh conversation with this Bot: the first tool, and the one with a label.
+          // Start a fresh conversation with this Bot.
           bot && currentPart(bot) === sessionId
             ? h(NewSessionButton, { key: 'new-session', bot, roster, actions, sessionId, variant: 'bar' })
             : null,
@@ -194,7 +208,8 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
             : null,
           search,
           actions.godbot.browserButton(bot, sessionId, roster),
-          actions.godbot.nativeButton(bot, sessionId, roster, actions, terminalActive))),
+          actions.godbot.nativeButton(bot, sessionId, roster, actions, terminalActive),
+          bot && !roster.readOnly ? h(BotUsageButton, { key: sessionId, actions }) : null)),
     h('span', { className: 'bt-sr', role: 'status' }, memoryNotice ? t('Memory updated') : ''),
     h(NewMessagePills, { key: sessionId, sessionId, useSessions, useUi, useTurnClock }),
     h(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions,
