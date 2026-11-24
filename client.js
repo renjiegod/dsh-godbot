@@ -50338,6 +50338,11 @@ function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions })
     inputNow.current = state;
     return steerable(state);
   }) === true;
+  const attachments = useInput?.((state) => state?.attachmentIds?.length ?? 0) ?? 0;
+  const holdDraft = actions.holdDraftAttachments;
+  (0, import_react62.useEffect)(() => {
+    holdDraft?.(sessionId, attachments);
+  }, [sessionId, attachments, holdDraft]);
   (0, import_react62.useEffect)(() => {
     if (!open) return void 0;
     const onDown = (event) => {
@@ -57515,6 +57520,47 @@ body[data-gb-conversation] [data-conversation-scroll] .gb-execution-tool[data-st
 }
 `;
 
+// src/client/team-ui/draft-hold.js
+var DRAFT_HOLD_SOURCE = "godbotDraftAttachments";
+function createDraftHolds(sessions) {
+  const held = /* @__PURE__ */ new Map();
+  const release = (sessionId) => {
+    const reference = held.get(sessionId);
+    if (reference === void 0) return;
+    held.delete(sessionId);
+    try {
+      reference.release();
+    } catch {
+    }
+  };
+  return {
+    // `attachments` is the draft's current count of images and files.
+    sync(sessionId, attachments) {
+      if (typeof sessionId !== "string" || sessionId === "") return;
+      if (attachments > 0) {
+        if (held.has(sessionId) || typeof sessions?.retain !== "function") return;
+        try {
+          const reference = sessions.retain(sessionId, { source: DRAFT_HOLD_SOURCE });
+          Promise.resolve(reference?.ready).catch(() => release(sessionId));
+          held.set(sessionId, reference);
+        } catch {
+        }
+      } else release(sessionId);
+    },
+    // Ends the holds of Sessions the Host's list no longer has. A list still loading
+    // says nothing about them.
+    prune(list) {
+      if (list?.phase !== "ready" || !Array.isArray(list.ids)) return;
+      const listed = new Set(list.ids);
+      for (const sessionId of [...held.keys()]) if (!listed.has(sessionId)) release(sessionId);
+    },
+    held: () => [...held.keys()],
+    dispose() {
+      for (const sessionId of [...held.keys()]) release(sessionId);
+    }
+  };
+}
+
 // src/client/team-ui/index.js
 var inject = ["sessions", "uiWorkspace", "uiConversation", "slots", "theme", "layout"];
 function apply(ctx, godbot) {
@@ -57805,6 +57851,14 @@ function apply(ctx, godbot) {
       };
     }, "godbot: Bot browsers");
   }
+  const draftHolds = createDraftHolds(ctx.sessions);
+  ctx.effect(() => {
+    const offList = ctx.sessions.list.subscribe(() => draftHolds.prune(ctx.sessions.list.getSnapshot()));
+    return () => {
+      offList();
+      draftHolds.dispose();
+    };
+  }, "godbot: draft attachments");
   ctx.effect(() => () => {
     markupCache.clear();
   }, "godbot: character markup");
@@ -58084,6 +58138,7 @@ function apply(ctx, godbot) {
   };
   const actions = {
     godbot,
+    holdDraftAttachments: (sessionId, count) => draftHolds.sync(sessionId, count),
     ...teamActions({ call, after, partFor, roster, ui: ui3, live, cards, heldCards, turnClock, panelFolded }),
     // Reopening an archived part can clear the shell's main view. Reserve the exact
     // destination before asking the Host to switch, then open it once it is live. A part

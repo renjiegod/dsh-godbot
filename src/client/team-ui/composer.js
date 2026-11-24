@@ -131,6 +131,12 @@ export function ComposerPlus({ sessionId, inputActions, useInput, useRoster, act
   // handler while `ready` re-renders only when steerability flips.
   const inputNow = useRef(undefined)
   const ready = useInput?.((state) => { inputNow.current = state; return steerable(state) }) === true
+  // A draft with images or files keeps its chat's Session, so they are still here when
+  // the user comes back. The hold outlives this composer on purpose: only an empty draft
+  // ends it.
+  const attachments = useInput?.(state => state?.attachmentIds?.length ?? 0) ?? 0
+  const holdDraft = actions.holdDraftAttachments
+  useEffect(() => { holdDraft?.(sessionId, attachments) }, [sessionId, attachments, holdDraft])
   useEffect(() => {
     if (!open) return undefined
     const onDown = (event) => { if (![button.current, menu.current].some(node => node?.contains(event.target))) setOpen(null) }

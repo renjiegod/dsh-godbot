@@ -75,6 +75,7 @@ import { agentSessionToReuse, singleFlight } from './agent-new.js'
 import { TextSelectionAction, ANNOTATION_CSS } from './text-annotation.js'
 import conversationLayoutCss from './conversation-layout.css'
 import { revealConversationProcess } from './process-activity.js'
+import { createDraftHolds } from './draft-hold.js'
 
 export const inject = ['sessions', 'uiWorkspace', 'uiConversation', 'slots', 'theme', 'layout']
 
@@ -378,6 +379,12 @@ export function apply(ctx, godbot) {
     }, 'godbot: Bot browsers')
   }
 
+  // Images and files in an unsent draft outlive a visit elsewhere (see draft-hold.js).
+  const draftHolds = createDraftHolds(ctx.sessions)
+  ctx.effect(() => {
+    const offList = ctx.sessions.list.subscribe(() => draftHolds.prune(ctx.sessions.list.getSnapshot()))
+    return () => { offList(); draftHolds.dispose() }
+  }, 'godbot: draft attachments')
   ctx.effect(() => () => { markupCache.clear() }, 'godbot: character markup')
   ctx.effect(() => installMotionRest(), 'godbot: motion rest')
 
@@ -675,6 +682,7 @@ export function apply(ctx, godbot) {
   }
   const actions = {
     godbot,
+    holdDraftAttachments: (sessionId, count) => draftHolds.sync(sessionId, count),
     ...teamActions({ call, after, partFor, roster, ui, live, cards, heldCards, turnClock, panelFolded }),
     // Reopening an archived part can clear the shell's main view. Reserve the exact
     // destination before asking the Host to switch, then open it once it is live. A part
