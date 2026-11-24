@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { assembleAssistantStream } from '@deepseek-ai/dsh-llm'
 import { bindToolSlots, readToolActivity, toolSlots } from './shared/tool-timeline.js'
 
@@ -42,6 +43,53 @@ export async function mobileToolDetail(rt, { botId, sessionId, turn, toolId }) {
     fields[key] = text.length > 8192 || tool.truncatedFields?.includes(key) ? text.slice(0, 8192) + '…' : text
   }
   return fields
+}
+
+// A whole turn's process for a phone (a group member's work panel): what the Bot wrote
+// between its calls, and each call as its card shows it, in the order the web's
+// execution timeline shows them. Inputs and outputs stay here until a card opens its
+// call with `chat-tool`. `rev` names the answer: a phone reading again while the turn
+// runs gets `unchanged` instead of the same rows.
+const PROCESS_ROWS = 500
+const PROCESS_TEXT = 4000
+const PROCESS_TARGET = 400
+const clip = (text, max) => text.length > max ? text.slice(0, max) + '…' : text
+const locationText = location => typeof location === 'string' ? location : typeof location?.path === 'string'
+  ? location.path + (location.line != null ? ':' + location.line : '') : ''
+
+export async function mobileTurnProcess(rt, { botId, sessionId, turn, knownRev }) {
+  const history = rt.executionHistory
+  if (!history || typeof botId !== 'string' || typeof sessionId !== 'string' || history.ownerOf(sessionId) !== botId ||
+      !Number.isSafeInteger(turn) || rt.state.exchangeTurns?.[sessionId]?.includes(turn)) throw new Error('Work process unavailable')
+  const { events, running } = await history.read({ botId, sessionId, turn })
+  const clean = text => rt.redactSecrets?.(text) ?? text
+  const rows = []
+  for (const event of events) {
+    if (event?.type === 'tool') {
+      // Every call counts, as on the web; interactive ones show without details. What it
+      // works on is named as the web's timeline names it: its location, the name it carries
+      // itself, else the host's `target` read from its input (execution-history.js).
+      const id = typeof event.id === 'string' && event.id !== '' ? event.id : undefined
+      const target = (Array.isArray(event.locations) && locationText(event.locations[0])) || event.text || event.target
+      rows.push({
+        type: 'tool',
+        ...(id !== undefined && !interactive.has(event.name) ? { toolId: id } : {}),
+        name: typeof event.name === 'string' && event.name !== '' ? event.name : id ?? '',
+        ...(typeof event.status === 'string' ? { status: event.status } : {}),
+        ...(typeof target === 'string' && target !== '' ? { text: clip(clean(target), PROCESS_TARGET) } : {}),
+        ...(Number.isFinite(event.exitCode) ? { exitCode: event.exitCode } : {}),
+        ...(Number.isFinite(event.durationMs) ? { durationMs: event.durationMs } : {}),
+        ...(typeof event.parentId === 'string' && event.parentId !== '' ? { parentId: event.parentId } : {}),
+      })
+    } else if (['text', 'input', 'error'].includes(event?.type) && typeof event.text === 'string' && event.text.trim() !== '') {
+      rows.push({ type: event.type, text: clip(clean(event.text), PROCESS_TEXT) })
+    }
+  }
+  // A very long turn sends its newest rows; `omitted` counts the ones before them.
+  const omitted = Math.max(0, rows.length - PROCESS_ROWS)
+  const value = { running: running === true, events: rows.slice(omitted), ...(omitted > 0 ? { omitted } : {}) }
+  const rev = createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16)
+  return typeof knownRev === 'string' && knownRev === rev ? { running: value.running, rev, unchanged: true } : { ...value, rev }
 }
 
 // Anchor local calls to the reasoning block that recorded their start and

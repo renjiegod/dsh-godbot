@@ -471,6 +471,7 @@ npm pack --dry-run
 | `GODBOT_RELAY_BIN=<godbot-relay> npm run test:e2e -- --case PHONE-PAGES` | 手机 App 的每个页面经加密链路各做一次读和一次写（Bot、群、记忆、日程、工作文件夹、用量、Bot 浏览器、密钥、模型服务商、连接器、能力、更新、诊断、侧聊），写入都在电脑上核对 |
 | `GODBOT_RELAY_BIN=<godbot-relay> node test/e2e/phone-host.mjs` | 常驻的测试宿主：隔离的 Godbot、中继和一个本地控制接口，给手机 App 的 UI 测试用（打印配对链接） |
 | `GODBOT_RELAY_BIN=<godbot-relay> GODBOT_ANDROID_E2E=<godbot-app> npm run test:e2e -- --case PHONE-ANDROID` | 真机流程：模拟器上的 Godbot Android App 扫码配对、加载团队、给主 Bot 发消息并显示回复。需要已构建的 App 和一台运行中的模拟器 |
+| `GODBOT_RELAY_BIN=<godbot-relay> GODBOT_ANDROID_E2E=<godbot-app> npm run test:e2e -- --case PHONE-MEMBER-WORK` | 群成员的工作过程：同一个成员同一轮，在网页的工作面板和 App 的底部弹层里核对工具数量和状态（运行中、结束后各一次），再从手机停止成员的工作。运行期间关闭模拟器的系统动画，结束后恢复 |
 | `npm run test:e2e -- --case E1` | 验证跨后端读取连接器工具 |
 | `npm run test:e2e -- --case E2` | 验证写入审批、撤权、重启和终端交还 |
 | `npm run test:e2e -- --suite live-connectors` | 通过本机已登录的 Claude Code、Codex 调用测试工单服务 |
