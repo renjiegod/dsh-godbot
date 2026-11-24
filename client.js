@@ -42565,11 +42565,12 @@ function TeamSidebar(props) {
     main ? (0, import_react43.createElement)(BotRow, { ...rowProps, bot: main, marked: markedUnread[main.id] === true }) : roster.ready ? null : bootFailed ? (0, import_react43.createElement)(BootFailed, { actions }) : (0, import_react43.createElement)("div", { className: "bt-hint" }, t("Setting up your Main Bot…")),
     (0, import_react43.createElement)("span", { className: "bt-rail-sep", "aria-hidden": true })
   );
-  const foot = wideContent ? (0, import_react43.createElement)("div", { className: "bt-leftcol-foot" }, (0, import_react43.createElement)(AccountLauncher, { seat: false, actions }), (0, import_react43.createElement)(PluginsButton, { actions })) : (0, import_react43.createElement)(
+  const settingsOpen = useUi ? useUi((value) => value.settings !== null && value.settings !== void 0) : false;
+  const foot = wideContent ? (0, import_react43.createElement)("div", { className: "bt-leftcol-foot" }, (0, import_react43.createElement)(AccountLauncher, { seat: false, actions, settingsOpen }), (0, import_react43.createElement)(PluginsButton, { actions })) : (0, import_react43.createElement)(
     "div",
     { className: "bt-leftcol-foot bt-leftcol-foot-rail" },
     (0, import_react43.createElement)("button", { type: "button", className: "bt-round", "aria-label": t("New…"), title: t("New…"), onClick: () => actions.openNewChat("new") }, (0, import_react43.createElement)(PlusIcon)),
-    (0, import_react43.createElement)(AccountLauncher, { seat: false, actions }),
+    (0, import_react43.createElement)(AccountLauncher, { seat: false, actions, settingsOpen }),
     (0, import_react43.createElement)(PluginsButton, { actions })
   );
   const content = (0, import_react43.createElement)(
@@ -42793,151 +42794,28 @@ function pressesShellShortcut(event, id) {
   const held = new Set(binding.modifiers);
   return event.code === binding.code && event.ctrlKey === held.has("control") && event.altKey === held.has("alt") && event.shiftKey === held.has("shift") && event.metaKey === held.has("meta");
 }
-var NO_SUBSCRIBE = () => () => {
-};
-var NO_SNAPSHOT = () => null;
-function AccountLauncher({ seat = true, settingsOpen, actions }) {
-  const [open, setOpen] = (0, import_react43.useState)(false);
+function AccountLauncher({ seat = true, settingsOpen: propSettingsOpen, openSettings, actions, useUi }) {
   (0, import_react43.useLayoutEffect)(() => {
     if (!seat) return void 0;
     actions.seatAccount(true);
     return () => actions.seatAccount(false);
   }, [seat]);
-  const [box, setBox] = (0, import_react43.useState)(null);
-  const button6 = (0, import_react43.useRef)(null);
-  const menuRef = (0, import_react43.useRef)(null);
-  (0, import_react43.useEffect)(() => {
-    if (settingsOpen) setOpen(false);
-  }, [settingsOpen]);
-  (0, import_react43.useEffect)(() => {
-    if (!open) return void 0;
-    const onDown = (event) => {
-      if (event.target instanceof Element && (event.target.closest(".bt-account-menu") || button6.current?.contains(event.target))) return;
-      setOpen(false);
-    };
-    const onKey = (event) => {
-      if (stepMenuFocus(menuRef.current, event, button6.current)) return;
-      if (event.key === "Escape") {
-        event.stopPropagation();
-        setOpen(false);
-        button6.current?.focus();
-      }
-    };
-    window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey, true);
-    return () => {
-      window.removeEventListener("mousedown", onDown);
-      window.removeEventListener("keydown", onKey, true);
-    };
-  }, [open]);
-  const signIn = actions.signInEntry?.() ?? null;
-  const ops = (0, import_react43.useMemo)(() => signIn?.inject?.() ?? {}, [signIn]);
-  const accountSource = ops.hooks?.account;
-  const account = (0, import_react43.useSyncExternalStore)(accountSource?.subscribe ?? NO_SUBSCRIBE, accountSource ? () => accountSource.getSnapshot() : NO_SNAPSHOT);
-  const signedIn = signIn !== null && typeof ops.signOut === "function" && account?.view?.status === "credential-stored";
-  const signedOut = signIn !== null && typeof actions.signIn === "function" && account?.view?.status === "signed-out";
-  const accountT = actions.accountT?.() ?? ((key) => key);
-  const [confirm2, setConfirm] = (0, import_react43.useState)(null);
-  const [busy, setBusy] = (0, import_react43.useState)(false);
-  const [signOutError, setSignOutError] = (0, import_react43.useState)("");
-  const askSignOut = async () => {
-    setSignOutError("");
-    let state = "none";
-    try {
-      if (await ops.hasRunningAccountTasks?.()) state = "running";
-    } catch {
-      state = "unknown";
-    }
-    setConfirm(state);
+  const settingsOpenFromUi = useUi ? useUi((value) => value.settings !== null && value.settings !== void 0) : false;
+  const settingsOpen = typeof propSettingsOpen === "boolean" ? propSettingsOpen : settingsOpenFromUi;
+  const open = () => {
+    if (settingsOpen) actions.closeSettings?.();
+    else if (typeof openSettings === "function") openSettings();
+    else actions.openSettings?.("general");
   };
-  const cancelSignOut = () => {
-    setConfirm(null);
-    setSignOutError("");
-  };
-  const runSignOut = async () => {
-    setBusy(true);
-    setSignOutError("");
-    try {
-      await ops.signOut();
-      setConfirm(null);
-      setOpen(false);
-    } catch (error) {
-      setSignOutError(String(error?.message ?? error));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const tick = useViewport();
-  const anchor = () => {
-    const rect = button6.current?.getBoundingClientRect();
-    if (rect) setBox({ left: rect.left, bottom: viewBottom() - rect.top + 5 });
-  };
-  (0, import_react43.useLayoutEffect)(() => {
-    if (open) anchor();
-  }, [open, tick]);
-  const toggle = () => {
-    if (!open) anchor();
-    setOpen((value) => !value);
-  };
-  (0, import_react43.useEffect)(() => {
-    if (open) return;
-    setConfirm(null);
-    setSignOutError("");
-    setBusy(false);
-  }, [open]);
-  const openModels = actions.openModels;
-  const groups = [
-    [
-      [t("Usage"), GaugeIcon, () => actions.openSettings("usage")],
-      openModels ? [t("Models and API keys"), SlidersIcon, () => openModels()] : null,
-      [t("Connectors"), ConnectorIcon, () => actions.openConnectors()],
-      [t("Automation tasks"), ClockIcon, () => actions.selectPanel("schedules")],
-      [t("Settings"), GearIcon, () => actions.openSettings("general")]
-    ].filter(Boolean),
-    typeof actions.setSurface === "function" ? [[t("Classic Agent mode"), SwitchIcon, () => actions.setSurface("agent")]] : null
-  ].filter(Boolean);
-  if (signedIn) groups.push([[accountT("signOut"), SignOutIcon, askSignOut, void 0, true]]);
-  else if (signedOut) groups.push([[t("Sign in to DeepSeek"), SignInIcon, () => actions.signIn()]]);
-  return (0, import_react43.createElement)(
-    import_react43.Fragment,
-    null,
-    (0, import_react43.createElement)(
-      "button",
-      { ref: button6, type: "button", className: "bt-account", "aria-label": t("Account"), "aria-haspopup": "menu", "aria-expanded": open, onClick: toggle },
-      (0, import_react43.createElement)("span", { className: "bt-you", "aria-hidden": true }, (0, import_react43.createElement)(GearIcon))
-    ),
-    open && box ? (0, import_react_dom6.createPortal)((0, import_react43.createElement)(
-      "div",
-      { ref: menuRef, className: "bt-menu bt-menu-up bt-account-menu", role: "menu", "aria-label": t("Account"), style: box },
-      confirm2 !== null ? (0, import_react43.createElement)(
-        "div",
-        { className: "bt-confirm", role: "alertdialog", "aria-label": accountT("signOut") },
-        (0, import_react43.createElement)("p", { className: "bt-confirm-text" }, accountT(confirm2 === "running" ? "signOutRunningDescription" : confirm2 === "unknown" ? "signOutUnknownDescription" : "signOutDescription")),
-        signOutError !== "" ? (0, import_react43.createElement)("p", { className: "bt-confirm-error", role: "alert" }, signOutError) : null,
-        (0, import_react43.createElement)(
-          "div",
-          { className: "bt-confirm-row" },
-          (0, import_react43.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: cancelSignOut }, t("Cancel")),
-          (0, import_react43.createElement)("button", { type: "button", className: "bt-confirm-go", disabled: busy, onClick: () => {
-            void runSignOut();
-          } }, accountT("signOut"))
-        )
-      ) : groups.map((group, index) => (0, import_react43.createElement)(
-        import_react43.Fragment,
-        { key: index },
-        index > 0 ? (0, import_react43.createElement)("div", { className: "bt-menu-sep", role: "separator" }) : null,
-        group.map(([label, Icon2, run2, hint, stay]) => (0, import_react43.createElement)("button", {
-          key: label,
-          type: "button",
-          role: "menuitem",
-          onClick: () => {
-            if (stay !== true) setOpen(false);
-            void Promise.resolve(run2()).catch((error) => actions.reportError(error, "menu"));
-          }
-        }, (0, import_react43.createElement)(Icon2), (0, import_react43.createElement)("span", { className: "bt-menu-label" }, label), hint ? (0, import_react43.createElement)("span", { className: "bt-menu-hint" }, hint) : null))
-      ))
-    ), document.body) : null
-  );
+  return (0, import_react43.createElement)("button", {
+    type: "button",
+    className: "bt-account",
+    "aria-label": t("Settings"),
+    title: t("Settings"),
+    "aria-haspopup": "dialog",
+    "aria-expanded": Boolean(settingsOpen),
+    onClick: open
+  }, (0, import_react43.createElement)("span", { className: "bt-you", "aria-hidden": true }, (0, import_react43.createElement)(GearIcon)));
 }
 var readyReported = false;
 function useReportReady(drawn) {
@@ -42989,7 +42867,8 @@ function PluginsButton({ actions }) {
 function FooterAccount(props) {
   const seated = props.useUi((value) => value.accountSeated === true);
   if (seated) return null;
-  return (0, import_react43.createElement)("span", { className: "bt-foot-account" }, (0, import_react43.createElement)(AccountLauncher, { ...props, seat: false }));
+  const settingsOpen = props.useUi ? props.useUi((value) => value.settings !== null && value.settings !== void 0) : false;
+  return (0, import_react43.createElement)("span", { className: "bt-foot-account" }, (0, import_react43.createElement)(AccountLauncher, { ...props, seat: false, settingsOpen }));
 }
 function BotReturn({ wide, useSurface, useRoster, actions }) {
   const mode = useSurface((value) => value.mode);
@@ -51344,7 +51223,7 @@ var FIX_LABELS = {
   "top-up": () => t("Top up ↗"),
   "local-sign-in": () => t("Sign in")
 };
-var NO_SUBSCRIBE2 = () => () => {
+var NO_SUBSCRIBE = () => () => {
 };
 var NO_VIEW = () => null;
 function useAccountView(actions) {
@@ -51352,7 +51231,7 @@ function useAccountView(actions) {
   const ops = (0, import_react65.useMemo)(() => entry?.inject?.() ?? {}, [entry]);
   const source = ops.hooks?.account;
   const read = source ? () => source.getSnapshot()?.view ?? null : NO_VIEW;
-  return (0, import_react65.useSyncExternalStore)(source?.subscribe ?? NO_SUBSCRIBE2, read, read);
+  return (0, import_react65.useSyncExternalStore)(source?.subscribe ?? NO_SUBSCRIBE, read, read);
 }
 var topUpOf = (view) => {
   const url = view?.links?.topUpUrl;
