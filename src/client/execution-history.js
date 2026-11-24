@@ -23,7 +23,6 @@ export const executionStyle = `
 :is([data-chat-flow-kind=tool-call], [data-chat-flow-kind=assistant-step]):has(> [data-slot="conversation.chat.node"] > .gb-execution-inline[hidden]:only-child) { display: none !important; }
 .gb-tool-group.gb-execution-button { display: flex; width: 100%; align-items: center; gap: 6px; text-align: start; }
 .gb-tool-group > svg { flex: none; }
-.gb-tool-group .gb-tool-group-failed { color: var(--bt-danger); }
 .gb-execution-list { display: grid; gap: 5px; min-width: 0; }
 .gb-execution-button { min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--bt-ink-2); font: inherit; cursor: pointer; }
 .gb-execution-button:hover, .gb-execution-button[aria-pressed=true] { background: var(--bt-hover); color: var(--bt-ink); }
@@ -294,10 +293,9 @@ export function InlineExecution({ client, botId, sessionId, turn, running, event
   }, [sessionId, turn])
 
   const inProgress = running ? events.filter(event => event.status === 'running' || event.status === 'pending').length : 0
-  const failed = events.filter(event => event.status === 'failed').length
   const visible = !group || group.open === true
   return h('div', { ref: root, className: 'gb-execution-inline', hidden: group?.concealed,
-    'data-gb-tool-count': events.length, 'data-gb-tool-running': inProgress, 'data-gb-tool-failed': failed },
+    'data-gb-tool-count': events.length, 'data-gb-tool-running': inProgress },
   group?.count && h('button', { type: 'button', className: 'gb-execution-button gb-tool-group', 'aria-expanded': group.open,
     'data-gb-tool-group': '', onClick: event => {
       event.currentTarget.focus({ preventScroll: true })
@@ -305,7 +303,6 @@ export function InlineExecution({ client, botId, sessionId, turn, running, event
     } },
   h(group.open ? ChevronDownIcon : ChevronRightIcon),
   h('span', null, t('{count} tool calls', { count: group.count })),
-  group.running > 0 && h('span', { className: 'gb-execution-meta' }, t('{count} running', { count: group.running })),
-  group.failed > 0 && h('span', { className: 'gb-execution-meta gb-tool-group-failed' }, t('{count} failed', { count: group.failed }))),
+  group.running > 0 && h('span', { className: 'gb-execution-meta' }, t('{count} running', { count: group.running }))),
   h(Rows, { events, target: { client, botId, sessionId, turn }, running, visible }))
 }

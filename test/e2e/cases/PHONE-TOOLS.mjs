@@ -58,14 +58,25 @@ export default async function check(context) {
     }
     const phone = (bot, options = {}) => host.bot('chat', { botId: bot.id, steps: true, inlineTools: true, ...options })
     const capture = name => writeFile(join(context.reportDir, name + '.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
+    const composerLayout = stacked => ui.waitFor(nodes => {
+      const input = composer(nodes, dsh)
+      const send = ui.find(nodes, 'Send', '发送')
+      return input && send && (send.bounds.y1 >= input.bounds.y2) === stacked
+    }, stacked ? 'actions below the message field' : 'actions beside the message field')
+    await composerLayout(true)
+    for (const layout of ['bubble', 'flat', 'conversation']) {
+      await host.bot('set-prefs', { layout })
+      await composerLayout(layout === 'conversation')
+    }
     const gate = name => writeFile(join(host.workspace, name), '')
     const card = (name, status, target = '') => n => n.desc.startsWith(name + ',') && n.desc.endsWith(status) && n.desc.includes(target)
     const group = (count, status) => n => n.desc === [`${count} tool calls`, status].filter(Boolean).join(', ')
     const text = label => n => n.text === label || n.desc === label
-    // FlatList is inverted. Physical screen coordinates establish the reading order.
+    // The FlatList is inverted. Compare row starts in screen order since pixel
+    // rounding can make two adjacent rows share a boundary pixel.
     const onScreen = async (label, ...matchers) => ui.waitFor(nodes => {
       const hits = matchers.map(match => nodes.find(match))
-      return hits.every((hit, i) => hit && (!i || hit.bounds.y1 >= hits[i - 1].bounds.y2)) && hits
+      return hits.every((hit, i) => hit && (!i || hit.bounds.y1 > hits[i - 1].bounds.y1)) && hits
     }, label, { timeout: 50000 })
     const rowsOf = async (bot, marker) => {
       const page = await phone(bot)
@@ -97,9 +108,10 @@ export default async function check(context) {
     await send(claude, 'GODBOT-CLAUDE-EXECUTION-TRACE ' + id)
     await onScreen('Claude text then first tool', text(before), card('Read', 'Running'))
     await gate('claude-execution-trace-start')
-    const failedGroup = group(2, '1 failed')
-    const collapsed = await onScreen('Collapsed parallel tools between replies', text(before), failedGroup, text(middle), card('Bash', 'Running'))
+    const settledGroup = group(2)
+    const collapsed = await onScreen('Collapsed parallel tools between replies', text(before), settledGroup, text(middle), card('Bash', 'Running'))
     assert.equal(ui.dumpUi().nodes.some(card('Read', 'Done')), false)
+    await capture('claude-collapsed')
     ui.tap(collapsed[1])
     const order = [text(before), card('Read', 'Done'), card('Grep', 'Failed'), text(middle), card('Bash', 'Running', 'Read fixture version')]
     const visible = await onScreen('parallel results and later running tool', ...order)
@@ -112,7 +124,7 @@ export default async function check(context) {
     ui.launch()
     await ui.waitFor(nodes => nodes.some(n => n.cls.endsWith('EditText')), 'reconnected chat', { timeout: 60000 })
     await openChat(claude)
-    ui.tap((await onScreen('Parallel tool group is collapsed after reopening', failedGroup))[0])
+    ui.tap((await onScreen('Parallel tool group is collapsed after reopening', settledGroup))[0])
     await onScreen('same order after reopening mid-turn', ...order)
     await gate('claude-execution-trace-continue')
     const late = status => [text(rewire), card('Bash', 'Done', 'Read the new fixture route'), card('Bash', status, 'Verify the new fixture route')]
@@ -143,11 +155,11 @@ export default async function check(context) {
     await send(acp, 'GODBOT-ACP-EXECUTION-TRACE ' + acpId)
     await onScreen('ACP first tool before any text', card('Read', 'Running'))
     await gate('acp-execution-trace-release')
-    ui.tap((await onScreen('ACP groups the calls after its reply', group(2, '1 failed')))[0])
+    ui.tap((await onScreen('ACP groups the calls after its reply', settledGroup))[0])
     await onScreen('ACP saved order', card('Read', 'Done'), text('ACP fixture progress after the read starts.'),
       card('Search', 'Failed'), card('Edit', 'Done'), text('TRACE_COMPLETE ' + acpId))
     await capture('acp-settled')
-    context.note('android-inline-tools', { engines: ['DSH', 'Claude', 'Codex', 'ACP'], claudeTools: liveIds.length, reopenedWhileRunning: true })
+    context.note('android-inline-tools', { engines: ['DSH', 'Claude', 'Codex', 'ACP'], claudeTools: liveIds.length, reopenedWhileRunning: true, layouts: ['bubble', 'flat', 'conversation'] })
   } finally {
     unblock.resolve()
     await tickets?.close()

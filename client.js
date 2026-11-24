@@ -13137,7 +13137,6 @@ var ZH = {
   "Completed in {duration}": "已完成，用时 {duration}",
   "{count} tool calls": "{count} 次工具调用",
   "{count} running": "{count} 项进行中",
-  "{count} failed": "{count} 项失败",
   "A new reply is waiting": "有一条新回复",
   "Waiting for your answer": "等你回答",
   "Waiting for {names}": "等 {names} 交回",
@@ -61431,7 +61430,7 @@ function createLayout(flow) {
   let queued = false;
   function publish(member, view) {
     const last = member.view;
-    if (last === view || last && view && last.open === view.open && last.count === view.count && last.running === view.running && last.failed === view.failed && last.concealed === view.concealed) return;
+    if (last === view || last && view && last.open === view.open && last.count === view.count && last.running === view.running && last.concealed === view.concealed) return;
     member.view = view;
     member.publish(view);
   }
@@ -61439,11 +61438,10 @@ function createLayout(flow) {
     const previouslyExpanded = new Set(expanded);
     expanded.clear();
     for (const run2 of toolRuns(flow, members)) {
-      let count = 0, running = 0, failed = 0;
+      let count = 0, running = 0;
       for (const { element } of run2) {
         count += Number(element.dataset.gbToolCount);
         running += Number(element.dataset.gbToolRunning);
-        failed += Number(element.dataset.gbToolFailed);
       }
       if (count < 2) {
         run2[0].grouped = false;
@@ -61455,7 +61453,7 @@ function createLayout(flow) {
       const open = run2.some((member) => previouslyExpanded.has(member) || !member.grouped && member.element.contains(focus));
       if (open) expanded.add(first);
       for (const member of run2) member.grouped = true;
-      publish(first, { count, running, failed, open });
+      publish(first, { count, running, open });
       for (const member of rest) publish(member, open ? null : concealed);
     }
   }
@@ -61473,7 +61471,7 @@ function createLayout(flow) {
   observer.observe(flow, {
     childList: true,
     subtree: true,
-    attributeFilter: ["data-gb-tool-count", "data-gb-tool-running", "data-gb-tool-failed"]
+    attributeFilter: ["data-gb-tool-count", "data-gb-tool-running"]
   });
   return {
     add(element, turn, update) {
@@ -61525,7 +61523,6 @@ var executionStyle = `
 :is([data-chat-flow-kind=tool-call], [data-chat-flow-kind=assistant-step]):has(> [data-slot="conversation.chat.node"] > .gb-execution-inline[hidden]:only-child) { display: none !important; }
 .gb-tool-group.gb-execution-button { display: flex; width: 100%; align-items: center; gap: 6px; text-align: start; }
 .gb-tool-group > svg { flex: none; }
-.gb-tool-group .gb-tool-group-failed { color: var(--bt-danger); }
 .gb-execution-list { display: grid; gap: 5px; min-width: 0; }
 .gb-execution-button { min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--bt-ink-2); font: inherit; cursor: pointer; }
 .gb-execution-button:hover, .gb-execution-button[aria-pressed=true] { background: var(--bt-hover); color: var(--bt-ink); }
@@ -61805,7 +61802,6 @@ function InlineExecution({ client, botId, sessionId, turn, running, events }) {
     return () => binding?.dispose();
   }, [sessionId, turn]);
   const inProgress = running ? events.filter((event) => event.status === "running" || event.status === "pending").length : 0;
-  const failed = events.filter((event) => event.status === "failed").length;
   const visible = !group || group.open === true;
   return (0, import_react94.createElement)(
     "div",
@@ -61814,8 +61810,7 @@ function InlineExecution({ client, botId, sessionId, turn, running, events }) {
       className: "gb-execution-inline",
       hidden: group?.concealed,
       "data-gb-tool-count": events.length,
-      "data-gb-tool-running": inProgress,
-      "data-gb-tool-failed": failed
+      "data-gb-tool-running": inProgress
     },
     group?.count && (0, import_react94.createElement)(
       "button",
@@ -61831,8 +61826,7 @@ function InlineExecution({ client, botId, sessionId, turn, running, events }) {
       },
       (0, import_react94.createElement)(group.open ? ChevronDownIcon : ChevronRightIcon),
       (0, import_react94.createElement)("span", null, t("{count} tool calls", { count: group.count })),
-      group.running > 0 && (0, import_react94.createElement)("span", { className: "gb-execution-meta" }, t("{count} running", { count: group.running })),
-      group.failed > 0 && (0, import_react94.createElement)("span", { className: "gb-execution-meta gb-tool-group-failed" }, t("{count} failed", { count: group.failed }))
+      group.running > 0 && (0, import_react94.createElement)("span", { className: "gb-execution-meta" }, t("{count} running", { count: group.running }))
     ),
     (0, import_react94.createElement)(Rows, { events, target: { client, botId, sessionId, turn }, running, visible })
   );

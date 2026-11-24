@@ -33,7 +33,6 @@ const ZH = {
   'Completed in {duration}': '已完成，用时 {duration}',
   '{count} tool calls': '{count} 次工具调用',
   '{count} running': '{count} 项进行中',
-  '{count} failed': '{count} 项失败',
   'A new reply is waiting': "有一条新回复",
   'Waiting for your answer': '等你回答',
   'Waiting for {names}': '等 {names} 交回',

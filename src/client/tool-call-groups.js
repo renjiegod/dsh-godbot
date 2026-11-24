@@ -45,7 +45,7 @@ function createLayout(flow) {
   function publish(member, view) {
     const last = member.view
     if (last === view || (last && view && last.open === view.open && last.count === view.count &&
-      last.running === view.running && last.failed === view.failed && last.concealed === view.concealed)) return
+      last.running === view.running && last.concealed === view.concealed)) return
     member.view = view
     member.publish(view)
   }
@@ -54,11 +54,10 @@ function createLayout(flow) {
     const previouslyExpanded = new Set(expanded)
     expanded.clear()
     for (const run of toolRuns(flow, members)) {
-      let count = 0, running = 0, failed = 0
+      let count = 0, running = 0
       for (const { element } of run) {
         count += Number(element.dataset.gbToolCount)
         running += Number(element.dataset.gbToolRunning)
-        failed += Number(element.dataset.gbToolFailed)
       }
       if (count < 2) {
         run[0].grouped = false
@@ -72,7 +71,7 @@ function createLayout(flow) {
       const open = run.some(member => previouslyExpanded.has(member) || (!member.grouped && member.element.contains(focus)))
       if (open) expanded.add(first)
       for (const member of run) member.grouped = true
-      publish(first, { count, running, failed, open })
+      publish(first, { count, running, open })
       for (const member of rest) publish(member, open ? null : concealed)
     }
   }
@@ -92,7 +91,7 @@ function createLayout(flow) {
   })
   observer.observe(flow, {
     childList: true, subtree: true,
-    attributeFilter: ['data-gb-tool-count', 'data-gb-tool-running', 'data-gb-tool-failed'],
+    attributeFilter: ['data-gb-tool-count', 'data-gb-tool-running'],
   })
 
   return {
