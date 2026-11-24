@@ -10,7 +10,8 @@ async function fixture() {
   const server = createServer(async (req, res) => {
     if (req.method === 'GET' && req.url?.startsWith('/form')) {
       res.writeHead(200, { 'content-type': 'text/html;charset=utf-8' })
-      res.end('<!doctype html><title>Demo page</title><input type="password" aria-label="Password"><button>Check</button>')
+      const title = req.url.includes('expanded=1') ? 'Expanded page' : 'Demo page'
+      res.end('<!doctype html><title>' + title + '</title><input type="password" aria-label="Password"><button>Check</button>')
       return
     }
     if (req.method !== 'POST' || req.url !== '/agent') {
@@ -144,6 +145,54 @@ async function recordDemo(host, ci, origin) {
   await until(async () => (await host.bot('state')).bots.find(bot => bot.id === ci.member.id).capabilities?.includes('verify-demo-form'), 'approved demonstration skill attached')
 }
 
+async function checkBrowserAndComputerDrawer(host, origin) {
+  const { page } = host
+  const browserButton = page.getByRole('button', { name: '打开网页浏览器', exact: true })
+  assert.equal(await browserButton.locator('svg path').count(), 3, 'browser header uses the globe icon')
+  await page.locator('.bt-head .bt-pill').click()
+  await page.getByRole('tab', { name: '浏览器', exact: true }).click()
+  const drawer = page.locator('.gb-browser-drawer-pane')
+  await drawer.getByText('浏览器执行环境', { exact: true }).waitFor()
+  await drawer.getByRole('button', { name: '打开执行环境', exact: true }).click()
+  await drawer.getByRole('button', { name: '接管网页', exact: true }).click()
+  await drawer.getByText('你正在控制', { exact: true }).waitFor()
+  await drawer.getByLabel('网页地址').fill(origin + '/form')
+  await drawer.getByRole('button', { name: '打开', exact: true }).click()
+  await drawer.getByText('Demo page', { exact: true }).waitFor()
+  await drawer.getByRole('button', { name: '放大窗口', exact: true }).click()
+  const modal = page.getByRole('dialog').filter({ hasText: '的网页浏览器' })
+  await modal.getByText('你正在控制', { exact: true }).waitFor()
+  await modal.getByLabel('网页地址').fill(origin + '/form?expanded=1')
+  await modal.getByRole('button', { name: '打开地址', exact: true }).click()
+  await modal.getByText('Expanded page', { exact: true }).waitFor()
+  await modal.getByRole('button', { name: '关闭面板' }).click()
+  await drawer.getByText('你正在控制', { exact: true }).waitFor()
+  await drawer.getByText('Expanded page', { exact: true }).waitFor()
+  await drawer.getByRole('button', { name: '交还给 Bot', exact: true }).click()
+  await drawer.getByRole('button', { name: '接管网页', exact: true }).waitFor()
+  await drawer.getByRole('button', { name: '放大窗口', exact: true }).click()
+  await modal.getByRole('button', { name: '接管网页', exact: true }).click()
+  await modal.getByText('你正在控制', { exact: true }).waitFor()
+  await modal.getByRole('button', { name: '关闭面板' }).click()
+  await drawer.getByText('你正在控制', { exact: true }).waitFor()
+  await drawer.getByRole('button', { name: '交还给 Bot', exact: true }).click()
+  await drawer.getByRole('button', { name: '关闭环境', exact: true }).click()
+  await page.getByRole('tab', { name: '电脑', exact: true }).click()
+  await page.getByRole('button', { name: '允许 Bot 使用电脑', exact: true }).click()
+  const computerButton = page.locator('.gb-computer-btn')
+  await computerButton.waitFor()
+  assert.equal(await computerButton.locator('svg path').count(), 1, 'computer header uses the monitor icon')
+  await page.locator('.gb-computer-drawer-pane').getByLabel('电脑操控等级').waitFor()
+  await openSettingsPage(host, '电脑操控')
+  const computerSwitch = page.getByRole('switch', { name: '允许 Bot 使用电脑', exact: true })
+  await until(async () => (await computerSwitch.getAttribute('aria-checked')) === 'true', 'drawer enable is reflected in settings')
+  await computerSwitch.click()
+  await until(async () => (await computerSwitch.getAttribute('aria-checked')) === 'false', 'computer disabled in settings')
+  await page.locator('button.bt-settings-close:visible').click()
+  await computerButton.waitFor({ state: 'hidden' })
+  await page.getByRole('button', { name: '关闭详情', exact: true }).click()
+}
+
 async function exerciseAutomation(host, ci) {
   const { page } = host
   await openSettingsPage(host, '执行策略')
@@ -265,6 +314,8 @@ export default async function capabilities({ makeHost, candidate, note }) {
     programModel(host)
     await configureCard(host, ci)
     note('component-published-and-answered')
+    await checkBrowserAndComputerDrawer(host, remote.origin)
+    note('browser-and-computer-drawer')
     await recordDemo(host, ci, remote.origin)
     note('demonstration-approved')
     await exerciseAutomation(host, ci)

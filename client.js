@@ -67204,8 +67204,9 @@ var browser_viewer_default = ".gb-browser-viewer {\n  display: grid;\n  gap: 12p
 var surfaceNames = { local: "服务器浏览器", container: "独立容器", cloud: "云端容器" };
 var button5 = (label, onClick, disabled = false, primary = false) => (0, import_react115.createElement)("button", { type: "button", className: primary ? "gb-modal-primary" : void 0, onClick, disabled }, label);
 var remoteKeys = /* @__PURE__ */ new Set(["Enter", "Backspace", "Delete", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Escape"]);
-function BrowserPanel2({ client, bot, sessionId, close }) {
-  const lease = (0, import_react115.useRef)();
+function BrowserPanel2({ client, bot, sessionId, close, sharedLease }) {
+  const ownLease = (0, import_react115.useRef)();
+  const lease = sharedLease ?? ownLease;
   const alive = (0, import_react115.useRef)(false);
   const [available, setAvailable] = (0, import_react115.useState)([]);
   const [target, setTarget] = (0, import_react115.useState)("local");
@@ -67229,11 +67230,11 @@ function BrowserPanel2({ client, bot, sessionId, close }) {
     });
     return () => {
       alive.current = false;
-      if (lease.current) void call3("release", { lease: lease.current }).catch(() => {
+      if (!sharedLease && lease.current) void call3("release", { lease: lease.current }).catch(() => {
       });
-      lease.current = void 0;
+      if (!sharedLease) lease.current = void 0;
     };
-  }, [call3]);
+  }, [call3, lease, sharedLease]);
   (0, import_react115.useEffect)(() => {
     if (!open) return;
     let stop = false, timer;
@@ -67395,7 +67396,7 @@ function WebBrowserButton({ client, bot, sessionId }) {
   return (0, import_react115.createElement)(
     import_react115.Fragment,
     null,
-    (0, import_react115.createElement)("button", { type: "button", className: "bt-icon-btn bt-head-search", "aria-label": "网页浏览器", title: "网页浏览器", onClick: () => setShown(true) }, (0, import_react115.createElement)(Icon, { name: "globe", size: 17 })),
+    (0, import_react115.createElement)("button", { type: "button", className: "bt-icon-btn bt-head-search", "aria-label": "打开网页浏览器", title: "打开网页浏览器", onClick: () => setShown(true) }, (0, import_react115.createElement)(Icon, { name: "globe", size: 17 })),
     shown && (0, import_react115.createElement)(BrowserPanel2, { client, bot, sessionId, close: () => setShown(false) })
   );
 }
@@ -67603,7 +67604,7 @@ function BrowserDrawerPane({ client, bot, sessionId, roster, actions }) {
         (0, import_react115.createElement)(BrowserTeachingPanel, { key: "teaching", call: call3, lease: lease.current, canRecord: Boolean(controllable && frame?.surface === "browser"), recording: frame?.recording })
       ]
     ),
-    modalOpen ? (0, import_react115.createElement)(BrowserPanel2, { client, bot, sessionId, close: () => setModalOpen(false) }) : null
+    modalOpen ? (0, import_react115.createElement)(BrowserPanel2, { client, bot, sessionId, sharedLease: lease, close: () => setModalOpen(false) }) : null
   );
 }
 

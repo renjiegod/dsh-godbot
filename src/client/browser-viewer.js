@@ -9,8 +9,9 @@ const button = (label, onClick, disabled = false, primary = false) =>
   h('button', { type: 'button', className: primary ? 'gb-modal-primary' : undefined, onClick, disabled }, label)
 const remoteKeys = new Set(['Enter', 'Backspace', 'Delete', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Escape'])
 
-function BrowserPanel({ client, bot, sessionId, close }) {
-  const lease = useRef()
+function BrowserPanel({ client, bot, sessionId, close, sharedLease }) {
+  const ownLease = useRef()
+  const lease = sharedLease ?? ownLease
   const alive = useRef(false)
   const [available, setAvailable] = useState([])
   const [target, setTarget] = useState('local')
@@ -32,10 +33,10 @@ function BrowserPanel({ client, bot, sessionId, close }) {
     }, e => { if (alive.current) setError(e.message) })
     return () => {
       alive.current = false
-      if (lease.current) void call('release', { lease: lease.current }).catch(() => {})
-      lease.current = undefined
+      if (!sharedLease && lease.current) void call('release', { lease: lease.current }).catch(() => {})
+      if (!sharedLease) lease.current = undefined
     }
-  }, [call])
+  }, [call, lease, sharedLease])
   useEffect(() => {
     if (!open) return
     let stop = false, timer
@@ -158,7 +159,7 @@ function BrowserPanel({ client, bot, sessionId, close }) {
 export function WebBrowserButton({ client, bot, sessionId }) {
   const [shown, setShown] = useState(false)
   return h(Fragment, null,
-    h('button', { type: 'button', className: 'bt-icon-btn bt-head-search', 'aria-label': '网页浏览器', title: '网页浏览器', onClick: () => setShown(true) }, h(Icon, { name: 'globe', size: 17 })),
+    h('button', { type: 'button', className: 'bt-icon-btn bt-head-search', 'aria-label': '打开网页浏览器', title: '打开网页浏览器', onClick: () => setShown(true) }, h(Icon, { name: 'globe', size: 17 })),
     shown && h(BrowserPanel, { client, bot, sessionId, close: () => setShown(false) }))
 }
 
@@ -322,5 +323,5 @@ export function BrowserDrawerPane({ client, bot, sessionId, roster, actions }) {
           button('输入', () => send({ kind: 'text', text: input }, () => setInput('')), !controllable || !input)) : null,
         h(BrowserTeachingPanel, { key: 'teaching', call, lease: lease.current, canRecord: Boolean(controllable && frame?.surface === 'browser'), recording: frame?.recording }),
       ]),
-    modalOpen ? h(BrowserPanel, { client, bot, sessionId, close: () => setModalOpen(false) }) : null)
+    modalOpen ? h(BrowserPanel, { client, bot, sessionId, sharedLease: lease, close: () => setModalOpen(false) }) : null)
 }
