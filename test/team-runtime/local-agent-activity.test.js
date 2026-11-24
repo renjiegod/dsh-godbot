@@ -246,12 +246,23 @@ test('Codex Bot records rich tool updates during its matching turn without strea
   notice('turn/completed', { turn: { id: 'turn-current', status: 'completed' } })
 
   const records = []
-  const adapter = new WorkspaceAgentAdapter({ rt: { executionHistory: { record: (id, event) => records.push({ id, event }) } } })
+  const progress = []
+  const adapter = new WorkspaceAgentAdapter({ rt: {
+    executionHistory: { record: (id, event) => records.push({ id, event }) },
+    noteNativeTool: (id, trace) => progress.push([id, trace.id, trace.status]),
+  } })
   const live = { sessionId: 'bot-part', turnTag: 'turn-current', next: () => Promise.resolve(events.shift()), queue: [] }
   const chunks = []
   for await (const chunk of adapter.drain(live, {})) chunks.push(chunk)
 
   assert.ok(records.every(row => row.id === live.sessionId))
+  // The turn's live work follows the same traces, the late output of an earlier turn left out.
+  assert.deepEqual(progress, [
+    ['bot-part', command.id, 'running'],
+    ['bot-part', command.id, undefined],
+    ['bot-part', command.id, 'failed'],
+    ['bot-part', 'edit-1', 'completed'],
+  ])
   assert.deepEqual(records.map(row => Object.fromEntries(Object.entries(row.event).filter(([, value]) => value !== undefined))), [
     { type: 'tool', id: command.id, name: 'Shell', status: 'running', input: command.command, cwd: '/work' },
     { type: 'tool', id: command.id, outputDelta: 'fixture test output' },

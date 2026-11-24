@@ -152,11 +152,32 @@ function ApprovalCard({ approval, bot, actions }) {
         h('button', { type: 'button', className: 'bt-q-btn', onClick: () => actions.openSession(bot.id) }, t("Open {name}'s chat", { name: bot.name }))))
 }
 
-// A member's second line in the group's details: what it is doing here, or its role.
+// A member's second line in the group's details: what it is doing here, or its role,
+// and how many tools its turn has run so far.
 export function MemberState({ entry, bot }) {
   if (entry?.state === 'ask') return stateLine('bt-member-state bt-mw-ask', entry.approvals[0].at, t('Waiting for your approval'))
   if (entry?.state !== 'work') return bot.role ? stateLine('bt-member-state', undefined, bot.role) : null
-  return stateLine('bt-member-state', entry.doing.since, h(Shimmer, null, `${workPhrase(entry.doing)}…`))
+  const count = entry.doing.count > 0 ? ` · ${t('{count} tool calls', { count: entry.doing.count })}` : ''
+  return stateLine('bt-member-state', entry.doing.since, h(Shimmer, null, `${workPhrase(entry.doing)}…`), count)
+}
+
+const STEP_STATES = { running: 'Running', pending: 'Running', completed: 'Done', failed: 'Failed', declined: 'Declined', interrupted: 'Interrupted' }
+
+// The newest calls of a member's turn here, newest first: a long turn shows what it ran
+// last and whether it moves on, which tells it from a stuck one. Its member Session is
+// not a chat the user can open, so this is where its work shows.
+export function MemberSteps({ entry }) {
+  const recent = entry?.state === 'work' && entry.here ? entry.doing?.recent : undefined
+  if (!Array.isArray(recent) || recent.length === 0) return null
+  return h('ol', { className: 'bt-member-steps', 'aria-label': t('Recent steps') },
+    [...recent].reverse().map((step, index) => {
+      const what = step.note ?? step.target
+      const state = STEP_STATES[step.status]
+      return h('li', { key: `${recent.length - index}:${step.tool}`, className: 'bt-member-step', 'data-status': step.status },
+        h('span', { className: 'bt-member-step-tool' }, step.tool),
+        what ? h('span', { className: 'bt-member-step-what', title: what }, what) : null,
+        state ? h('span', { className: 'bt-member-step-state' }, t(state)) : null)
+    }))
 }
 
 // Work in this group can be stopped from its details, since the user cannot reach the
@@ -243,6 +264,13 @@ body[data-ds-dark-theme] .bt-member-state.bt-mw-ask{color:#f0b84a}
 .bt-member-stop:hover{background:var(--bt-active);color:var(--bt-ink)}
 .bt-member-stop:active:not(:disabled){scale:.94}
 .bt-member-stop:disabled{opacity:.5;cursor:default}
+.bt-member-steps{display:flex;flex-direction:column;gap:2px;margin:0;padding:0 8px 8px 50px;list-style:none;font-size:12px;line-height:16px;color:var(--bt-ink-3)}
+.bt-member-step{display:flex;align-items:baseline;gap:6px;min-width:0;white-space:nowrap}
+.bt-member-step-tool{flex:none;font:11px/16px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--bt-ink-2)}
+.bt-member-step-what{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.bt-member-step-state{flex:none;margin-left:auto}
+.bt-member-step[data-status=running] .bt-member-step-state{color:var(--bt-accent,var(--bt-ink-2))}
+.bt-member-step[data-status=failed] .bt-member-step-state{color:var(--bt-danger,#d14343)}
 .bt-member-cards{display:flex;flex-direction:column;gap:6px;padding:2px 8px 8px 50px}
 .bt-mw-card{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;background:var(--bt-hover);font-size:12px;line-height:17px;color:var(--bt-ink-2);animation:bt-rise .2s ease-out backwards}
 .bt-mw-tool{font-weight:600;color:var(--bt-ink)}

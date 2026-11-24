@@ -15015,6 +15015,9 @@ var HOST_ZH = {
   "Take over the computer": "我来操作",
   "Hand back": "交还",
   "Recent steps": "最近的操作",
+  "Done": "完成",
+  "Declined": "已拒绝",
+  "Interrupted": "已中断",
   "failed": "失败",
   "Allow {name} to use {app}?": "允许 {name} 使用 {app} 吗？",
   "This time": "这一次",
@@ -53289,7 +53292,28 @@ function ApprovalCard({ approval, bot, actions }) {
 function MemberState({ entry, bot }) {
   if (entry?.state === "ask") return stateLine("bt-member-state bt-mw-ask", entry.approvals[0].at, t("Waiting for your approval"));
   if (entry?.state !== "work") return bot.role ? stateLine("bt-member-state", void 0, bot.role) : null;
-  return stateLine("bt-member-state", entry.doing.since, (0, import_react73.createElement)(Shimmer, null, `${workPhrase(entry.doing)}…`));
+  const count = entry.doing.count > 0 ? ` · ${t("{count} tool calls", { count: entry.doing.count })}` : "";
+  return stateLine("bt-member-state", entry.doing.since, (0, import_react73.createElement)(Shimmer, null, `${workPhrase(entry.doing)}…`), count);
+}
+var STEP_STATES = { running: "Running", pending: "Running", completed: "Done", failed: "Failed", declined: "Declined", interrupted: "Interrupted" };
+function MemberSteps({ entry }) {
+  const recent = entry?.state === "work" && entry.here ? entry.doing?.recent : void 0;
+  if (!Array.isArray(recent) || recent.length === 0) return null;
+  return (0, import_react73.createElement)(
+    "ol",
+    { className: "bt-member-steps", "aria-label": t("Recent steps") },
+    [...recent].reverse().map((step, index) => {
+      const what = step.note ?? step.target;
+      const state = STEP_STATES[step.status];
+      return (0, import_react73.createElement)(
+        "li",
+        { key: `${recent.length - index}:${step.tool}`, className: "bt-member-step", "data-status": step.status },
+        (0, import_react73.createElement)("span", { className: "bt-member-step-tool" }, step.tool),
+        what ? (0, import_react73.createElement)("span", { className: "bt-member-step-what", title: what }, what) : null,
+        state ? (0, import_react73.createElement)("span", { className: "bt-member-step-state" }, t(state)) : null
+      );
+    })
+  );
 }
 function StopMemberWork({ entry, bot, room: room2, actions }) {
   const [stopping, setStopping] = (0, import_react73.useState)(false);
@@ -53363,6 +53387,13 @@ body[data-ds-dark-theme] .bt-member-state.bt-mw-ask{color:#f0b84a}
 .bt-member-stop:hover{background:var(--bt-active);color:var(--bt-ink)}
 .bt-member-stop:active:not(:disabled){scale:.94}
 .bt-member-stop:disabled{opacity:.5;cursor:default}
+.bt-member-steps{display:flex;flex-direction:column;gap:2px;margin:0;padding:0 8px 8px 50px;list-style:none;font-size:12px;line-height:16px;color:var(--bt-ink-3)}
+.bt-member-step{display:flex;align-items:baseline;gap:6px;min-width:0;white-space:nowrap}
+.bt-member-step-tool{flex:none;font:11px/16px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--bt-ink-2)}
+.bt-member-step-what{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.bt-member-step-state{flex:none;margin-left:auto}
+.bt-member-step[data-status=running] .bt-member-step-state{color:var(--bt-accent,var(--bt-ink-2))}
+.bt-member-step[data-status=failed] .bt-member-step-state{color:var(--bt-danger,#d14343)}
 .bt-member-cards{display:flex;flex-direction:column;gap:6px;padding:2px 8px 8px 50px}
 .bt-mw-card{display:flex;flex-direction:column;gap:4px;padding:10px 12px;border-radius:12px;background:var(--bt-hover);font-size:12px;line-height:17px;color:var(--bt-ink-2);animation:bt-rise .2s ease-out backwards}
 .bt-mw-tool{font-weight:600;color:var(--bt-ink)}
@@ -53743,6 +53774,7 @@ function MemberRow({ member, entry, room: room2, roster, actions }) {
       ),
       (0, import_react75.createElement)(StopMemberWork, { entry, bot: member, room: room2, actions })
     ),
+    (0, import_react75.createElement)(MemberSteps, { entry }),
     (0, import_react75.createElement)(MemberApprovals, { entry, bot: member, actions })
   );
 }

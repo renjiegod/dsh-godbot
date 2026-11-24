@@ -81,6 +81,8 @@ export function install(rt) {
       publish('live', {})
     }, LIVE_DELAY_MS)
   }
+  // Work that changes with no Session event of its own: a local agent CLI's tools.
+  rt.liveChanged = live
   ctx.on('agent/status', ({ agent }) => {
     if (rt.selfOf(agent.id) !== undefined) live()
   })

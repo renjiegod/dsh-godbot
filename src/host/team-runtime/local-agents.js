@@ -416,8 +416,9 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     try { yield* this.streamChat(options) } finally { release() }
   }
   async *drain(live, options) {
-    const history = this.deps.rt?.executionHistory
-    if (!history) {
+    const rt = this.deps.rt
+    const history = rt?.executionHistory
+    if (!history && !rt?.noteNativeTool) {
       yield* super.drain(live, options)
       return
     }
@@ -428,8 +429,13 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
       // settled after cancellation. Trace-only events produce no model chunks.
       if (event.trace && !options.signal?.aborted && !live.dead &&
           (event.turnId === undefined || live.turnTag === undefined || event.turnId === live.turnTag)) {
-        history.record(live.sessionId, event.trace)
-        if (event.type === 'activity') return { ...event, text: toolReference(event.text, event.trace.id) }
+        // The CLI's own tools run inside this one model request: the turn's live work
+        // (the group's member status included) follows them as they start and end.
+        try { rt.noteNativeTool?.(live.sessionId, event.trace) } catch (error) { rt.warn?.('godbot: native tool progress: %s', error) }
+        if (history) {
+          history.record(live.sessionId, event.trace)
+          if (event.type === 'activity') return { ...event, text: toolReference(event.text, event.trace.id) }
+        }
       }
       return event
     }

@@ -438,21 +438,83 @@ export function install(rt) {
     else next[id] = value
     activity = next
   }
-  // The newest call still running, a program's sub-calls included, is what the Session
-  // is doing.
+  // What a call works on, from its arguments: its own description, and the file, search
+  // or site it acts on. `text` is the target a local agent CLI named for its own tool.
+  const callTarget = (rawArgs, text) => {
+    let args
+    try { args = JSON.parse(rawArgs || '{}') } catch { args = {} }
+    const first = keys => keys.map(key => args?.[key]).find(value => typeof value === 'string' && value.trim() !== '')?.replace(/\s+/g, ' ').trim()
+    const note = first(['description', 'justification'])
+    const path = first(['file_path', 'path'])
+    const url = first(['url'])
+    let site
+    try { site = url && new URL(url).host } catch { site = undefined }
+    const named = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : ''
+    const target = path?.split(/[\\/]/).filter(Boolean).at(-1) ?? first(['query', 'pattern']) ?? site ?? (named && named !== note ? named : undefined)
+    return { ...(note ? { note: note.slice(0, 120) } : {}), ...(target ? { target: target.slice(0, 80) } : {}) }
+  }
+  // The newest calls of the running turn, for the group details: a member at work in a
+  // group shows there what it ran last, so a long turn can be told from a stuck one.
+  const RECENT_STEPS = 5
+  const noteStep = (entry, callId, step) => {
+    const recent = entry.recent ??= []
+    const at = recent.findIndex(item => item.id === callId)
+    if (at !== -1) recent[at] = { ...recent[at], ...step }
+    else if (step.tool !== undefined) {
+      recent.push({ id: callId, ...step })
+      if (recent.length > RECENT_STEPS) recent.splice(0, recent.length - RECENT_STEPS)
+    }
+  }
+  // The newest call still running is what the Session is doing: a DSH call, a
+  // program's sub-calls included, else the newest of a local agent CLI's own tools.
+  const runningCall = entry => [...(entry.calls?.values() ?? [])].at(-1) ?? [...(entry.native?.values() ?? [])].at(-1)
   const showCall = (id, entry) => {
-    const name = [...(entry.calls?.values() ?? [])].at(-1)?.name
+    const name = runningCall(entry)?.name
     entry.tool = name
     if (name !== undefined) setActivity(id, name === 'ask_user' || name === 'show_view' ? undefined : activityOf(name))
     else if (entry.turn !== undefined) setActivity(id, 'thinking')
   }
-  const startCall = (id, entry, callId, name, args) => {
-    if (typeof callId === 'string') (entry.calls ??= new Map()).set(callId, { name, args })
+  const startCall = (id, entry, callId, name, args, { step = true } = {}) => {
+    if (typeof callId === 'string') {
+      (entry.calls ??= new Map()).set(callId, { name, args })
+      if (step) noteStep(entry, callId, { tool: name, ...callTarget(args), status: 'running' })
+    }
     showCall(id, entry)
   }
-  const endCall = (id, entry, callId) => {
-    entry.calls?.delete(callId)
+  const endCall = (id, entry, callId, status = 'completed') => {
+    if (typeof callId === 'string' && entry.calls?.delete(callId)) noteStep(entry, callId, { status })
     showCall(id, entry)
+  }
+  // A local agent CLI runs its own tools inside one model request, so DSH sees no
+  // tool/call for them; the adapter reports each one here as the CLI starts and ends
+  // it. They show as the Session's work, count as its tools, and keep a group round
+  // from taking the member for silent.
+  const noteNativeTool = (id, trace) => {
+    const entry = live.get(id)
+    if (entry?.turn === undefined || trace?.type !== 'tool' || typeof trace.id !== 'string' || trace.id === '') return
+    const known = entry.native?.get(trace.id)
+    if (trace.status !== undefined && trace.status !== 'running' && trace.status !== 'pending') {
+      if (entry.native?.delete(trace.id)) noteStep(entry, trace.id, { status: trace.status })
+      // A tool reported only once it was done (a Codex file change) still counts.
+      else if (typeof trace.name === 'string' && trace.name !== '' && !entry.recent?.some(step => step.id === trace.id)) {
+        entry.toolCount = (entry.toolCount ?? 0) + 1
+        noteStep(entry, trace.id, { tool: trace.name, ...callTarget(trace.input !== undefined ? JSON.stringify(trace.input) : '', trace.text), status: trace.status })
+      } else return
+    } else {
+      const name = known?.name ?? (typeof trace.name === 'string' ? trace.name : '')
+      if (name === '') return
+      const args = trace.input !== undefined ? JSON.stringify(trace.input) : known?.args ?? ''
+      const text = typeof trace.text === 'string' && trace.text !== '' ? trace.text : known?.text
+      ;(entry.native ??= new Map()).set(trace.id, { name, args, text })
+      if (known === undefined) {
+        entry.toolCount = (entry.toolCount ?? 0) + 1
+        if (rt.groupOwners.has(id)) rt.workRoomTurn?.(id, name)
+      }
+      noteStep(entry, trace.id, { tool: name, ...callTarget(args, text), status: 'running' })
+    }
+    if (rt.groupOwners.has(id)) rt.touchRoomTurn?.(id)
+    showCall(id, entry)
+    rt.liveChanged?.()
   }
 
   const markExchangeTurn = (sessionId, turn) => {
@@ -570,21 +632,19 @@ export function install(rt) {
   }
 
   // What the newest running call does, in its own words: what the Bot said in the step
-  // that made it, the call's description, or the file, search or site it works on.
+  // that made it, the call's description, or the file, search or site it works on. A
+  // local agent's own tool runs inside a step whose words are not out yet, so it has no
+  // `said`. `count` and `recent` are the turn's tools so far and its newest calls.
   const doingOf = (entry) => {
-    const call = [...(entry.calls?.values() ?? [])].at(-1)
-    if (call === undefined) return {}
-    const said = entry.step?.replace(/\s+/g, ' ').trim().slice(0, 160)
-    let args
-    try { args = JSON.parse(call.args || '{}') } catch { args = {} }
-    const first = keys => keys.map(key => args?.[key]).find(value => typeof value === 'string' && value.trim() !== '')?.replace(/\s+/g, ' ').trim()
-    const note = first(['description', 'justification'])
-    const path = first(['file_path', 'path'])
-    const url = first(['url'])
-    let site
-    try { site = url && new URL(url).host } catch { site = undefined }
-    const target = path?.split(/[\\/]/).filter(Boolean).at(-1) ?? first(['query', 'pattern']) ?? site
-    return { tool: call.name, ...(said ? { said } : {}), ...(note ? { note: note.slice(0, 120) } : {}), ...(target ? { target: target.slice(0, 80) } : {}) }
+    const progress = {
+      ...(entry.toolCount > 0 ? { count: entry.toolCount } : {}),
+      ...(entry.recent?.length > 0 ? { recent: entry.recent.map(({ id, ...step }) => step) } : {}),
+    }
+    const dsh = [...(entry.calls?.values() ?? [])].at(-1)
+    const call = dsh ?? [...(entry.native?.values() ?? [])].at(-1)
+    if (call === undefined) return progress
+    const said = dsh !== undefined ? entry.step?.replace(/\s+/g, ' ').trim().slice(0, 160) : undefined
+    return { tool: call.name, ...(said ? { said } : {}), ...callTarget(call.args, call.text), ...progress }
   }
 
   // Per Bot, the turn it is running and what it is doing; its own chat wins over a
@@ -878,7 +938,7 @@ export function install(rt) {
       }
       case 'tool/call': {
         const name = String(event.data?.name ?? '')
-        startCall(id, entry, event.data?.callId, name, String(event.data?.arguments ?? ''))
+        startCall(id, entry, event.data?.callId, name, String(event.data?.arguments ?? ''), { step: name !== PROGRAM_TOOL })
         // A program is as quick as the tools it runs, so its sub-calls decide.
         if (name !== PROGRAM_TOOL) {
           entry.toolCount = (entry.toolCount ?? 0) + 1
@@ -894,11 +954,14 @@ export function install(rt) {
         break
       }
       case 'tool/ptc-dispatch':
-        endCall(id, entry, event.data?.subCallId)
+        endCall(id, entry, event.data?.subCallId, event.data?.isError || event.data?.ok === false ? 'failed' : 'completed')
         break
-      case 'tool/result':
-        endCall(id, entry, event.data?.callId)
+      case 'tool/result': {
+        // DSH names the call on the result message; `callId` is the older shape.
+        const message = event.data?.message
+        endCall(id, entry, message?.toolCallId ?? event.data?.callId, message?.isError || message?.ok === false ? 'failed' : 'completed')
         break
+      }
       case 'turn/start':
         setActivity(id, 'thinking')
         entry.turn = event.data.turn
@@ -908,6 +971,8 @@ export function install(rt) {
         entry.step = undefined
         entry.info = undefined
         entry.toolCount = 0
+        entry.native = undefined
+        entry.recent = undefined
         entry.usage = undefined
         entry.suppressedSubagent = false
         // A turn turned away before its first step may end without a turn/end.
@@ -1190,6 +1255,8 @@ export function install(rt) {
         entry.steeredAt = undefined
         entry.tool = undefined
         entry.calls = undefined
+        entry.native = undefined
+        entry.recent = undefined
         entry.lastText = undefined
         entry.lastCalled = undefined
         entry.usage = undefined
@@ -1433,5 +1500,5 @@ export function install(rt) {
     }, 'godbot: prompt rejection reasons')
   }
 
-  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })
+  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteNativeTool, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })
 }
