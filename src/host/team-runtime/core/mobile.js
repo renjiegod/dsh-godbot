@@ -56,6 +56,10 @@ export const CAPABILITIES = [
   // local-agent-login-start/-wait/-input/-check/-cancel: a local agent CLI signs in
   // from the phone (Claude Code's code page, Codex's device code).
   'local-agent-login',
+  // A group member's work: `room-chat` rows and round events name the member's turn
+  // they come from (`work`), live room entries name their Session and turn, and
+  // `turn-process` reads that turn's process.
+  'member-work',
 ]
 export const NOTICE_KINDS = ['message', 'group', 'done', 'question', 'view', 'approval']
 
@@ -94,6 +98,12 @@ function reminderText(text) {
   }
 }
 
+// The member's turn a group line comes from (groups.js `work`), which opens its process:
+// the member's group Session, the turn, and how many tools it had run.
+const workOf = work => (typeof work?.sessionId === 'string' && work.sessionId !== '' && Number.isSafeInteger(work.turn)
+  ? { work: { sessionId: work.sessionId, turn: work.turn, ...(Number.isSafeInteger(work.tools) && work.tools > 0 ? { tools: work.tools } : {}) } }
+  : {})
+
 // One reply of a round as an item: a member's message, the user's message that came in
 // while the round ran, or an event of the round. `id` names it the same while the round
 // runs and once its result is logged, so a client can swap the one for the other.
@@ -101,13 +111,13 @@ function replyItem(reply, id, extra = {}) {
   const who = { ...(reply.botId ? { botId: reply.botId } : {}), ...(reply.name ? { name: reply.name } : {}), ...(reply.color ? { color: reply.color } : {}) }
   const time = Number.isFinite(reply.time) ? reply.time : null
   if (reply.kind === 'user') return { id, kind: 'user', text: String(reply.text ?? ''), time, ...extra }
-  if (reply.kind === undefined) return { id, kind: 'bot', ...who, text: String(reply.text ?? ''), time, ...(Number.isFinite(reply.duration) ? { duration: reply.duration } : {}), ...extra }
+  if (reply.kind === undefined) return { id, kind: 'bot', ...who, text: String(reply.text ?? ''), time, ...(Number.isFinite(reply.duration) ? { duration: reply.duration } : {}), ...workOf(reply.work), ...extra }
   if (!ROUND_EVENTS.has(reply.kind)) return undefined
   return {
     id, kind: 'event', event: reply.kind, ...who,
     ...(typeof reply.text === 'string' && reply.text !== '' ? { text: reply.text } : {}),
     ...(reply.code ? { code: reply.code } : {}),
-    time, ...extra,
+    time, ...workOf(reply.work), ...extra,
   }
 }
 
@@ -138,6 +148,7 @@ export function roomItems(events, rowsOf = () => []) {
           id: `${seq}`, kind: 'bot', botId: source.senderSessionId ?? null, name: source.senderName ?? null,
           text: textOf(content).replace(POST_HEADER, ''), time: event.time ?? null,
           ...(file ? { whole: { length: source.length, file } } : {}),
+          ...workOf(source.work),
         })
       }
       continue

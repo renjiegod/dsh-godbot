@@ -30,7 +30,7 @@ if (values.help) {
   const all = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'NEW-SESSION', 'DRAFT-ATTACHMENTS', 'BACKGROUND-REPLY', 'BOT-MESSAGE-ROUTING', 'CONVERSATION-TOOLS', 'LOCAL-SIGNIN', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS', 'BUNDLED-COMPUTER-HOST']
   const connectorCases = ['L-CLAUDE', 'L-CODEX']
   const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
-  const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS']
+  const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK']
   const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX']
   const suites = { release, all, 'live-connectors': connectorCases, 'live-routines': Object.keys(routineFiles) }
   if ((values.case && ![...all, ...live, ...androidCases].includes(values.case)) || (values.suite && !Object.hasOwn(suites, values.suite))) throw new Error('Unknown case or suite')
