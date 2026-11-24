@@ -164,6 +164,8 @@ function SectionMenu({ menu, roster, actions, leaving }) {
       type: 'button', role: 'menuitem',
       onClick: () => { actions.closeMenu(); actions.beginSectionRename(sec.id) },
     }, h(PencilIcon), h('span', { className: 'bt-menu-label' }, t('Rename section'))),
+    h('button', { type: 'button', role: 'menuitem', onClick: () => actions.openSectionContext(sec.id) },
+      h(FolderIcon), h('span', { className: 'bt-menu-label' }, t('Section description and memory'))),
     h('button', {
       type: 'button', role: 'menuitem',
       onClick: () => { actions.closeMenu(); actions.openNewChat('create', sec.id) },

@@ -4,9 +4,10 @@ import { getDefaultProviderAccount } from '../provider-accounts.js'
 // Roster: creating, changing, and deleting Bots and group chats, the Main Bot role, and
 // the first Main Bot of a new team.
 import { openSessions } from './core/threads.js'
+import { validateFailover } from './core/failover.js'
 import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
-import { MAX_AVATAR_IMAGE, ROOM_MAX_MEMBERS, ROOM_MODES, ROOM_NAME_MAX, ROOM_NOTICE_MAX, ROOM_TODO_MAX, ROOM_TODO_TEXT_MAX, SECTION_COLORS, SECTION_NAME_MAX } from './core/constants.js'
+import { MAX_AVATAR_IMAGE, ROOM_MAX_MEMBERS, ROOM_MODES, ROOM_NAME_MAX, ROOM_NOTICE_MAX, ROOM_TODO_MAX, ROOM_TODO_TEXT_MAX, SECTION_COLORS, SECTION_DESCRIPTION_MAX, SECTION_NAME_MAX } from './core/constants.js'
 import { currentColor, isColor, normalize, splitRef, unquote } from './core/text.js'
 import { nameProblem } from './shared/mentions.js'
 
@@ -422,6 +423,9 @@ export function install(rt) {
     if (patch.section !== undefined || patch.sectionId !== undefined) {
       resolveSectionInput({ section: patch.section, sectionId: patch.sectionId }, { allowCreate: false })
     }
+    if (patch.failover !== undefined && actorId !== undefined) throw new Error('Only the owner can configure Bot failover')
+    const failover = patch.failover === undefined ? undefined
+      : await validateFailover(rt, { ...bot, private: patch.private ?? bot.private }, patch.failover)
     const browserGrants = patch.browserGrants === undefined ? undefined : cleanBrowserGrants(patch.browserGrants)
     // Checked first, so a folder, model or level that does not pass leaves the rest
     // unchanged too.
@@ -507,6 +511,8 @@ export function install(rt) {
       if (browserGrants === null) delete bot.browserGrants
       else bot.browserGrants = browserGrants
     }
+    if (failover === null) delete bot.failover
+    else if (failover !== undefined) bot.failover = failover
     if (flag === true) bot.private = true
     else if (flag === false) delete bot.private
     if (patch.section !== undefined || patch.sectionId !== undefined) {
@@ -560,7 +566,9 @@ export function install(rt) {
     return entry
   }
 
-  async function saveSection({ id, name, collapsed, color, items, add, remove } = {}) {
+  async function saveSection({ id, name, description, collapsed, color, items, add, remove } = {}) {
+    if (description !== undefined && (typeof description !== 'string' || description.length > SECTION_DESCRIPTION_MAX))
+      throw new Error(`A section description can have at most ${SECTION_DESCRIPTION_MAX} characters`)
     if (color !== undefined && color !== null && color !== '' && !SECTION_COLORS.includes(color)) {
       throw new Error('Unknown section color')
     }
@@ -587,6 +595,10 @@ export function install(rt) {
         ...(SECTION_COLORS.includes(color) ? { color } : {}),
       }
       list.push(sec)
+    }
+    if (description !== undefined) {
+      if (description.trim()) sec.description = description.trim()
+      else delete sec.description
     }
     const entryOf = entryId => (entryId === state.mainBotIds[0] ? undefined : rt.botOf(entryId) ?? rt.roomOf(entryId) ?? rt.own(state.agents, entryId))
     if (Array.isArray(items)) {

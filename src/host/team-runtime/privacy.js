@@ -216,6 +216,11 @@ export function install(rt) {
       case 'forget': {
         const bot = target(args.scope)
         if (bot) throw closed(bot, 'memory')
+        if (exec.name !== 'recall' && isPrivate(self) && /^(section|分组|本分组)$/i.test(unquote(args.scope))) {
+          const shown = JSON.stringify(args, null, 2)
+          await approve(exec, { en: `Let ${rt.botOf(self).name} change shared section memory?\n\n${shown}`,
+            zh: `允许 ${rt.botOf(self).name} 修改分组共享记忆吗？\n\n${shown}` })
+        }
         return
       }
       default:

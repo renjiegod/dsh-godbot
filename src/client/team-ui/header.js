@@ -11,6 +11,7 @@ import { ActivityIndicator } from './activity-row.js'
 import { clockLabel, openingTurn, unseenSince } from './cells.js'
 import { GoalIsland, goalView } from './goal.js'
 import { NewSessionButton } from './new-session.js'
+import { FailoverActivity } from './bot-failover.js'
 import { SessionMenu } from './session-menu.js'
 import { GodbotModal } from '../modal.js'
 import { nativeTabs } from '../native-agent-target.js'
@@ -123,6 +124,7 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
     return () => document.body.removeAttribute('data-gb-conversation')
   }, [conversation])
   const terminalActive = actions.godbot.useNativeTerminalActive(bot, sessionId, roster, running)
+  const failover = bot?.failoverHistory?.find(row => row.sessionId === sessionId)
   const goal = room?.goal
   // Goal panels are keyed by the group, never by its current Session: `composeGoal` and
   // `toggleGoal` store `room.id`, and a group's Session moves to a fresh part when its
@@ -199,7 +201,8 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
         h('div', { className: 'gb-chat-heading' }, pill,
           !away && bot && currentPart(bot) === sessionId
             ? h(BotHeaderModel, { key: bot.appliedModel ?? bot.model, bot, roster, actions, sessionId })
-            : null),
+            : null,
+          !away && failover ? h(FailoverActivity, { row: failover, roster, actions }) : null),
         !away && h('div', { className: 'gb-chat-tools' },
           // Start a fresh conversation with this Bot.
           bot && currentPart(bot) === sessionId

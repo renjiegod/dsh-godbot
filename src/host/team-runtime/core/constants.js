@@ -69,6 +69,7 @@ export const ROOM_MAX_MEMBERS = 12
 export const ROOM_TODO_TEXT_MAX = 200
 export const ROOM_TODO_MAX = 100
 export const SECTION_NAME_MAX = 32
+export const SECTION_DESCRIPTION_MAX = 4000
 export const SECTION_COLORS = ['blue', 'orange', 'green', 'violet', 'rose']
 
 // A team's one DSH Agent: a plain dsh entry in the sidebar, not a Bot. Its Sessions

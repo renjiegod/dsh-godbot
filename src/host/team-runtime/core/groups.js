@@ -786,7 +786,11 @@ export function install(rt) {
         heard(step)
       }
       touch()
-      rt.roomWaiters.set(exchangeId, { sessionId, botId: member.id, roomId: room.id, resolve: finish, fail: failure => finish({ failure }), touch, work, say, approval: () => finish({ approval: true }) })
+      rt.roomWaiters.set(exchangeId, {
+        sessionId, botId: member.id, roomId: room.id, resolve: finish, fail: failure => finish({ failure }),
+        touch, work, say, approval: () => finish({ approval: true }),
+        failoverInput: by === undefined ? round.failoverInput : undefined,
+      })
       signal.addEventListener('abort', () => finish(null), { once: true })
     })
     try {
@@ -1416,6 +1420,11 @@ export function install(rt) {
       members: room.members,
       startSeq,
       goalRevision: room.goal?.revision,
+      // A replacement receives the user's current task without the failing
+      // member's private chat brief or its personal speaking instructions.
+      failoverInput: userPost(opener) && !opener.goal ? {
+        text: opener.text ?? '', images: opener.images ?? [], files: opener.files ?? [],
+      } : undefined,
       initiator: posts.reduce((prior, post) => mergeRunOrigins(prior, post.initiator), undefined)
         ?? (opener.goal === 'nudge' ? runOrigin('service', opener.goalId) : runOrigin('person')),
       ...(posts.some(userPost) ? { userMessage: true } : {}),
@@ -1933,12 +1942,13 @@ export function install(rt) {
     }
     const round = rt.roomActive(room.id)
     if (round) await attempt(async () => rt.stopRoomRound(room.id))
-    let stopped = false
+    let stopped = (await attempt(() => rt.cancelRoomFailover?.(room.id))) === true
     for (const botId of room.members) stopped = (await attempt(() => stopMemberWork(room.id, botId))) || stopped
     if (failures.length > 0) throw failures[0]
     return round || stopped
   }
   rt.stopRoomWork = stopRoomWork
+  rt.groupSessionFor = groupSessionFor
   Object.assign(rt, {
     workingInRoom: workingIn,
     roomBatchPending: roomId => Object.values(batches()).some(batch => batch.roomId === roomId && batch.pending.length > 0),

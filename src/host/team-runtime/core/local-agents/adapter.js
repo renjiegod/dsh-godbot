@@ -580,8 +580,10 @@ export class LocalAgentAdapter extends LlmAdapter {
       yield* this.showBackground(String(sessionId), trigger, options)
       return
     }
+    options.signal?.throwIfAborted()
     const preset = this.deps.presetFor(sessionId)
     const live = await this.liveFor(options, preset)
+    options.signal?.throwIfAborted()
 
     // What the request carries past the last handed message. When the marker is
     // gone the CLI session is stale or new: it gets a replay instead of a delta.
@@ -744,6 +746,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     // call it bridged out — while the user was still deciding. The answer then has to
     // start a turn of its own, or the user's decision never reaches the agent and the
     // stream ends by reading the finished turn's old reply (#1513).
+    options.signal?.throwIfAborted()
     let settledText = ''
     if (settled.length > 0) {
       const answer = settled.map(entry => `${entry.name} → ${entry.text === '' ? (entry.isError ? 'failed' : 'no result') : entry.text}`).join('\n')
@@ -774,6 +777,7 @@ export class LocalAgentAdapter extends LlmAdapter {
       live.promptHash = promptHash
     }
 
+    options.signal?.throwIfAborted()
     // The last DSH message is handed now; a later call sends only what follows.
     // The marker before it is kept: a start that fails before the CLI reads
     // anything must not count that message as delivered.

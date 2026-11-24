@@ -195,7 +195,7 @@ export class UsagePolicy {
         AND substr(id, 1, ?) = ?`).run(session.id.length + 1, session.id + '#')
       if (!rows.length && (event.type === 'assistant/message' || event.type === 'assistant/attempt') &&
           event.data?.turn != null && event.data?.step != null) {
-        const route = this.selected.get(session.id) ?? state
+        const route = this.service.runtime?.failoverRoute?.(session.id) ?? this.selected.get(session.id) ?? state
         if (route.provider?.startsWith('local-')) {
           const { turn, step } = event.data
           const attempt = state.retry?.turn === turn && state.retry.step === step ? state.retry.count : 0
@@ -205,7 +205,7 @@ export class UsagePolicy {
         }
       }
       for (const row of rows) {
-        const actual = this.selected.get(session.id)
+        const actual = this.service.runtime?.failoverRoute?.(session.id) ?? this.selected.get(session.id)
         const route = session.requestHeader?.()?.config
         this.store.remove('localUsageGaps',session.id + '#' + row.key)
         this.store.put('usageReceipts', {
@@ -232,7 +232,7 @@ export class UsagePolicy {
         if (!options.sessionId || options.purpose || rerouted.has(options) || !validRoute(options))
           return next()
         const owner = this.owner(options.sessionId)
-        const backup = owner && this.store.get('usagePolicy', owner)?.backup
+        const backup = owner && !this.service.runtime?.hasTurnFailover?.(options.sessionId) && this.store.get('usagePolicy', owner)?.backup
         if (!backup || (backup.provider === options.provider && backup.model === options.model)) {
           this.selected.delete(options.sessionId)
           return next()

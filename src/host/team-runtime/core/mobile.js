@@ -40,6 +40,8 @@ export const CAPABILITIES = [
   'stop-member-work',
   'memory',
   'memory-edit',
+  'section-context',
+  'bot-failover',
   'usage-summary',
   'local-agent-usage',
   'stop-chat',
@@ -366,6 +368,7 @@ export function install(rt) {
   }
 
   function memoryTarget(body) {
+    if (body.sectionId != null) return { sectionId: String(body.sectionId) }
     return body.roomId !== undefined && body.roomId !== null ? { roomId: String(body.roomId) } : { botId: String(body.botId ?? '') }
   }
 

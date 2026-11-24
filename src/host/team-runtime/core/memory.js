@@ -29,7 +29,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs'
 import { appendFile, mkdir, rename, unlink, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
-import { HarnessError, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { HarnessError, createSystemMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { openSessions } from './threads.js'
 import { replaceFile } from './files.js'
@@ -86,8 +86,35 @@ const EMPTY = 'memory/empty'
 const NEWS_TEXT_MAX = 160
 
 
+export const SECTION_CONTEXT = Symbol('Godbot section context')
+
 export function install(rt) {
   const { ctx, config, home, state } = rt
+
+  const sectionOf = id => (state.sections ?? []).find(section => section.id === id)
+  const sectionOfBot = id => sectionOf(rt.botOf(id)?.sectionId)
+  let sectionMemory = () => []
+  // Attach only the current section's context to foreground model requests.
+  // DSH keeps runtime-context messages in the conversation, so a section
+  // snapshot there would keep following a Bot after it moves.
+  ctx.on('llm/stream', (options, next) => {
+    if (options[SECTION_CONTEXT] || options.purpose != null || !rt.isBotSession?.(options.sessionId) || rt.ownRequest?.(options))
+      return next()
+    const bot = rt.botOf(rt.selfOf(options.sessionId))
+    const section = bot && sectionOfBot(bot.id)
+    if (!section) return next()
+    const lines = [`# Your Bot section — ${section.name}`]
+    if (section.description) lines.push('', '## Section description from the user', section.description)
+    const text = [...lines, ...sectionMemory(section, bot)].join('\n')
+    const messages = [...options.messages]
+    const system = messages.findLastIndex(message => message.role === 'system')
+    if (system === -1) messages.unshift(createSystemMessage(text))
+    else {
+      const current = messages[system]
+      messages[system] = { ...current, content: [{ type: 'text', text: [textOf(current.content), text].filter(Boolean).join('\n\n') }] }
+    }
+    return ctx.get('llm').stream({ ...options, messages, [SECTION_CONTEXT]: text })
+  }, { prepend: true })
 
   if (config.memory === false) {
     Object.assign(rt, {
@@ -117,8 +144,13 @@ export function install(rt) {
   const TEAM = { kind: 'team' }
   const ownScope = botId => ({ kind: 'bot', botId })
   const groupScope = roomId => ({ kind: 'group', roomId })
-  const dirOf = scope => (scope.kind === 'team' ? join(root, 'team') : scope.kind === 'group' ? join(root, 'groups', safeId(scope.roomId)) : join(root, 'bots', safeId(scope.botId)))
-  const scopeKey = scope => (scope.kind === 'team' ? 'team' : scope.kind === 'group' ? `group:${scope.roomId}` : `bot:${scope.botId}`)
+  const sectionScope = sectionId => ({ kind: 'section', sectionId })
+  const dirOf = scope => {
+    if (scope.kind === 'team') return join(root, 'team')
+    if (scope.kind === 'section') return join(root, 'sections', safeId(scope.sectionId))
+    return scope.kind === 'group' ? join(root, 'groups', safeId(scope.roomId)) : join(root, 'bots', safeId(scope.botId))
+  }
+  const scopeKey = scope => scope.kind === 'team' ? 'team' : `${scope.kind}:${scope.sectionId ?? scope.roomId ?? scope.botId}`
   // A private Bot's before/after text never goes into the team-wide change log.
   const journalFor = (scope, op) => {
     const botId = scope?.startsWith('bot:') ? scope.slice(4) : undefined
@@ -165,7 +197,10 @@ export function install(rt) {
       return { topic, file, path: join(dir, file), content, ...parseMemory(content) }
     })
   }
-  const mainLimit = scope => state.prefs.memoryLimits?.[scope.kind] ?? MEMORY_LIMITS[scope.kind]
+  const mainLimit = scope => {
+    const kind = scope.kind === 'section' ? 'group' : scope.kind
+    return state.prefs.memoryLimits?.[kind] ?? MEMORY_LIMITS[kind]
+  }
   const fileName = file => (file.topic === undefined ? MAIN : `topic [[${file.topic}]]`)
 
   async function writeText(path, text) {
@@ -387,6 +422,7 @@ export function install(rt) {
     const gone = [scope.kind === 'bot' ? scope.botId : undefined, botActor].some(id => id !== undefined && rt.botOf(id) === undefined)
     if (gone) throw Object.assign(new Error('That Bot has been deleted'), { code: GONE })
     if (scope.kind === 'group' && rt.roomOf(scope.roomId) === undefined) throw Object.assign(new Error('That group chat has been deleted'), { code: GONE })
+    if (scope.kind === 'section' && sectionOf(scope.sectionId) === undefined) throw Object.assign(new Error('That section has been deleted'), { code: GONE })
     const denied = botActor === undefined ? undefined : writeDenied(scope, botActor)
     if (denied !== undefined) throw Object.assign(new Error(denied), { code: DENIED })
   }
@@ -409,6 +445,10 @@ export function install(rt) {
     if (/^(group|this group|群|本群|群聊)$/i.test(value)) {
       return roomId === undefined ? { error: 'There is no group memory here: scope "group" is for the group chat you speak in, from your conversation there.' } : { scope: groupScope(roomId) }
     }
+    if (/^(section|分组|本分组)$/i.test(value)) {
+      const section = sectionOfBot(botId)
+      return section ? { scope: sectionScope(section.id) } : { error: 'This Bot does not belong to a section.' }
+    }
     if (/^(team|团队|共享)$/i.test(value)) return { scope: TEAM }
     const bot = rt.findBot(value)
     if (bot === undefined) return { error: `No Bot named ${value}. scope is "own", ${roomId === undefined ? '' : '"group", '}"team", or a Bot's name.` }
@@ -417,10 +457,11 @@ export function install(rt) {
   function writeDenied(scope, botId) {
     if (scope.kind === 'team') return writesTeam(botId) ? undefined : 'Only Main Bots and group admins write the team memory. Tell a Main Bot with message_bot what the team should know.'
     if (scope.kind === 'group') return rt.roomOf(scope.roomId)?.members.includes(botId) ? undefined : 'Only the members of a group chat write its memory.'
+    if (scope.kind === 'section') return sectionOfBot(botId)?.id === scope.sectionId ? undefined : 'Only the Bots in a section can write its memory.'
     if (scope.botId !== botId && !rt.isMain(botId)) return 'Only a Main Bot can change another Bot\'s memory. Use message_bot to tell that Bot instead.'
     return undefined
   }
-  const labelOf = (scope, botId) => (scope.kind === 'team' ? 'the team memory' : scope.kind === 'group' ? 'the group memory' : scope.botId === botId ? 'your memory' : `${rt.botOf(scope.botId)?.name ?? 'that Bot'}'s memory`)
+  const labelOf = (scope, botId) => (scope.kind === 'section' ? 'the Bot section memory' : scope.kind === 'team' ? 'the team memory' : scope.kind === 'group' ? 'the group memory' : scope.botId === botId ? 'your memory' : `${rt.botOf(scope.botId)?.name ?? 'that Bot'}'s memory`)
 
   // The words an entry may not hold.
   const secretEntry = text => (rt.redactSecrets?.(text) ?? text) !== text || looksSecret(text)
@@ -508,7 +549,7 @@ export function install(rt) {
   /** @type {Map<string, {at:number, op:string, text:string}>} */
   const news = new Map()
   const noteNews = (scope, actor, op, line) => {
-    if (actor.id === 'user') return
+    if (actor.id === 'user' || scope.kind === 'section') return
     const id = scope.kind === 'team' ? actor.id : scope.kind === 'group' ? scope.roomId : scope.botId
     if (rt.botOf(id) === undefined && rt.roomOf(id) === undefined) return
     news.set(id, { at: Date.now(), op, text: splitMeta(String(line ?? '').replace(/^- /, '')).text.slice(0, NEWS_TEXT_MAX) })
@@ -759,9 +800,15 @@ export function install(rt) {
     }
   }
 
-  // A change that was interrupted is finished before memory is read again. Until it
-  // is, the section is not frozen, so the next render reads the finished state; a
-  // record that cannot be read stops the memory, as an unreadable file does.
+  sectionMemory = (section, bot) => {
+    const scope = sectionScope(section.id)
+    const pending = pendingChange()
+    const lines = ['', '## Shared section memory', 'Bots in this section can read and write this memory. Use scope "section" with recall, remember or forget.']
+    if (pending.pending || pending.failed) return lines
+    const saved = sectionRead(join(dirOf(scope), MAIN))
+    return [...lines, ...sectionEntries(saved, sectionTopics(scope).lines, bot)]
+  }
+
   function pendingChange() {
     try {
       return { pending: readPending(root) !== undefined }
@@ -1038,7 +1085,7 @@ export function install(rt) {
     added: today(),
   })
 
-  const SCOPE_WRITE = { type: 'string', description: '"own" for your memory, the default in your own chat; "group" for the memory of the group chat you speak in, the default there; "team" for the memory every Bot reads (Main Bots and group admins only); or a Bot\'s name to change that Bot\'s memory (Main Bots only, when the user asks)' }
+  const SCOPE_WRITE = { type: 'string', description: '"own" for your memory, the default in your own chat; "group" for the current group chat, the default there; "section" for your Bot section; "team" for the memory every Bot reads (Main Bots and group admins only); or a Bot\'s name to change that Bot\'s memory (Main Bots only, when the user asks)' }
   const TOPIC_WHERE = { type: 'string', description: 'The topic the entry is in, if you know it; omit to look in every file' }
 
   // What remember and forget share: the caller, the scope, and the right to write it.
@@ -1104,7 +1151,8 @@ export function install(rt) {
         const result = replace === ''
           ? await addEntry({ ...context, topic: shared, text, meta })
           : await replaceEntry({ ...context, topic, match: replace, text, meta, topicOnly: context.scope.kind === 'team' && args.always !== true })
-        const shows = context.scope.kind === 'group' ? 'The other members see it at their next step in this group' : 'Your other conversations see it at their next step'
+        const shows = context.scope.kind === 'section' ? 'Bots in this section see it on their next request'
+          : context.scope.kind === 'group' ? 'The other members see it at their next step in this group' : 'Your other conversations see it at their next step'
         return result.changed ? `${result.message} ${shows}; recall finds it now.` : result.message
       } catch (failure) {
         throw writeFailure(failure)
@@ -1141,13 +1189,16 @@ export function install(rt) {
     const roomId = rt.roomOf(sessionRoomId)?.members.includes(botId) ? sessionRoomId : undefined
     const { scope, error } = namedScope(raw, botId, roomId)
     if (error) return { error }
-    if (scope === undefined) return { scopes: roomId === undefined ? [ownScope(botId), TEAM] : [ownScope(botId), groupScope(roomId), TEAM] }
+    if (scope === undefined) {
+      const section = sectionOfBot(botId)
+      return { scopes: [ownScope(botId), ...(roomId ? [groupScope(roomId)] : []), ...(section ? [sectionScope(section.id)] : []), TEAM] }
+    }
     if (scope.kind === 'bot' && scope.botId !== botId) {
       if (rt.isPrivate(scope.botId)) return { error: 'That Bot is private. Ask the user to share what you need.' }
     }
     return { scopes: [scope] }
   }
-  const tagOf = (scope, botId) => (scope.kind === 'team' ? 'team' : scope.kind === 'group' ? 'group' : scope.botId === botId ? 'yours' : rt.botOf(scope.botId)?.name ?? '?')
+  const tagOf = (scope, botId) => (scope.kind === 'bot' ? (scope.botId === botId ? 'yours' : rt.botOf(scope.botId)?.name ?? '?') : scope.kind)
 
   rt.teamTools.push(defineTool({
     name: 'recall',
@@ -1155,7 +1206,7 @@ export function install(rt) {
     parameters: {
       query: { type: 'string', description: 'Words to look for, separated by spaces. An entry must have all of them; when none has, those with the most are shown' },
       topic: { type: 'string', description: 'A topic to read whole, as listed with [[topic]]' },
-      scope: { type: 'string', description: 'Omit for yours, the team\'s, and in a group chat the group\'s; "own", "group", "team", or a Bot\'s name to read that Bot\'s memory, unless it is private' },
+      scope: { type: 'string', description: 'Omit to search every scope you belong to; "own", "group", "section", "team", or a Bot\'s name to read that Bot\'s memory, unless it is private' },
     },
     output,
     async execute(args, exec) {
@@ -1167,7 +1218,11 @@ export function install(rt) {
       if (error) return error
       let loaded
       try {
-        loaded = await settled(() => scopes.map(scope => ({ scope, tag: tagOf(scope, self), label: labelOf(scope, self), files: loadScope(scope) })))
+        loaded = await settled(() => scopes.map(scope => {
+          if (scope.kind === 'section' && sectionOfBot(self)?.id !== scope.sectionId)
+            throw new Error('This Bot no longer belongs to that section.')
+          return { scope, tag: tagOf(scope, self), label: labelOf(scope, self), files: loadScope(scope) }
+        }))
       } catch (failure) {
         return failure.message
       }
@@ -1337,6 +1392,11 @@ export function install(rt) {
   // shows by tag, and the keeper, whose model writes the summary and answers. A group
   // left with no Bot has no keeper: its entries still show and can be removed.
   function panelOf(body) {
+    if (body.sectionId != null) {
+      const section = sectionOf(body.sectionId)
+      if (!section) throw new Error('Unknown section')
+      return { id: section.id, name: section.name, section: true, scopes: { section: sectionScope(section.id) } }
+    }
     if (body.roomId !== undefined && body.roomId !== null) {
       const room = rt.roomOf(String(body.roomId))
       if (room === undefined) throw new Error('Unknown group chat')
@@ -1346,8 +1406,13 @@ export function install(rt) {
     if (bot === undefined) throw new Error('Unknown Bot')
     return { id: bot.id, name: bot.name, group: false, keeper: bot, tag: { sessionId: rt.chatOf(bot.id), kind: 'memory' }, scopes: { own: ownScope(bot.id), team: TEAM } }
   }
-  const panelBody = panel => (panel.group ? { roomId: panel.id } : { botId: panel.id })
-  const panelLabel = (panel, scope) => (scope.kind === 'team' ? 'the team memory' : panel.group ? 'the group memory' : `${panel.name}'s memory`)
+  const panelBody = panel => (panel.section ? { sectionId: panel.id } : panel.group ? { roomId: panel.id } : { botId: panel.id })
+  const panelLabel = (panel, scope) => (panel.section ? 'the Bot section memory' : scope.kind === 'team' ? 'the team memory' : panel.group ? 'the group memory' : `${panel.name}'s memory`)
+
+  const panelScope = (panel, tag) => {
+    if (panel.section && tag != null && tag !== 'section') throw new Error('Unknown memory scope')
+    return (Object.hasOwn(panel.scopes, tag) ? panel.scopes[tag] : undefined) ?? panel.scopes[panel.section ? 'section' : panel.group ? 'group' : 'own']
+  }
 
   function startSummary(panel, loaded, language, hash) {
     const { keeper } = panel
@@ -1375,6 +1440,11 @@ export function install(rt) {
     const panel = panelOf(body)
     const loaded = await settled(() => Object.fromEntries(Object.entries(panel.scopes).map(([tag, scope]) => [tag, loadScope(scope)])))
     const entries = Object.entries(loaded).flatMap(([tag, files]) => panelEntries(files, tag))
+    if (panel.section) return {
+      ...panelBody(panel), entries,
+      sizes: { section: bodySize(loaded.section[0]) },
+      limits: { section: mainLimit(panel.scopes.section), entry: MEMORY_LIMITS.entry },
+    }
     const language = languageNow()
     const hash = createHash('sha256').update(JSON.stringify([language, ...Object.values(loaded).map(linesFor)])).digest('hex')
     const saved = savedSummary(panel.id)
@@ -1438,7 +1508,7 @@ export function install(rt) {
   // One entry the user removes from the list.
   async function memoryForget(body) {
     const panel = panelOf(body)
-    const scope = panel.scopes[body.scope] ?? panel.scopes[panel.group ? 'group' : 'own']
+    const scope = panelScope(panel, body.scope)
     const topic = body.topic === null || body.topic === undefined ? undefined : cleanTopic(body.topic)
     await removeEntry({ scope, topic, match: String(body.text ?? ''), actor: USER, label: panelLabel(panel, scope) })
     return await memoryView(panelBody(panel))
@@ -1455,7 +1525,7 @@ export function install(rt) {
   const userTopic = raw => (raw === null || raw === undefined || raw === '' ? undefined : cleanTopic(raw))
   async function memoryEdit(body) {
     const panel = panelOf(body)
-    const scope = panel.scopes[body.scope] ?? panel.scopes[panel.group ? 'group' : 'own']
+    const scope = panelScope(panel, body.scope)
     const text = userEntry(body.next)
     const meta = { source: 'memory panel', by: 'user', added: today() }
     await replaceEntry({ scope, topic: userTopic(body.topic), match: String(body.text ?? ''), text, meta, actor: USER, label: panelLabel(panel, scope) })
@@ -1463,7 +1533,7 @@ export function install(rt) {
   }
   async function memoryAdd(body) {
     const panel = panelOf(body)
-    const scope = panel.scopes[body.scope] ?? panel.scopes[panel.group ? 'group' : 'own']
+    const scope = panelScope(panel, body.scope)
     const text = userEntry(body.text)
     const meta = { source: 'memory panel', by: 'user', added: today() }
     await addEntry({ scope, topic: userTopic(body.topic), text, meta, actor: USER, label: panelLabel(panel, scope) })
@@ -1571,7 +1641,8 @@ export function install(rt) {
   const journalScope = key => (key === 'team' ? TEAM
     : typeof key === 'string' && key.startsWith('bot:') ? ownScope(key.slice(4))
       : typeof key === 'string' && key.startsWith('group:') ? groupScope(key.slice(6))
-        : undefined)
+        : typeof key === 'string' && key.startsWith('section:') ? sectionScope(key.slice(8))
+          : undefined)
 
   // The logs a panel's scopes write to: the shared log, plus a private Bot's own
   // for its `bot:` scope. journalFor decides which, exactly as it does for writes.
@@ -1781,8 +1852,9 @@ export function install(rt) {
 
   async function memoryEndpoint(endpoint, body) {
     if (endpoint === 'memory-view') return memoryView(body)
-    if (endpoint === 'memory-ask') return memoryAsk(body)
     if (endpoint === 'memory-forget') return memoryForget(body)
+    if (body.sectionId != null) throw new Error('This operation is unavailable for section memory')
+    if (endpoint === 'memory-ask') return memoryAsk(body)
     if (endpoint === 'memory-pin') return memoryPin(body)
     if (endpoint === 'memory-tidy-undo') return memoryTidyUndo(body)
     if (endpoint === 'memory-layer') return memoryLayer(body)
@@ -1793,7 +1865,7 @@ export function install(rt) {
   }
 
   Object.assign(rt, {
-    memoryEnabled: true, renewMemory, archiveBotMemory, archiveGroupMemory, memoryEndpoint, memoryEdit, memoryAdd, memoryReviews,
+    memoryEnabled: true, personalMemoryPrompt: sectionFor, renewMemory, archiveBotMemory, archiveGroupMemory, memoryEndpoint, memoryEdit, memoryAdd, memoryReviews,
     memoryNews: () => Object.fromEntries(news), botShot, tidyMemoryNow: tidyNow,
   })
 }

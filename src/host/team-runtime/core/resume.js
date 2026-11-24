@@ -269,7 +269,13 @@ export function install(rt) {
       // A turn already picked up once and cut off again stays stopped: a restart loop
       // must not run it forever.
       if (record.resumed) return
-      await rt.deliver({ toId: bot.id, sessionId: room.sessions?.[bot.id] ?? sessionId, role: 'room', roomId: room.id, note: 'picking up after a restart', resumed: true, text, ...(record.trigger?.askedBy ? { askedBy: record.trigger.askedBy } : {}) })
+      const exchangeId = record.trigger?.exchangeId
+      const failover = exchangeId && rt.failoverHandoff?.(sessionId, exchangeId)
+      await rt.deliver({
+        toId: bot.id, sessionId: room.sessions?.[bot.id] ?? sessionId, role: 'room', roomId: room.id,
+        note: 'picking up after a restart', resumed: true, text,
+        ...(failover ? { exchangeId, initiator: failover.initiator } : {}), ...(record.trigger?.askedBy ? { askedBy: record.trigger.askedBy } : {}),
+      })
       return
     }
     if (record.resumed) return
@@ -277,7 +283,9 @@ export function install(rt) {
     if ((trigger?.role === 'request' || trigger?.role === 'stopped') && trigger.senderSessionId && rt.botOf(trigger.senderSessionId)) {
       const target = await rt.botConversationForPart(bot, sessionId)
       // Keep the conversation, exchange, and audience of the interrupted request.
-      await rt.deliver({ fromId: trigger.senderSessionId, toId: bot.id, sessionId: target, ...(trigger.senderPart ? { fromPart: trigger.senderPart } : {}), role: trigger.role, ...(trigger.exchangeId ? { exchangeId: trigger.exchangeId } : {}), ...(trigger.senderRoomId ? { fromRoomId: trigger.senderRoomId } : {}), ...(trigger.audience === 'user' ? { audience: 'user' } : {}), resumed: true, text })
+      const failover = trigger.exchangeId && rt.failoverHandoff?.(sessionId, trigger.exchangeId)
+      await rt.deliver({ fromId: trigger.senderSessionId, toId: bot.id, sessionId: target,
+        ...(failover ? { initiator: failover.initiator } : {}), ...(trigger.senderPart ? { fromPart: trigger.senderPart } : {}), role: trigger.role, ...(trigger.exchangeId ? { exchangeId: trigger.exchangeId } : {}), ...(trigger.senderRoomId ? { fromRoomId: trigger.senderRoomId } : {}), ...(trigger.audience === 'user' ? { audience: 'user' } : {}), resumed: true, text })
       return
     }
     const ownPart = rt.selfOf(sessionId) === bot.id && rt.isBotSession(sessionId) ? { sessionId } : {}
@@ -347,6 +355,13 @@ export function install(rt) {
   async function reconcileEnded(sessionId, record, ended) {
     const trigger = record.trigger
     if (trigger === undefined) return
+    if (trigger.exchangeId && rt.failoverHandoff?.(sessionId, trigger.exchangeId)) {
+      const events = await logOf(sessionId)
+      const turn = events && turnOf(events, trigger.exchangeId)
+      if (turn?.reason && !['blocked', 'interrupted'].includes(turn.reason.kind))
+        rt.reconcileFailover?.(sessionId, trigger.exchangeId, turn.reason, turn.texts.join('\n\n'))
+      return
+    }
     const workId = rt.workOf(trigger)
     if (!rt.ownsWork(record.botId, workId)) return
     const exchangeId = trigger.exchangeId
@@ -491,6 +506,7 @@ export function install(rt) {
     }
     // What a group's members were asked for and will not pick up is settled now.
     await rt.settleRoomBatches?.()
+    rt.failoverAtStartup?.()
   }
 
   ctx.effect(() => {
@@ -498,7 +514,7 @@ export function install(rt) {
     // With nothing to pick up, the group batches a restart left are settled at once.
     const timer = pending
       ? setTimeout(() => void resumeAll().catch(error => rt.warn('godbot: picking up interrupted work failed: %s', error)), RESUME_DELAY_MS)
-      : setTimeout(() => void rt.load().then(() => rt.settleRoomBatches?.()).catch(error => rt.warn('godbot: settling group batches failed: %s', error)), 0)
+      : setTimeout(() => void rt.load().then(() => { rt.failoverAtStartup?.(); return rt.settleRoomBatches?.() }).catch(error => rt.warn('godbot: settling group batches failed: %s', error)), 0)
     timer?.unref?.()
     // What the turns stopped by this shutdown left stays as last noted.
     return () => {

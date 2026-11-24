@@ -404,9 +404,10 @@ export function install(rt) {
     await rt.load()
     const sessionId = rt.chatOf(botId)
     if (sessionId === undefined) return false
+    const handoffStopped = await rt.cancelFailover?.(botId, sessionId)
     const turnRunning = live.get(sessionId)?.turn !== undefined
     const subRunning = hasSubagents?.(sessionId) === true
-    if (!turnRunning && !subRunning) return false
+    if (!turnRunning && !subRunning) return handoffStopped === true
     await stopSubagents(sessionId)
     if (turnRunning) {
       const agent = await rt.resolveAgent(sessionId).catch(() => undefined)
@@ -893,6 +894,7 @@ export function install(rt) {
   // The repair card's Retry. A greeting that failed goes out again; otherwise the Bot
   // goes on with the user's last message, unless the host went on after the fix.
   async function resumeBot(bot) {
+    if (rt.handoffActive?.(rt.chatOf(bot.id))) throw new Error('A backup Bot is still handling this task.')
     if (await rt.releaseKickoff(bot)) return
     if (wentOn.has(bot.id)) return
     await goOn(bot, bot.blocked?.code)
@@ -1283,7 +1285,10 @@ export function install(rt) {
         entry.usage = undefined
         const later = entry.later ?? []
         entry.later = []
-        if (steerCut || suppressedSubagent) break
+        if (steerCut || suppressedSubagent) {
+          rt.finishFailoverTurn?.(id, { reason: event.data?.reason, switched: true })
+          break
+        }
         for (const result of later) {
           const targetSessionId = laterTarget(id)
           if (targetSessionId === undefined && (rt.groupOwners.has(id) || rt.pastOwners?.has(id))) continue
@@ -1312,7 +1317,10 @@ export function install(rt) {
           if (ref !== undefined) void rt.routeRefused(ref, rt.botOf(rt.selfOf(id))).catch(error => rt.warn('godbot: %s still failing: %s', ref, error))
         }
         const held = rt.groupOwners.has(id) ? rt.takeRoomSteps?.(id) ?? '' : ''
-        if (switched) break
+        if (switched) {
+          rt.finishFailoverTurn?.(id, { reason, switched })
+          break
+        }
         const owner = rt.chatOwners.get(id)
         // A turn cut off at the output limit is not a finish: whoever reads its answer
         // is told, and the diagnostics record it. Nothing written at all, twice in a
@@ -1328,11 +1336,14 @@ export function install(rt) {
         if (cutOff) noteCutOffTurn(id, { session, wroteNothing, ...(premature ? { outputTokens } : {}) })
         // A turn the user opened in the Bot's own chat, or a go-on that answers the user.
         const answering = owner !== undefined && (info === undefined || info.role === 'continue')
+        const handedOff = rt.finishFailoverTurn?.(id, {
+          failure, reason, toolCount, wroteText, info, joined, switched, text: texts.join('\n\n').trim(),
+        }) === true
         if (answering) goingOn.delete(owner)
         if (failure !== undefined) {
           wentOn.delete(rt.selfOf(id))
           if (watched) rememberFailure(id, turn, failure, session)
-          if (blockBot(id, session, failure, answering) && owner !== undefined && info?.role === 'kickoff') rt.holdKickoffAgain(owner)
+          if (blockBot(id, session, failure, answering && !handedOff) && owner !== undefined && info?.role === 'kickoff') rt.holdKickoffAgain(owner)
         } else if (reason?.kind === 'completed') {
           forgetFailure(id)
           unblockBot(rt.selfOf(id))
@@ -1416,7 +1427,7 @@ export function install(rt) {
           const inRound = failure !== undefined && info === undefined && rt.failRoomTurn?.(id, failure) === true
           if (failure !== undefined) { if (!inRound) void rt.lateRoomFailure?.(id, info ?? {}, failure) }
           else if (reason?.kind !== 'aborted') void rt.lateRoomReply?.(id, info ?? {}, groupReply(), { shown, toolCount })
-        } else if (!retry && info !== undefined) {
+        } else if (!retry && !handedOff && info !== undefined) {
           finish(info, replyText())
         }
         for (const request of joined) {

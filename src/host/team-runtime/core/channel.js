@@ -91,7 +91,7 @@ export function install(rt) {
     // `sessionId` is the Bot's current own-chat part; `parts` its earlier ones.
     // `waiting`: the Bot holds its greeting until the user picks its model or fixes
     // what failed it. `blocked`: the facts of a failure only the user can fix (turns.js).
-    bots: Object.values(state.bots).map(({ segments, kickoff, openParts, ...bot }) => {
+    bots: Object.values(state.bots).map(({ segments, kickoff, openParts, failoverHistory, ...bot }) => {
       const tail = rt.chatTail(rt.chatOf(bot.id))
       // `openParts` are the parts opened while the Bot was busy: live, with their own
       // earlier parts, and each one's run state read from the live turns.
@@ -106,6 +106,9 @@ export function install(rt) {
         // `engine` is the Bot's local-agent route, present only on abots.
         ...(rt.localAgentBadge?.(bot.model ?? bot.appliedModel) !== undefined ? { engine: rt.localAgentBadge(bot.model ?? bot.appliedModel) } : {}),
         ...(tail ? { lastAt: tail.lastAt, preview: tail.preview } : {}),
+        ...(failoverHistory?.length ? { failoverHistory: failoverHistory.slice(0, 12).map(({ id, kind, sessionId, from, status, target, targetBotId, targetSessionId, roomId, trigger, at }) => ({
+          id, kind, sessionId, from, status, target, targetBotId, targetSessionId, roomId, trigger, at,
+        })) } : {}),
       }
     }),
     // `sessionId` is the group's own Session's current part, `ownParts` its earlier

@@ -19,6 +19,7 @@ import { acpToolExitCode, acpToolStatus } from '../../drivers/external/tool-resu
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { LoopbackMcp } from '../../team/mcp.js'
 import { serviceOf } from './core/services.js'
+import { FAILOVER_NATIVE } from './core/failover.js'
 import { splitRef } from './core/text.js'
 import { output } from './core/tools.js'
 import { LocalAgentAdapter, DEFAULT_CONTEXT_WINDOW, nativeInputModalities } from './core/local-agents/adapter.js'
@@ -363,6 +364,35 @@ export class WorkspaceCodexEngine extends CodexEngine {
 export class WorkspaceAgentAdapter extends LocalAgentAdapter {
   slashInputs = new WeakMap()
   terminalLeases = new TerminalLeases()
+  fallbackAdapters = new Map()
+
+  fallbackAgent(key, ref) {
+    let routes = this.fallbackAdapters.get(key)
+    if (!routes) this.fallbackAdapters.set(key, routes = new Map())
+    let adapter = routes.get(ref)
+    if (!adapter) {
+      const records = new Map()
+      adapter = new WorkspaceAgentAdapter({
+        ...this.deps,
+        record: id => records.get(id),
+        saveRecord: (id, record) => records.set(id, record),
+        patchRecord: (id, patch) => {
+          const record = records.get(id)
+          if (record) Object.assign(record, patch)
+        },
+        onBackground: () => false,
+      })
+      routes.set(ref, adapter)
+    }
+    return adapter
+  }
+
+  async closeFallbackAgents(key) {
+    const routes = this.fallbackAdapters.get(key)
+    if (!routes) return
+    this.fallbackAdapters.delete(key)
+    await Promise.all([...routes.values()].map(adapter => adapter.dispose()))
+  }
 
   async ensureMcp(live, toolsForStep) {
     const admitted = toolsForStep()
@@ -413,7 +443,9 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
         throw new Error('当前 Bot 已绑定沙箱账号，无法从本机打开此会话。')
     }
     const release = this.terminalLeases.enter(String(options.sessionId))
-    try { yield* this.streamChat(options) } finally { release() }
+    const fallback = options[FAILOVER_NATIVE]
+    const adapter = fallback ? this.fallbackAgent(fallback, `${options.provider}/${options.model}`) : this
+    try { yield* adapter.streamChat(options) } finally { release() }
   }
   async *drain(live, options) {
     const rt = this.deps.rt
@@ -446,7 +478,9 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     try { return await super.maintain(id, signal, work) } finally { release() }
   }
   async dispose() {
-    await Promise.all([this.terminalLeases.dispose(), super.dispose()])
+    await Promise.all([this.terminalLeases.dispose(), super.dispose(),
+      ...[...this.fallbackAdapters.keys()].map(key => this.closeFallbackAgents(key)),
+    ])
   }
   async readCodexExecutionHistory(binding) {
     if (this.disposed || binding?.route !== 'local-codex-cli' || !binding.cliSessionId || !binding.cwd) return []
@@ -751,6 +785,23 @@ export function install(rt) {
   })
 
   adapter.sandboxes = sandboxes
+  rt.closeFailoverAgent = async (turn, backup) => {
+    let deadline
+    try {
+      const close = backup ? adapter.closeFallbackAgents(turn.nativeKey) : adapter.closeSession(turn.id, 'Agent failover')
+      return await Promise.race([
+        close.then(() => true, () => false),
+        new Promise(resolve => { deadline = setTimeout(() => resolve(false), 1500) }),
+      ])
+    } finally { clearTimeout(deadline) }
+  }
+  rt.disposeFailoverAgent = turn => adapter.closeFallbackAgents(turn.nativeKey).catch(() => {})
+  rt.refreshPrimaryAfterFailover = (id, provider) => {
+    const record = store().sessions[id]
+    if (record?.route !== provider) return
+    delete record.handedId
+    void rt.save().catch(() => {})
+  }
   // A native terminal someone has taken over dies with the plugin: an automatic
   // update waits until every one has been handed back.
   rt.addUpdateBlocker?.(() => {
@@ -790,7 +841,7 @@ export function install(rt) {
   }, { prepend: true })
   const llm = () => serviceOf(ctx, 'llm')
   const supported = () => typeof llm()?.registerAdapter === 'function'
-  const usedRefs = () => [...new Set(Object.values(state.bots ?? {}).flatMap(bot => [bot.model, bot.appliedModel]).filter(Boolean))]
+  const usedRefs = () => [...new Set(Object.values(state.bots ?? {}).flatMap(bot => [bot.model, bot.appliedModel, ...(bot.failover?.agents ?? [])]).filter(Boolean))]
   // A route a Bot runs on stays registered when its CLI goes away: the turn then fails
   // with the repair card, and nothing moves the Bot to another run mode by itself.
   const servedRoutes = () => [...new Set([...found.keys(), ...customRouteId(), ...sandboxes.routes().map(row => row.route), ...sandboxes.pendingRoutes, ...usedRefs().map(ref => splitRef(ref)?.provider).filter(isLocalAgentRoute)])]

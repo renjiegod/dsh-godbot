@@ -5,7 +5,7 @@
 import { copyFileSync, mkdirSync, readFileSync, statSync } from 'node:fs'
 import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { LEGACY_THEMES, MAX_EXCHANGES, ROOM_MODES, SECTION_COLORS, SECTION_NAME_MAX, TEXT_KEPT } from './constants.js'
+import { LEGACY_THEMES, MAX_EXCHANGES, ROOM_MODES, SECTION_COLORS, SECTION_DESCRIPTION_MAX, SECTION_NAME_MAX, TEXT_KEPT } from './constants.js'
 import { replaceFile } from './files.js'
 import { homeLock } from './home-lock.js'
 import { currentColor, headOf, normalize, unquote } from './text.js'
@@ -185,6 +185,8 @@ export function install(rt) {
         .map(sec => ({
           id: sec.id,
           name: sec.name.trim().slice(0, SECTION_NAME_MAX),
+          ...(typeof sec.description === 'string' && sec.description.trim()
+            ? { description: sec.description.trim().slice(0, SECTION_DESCRIPTION_MAX) } : {}),
           ...(sec.collapsed === true ? { collapsed: true } : {}),
           ...(SECTION_COLORS.includes(sec.color) ? { color: sec.color } : {}),
         }))
