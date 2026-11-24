@@ -15582,8 +15582,52 @@ function otherWorkers(entries2, botId) {
   return (Array.isArray(entries2) ? entries2 : []).filter((entry) => typeof entry?.botId === "string" && entry.botId !== botId && workAt(entry).sessionId !== void 0).map((entry) => ({ botId: entry.botId, ...workAt(entry) }));
 }
 
+// src/client/team-ui/group-rows.js
+function batchedGroupRows(call3, schedule = (fn2) => setTimeout(fn2, 0)) {
+  const pending = /* @__PURE__ */ new Map();
+  let many = true;
+  const single = (roomId, range) => call3("group-rows", { roomId, ...range }).catch(() => null);
+  const flush = async (roomId) => {
+    const batch = pending.get(roomId);
+    pending.delete(roomId);
+    const ranges = [...batch.values()];
+    const settle = (entry, view) => {
+      for (const resolve2 of entry.waiting) resolve2(view);
+    };
+    if (!many || ranges.length === 1) {
+      for (const entry of ranges) void single(roomId, entry.range).then((view) => settle(entry, view));
+      return;
+    }
+    try {
+      const views = await call3("group-rows-many", { roomId, ranges: ranges.map((entry) => entry.range) });
+      ranges.forEach((entry, index) => settle(entry, Array.isArray(views) ? views[index] ?? null : null));
+    } catch (error) {
+      if (error?.code !== "bot/not-found") {
+        for (const entry of ranges) settle(entry, null);
+        return;
+      }
+      many = false;
+      for (const entry of ranges) void single(roomId, entry.range).then((view) => settle(entry, view));
+    }
+  };
+  return (roomId, from, to, anchor) => new Promise((resolve2) => {
+    const range = { from, ...to === void 0 ? {} : { to }, ...anchor === void 0 ? {} : { anchor } };
+    const key = JSON.stringify([range.from, range.to ?? null, range.anchor ?? null]);
+    let batch = pending.get(roomId);
+    if (batch === void 0) {
+      pending.set(roomId, batch = /* @__PURE__ */ new Map());
+      schedule(() => {
+        void flush(roomId);
+      });
+    }
+    if (!batch.has(key)) batch.set(key, { range, waiting: [] });
+    batch.get(key).waiting.push(resolve2);
+  });
+}
+
 // src/client/team-ui/team-actions.js
 function teamActions({ call: call3, after, partFor, roster, ui: ui3, live, cards, heldCards, turnClock, panelFolded }) {
+  const groupRows = batchedGroupRows(call3);
   const memoryOf = (id) => roster.getSnapshot().roomsById[id] ? { roomId: id } : { botId: id };
   let pastes = 0;
   const pasteState = (state, sessionId, blocks) => ({ ...state, paste: { ...state.paste, [sessionId]: blocks } });
@@ -15862,7 +15906,7 @@ function teamActions({ call: call3, after, partFor, roster, ui: ui3, live, cards
     exchangeText: (id, a, b2) => call3("exchange-text", { id, ...a !== void 0 && b2 !== void 0 ? { a, b: b2 } : {} }).catch(() => void 0),
     fileText: (file) => call3("file-text", { file }).catch(() => void 0),
     roomProgress: (roomId) => call3("room-progress", { roomId }).catch(() => []),
-    groupRows: (roomId, from, to, anchor) => call3("group-rows", { roomId, from, ...to === void 0 ? {} : { to }, ...anchor === void 0 ? {} : { anchor } }).catch(() => null),
+    groupRows,
     earlier: (sessionId, cursor) => call3("earlier", { sessionId, cursor: cursor ?? null }),
     // Hours come back in this browser's time zone, so days start at local midnight.
     usage: () => call3("usage", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
@@ -61796,6 +61840,71 @@ function observeToolGroups(element, turn, publish) {
   return layout.add(element, turn, publish);
 }
 
+// src/client/execution-tools.js
+var emptyTools = [];
+var emptyToolStore = { read: () => emptyTools, subscribe: () => () => {
+} };
+var toolStores = /* @__PURE__ */ new WeakMap();
+var SETTLED_TOOL_TURNS = 300;
+function toolPollDelay(quiet, hidden = typeof document !== "undefined" && document.hidden) {
+  if (hidden) return 5e3;
+  return 700 * 2 ** Math.min(Math.max(quiet, 0), 2);
+}
+function executionTools(client, botId, sessionId, turn) {
+  const key = JSON.stringify([botId, sessionId, turn]);
+  let turns = toolStores.get(client);
+  if (!turns) toolStores.set(client, turns = /* @__PURE__ */ new Map());
+  if (turns.has(key)) return turns.get(key);
+  let events = emptyTools, timer, loading = false, failures = 0, settled = false, seen, quiet = 0;
+  const listeners3 = /* @__PURE__ */ new Set();
+  const load = async () => {
+    if (loading) return;
+    loading = true;
+    try {
+      const data = await client.dispatch({ action: "execution.history", botId, sessionId, turn, onlyTools: true });
+      failures = 0;
+      const next = data.events ?? emptyTools;
+      settled = data.running !== true && next.length > 0;
+      const key2 = JSON.stringify(next);
+      if (key2 !== seen) {
+        seen = key2;
+        quiet = 0;
+        events = next;
+        for (const notify of listeners3) notify();
+      } else quiet += 1;
+      if (data.running && listeners3.size) timer = setTimeout(load, toolPollDelay(quiet));
+    } catch {
+      if (++failures < 3 && listeners3.size) timer = setTimeout(load, 1400);
+    } finally {
+      loading = false;
+    }
+  };
+  const view = {
+    read: () => events,
+    subscribe(notify) {
+      listeners3.add(notify);
+      turns.set(key, view);
+      if (listeners3.size === 1 && !settled) void load();
+      return () => {
+        listeners3.delete(notify);
+        if (listeners3.size) return;
+        clearTimeout(timer);
+        if (turns.get(key) !== view) return;
+        turns.delete(key);
+        if (!settled) return;
+        turns.set(key, view);
+        for (const [other, entry] of turns) {
+          if (turns.size <= SETTLED_TOOL_TURNS) break;
+          if (entry.idle()) turns.delete(other);
+        }
+      };
+    },
+    idle: () => listeners3.size === 0
+  };
+  turns.set(key, view);
+  return view;
+}
+
 // src/client/execution-segments.js
 function processSegments(events) {
   const segments = [];
@@ -61870,7 +61979,7 @@ function useExecution(client, botId, sessionId, { turn, toolId, expanded = true,
       setLoading(false);
       return;
     }
-    let disposed = false, timer;
+    let disposed = false, timer, seen, quiet = 0;
     setLoading(true);
     const request = {
       action: "execution.history",
@@ -61883,11 +61992,17 @@ function useExecution(client, botId, sessionId, { turn, toolId, expanded = true,
       try {
         const data = await client.dispatch(request);
         if (disposed) return;
-        setSnapshot({ data });
+        const key = JSON.stringify(data);
+        if (key !== seen) {
+          seen = key;
+          quiet = 0;
+          setSnapshot({ data });
+        } else quiet += 1;
         const inProgress = toolId == null ? data.running || data.turns?.some((item) => item.running) : data.events?.some((item) => item.status === "running" || item.status === "pending");
-        if (running || live && inProgress) timer = setTimeout(load, 700);
+        if (running || live && inProgress) timer = setTimeout(load, toolPollDelay(quiet));
       } catch {
         if (disposed) return;
+        seen = void 0;
         setSnapshot({ error: true });
         if (running) timer = setTimeout(load, 1400);
       } finally {
@@ -61902,51 +62017,9 @@ function useExecution(client, botId, sessionId, { turn, toolId, expanded = true,
   }, [client, botId, sessionId, turn, toolId, expanded, running, live, refresh]);
   return { ...snapshot, loading, reload: () => setRefresh((count) => count + 1) };
 }
-var emptyTools = [];
-var emptyToolStore = { read: () => emptyTools, subscribe: () => () => {
-} };
-var toolStores = /* @__PURE__ */ new WeakMap();
 function useExecutionTools(client, botId, sessionId, turn, enabled) {
   const key = JSON.stringify([botId, sessionId, turn]);
-  const store = (0, import_react95.useMemo)(() => {
-    if (!enabled) return emptyToolStore;
-    let turns = toolStores.get(client);
-    if (!turns) toolStores.set(client, turns = /* @__PURE__ */ new Map());
-    if (turns.has(key)) return turns.get(key);
-    let events = emptyTools, timer, loading = false, failures = 0;
-    const listeners3 = /* @__PURE__ */ new Set();
-    const load = async () => {
-      if (loading) return;
-      loading = true;
-      try {
-        const data = await client.dispatch({ action: "execution.history", botId, sessionId, turn, onlyTools: true });
-        failures = 0;
-        events = data.events ?? emptyTools;
-        for (const notify of listeners3) notify();
-        if (data.running && listeners3.size) timer = setTimeout(load, 700);
-      } catch {
-        if (++failures < 3 && listeners3.size) timer = setTimeout(load, 1400);
-      } finally {
-        loading = false;
-      }
-    };
-    const view = {
-      read: () => events,
-      subscribe(notify) {
-        listeners3.add(notify);
-        turns.set(key, view);
-        if (listeners3.size === 1) void load();
-        return () => {
-          listeners3.delete(notify);
-          if (listeners3.size) return;
-          clearTimeout(timer);
-          if (turns.get(key) === view) turns.delete(key);
-        };
-      }
-    };
-    turns.set(key, view);
-    return view;
-  }, [client, key, enabled]);
+  const store = (0, import_react95.useMemo)(() => enabled ? executionTools(client, botId, sessionId, turn) : emptyToolStore, [client, key, enabled]);
   return (0, import_react95.useSyncExternalStore)(store.subscribe, store.read);
 }
 function press(text, onClick, props) {
@@ -69367,19 +69440,28 @@ function useNativeTerminalActive(client, target, running) {
   const [activePart, setActivePart] = (0, import_react119.useState)();
   (0, import_react119.useEffect)(() => {
     if (!botId || !sessionId) return;
-    let timer, mounted = true;
+    let timer, mounted = true, busy = false;
     async function update() {
+      if (busy) return;
+      busy = true;
+      clearTimeout(timer);
       try {
         const value = await client.terminalStatus({ botId, sessionId });
         if (mounted) setActivePart(value.active ? sessionId : void 0);
       } catch {
       }
-      if (mounted) timer = setTimeout(update, running ? 1e3 : 4e3);
+      busy = false;
+      if (mounted) timer = setTimeout(update, document.hidden ? 1e4 : running ? 2e3 : 4e3);
     }
+    const wake = () => {
+      if (!document.hidden) void update();
+    };
+    document.addEventListener("visibilitychange", wake);
     void update();
     return () => {
       mounted = false;
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", wake);
     };
   }, [client, botId, sessionId, running]);
   return target != null && activePart === sessionId;

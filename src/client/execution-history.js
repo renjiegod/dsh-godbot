@@ -4,6 +4,7 @@ import { Icon } from './chat-ui.js'
 import { ChevronDownIcon, ChevronRightIcon } from './team-ui/icons.js'
 import { t } from './team-ui/i18n.js'
 import { observeToolGroups } from './tool-call-groups.js'
+import { emptyToolStore, executionTools, toolPollDelay } from './execution-tools.js'
 import { processSegments, runningCalls } from './execution-segments.js'
 import { skillNameFromPath, toolKind } from '../host/team-runtime/shared/tool-kind.js'
 import { ProcessIcon, processLabel } from './team-ui/process-activity.js'
@@ -67,7 +68,7 @@ function useExecution(client, botId, sessionId, { turn, toolId, expanded = true,
       setLoading(false)
       return
     }
-    let disposed = false, timer
+    let disposed = false, timer, seen, quiet = 0
     setLoading(true)
     const request = { action: 'execution.history', botId, sessionId,
       ...(turn != null ? { turn } : {}), ...(toolId != null ? { toolId } : {}) }
@@ -75,13 +76,20 @@ function useExecution(client, botId, sessionId, { turn, toolId, expanded = true,
       try {
         const data = await client.dispatch(request)
         if (disposed) return
-        setSnapshot({ data })
+        // The same answer again draws nothing new.
+        const key = JSON.stringify(data)
+        if (key !== seen) {
+          seen = key
+          quiet = 0
+          setSnapshot({ data })
+        } else quiet += 1
         const inProgress = toolId == null
           ? data.running || data.turns?.some(item => item.running)
           : data.events?.some(item => item.status === 'running' || item.status === 'pending')
-        if (running || live && inProgress) timer = setTimeout(load, 700)
+        if (running || live && inProgress) timer = setTimeout(load, toolPollDelay(quiet))
       } catch {
         if (disposed) return
+        seen = undefined
         setSnapshot({ error: true })
         if (running) timer = setTimeout(load, 1400)
       } finally {
@@ -94,53 +102,10 @@ function useExecution(client, botId, sessionId, { turn, toolId, expanded = true,
   return { ...snapshot, loading, reload: () => setRefresh(count => count + 1) }
 }
 
-// A turn can render tools in several assistant and host-tool cells. Share the
-// lightweight status poll across all of them and load full receipts on demand.
-const emptyTools = []
-const emptyToolStore = { read: () => emptyTools, subscribe: () => () => {} }
-const toolStores = new WeakMap()
-
+// A turn can render tools in several assistant and host-tool cells; they share one store.
 export function useExecutionTools(client, botId, sessionId, turn, enabled) {
   const key = JSON.stringify([botId, sessionId, turn])
-  const store = useMemo(() => {
-    if (!enabled) return emptyToolStore
-    let turns = toolStores.get(client)
-    if (!turns) toolStores.set(client, turns = new Map())
-    if (turns.has(key)) return turns.get(key)
-    let events = emptyTools, timer, loading = false, failures = 0
-    const listeners = new Set()
-    const load = async () => {
-      if (loading) return
-      loading = true
-      try {
-        const data = await client.dispatch({ action: 'execution.history', botId, sessionId, turn, onlyTools: true })
-        failures = 0
-        events = data.events ?? emptyTools
-        for (const notify of listeners) notify()
-        if (data.running && listeners.size) timer = setTimeout(load, 700)
-      } catch {
-        if (++failures < 3 && listeners.size) timer = setTimeout(load, 1400)
-      } finally {
-        loading = false
-      }
-    }
-    const view = {
-      read: () => events,
-      subscribe(notify) {
-        listeners.add(notify)
-        turns.set(key, view)
-        if (listeners.size === 1) void load()
-        return () => {
-          listeners.delete(notify)
-          if (listeners.size) return
-          clearTimeout(timer)
-          if (turns.get(key) === view) turns.delete(key)
-        }
-      },
-    }
-    turns.set(key, view)
-    return view
-  }, [client, key, enabled])
+  const store = useMemo(() => (enabled ? executionTools(client, botId, sessionId, turn) : emptyToolStore), [client, key, enabled])
   return useSyncExternalStore(store.subscribe, store.read)
 }
 

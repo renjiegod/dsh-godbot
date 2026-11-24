@@ -142,6 +142,12 @@ export default async function E9({ makeHost, candidate, note }) {
   }, 'image delivered to a vision-capable group member with a text-only team default')
   assert.equal(imageRow.botId, worker.id)
   note('room-image', { roomId: room.id, responder: worker.id, teamDefault })
+  // A group chat opened for the first time reads every call's rows in one request.
+  const ranges = [{ from: 0, to: 2_000_000_000 }, { from: 0, to: 0 }, { from: 'x' }]
+  const many = await host.bot('group-rows-many', { roomId: room.id, ranges })
+  assert.deepEqual(many, await Promise.all(ranges.map(range => host.bot('group-rows', { roomId: room.id, ...range }))))
+  assert.ok(many[0].rows.some(row => row.text === imageReply))
+  assert.deepEqual(many[2], { rows: [], open: false, speaking: [] })
 
   await host.page.getByRole('button', { name: '工作台收件箱' }).click()
   await dialog.getByText('群聊自动分派', { exact: true }).click()

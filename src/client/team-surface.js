@@ -228,16 +228,23 @@ function useNativeTerminalActive(client, target, running) {
   const [activePart, setActivePart] = useState()
   useEffect(() => {
     if (!botId || !sessionId) return
-    let timer, mounted = true
+    let timer, mounted = true, busy = false
     async function update() {
+      if (busy) return
+      busy = true
+      clearTimeout(timer)
       try {
         const value = await client.terminalStatus({ botId, sessionId })
         if (mounted) setActivePart(value.active ? sessionId : undefined)
       } catch { /* The opener can show a connection error on demand. */ }
-      if (mounted) timer = setTimeout(update, running ? 1000 : 4000)
+      busy = false
+      // A window in the background reads rarely and catches up when it comes back.
+      if (mounted) timer = setTimeout(update, document.hidden ? 10_000 : running ? 2000 : 4000)
     }
+    const wake = () => { if (!document.hidden) void update() }
+    document.addEventListener('visibilitychange', wake)
     void update()
-    return () => { mounted = false; clearTimeout(timer) }
+    return () => { mounted = false; clearTimeout(timer); document.removeEventListener('visibilitychange', wake) }
   }, [client, botId, sessionId, running])
   return target != null && activePart === sessionId
 }

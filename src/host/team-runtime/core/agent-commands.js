@@ -48,41 +48,99 @@ export function install(rt) {
   // Our own registrations notify `commands/change` too; skip the echo while applying.
   let applying = false
 
+  // Every register and every lift notifies `commands/change`, which every open window
+  // answers by asking for the command list again. Lifting and re-registering each shadow
+  // on every state save sent hundreds of those per save, so a sync only touches the names
+  // whose shadow is missing or differs from what the registry shows now.
+  const sameInput = (a, b) => (a?.hint ?? null) === (b?.hint ?? null) && (a?.attachments === true) === (b?.attachments === true)
+  // Whether `listed`, from the merged view, is the shadow this shield holds for its name.
+  const ours = (held, listed) => held !== undefined && listed.description === held.description
+    && listed.definitionId === held.definitionId && sameInput(listed.input, held.input)
+  const lift = (held) => { try { held.lift() } catch { /* already lifted */ } }
+  const liftAll = (shield) => {
+    for (const held of shield.shadows.values()) lift(held)
+    shield.shadows.clear()
+  }
+
   const sync = (shield) => {
     const commands = shield.commands
     if (commands === undefined) return
-    for (const lift of shield.lifts) { try { lift() } catch { /* already lifted */ } }
-    shield.lifts = []
     // The agent can arrive before its Bot or group is in the state (a Bot created a
     // moment ago); the shield mounts for every agent and waits for that Session to
     // become known, then registers its shadows on the next sync.
-    if (!covered(shield.sessionId)) return
-    // Lift first: `list(agent)` is the merged view, so only after our shadows are gone
-    // does it answer what the host currently serves this agent.
-    const definitions = commands.list(shield.agent)
-    for (const definition of definitions) {
-      try {
-        // Keep the host descriptor's identity and input hint: the client uses them to
-        // claim a typed line with arguments and to keep the row's first-party face.
-        // Dropping them would leave `/name args` as a plain prompt.
-        const lift = commands.register({
-          name: definition.name,
-          description: rowCopy(shield.sessionId),
-          ...(definition.definitionId === undefined ? {} : { definitionId: definition.definitionId }),
-          ...(definition.input === undefined ? {} : { input: definition.input }),
-          handler: () => ({ kind: 'error', text: refusal(shield.sessionId, definition.name) }),
-        })
-        if (typeof lift === 'function') shield.lifts.push(lift)
-      } catch (error) {
-        // A same-name command already in this exact agent scope keeps its own handler.
-        rt.warn?.('godbot: the DSH /%s command could not be shadowed for %s: %s', definition.name, shield.sessionId, error?.message ?? error)
+    if (!covered(shield.sessionId)) {
+      liftAll(shield)
+      return
+    }
+    const description = rowCopy(shield.sessionId)
+    const listed = new Set()
+    // `list(agent)` is the merged view: a name this shield already shadows shows the
+    // shadow, so the command under it reads as unchanged. A name it does not shadow yet,
+    // or one whose row now reads differently (a chat that became a group's), is the
+    // host's own and gets a shadow. A command the host withdraws later keeps its
+    // refusing row in these chats until the agent and its shield go away.
+    for (const definition of commands.list(shield.agent)) {
+      listed.add(definition.name)
+      const held = shield.shadows.get(definition.name)
+      if (ours(held, definition)) {
+        if (held.description === description) continue
+        // Same command, new row copy: the shadow already carries the host's identity
+        // and input hint, so it is registered again from itself.
+        lift(held)
+        shield.shadows.delete(definition.name)
+        shadow(shield, held, description)
+        continue
       }
+      // Something replaced the shadow (or took it away); start over from what shows now.
+      if (held !== undefined) {
+        lift(held)
+        shield.shadows.delete(definition.name)
+      }
+      const refused = shield.refused.get(definition.name)
+      if (refused !== undefined && ours(refused, definition)) continue
+      shadow(shield, definition, description)
+    }
+    for (const [name, held] of shield.shadows) {
+      if (listed.has(name)) continue
+      lift(held)
+      shield.shadows.delete(name)
     }
   }
+  const shadow = (shield, definition, description) => {
+    // Keep the host descriptor's identity and input hint: the client uses them to
+    // claim a typed line with arguments and to keep the row's first-party face.
+    // Dropping them would leave `/name args` as a plain prompt.
+    const entry = {
+      name: definition.name,
+      description,
+      ...(definition.definitionId === undefined ? {} : { definitionId: definition.definitionId }),
+      ...(definition.input === undefined ? {} : { input: definition.input }),
+    }
+    try {
+      const off = shield.commands.register({
+        ...entry,
+        handler: () => ({ kind: 'error', text: refusal(shield.sessionId, definition.name) }),
+      })
+      shield.refused.delete(definition.name)
+      if (typeof off === 'function') shield.shadows.set(definition.name, { ...entry, lift: off })
+    } catch (error) {
+      // A same-name command already in this exact agent scope keeps its own handler.
+      // It is noted once: the next sync leaves it alone until it changes.
+      shield.refused.set(definition.name, { description: definition.description, definitionId: definition.definitionId, input: definition.input })
+      rt.warn?.('godbot: the DSH /%s command could not be shadowed for %s: %s', definition.name, shield.sessionId, error?.message ?? error)
+    }
+  }
+  // Echoes of our own changes and bursts of outside ones (a plugin registering many
+  // commands) settle into one pass on the next tick.
+  let queued = false
   const resync = () => {
-    if (applying) return
-    applying = true
-    try { for (const shield of shields.values()) sync(shield) } finally { applying = false }
+    if (applying || queued) return
+    queued = true
+    queueMicrotask(() => {
+      queued = false
+      applying = true
+      try { for (const shield of shields.values()) sync(shield) } finally { applying = false }
+    })
   }
 
   const mount = (agent) => {
@@ -91,7 +149,7 @@ export function install(rt) {
     // Test doubles and non-interactive hosts have no plugin seam; a Bot without it simply
     // keeps the DSH commands.
     if (typeof agent.ctx?.plugin !== 'function') return undefined
-    const shield = { sessionId, agent, child: undefined, lifts: [] }
+    const shield = { sessionId, agent, child: undefined, shadows: new Map(), refused: new Map() }
     shield.ready = new Promise((resolve) => { shield.resolveReady = resolve })
     shields.set(sessionId, shield)
     try {
@@ -139,8 +197,10 @@ export function install(rt) {
     const shield = shields.get(sessionId)
     if (shield === undefined) return
     shields.delete(sessionId)
-    for (const lift of shield.lifts) { try { lift() } catch { /* already lifted */ } }
-    shield.lifts = []
+    // Our own lifts: the other shields need no pass for them.
+    const was = applying
+    applying = true
+    try { liftAll(shield) } finally { applying = was }
     try { shield.fiber?.dispose?.() } catch { /* already gone */ }
   }
 
