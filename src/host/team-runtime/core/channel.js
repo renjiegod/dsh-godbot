@@ -819,7 +819,8 @@ export function install(rt) {
         case 'update-check': {
           const fresh = body.fresh === true
           const update = await rt.updateCheck({ fresh })
-          const dsh = (await rt.dshUpdateCheck?.({ fresh })) ?? null
+          const dsh = (fresh || update.mode !== 'off'
+            ? await rt.dshUpdateCheck?.({ fresh }) : rt.dshUpdateView?.()) ?? null
           return ok({ ...update, dsh, ...(browser ? { canRestartDsh: restart.available(update, dsh) } : {}) })
         }
         case 'update-install':

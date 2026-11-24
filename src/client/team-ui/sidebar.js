@@ -928,7 +928,7 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
   const label = phase === 'installing' ? t('Updating Godbot…')
     : dshPhase === 'installing' ? t('Updating DSH…')
       : phase === 'installed' ? t('Godbot {version} is installed. Restart DSH to use it.', { version: update.installed ?? update.latest })
-        : phase === 'updated' ? t('Godbot {version} is installed.', { version: installedVersion })
+        : phase === 'updated' ? t('Godbot {version} is running.', { version: update.current })
         : dshPhase === 'installed' ? t('Restart DSH to start using DSH {version}.', { version: dsh.installed ?? dsh.verified })
           : pending ?? (update?.available ? t('Godbot {version} is available', { version: update.latest })
             : t('DSH {version} is available', { version: dsh?.verified }))
@@ -972,7 +972,7 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
         h('div', { className: 'bt-update-title' }, phase === 'installed' || phase === 'updated' ? t('Update installed') : t('Godbot {version}', { version: update.latest })),
         h('div', { className: 'bt-update-text' }, phase === 'installed'
           ? t('Restart DSH to start using Godbot {version}.', { version: update.installed ?? update.latest })
-          : phase === 'updated' ? t('Godbot {version} is installed.', { version: installedVersion })
+          : phase === 'updated' ? t('Godbot {version} is running.', { version: update.current })
             : pending ? sentences(pending, t('You have {version}.', { version: update.current }))
               : t('You have {version}.', { version: update.current })),
         message ? h('div', { className: 'bt-update-error', role: 'alert' }, t('The update did not finish: {reason}', { reason: message })) : null,

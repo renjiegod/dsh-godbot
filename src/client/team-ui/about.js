@@ -44,7 +44,7 @@ export function readyText(update) {
 function botHint(update) {
   if (update.phase === 'installing') return t('Updating Godbot…')
   if (update.phase === 'installed') return t('Restart DSH to start using Godbot {version}.', { version: update.installed ?? update.latest })
-  if (update.phase === 'updated') return t('Godbot {version} is installed.', { version: update.installed ?? update.latest })
+  if (update.phase === 'updated') return t('Godbot {version} is running.', { version: update.current })
   if (update.phase === 'downloading') return downloadText(update)
   if (update.phase === 'failed') return t('The update did not finish: {reason}', { reason: hostText(update.error ?? '') })
   if (update.blocked) return blockedText(update)
@@ -65,9 +65,9 @@ function botHint(update) {
 const SELF_UPDATING = new Set(['archive', 'registry', 'git'])
 
 function modeHint(mode) {
-  if (mode === 'notify') return t('Checks every six hours and downloads new releases; you choose when to install.')
+  if (mode === 'notify') return t('Checks periodically and downloads new releases. You choose when to install.')
   if (mode === 'off') return t('Godbot checks only when you click Check for updates.')
-  return t('Checks every six hours, downloads new releases and installs them while Godbot is idle.')
+  return t('Checks periodically, downloads new releases and installs them while Godbot is idle.')
 }
 
 // A desktop host can supply its packaged update state through the Godbot bridge.

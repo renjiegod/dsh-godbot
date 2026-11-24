@@ -1,5 +1,5 @@
 import { accessSync, constants, realpathSync, writeSync } from 'node:fs'
-import { profileCli } from './update.js'
+import { cleanVersion, profileCli } from './update.js'
 
 const LAUNCH_ENV = new Set(['HOME', 'PATH', 'LANG', 'LANGUAGE', 'TMPDIR', 'SHELL', 'USER', 'LOGNAME', 'TERM'])
 
@@ -29,8 +29,15 @@ function restartPlan(ctx) {
   return { args: [process.execPath, profile.cli, ...args, '--port', String(port), '--no-open'], env }
 }
 
+function pendingActivation(update) {
+  if (update?.phase !== 'installed') return false
+  const current = cleanVersion(update.current)
+  const installed = cleanVersion(update.installed)
+  return current !== null && installed !== null && current !== installed
+}
+
 const needsRestart = (update, dsh) => update.phase !== 'installing' && dsh?.phase !== 'installing'
-  && (update.phase === 'installed' || dsh?.phase === 'installed')
+  && (pendingActivation(update) || pendingActivation(dsh))
 
 export function dshRestart(rt) {
   let receipt = null

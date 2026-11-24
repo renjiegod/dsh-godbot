@@ -304,28 +304,51 @@ export function apply(ctx, godbot) {
     return () => { stopped = true; clearTimeout(timer); document.removeEventListener('visibilitychange', wake) }
   }, 'godbot: roster poll')
 
-  // Plugin updates: every window that opens asks the host once (the host keeps its
-  // answer for a while and asks GitHub on its own clock), again each hour, and every
-  // two seconds while a release downloads or installs.
+  // Keep a window current as the host discovers and applies updates. Its release
+  // cache is shared by all windows, including ones that wake after being hidden.
   const update = createSource({ available: false, phase: 'idle' })
-  const takeUpdate = value => update.set(previous => ({ ...value, app: previous.app, ownApp: previous.ownApp, restart: previous.restart }))
+  const takeUpdate = value => update.set(previous => ({
+    ...value,
+    phase: value.phase === 'installed' && sameVersion(value.current, value.installed) ? 'updated' : value.phase,
+    app: previous.app, ownApp: previous.ownApp, restart: previous.restart,
+  }))
   let wakeUpdate = () => {}
   ctx.effect(() => {
-    let stopped = false
+    const lifetime = new AbortController()
+    let running = false
+    let again = false
     let timer
     const loop = async () => {
       clearTimeout(timer)
-      if (stopped) return
-      const value = await call('update-check', { fresh: false }).catch(() => null)
-      if (stopped) return
-      if (value) takeUpdate(value)
-      const moving = value?.phase === 'installing' || value?.phase === 'downloading' || value?.dsh?.phase === 'installing'
-      // A release waiting for an idle moment installs within minutes: follow it closer.
-      timer = setTimeout(loop, moving ? 2000 : value?.phase === 'ready' && value?.mode === 'auto' ? 60_000 : 60 * 60_000)
+      if (lifetime.signal.aborted) return
+      if (running) { again = true; return }
+      running = true
+      again = false
+      try {
+        const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(30_000)])
+        const value = await call('update-check', { fresh: false }, signal, { quiet: true }).catch(() => null)
+        if (!lifetime.signal.aborted && !again && value) takeUpdate(value)
+      } finally {
+        running = false
+        if (!lifetime.signal.aborted) {
+          const { phase, dsh } = update.getSnapshot()
+          const moving = phase === 'installing' || phase === 'downloading' || dsh?.phase === 'installing'
+          timer = setTimeout(loop, again ? 0 : document.hidden ? 60_000 : moving ? 2000 : 15_000)
+        }
+      }
     }
+    const wake = () => { if (!document.hidden) void loop() }
     wakeUpdate = loop
+    document.addEventListener('visibilitychange', wake)
+    window.addEventListener('online', wake)
     void loop()
-    return () => { stopped = true; clearTimeout(timer); wakeUpdate = () => {} }
+    return () => {
+      lifetime.abort()
+      clearTimeout(timer)
+      wakeUpdate = () => {}
+      document.removeEventListener('visibilitychange', wake)
+      window.removeEventListener('online', wake)
+    }
   }, 'godbot: update check')
 
   // A packaged DSH updates through its own updater; what that updater found is

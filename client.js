@@ -1458,7 +1458,7 @@ var JA = {
   "Godbot {version} is available": "Godbot {version} が利用可能です",
   "Updating Godbot…": "Godbot を更新中…",
   "Godbot {version} is installed. Restart DSH to use it.": "Godbot {version} をインストールしました。DSH を再起動すると反映されます。",
-  "Godbot {version} is installed.": "Godbot {version} がインストールされています。",
+  "Godbot {version} is running.": "Godbot {version} が動作しています。",
   "Godbot update": "Godbot のアップデート",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "アップデート完了",
@@ -1998,8 +1998,8 @@ var JA = {
   "Install automatically": "自動でインストール",
   "Download, then ask": "ダウンロードして確認",
   "Check manually": "手動で確認",
-  "Checks every six hours, downloads new releases and installs them while Godbot is idle.": "6 時間ごとに確認し、新しいリリースをダウンロードして Godbot がアイドルのときにインストールします。",
-  "Checks every six hours and downloads new releases; you choose when to install.": "6 時間ごとに確認して新しいリリースをダウンロードします。インストールのタイミングはあなたが決めます。",
+  "Checks periodically, downloads new releases and installs them while Godbot is idle.": "定期的に確認して新しいリリースをダウンロードし、Godbot がアイドルのときにインストールします。",
+  "Checks periodically and downloads new releases. You choose when to install.": "定期的に確認して新しいリリースをダウンロードします。インストールのタイミングはあなたが決めます。",
   "Godbot checks only when you click Check for updates.": "「アップデートを確認」をクリックしたときだけ確認します。",
   "Downloading Godbot {version}…": "Godbot {version} をダウンロード中…",
   "Downloading Godbot {version}… {percent}%": "Godbot {version} をダウンロード中… {percent}%",
@@ -3947,7 +3947,7 @@ var KO = {
   "Godbot {version} is available": "Godbot {version} 업데이트 가능",
   "Updating Godbot…": "Godbot 업데이트 중…",
   "Godbot {version} is installed. Restart DSH to use it.": "Godbot {version}이(가) 설치되었습니다. 적용하려면 DSH를 재시작하세요.",
-  "Godbot {version} is installed.": "Godbot {version}이(가) 설치되었습니다.",
+  "Godbot {version} is running.": "Godbot {version}이(가) 실행 중입니다.",
   "Godbot update": "Godbot 업데이트",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "업데이트 설치됨",
@@ -4500,8 +4500,8 @@ var KO = {
   "Install automatically": "자동으로 설치",
   "Download, then ask": "다운로드 후 묻기",
   "Check manually": "수동으로 확인",
-  "Checks every six hours, downloads new releases and installs them while Godbot is idle.": "6시간마다 확인하고 새 릴리스를 다운로드해 Godbot이 유휴 상태일 때 설치합니다.",
-  "Checks every six hours and downloads new releases; you choose when to install.": "6시간마다 확인하고 새 릴리스를 다운로드합니다. 설치 시점은 직접 정합니다.",
+  "Checks periodically, downloads new releases and installs them while Godbot is idle.": "정기적으로 확인하고 새 릴리스를 다운로드해 Godbot이 유휴 상태일 때 설치합니다.",
+  "Checks periodically and downloads new releases. You choose when to install.": "정기적으로 확인하고 새 릴리스를 다운로드합니다. 설치 시점은 직접 정합니다.",
   "Godbot checks only when you click Check for updates.": "「업데이트 확인」을 누를 때만 확인합니다.",
   "Downloading Godbot {version}…": "Godbot {version} 다운로드 중…",
   "Downloading Godbot {version}… {percent}%": "Godbot {version} 다운로드 중… {percent}%",
@@ -6456,7 +6456,7 @@ var ES = {
   "Godbot {version} is available": "Godbot {version} está disponible",
   "Updating Godbot…": "Actualizando Godbot…",
   "Godbot {version} is installed. Restart DSH to use it.": "Godbot {version} está instalado. Reinicia DSH para usarlo.",
-  "Godbot {version} is installed.": "Godbot {version} está instalado.",
+  "Godbot {version} is running.": "Godbot {version} está en ejecución.",
   "Godbot update": "Actualización de Godbot",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "Actualización instalada",
@@ -7009,8 +7009,8 @@ var ES = {
   "Install automatically": "Instalar automáticamente",
   "Download, then ask": "Descargar y preguntar",
   "Check manually": "Comprobar manualmente",
-  "Checks every six hours, downloads new releases and installs them while Godbot is idle.": "Comprueba cada seis horas, descarga las versiones nuevas y las instala cuando Godbot está inactivo.",
-  "Checks every six hours and downloads new releases; you choose when to install.": "Comprueba cada seis horas y descarga las versiones nuevas; tú decides cuándo instalarlas.",
+  "Checks periodically, downloads new releases and installs them while Godbot is idle.": "Busca y descarga nuevas versiones periódicamente y las instala cuando Godbot está inactivo.",
+  "Checks periodically and downloads new releases. You choose when to install.": "Busca y descarga nuevas versiones periódicamente. Tú decides cuándo instalarlas.",
   "Godbot checks only when you click Check for updates.": "Godbot solo comprueba cuando pulsas Buscar actualizaciones.",
   "Downloading Godbot {version}…": "Descargando Godbot {version}…",
   "Downloading Godbot {version}… {percent}%": "Descargando Godbot {version}… {percent}%",
@@ -8940,7 +8940,7 @@ var FR = {
   "Godbot {version} is available": "Godbot {version} est disponible",
   "Updating Godbot…": "Mise à jour de Godbot…",
   "Godbot {version} is installed. Restart DSH to use it.": "Godbot {version} est installé. Redémarrez DSH pour l’utiliser.",
-  "Godbot {version} is installed.": "Godbot {version} est installé.",
+  "Godbot {version} is running.": "Godbot {version} est actif.",
   "Godbot update": "Mise à jour de Godbot",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "Mise à jour installée",
@@ -9480,8 +9480,8 @@ var FR = {
   "Install automatically": "Installer automatiquement",
   "Download, then ask": "Télécharger, puis demander",
   "Check manually": "Vérifier manuellement",
-  "Checks every six hours, downloads new releases and installs them while Godbot is idle.": "Vérifie toutes les six heures, télécharge les nouvelles versions et les installe quand Godbot est inactif.",
-  "Checks every six hours and downloads new releases; you choose when to install.": "Vérifie toutes les six heures et télécharge les nouvelles versions ; vous choisissez quand les installer.",
+  "Checks periodically, downloads new releases and installs them while Godbot is idle.": "Recherche et télécharge régulièrement les nouvelles versions, puis les installe quand Godbot est inactif.",
+  "Checks periodically and downloads new releases. You choose when to install.": "Recherche et télécharge régulièrement les nouvelles versions. Vous choisissez quand les installer.",
   "Godbot checks only when you click Check for updates.": "Godbot ne vérifie que lorsque vous cliquez sur Rechercher des mises à jour.",
   "Downloading Godbot {version}…": "Téléchargement de Godbot {version}…",
   "Downloading Godbot {version}… {percent}%": "Téléchargement de Godbot {version}… {percent} %",
@@ -11429,7 +11429,7 @@ var DE = {
   "Godbot {version} is available": "Godbot {version} ist verfügbar",
   "Updating Godbot…": "Godbot wird aktualisiert…",
   "Godbot {version} is installed. Restart DSH to use it.": "Godbot {version} wurde installiert. Starte DSH neu, um es zu nutzen.",
-  "Godbot {version} is installed.": "Godbot {version} ist installiert.",
+  "Godbot {version} is running.": "Godbot {version} läuft.",
   "Godbot update": "Godbot-Update",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "Update installiert",
@@ -11982,8 +11982,8 @@ var DE = {
   "Install automatically": "Automatisch installieren",
   "Download, then ask": "Herunterladen, dann fragen",
   "Check manually": "Manuell prüfen",
-  "Checks every six hours, downloads new releases and installs them while Godbot is idle.": "Prüft alle sechs Stunden, lädt neue Versionen herunter und installiert sie, während Godbot untätig ist.",
-  "Checks every six hours and downloads new releases; you choose when to install.": "Prüft alle sechs Stunden und lädt neue Versionen herunter; du entscheidest, wann installiert wird.",
+  "Checks periodically, downloads new releases and installs them while Godbot is idle.": "Prüft regelmäßig auf neue Versionen, lädt sie herunter und installiert sie, wenn Godbot untätig ist.",
+  "Checks periodically and downloads new releases. You choose when to install.": "Prüft regelmäßig auf neue Versionen und lädt sie herunter. Du entscheidest, wann sie installiert werden.",
   "Godbot checks only when you click Check for updates.": "Godbot prüft nur, wenn du auf „Nach Updates suchen“ klickst.",
   "Downloading Godbot {version}…": "Godbot {version} wird heruntergeladen…",
   "Downloading Godbot {version}… {percent}%": "Godbot {version} wird heruntergeladen… {percent} %",
@@ -13961,7 +13961,7 @@ var ZH = {
   "Godbot update failed": "Godbot 更新失败",
   "Updating Godbot…": "正在更新 Godbot…",
   "Godbot {version} is installed. Restart DSH to use it.": "Godbot {version} 已安装，重启 DSH 后生效",
-  "Godbot {version} is installed.": "Godbot {version} 已安装。",
+  "Godbot {version} is running.": "Godbot {version} 已生效。",
   "Godbot update": "Godbot 更新",
   "Godbot {version}": "Godbot {version}",
   "Update installed": "更新已安装",
@@ -14517,8 +14517,8 @@ var ZH = {
   "Install automatically": "自动安装",
   "Download, then ask": "下载后询问",
   "Check manually": "手动检查",
-  "Checks every six hours, downloads new releases and installs them while Godbot is idle.": "每 6 小时检查一次，自动下载新版本，并在 Godbot 空闲时安装。",
-  "Checks every six hours and downloads new releases; you choose when to install.": "每 6 小时检查一次并下载新版本，由你决定何时安装。",
+  "Checks periodically, downloads new releases and installs them while Godbot is idle.": "定期检查并下载新版本，在 Godbot 空闲时安装。",
+  "Checks periodically and downloads new releases. You choose when to install.": "定期检查并下载新版本，由你决定何时安装。",
   "Godbot checks only when you click Check for updates.": "只在你点击「检查更新」时检查。",
   "Downloading Godbot {version}…": "正在下载 Godbot {version}…",
   "Downloading Godbot {version}… {percent}%": "正在下载 Godbot {version}… {percent}%",
@@ -41091,7 +41091,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.7";
+var version = "0.2.8";
 
 // src/client/team-ui/about.js
 var import_react42 = require("react");
@@ -41309,7 +41309,7 @@ function readyText(update) {
 function botHint(update) {
   if (update.phase === "installing") return t("Updating Godbot…");
   if (update.phase === "installed") return t("Restart DSH to start using Godbot {version}.", { version: update.installed ?? update.latest });
-  if (update.phase === "updated") return t("Godbot {version} is installed.", { version: update.installed ?? update.latest });
+  if (update.phase === "updated") return t("Godbot {version} is running.", { version: update.current });
   if (update.phase === "downloading") return downloadText(update);
   if (update.phase === "failed") return t("The update did not finish: {reason}", { reason: hostText(update.error ?? "") });
   if (update.blocked) return blockedText(update);
@@ -41326,9 +41326,9 @@ function botHint(update) {
 }
 var SELF_UPDATING = /* @__PURE__ */ new Set(["archive", "registry", "git"]);
 function modeHint(mode) {
-  if (mode === "notify") return t("Checks every six hours and downloads new releases; you choose when to install.");
+  if (mode === "notify") return t("Checks periodically and downloads new releases. You choose when to install.");
   if (mode === "off") return t("Godbot checks only when you click Check for updates.");
-  return t("Checks every six hours, downloads new releases and installs them while Godbot is idle.");
+  return t("Checks periodically, downloads new releases and installs them while Godbot is idle.");
 }
 function ownAppRow(ownApp) {
   if (ownApp === null || typeof ownApp !== "object") return null;
@@ -42547,7 +42547,7 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
     setDshError("");
     void actions.installDshUpdate().catch((failure) => setDshError(hostText(failure?.message ?? String(failure))));
   };
-  const label = phase === "installing" ? t("Updating Godbot…") : dshPhase === "installing" ? t("Updating DSH…") : phase === "installed" ? t("Godbot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is installed.", { version: installedVersion }) : dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : pending ?? (update?.available ? t("Godbot {version} is available", { version: update.latest }) : t("DSH {version} is available", { version: dsh?.verified }));
+  const label = phase === "installing" ? t("Updating Godbot…") : dshPhase === "installing" ? t("Updating DSH…") : phase === "installed" ? t("Godbot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is running.", { version: update.current }) : dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : pending ?? (update?.available ? t("Godbot {version} is available", { version: update.latest }) : t("DSH {version} is available", { version: dsh?.verified }));
   const statusSummary = update?.restart?.pending ? t("Restarting DSH…") : phase === "failed" || error ? t("Godbot update failed") : dshPhase === "failed" || dshError ? t("DSH update failed") : null;
   const summary = statusSummary ?? (phase === "ready" ? t("Godbot {version} is ready to install", { version: update.latest }) : label);
   const canDismiss = phase === "updated" && installedVersion != null && dshPhase !== "installing" && statusSummary === null;
@@ -42603,7 +42603,7 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
         import_react43.Fragment,
         null,
         (0, import_react43.createElement)("div", { className: "bt-update-title" }, phase === "installed" || phase === "updated" ? t("Update installed") : t("Godbot {version}", { version: update.latest })),
-        (0, import_react43.createElement)("div", { className: "bt-update-text" }, phase === "installed" ? t("Restart DSH to start using Godbot {version}.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is installed.", { version: installedVersion }) : pending ? sentences(pending, t("You have {version}.", { version: update.current })) : t("You have {version}.", { version: update.current })),
+        (0, import_react43.createElement)("div", { className: "bt-update-text" }, phase === "installed" ? t("Restart DSH to start using Godbot {version}.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is running.", { version: update.current }) : pending ? sentences(pending, t("You have {version}.", { version: update.current })) : t("You have {version}.", { version: update.current })),
         message2 ? (0, import_react43.createElement)("div", { className: "bt-update-error", role: "alert" }, t("The update did not finish: {reason}", { reason: message2 })) : null,
         (0, import_react43.createElement)(
           "div",
@@ -57801,28 +57801,56 @@ function apply(ctx, godbot) {
     };
   }, "godbot: roster poll");
   const update = createSource({ available: false, phase: "idle" });
-  const takeUpdate = (value) => update.set((previous) => ({ ...value, app: previous.app, ownApp: previous.ownApp, restart: previous.restart }));
+  const takeUpdate = (value) => update.set((previous) => ({
+    ...value,
+    phase: value.phase === "installed" && sameVersion(value.current, value.installed) ? "updated" : value.phase,
+    app: previous.app,
+    ownApp: previous.ownApp,
+    restart: previous.restart
+  }));
   let wakeUpdate = () => {
   };
   ctx.effect(() => {
-    let stopped = false;
+    const lifetime = new AbortController();
+    let running = false;
+    let again = false;
     let timer;
     const loop = async () => {
       clearTimeout(timer);
-      if (stopped) return;
-      const value = await call("update-check", { fresh: false }).catch(() => null);
-      if (stopped) return;
-      if (value) takeUpdate(value);
-      const moving = value?.phase === "installing" || value?.phase === "downloading" || value?.dsh?.phase === "installing";
-      timer = setTimeout(loop, moving ? 2e3 : value?.phase === "ready" && value?.mode === "auto" ? 6e4 : 60 * 6e4);
+      if (lifetime.signal.aborted) return;
+      if (running) {
+        again = true;
+        return;
+      }
+      running = true;
+      again = false;
+      try {
+        const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(3e4)]);
+        const value = await call("update-check", { fresh: false }, signal, { quiet: true }).catch(() => null);
+        if (!lifetime.signal.aborted && !again && value) takeUpdate(value);
+      } finally {
+        running = false;
+        if (!lifetime.signal.aborted) {
+          const { phase, dsh } = update.getSnapshot();
+          const moving = phase === "installing" || phase === "downloading" || dsh?.phase === "installing";
+          timer = setTimeout(loop, again ? 0 : document.hidden ? 6e4 : moving ? 2e3 : 15e3);
+        }
+      }
+    };
+    const wake = () => {
+      if (!document.hidden) void loop();
     };
     wakeUpdate = loop;
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("online", wake);
     void loop();
     return () => {
-      stopped = true;
+      lifetime.abort();
       clearTimeout(timer);
       wakeUpdate = () => {
       };
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("online", wake);
     };
   }, "godbot: update check");
   const appUpdates = window.dshDesktop?.protocolVersion === 1 ? window.dshDesktop.updates ?? null : null;

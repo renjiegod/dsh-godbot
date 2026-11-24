@@ -5,8 +5,8 @@
 // scripts/install-local.mjs installs, and every update after it) — and reinstall
 // it through DSH. A linked or local checkout is never offered one.
 //
-// The host also looks by itself, on a clock, the way magpie's updater does:
-// at start and every six hours. A release archive is fetched and verified as soon
+// The host checks at startup and periodically, sharing the result with open
+// windows. A release archive is fetched and verified as soon
 // as it is found, so installing is local. With automatic updates on, the archive
 // is installed once Godbot has been idle for a while (no turn running, no native
 // terminal open); otherwise the sidebar and About offer it. A new version runs
@@ -38,14 +38,12 @@ export { newer }
 const PKG = JSON.parse(readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'))
 export const OFFICIAL_REGISTRY = 'https://registry.npmjs.org/'
 export const MIRROR_REGISTRY = 'https://registry.npmmirror.com/'
-// Every window that opens asks; within this long the last answer stands.
-export const CHECK_TTL_MS = 10 * 60_000
+// Open windows and the background clock share this release check.
+export const CHECK_TTL_MS = 5 * 60_000
 export const FETCH_TIMEOUT_MS = 8000
 // The first check waits until the host has settled its own start.
 const STARTUP_DELAY_MS = 15_000
-// The clock: how often the host asks by itself, how long a failed download waits
-// before it is tried again, and how long Godbot stays idle before an automatic install.
-export const AUTO_CHECK_MS = 6 * 60 * 60_000
+// How long a failed download waits, and how long Godbot stays idle before an automatic install.
 export const RETRY_MS = 30 * 60_000
 export const IDLE_MS = 2 * 60_000
 // How long DSH's CLI may take to install a release before the update counts as failed.
@@ -160,6 +158,15 @@ export function profileDependencies(ctx) {
   if (typeof dir !== 'string') return null
   try {
     return JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8')).dependencies ?? {}
+  } catch { return null }
+}
+
+function installedProfileVersion(ctx) {
+  const dir = ctx.get?.('profileContext')?.dir
+  if (typeof dir !== 'string') return null
+  try {
+    const manifest = JSON.parse(readFileSync(join(dir, 'node_modules', PKG.name, 'package.json'), 'utf8'))
+    return manifest.name === PKG.name ? cleanVersion(manifest.version) : null
   } catch { return null }
 }
 
@@ -320,10 +327,8 @@ export function install(rt) {
   let progress = null
   // Why the downloaded release cannot install into this profile.
   let blocked = null
-  // The clock: when it last asked by itself, when a download last failed, since
-  // when Godbot has been idle, and the version an automatic install failed on
-  // (not tried again by itself; a click still can).
-  let autoAskedAt = Number.NEGATIVE_INFINITY
+  // When a download last failed, since when Godbot has been idle, and the
+  // version an automatic install failed on.
   let failedAt = 0
   let downloadFailed = false
   let idleSince = 0
@@ -351,12 +356,15 @@ export function install(rt) {
     } else if (typeof marker.error === 'string' || marker.from !== PKG.version) {
       rt.warn('godbot: the update to %s did not finish: %s', marker.to ?? 'a newer version', typeof marker.error === 'string' ? marker.error.slice(0, 600) : 'the install did not complete')
       try { unlinkSync(markerPath) } catch { /* gone is what we want */ }
-    } else if (cleanVersion(marker.to)) {
-      // A clean note on the version that wrote it stays: the new version is on disk
-      // and waits for DSH to restart (or a reload is still running the old modules).
-      // The next start that runs the new code reports the update then; until then
-      // nothing installs it a second time.
-      Object.assign(status, { phase: 'installed', installed: cleanVersion(marker.to) })
+    } else {
+      const installed = cleanVersion(marker.to)
+      // The note was written before installation. A stopped or rolled-back
+      // install can leave it behind without replacing the profile package.
+      if (installed !== null && newer(installed, PKG.version) && installedProfileVersion(ctx) === installed) {
+        Object.assign(status, { phase: 'installed', installed })
+      } else {
+        try { unlinkSync(markerPath) } catch { /* gone is what we want */ }
+      }
     }
   }
 
@@ -502,12 +510,12 @@ export function install(rt) {
 
   /** Ask where the package came from for its newest version; a fresh check ignores the last answer. */
   async function check({ fresh = false } = {}) {
-    if (!enabled) return view()
+    if (!enabled || (!fresh && settings.mode === 'off')) return view()
     if (checking) {
       await checking
       return view()
     }
-    if (!fresh && now() - status.checkedAt < CHECK_TTL_MS) return view()
+    if (!fresh && status.checkedAt !== 0 && now() - status.checkedAt < CHECK_TTL_MS) return view()
     checking = runCheck().finally(() => { checking = null })
     await checking
     // A release found by any check is fetched ahead, unless updates are off.
@@ -770,10 +778,8 @@ export function install(rt) {
   async function tick() {
     if (!enabled || settings.mode === 'off') { waiting = null; return }
     const at = now()
-    if (at - autoAskedAt >= AUTO_CHECK_MS) {
-      autoAskedAt = at
-      await check({ fresh: true })
-    } else if (status.phase === 'failed' && downloadFailed && at - failedAt >= RETRY_MS) {
+    if (status.checkedAt === 0 || at - status.checkedAt >= CHECK_TTL_MS) await check()
+    if (status.phase === 'failed' && downloadFailed && at - failedAt >= RETRY_MS) {
       Object.assign(status, { phase: 'idle', error: null })
       await prepare()
     }

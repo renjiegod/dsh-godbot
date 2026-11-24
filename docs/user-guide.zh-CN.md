@@ -18,7 +18,9 @@
 
 ## 更新
 
-Godbot 会自己检查新版本。Host 启动后以及之后每 6 小时，它查询本仓库的 [GitHub Releases](https://github.com/renjiegod/dsh-godbot/releases)；发现更新的版本后，把安装包下载到 `~/.local/share/dsh-godbot/packages/`，并按 GitHub 为该文件记录的 SHA-256 校验。安装包内的 `package.json` 还要满足两点才会安装：
+开启自动安装或下载后询问时，宿主启动后约每 5 分钟检查新版本。多个已打开的 Godbot 页面共用宿主的检查结果，发现新版本后侧栏会自动显示通知。宿主将安装包下载到 `~/.local/share/dsh-godbot/packages/`，并按发布记录校验 SHA-256。 [GitHub Releases](https://github.com/renjiegod/dsh-godbot/releases)
+
+安装包内的 `package.json` 需要满足这两个条件才能安装。
 
 - `engines.dsh` 与当前运行的 DSH 版本一致；
 - 新版本声明的 DSH 依赖已链接在当前 profile 中。
@@ -31,7 +33,9 @@ Godbot 会自己检查新版本。Host 启动后以及之后每 6 小时，它�
 | **下载后询问** | 下载并校验后，侧栏顶部的云朵按钮和关于页提供 **更新**，由你决定何时安装。 |
 | **手动检查** | 只在点击 **检查更新** 时查询；点 **更新** 时再下载并安装。 |
 
-安装后页面提示「重启 DSH 后开始使用」，正在运行的 Godbot 照常工作，等该 profile 的会话空闲后重启 dsh 即可。DSH 会就地重载插件，但 Godbot 不在运行中的 DSH 里加载新版本，而是用 DSH 自己的 `dsh plugin --profile <名称> add` 安装（`install-local.mjs` 用的也是它）：就地重载时如果 pnpm 挪动了已经加载过的依赖（比如去重），新版本会导入失败，Godbot 会一直停到重启 DSH。只读 Host 不会自动安装，由持有团队写锁的 Host 负责。
+页面根据宿主实际运行的版本显示更新结果。新版本已生效时显示完成。宿主仍运行旧版本时，可以等会话空闲后重启 DSH。
+
+支持就地重载的 DSH Web 优先通过独立的 `dsh plugin --profile <名称> add` 安装，以便当前宿主在 pnpm 调整依赖时继续工作。自动安装由持有团队写锁的宿主负责。
 
 - 自动更新只针对 `.tgz` 安装包（`scripts/install-local.mjs` 的安装结果，以及之后的每次更新）。以 `link:` 或文件夹方式安装的开发副本，请在源码目录中更新。
 - 预发布版（版本号带 `-`）跟随更新的预发布版，正式版只跟随正式版。

@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { gzipSync } from 'node:zlib'
-import { IDLE_MS, RETRY_MS, install, profileCommand, sourceOf } from '../../src/host/team-runtime/core/update.js'
+import { CHECK_TTL_MS, IDLE_MS, RETRY_MS, install, profileCommand, sourceOf } from '../../src/host/team-runtime/core/update.js'
+import { dshRestart } from '../../src/host/team-runtime/core/dsh-restart.js'
 import {
   GITHUB_API, archiveManifest, compatibility, downloadArchive, newer, newestRelease, releasesApi, sidecarDigest,
 } from '../../src/host/team-runtime/core/update-release.js'
@@ -115,7 +116,7 @@ function fakeSpawn({ code = 0, output = '', install } = {}) {
 // The team runtime's update module with the profile, plugin manager, network and clock it reads.
 // `hmr` gives the host DSH's in-place reload service; `cli` the profile facts and the
 // installed DSH that DSH's CLI is found from; `spawn` runs that CLI.
-function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = Object.keys(PKG.peerDependencies), install: answer, home = scratch(), hmr = false, cli = false, spawn } = {}) {
+function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = Object.keys(PKG.peerDependencies), install: answer, home = scratch(), hmr = false, cli = false, spawn, profileVersion } = {}) {
   const dshHome = scratch()
   const profile = join(dshHome, 'profiles', 'web')
   mkdirSync(profile, { recursive: true })
@@ -123,6 +124,11 @@ function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = O
   writeFileSync(join(profile, 'package.json'), JSON.stringify({
     dependencies: Object.fromEntries([...peers.map(name => [name, `link:/dsh/${name}`]), [PKG.name, `file:/old/${PKG.name}-${PKG.version}-000000000000.tgz`]]),
   }))
+  if (profileVersion !== undefined) {
+    const packageDir = join(profile, 'node_modules', PKG.name)
+    mkdirSync(packageDir, { recursive: true })
+    writeFileSync(join(packageDir, 'package.json'), JSON.stringify({ name: PKG.name, version: profileVersion }))
+  }
   const installs = []
   const manager = {
     listBundles: async () => [{ name: PKG.name, source: `file:/old/${PKG.name}-${PKG.version}-000000000000.tgz` }],
@@ -288,6 +294,28 @@ test('auto mode downloads a release, waits until Godbot is idle, then installs i
   assert.equal(marker.auto, true)
 })
 
+test('the host detects later releases and windows share its release check', async () => {
+  const next = release(NEXT)
+  let published = false
+  const { rt, net, clock } = harness({
+    releases: [next], mode: 'notify', routes: { [LIST]: () => published ? [next.body] : [] },
+  })
+  const reads = () => net.calls.filter(url => url === LIST).length
+  assert.equal((await rt.updateCheck()).available, false)
+  published = true
+  clock.now += CHECK_TTL_MS - 1
+  await rt.updateTick()
+  assert.equal(rt.updateView().available, false)
+  assert.equal(reads(), 1)
+
+  clock.now += 1
+  await Promise.all([rt.updateTick(), rt.updateCheck(), rt.updateCheck()])
+  await rt.updatePrepare()
+  assert.equal(rt.updateView().latest, NEXT)
+  assert.equal(rt.updateView().phase, 'ready')
+  assert.equal(reads(), 2)
+})
+
 test('notify mode keeps the downloaded release for a click; off mode only asks when told', async () => {
   const next = release(NEXT)
   const notify = harness({ releases: [next], mode: 'notify' })
@@ -304,6 +332,7 @@ test('notify mode keeps the downloaded release for a click; off mode only asks w
 
   const off = harness({ releases: [next], mode: 'off' })
   await off.rt.updateTick()
+  await off.rt.updateCheck()
   assert.deepEqual(off.net.calls, [])
   // A click on Check finds it without downloading; Update downloads and installs.
   const checked = await off.rt.updateCheck({ fresh: true })
@@ -418,12 +447,24 @@ test('the start that runs the new version reports the update', () => {
   assert.equal(rt.updateView().phase, 'updated')
   assert.equal(existsSync(join(home, 'update.json')), false)
 
-  // Installed but not restarted yet: the old version does not install it again.
+  // A leftover intent cannot request a restart unless the package was replaced.
   writeFileSync(join(home, 'update.json'), JSON.stringify({ from: PKG.version, to: NEXT }))
-  const waiting = harness({ releases: [], home })
+  assert.equal(harness({ releases: [], home, profileVersion: PKG.version }).rt.updateView().phase, 'idle')
+  assert.equal(existsSync(join(home, 'update.json')), false)
+
+  // The package is installed, and this host is still running the old version.
+  writeFileSync(join(home, 'update.json'), JSON.stringify({ from: PKG.version, to: NEXT }))
+  const waiting = harness({ releases: [], home, profileVersion: NEXT })
   assert.equal(waiting.rt.updateView().phase, 'installed')
   assert.equal(waiting.rt.updateView().installed, NEXT)
   assert.equal(existsSync(join(home, 'update.json')), true)
+})
+
+test('the restart endpoint refuses a version that is already running', () => {
+  const running = { phase: 'installed', current: `v${PKG.version}`, installed: PKG.version }
+  const restart = dshRestart({ updateView: () => running, dshUpdateView: () => running })
+  assert.equal(restart.available(running, running), false)
+  assert.throws(() => restart.schedule(), /No installed update is ready/)
 })
 
 test('DSH\'s CLI installs only where DSH reloads in place, into the profile it finds by name', () => {

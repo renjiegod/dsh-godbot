@@ -5,6 +5,7 @@ import { readFile, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { findExecutable } from '../../../src/drivers/external/discover.js'
+import { workspaceHome } from '../../../src/host/workspace-home.js'
 import { bumpedArchive, sha256 } from '../artifacts.mjs'
 import { EnvironmentError, until } from '../host.mjs'
 import { openFullTeam, openSettingsPage } from '../native-ui.mjs'
@@ -24,15 +25,16 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
   const data = await readFile(next.path)
   const name = `dsh-godbot-${version}.tgz`
   const asked = []
+  let published = false
   let base
   const server = createServer((req, res) => {
     asked.push(req.url)
     if (req.url.startsWith('/repos/renjiegod/dsh-godbot/releases?')) {
       res.writeHead(200, { 'content-type': 'application/json' })
-      return res.end(JSON.stringify([{
+      return res.end(JSON.stringify(published ? [{
         tag_name: 'v' + version, html_url: base + '/releases/tag/v' + version, draft: false, prerelease: false,
         assets: [{ name, size: data.length, digest: 'sha256:' + sha256(data), browser_download_url: base + '/download/' + name }],
-      }]))
+      }] : []))
     }
     if (req.url === '/download/' + name) {
       res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': data.length })
@@ -55,6 +57,17 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     await host.start()
     // Download, then ask: the archive is fetched and verified ahead, then waits for a click.
     assert.equal((await host.bot('update-settings', { mode: 'notify' })).mode, 'notify')
+    const { page } = host
+    const [mainBot] = await Promise.all([
+      openFullTeam(host),
+      page.waitForResponse(response => response.ok() && response.url().endsWith('/api/godbot/team')
+        && response.request().postDataJSON()?.endpoint === 'update-check'),
+    ])
+    const documentStart = await page.evaluate(() => performance.timeOrigin)
+    assert.equal(await page.locator('.bt-update-banner').count(), 0)
+
+    // A different caller can discover a release while this page stays open.
+    published = true
     const found = await host.bot('update-check', { fresh: true })
     assert.equal(found.source, 'archive')
     assert.equal(found.latest, version)
@@ -67,16 +80,16 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     const archive = join(host.root, 'account/.local/share/dsh-godbot/packages', `dsh-godbot-${version}-${sha256(data).slice(0, 12)}.tgz`)
     assert.ok(existsSync(archive), 'the verified archive is kept where install-local keeps its own')
 
-    // The sidebar advertises the ready release before Settings is opened.
-    const mainBot = await openFullTeam(host)
-    const { page } = host
+    // The open sidebar advertises the ready release before Settings is opened.
     const earlyRestart = await page.evaluate(async () => (await fetch('api/godbot/team', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: 'update-restart' }),
     })).json())
     assert.equal(earlyRestart.error?.code, 'bot/refused', 'restart requires an installed update')
     const readyLabel = new RegExp(`^Godbot ${version.replaceAll('.', '\\.')} (可以安装|is ready to install)$`, 'u')
     const notice = page.locator('.bt-leftcol[data-left=open]').getByRole('button', { name: readyLabel })
-    await notice.getByText(readyLabel).waitFor()
+    await notice.getByText(readyLabel).waitFor({ timeout: 30_000 })
+    assert.equal(await page.evaluate(() => performance.timeOrigin), documentStart, 'the update notice arrived in the same document')
+    note('update-notice', { version, reloaded: false })
     await host.capture('update-sidebar')
 
     const desktop = page.viewportSize()
@@ -156,10 +169,14 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     assert.equal((await host.snapshot()).buildId, next.buildId)
     assert.notEqual((await host.bot('hello')).boot, before.boot)
     assert.equal((await host.bot('state')).mainBotId, mainBot, 'the restarted browser still uses the same profile')
-    const completedLabel = new RegExp('^Godbot ' + v + ' (已安装。|is installed\\.)$', 'u')
+    const completedLabel = new RegExp('^Godbot ' + v + ' (已生效。|is running\\.)$', 'u')
     const completedNotice = page.getByRole('button', { name: completedLabel })
     await completedNotice.waitFor()
     await host.capture('update-restarted')
+    const appliedRestart = await page.evaluate(async () => (await fetch('api/godbot/team', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: 'update-restart' }),
+    })).json())
+    assert.equal(appliedRestart.error?.code, 'bot/refused', 'the running version needs no restart')
     await page.setViewportSize({ width: 390, height: 844 })
     await page.locator('.bt-leftcol[data-left=rail]').getByRole('button', { name: completedLabel }).click()
     await details.getByRole('button', { name: dismissLabel }).waitFor()
@@ -181,6 +198,31 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     await page.locator('.bt-leftcol[data-left=rail]').waitFor()
     assert.equal(await completedNotice.count(), 0, 'the installed notice stays dismissed in the rail')
     note('update-running', { version: after.current, phase: after.phase, buildId: next.buildId, automaticBrowserReload: true, asked: [...new Set(asked)] })
+
+    // DSH can also apply a bundle in the running process. An open page should
+    // recognize it without offering a restart.
+    const liveVersion = `${major}.${minor}.${patch + 2}`
+    const live = await bumpedArchive(candidate, scratch, liveVersion)
+    const liveHost = await makeHost({ env: { pnpm_config_store_dir: store } })
+    await symlink(realpathSync(pnpm), join(liveHost.bin, 'pnpm'))
+    await liveHost.install(candidate)
+    await liveHost.start()
+    await openFullTeam(liveHost)
+    await writeFile(join(workspaceHome(join(liveHost.home, 'godbot', 'web')), 'update.json'), JSON.stringify({
+      from: candidate.version, to: liveVersion, spec: 'file:' + live.path,
+    }), { mode: 0o600 })
+    const applied = await liveHost.rpc('pluginManager/installBundle', {
+      spec: live.path, options: { enabled: true, saveExact: true },
+    })
+    assert.equal(applied.application, 'applied', JSON.stringify(applied.error))
+    assert.equal((await liveHost.snapshot()).buildId, live.buildId)
+    const liveLabel = new RegExp('^Godbot ' + liveVersion.replaceAll('.', '\\.') + ' (已生效。|is running\\.)$', 'u')
+    await liveHost.page.getByRole('button', { name: liveLabel }).click({ timeout: 30_000 })
+    const appliedDetails = liveHost.page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
+    await appliedDetails.waitFor()
+    assert.equal(await appliedDetails.getByRole('button', { name: restartLabel }).count(), 0)
+    await liveHost.capture('update-applied-in-place')
+    note('update-applied-in-place', { version: liveVersion, buildId: live.buildId, needsRestart: false })
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

@@ -11,13 +11,14 @@ import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
 import {
-  CHECK_TTL_MS, FETCH_TIMEOUT_MS, cleanVersion, encodeName, fetchJson, followsPrereleases, installSpecOf,
+  FETCH_TIMEOUT_MS, cleanVersion, encodeName, fetchJson, followsPrereleases, installSpecOf,
   newer, registryPlan, repoSlug, runningDsh, sourceOf, updatesEnabled,
 } from './update.js'
 import { createNet, newestRelease, releasesApi } from './update-release.js'
 
 const PKG = JSON.parse(readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'))
 const DSH_PACKAGE = '@deepseek-ai/dsh'
+const CHECK_TTL_MS = 10 * 60_000
 
 // Only exact release versions describe a verified installation target.
 function dshRequirement(manifest) {
@@ -122,7 +123,10 @@ export function install(rt) {
   /** Read current and verified DSH versions; a fresh check ignores the last answer. */
   async function check({ fresh = false } = {}) {
     if (!enabled) return view()
-    if (checking) return checking
+    if (checking) {
+      await checking
+      return view()
+    }
     if (!fresh && Date.now() - status.checkedAt < CHECK_TTL_MS) return view()
     checking = runCheck().finally(() => { checking = null })
     await checking
