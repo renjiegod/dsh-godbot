@@ -86,7 +86,7 @@ function BotUsageButton({ actions }) {
     }, actions.godbot.providerAgents({ usageOnly: true })), document.body) : null)
 }
 
-export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSession, useActivity, useMemoryNews, useTurnClock, useUi, useLive, useWork, useStore, useConversationViews, selectView, actions }) {
+export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSession, useActivity, useMemoryNews, useTurnClock, useUi, useLive, useWork, useStore, useConversationViews, selectView, actions, useComputer }) {
   const roster = useRoster(value => value)
   const selectedView = useStore?.(state => state.view)
   const away = useConversationViews?.(views => views.some(view => view.id === selectedView && view.id !== 'chat')) === true
@@ -207,6 +207,7 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
             ? h(SessionMenu, { key: 'sessions', bot, roster, actions, useSessions })
             : null,
           search,
+          actions.godbot?.computerButton ? actions.godbot.computerButton(bot, sessionId, roster, actions, useComputer) : null,
           actions.godbot.browserButton(bot, sessionId, roster),
           actions.godbot.nativeButton(bot, sessionId, roster, actions, terminalActive),
           bot && !roster.readOnly ? h(BotUsageButton, { key: sessionId, actions }) : null)),

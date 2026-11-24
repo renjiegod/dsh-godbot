@@ -25,7 +25,8 @@ import { Icon } from './chat-ui.js'
 import { WorkspaceActions } from './workspace-actions.js'
 import { TaskSettings } from './task-settings.js'
 import { BotSchedulesPage } from './bot-schedules.js'
-import { WebBrowserButton } from './browser-viewer.js'
+import { WebBrowserButton, BrowserDrawerPane } from './browser-viewer.js'
+import { ComputerHeaderButton } from './team-ui/computer.js'
 import { mainSession, sessionSelection } from './navigation.js'
 import { bindTeamSlashSource, teamSlashSource } from './team-slash.js'
 import { AutomationSetupPage } from './automation-setup.js'
@@ -302,9 +303,16 @@ function mountProduct(ctx, client, navigation, target, ready) {
     back: navigation.back,
     turnReport, earlierReports,
     renderReport: (report, text, bot, sessionId) => h(TeamCommandReport, { ctx, client, report, text, bot, sessionId }),
+    computerButton(bot, id, state, actions, useComputer) {
+      return bot && !state.readOnly && state.computer?.enabled === true && (bot.sessionId ?? bot.id) === id
+        ? h(ComputerHeaderButton, { key: 'computer:' + bot.id, bot, sessionId: id, roster: state, actions, useComputer }) : null
+    },
     browserButton(bot, id, state) {
-      return bot && !state.readOnly && !state.browser && (bot.sessionId ?? bot.id) === id
+      return bot && !state.readOnly && (bot.sessionId ?? bot.id) === id
         ? h(WebBrowserButton, { key: 'web-browser-' + bot.id, client, bot, sessionId: id }) : null
+    },
+    browserDrawerPane(bot, id, state, actions) {
+      return h(BrowserDrawerPane, { client, bot, sessionId: id, roster: state, actions })
     },
     useNativeTerminalActive: (bot, id, state, running) =>
       useNativeTerminalActive(client, botNativeTarget(bot, id, state), running),
