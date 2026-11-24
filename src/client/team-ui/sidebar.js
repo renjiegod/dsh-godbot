@@ -1,18 +1,18 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 import { desktopBridge } from './desktop-bridge.js'
-import { createElement as h, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { createElement as h, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { WorkspaceMark } from './workspace-mark.js'
 import { inkFill } from './inks.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
 import { lastActivity } from './bot-sessions.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GaugeIcon, ClockIcon, GearIcon, PinMarkIcon, ConnectorIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, SignInIcon, SignOutIcon, SlidersIcon, ChevronRightIcon, CloseIcon, DotsIcon, FolderIcon } from './icons.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GearIcon, PinMarkIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, ChevronRightIcon, CloseIcon, DotsIcon, FolderIcon } from './icons.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
 import { reducedMotion } from './activity-row.js'
 import { Shimmer, workPhrase } from './cells.js'
-import { SPRING_GLIDE, SPRING_POP, SPRING_SHAPE, SPRING_TAP, stepMenuFocus, useLinger, useViewport, viewBottom } from './motion.js'
+import { SPRING_GLIDE, SPRING_POP, SPRING_SHAPE, SPRING_TAP, useLinger, useViewport } from './motion.js'
 import { hostText, t } from './i18n.js'
 import { clientErrors } from './diagnostics.js'
 import { showsDshRow } from './dsh-offer.js'
@@ -826,11 +826,12 @@ export function TeamSidebar(props) {
         h('span', { className: 'bt-rail-sep', 'aria-hidden': true }))
   // The foot stands in for the shell's hidden footer: the account avatar, and on
   // the rail the new-chat button above it.
+  const settingsOpen = useUi ? useUi(value => value.settings !== null && value.settings !== undefined) : false
   const foot = wideContent
-    ? h('div', { className: 'bt-leftcol-foot' }, h(AccountLauncher, { seat: false, actions }), h(PluginsButton, { actions }))
+    ? h('div', { className: 'bt-leftcol-foot' }, h(AccountLauncher, { seat: false, actions, settingsOpen }), h(PluginsButton, { actions }))
     : h('div', { className: 'bt-leftcol-foot bt-leftcol-foot-rail' },
         h('button', { type: 'button', className: 'bt-round', 'aria-label': t('New…'), title: t('New…'), onClick: () => actions.openNewChat('new') }, h(PlusIcon)),
-        h(AccountLauncher, { seat: false, actions }),
+        h(AccountLauncher, { seat: false, actions, settingsOpen }),
         h(PluginsButton, { actions }))
   const content = h('div', { className: wideContent ? 'bt-side' : 'bt-side bt-rail', onKeyDown: typeToSearch },
     top,
@@ -1021,117 +1022,32 @@ function pressesShellShortcut(event, id) {
     && event.shiftKey === held.has('shift') && event.metaKey === held.has('meta')
 }
 
-const NO_SUBSCRIBE = () => () => {}
-const NO_SNAPSHOT = () => null
-
-// The footer avatar opens an account menu above itself, with Bot settings as one
-// entry. Shell panels hidden from the Bot sidebar (plugins, automation) live here too.
+// The footer avatar opens the Godbot settings window directly.
 // `seat` is the shell's settings.launcher seat: at priority -10 the workspace control wins it
 // over a shell account plugin's own launcher (the Desktop's "··· More"), which comes
 // back in Agent mode; FooterAccount stands in while no seat exists at all.
-export function AccountLauncher({ seat = true, settingsOpen, actions }) {
-  const [open, setOpen] = useState(false)
+export function AccountLauncher({ seat = true, settingsOpen: propSettingsOpen, openSettings, actions, useUi }) {
   useLayoutEffect(() => {
     if (!seat) return undefined
     actions.seatAccount(true)
     return () => actions.seatAccount(false)
   }, [seat])
-  const [box, setBox] = useState(null)
-  const button = useRef(null)
-  const menuRef = useRef(null)
-  useEffect(() => { if (settingsOpen) setOpen(false) }, [settingsOpen])
-  useEffect(() => {
-    if (!open) return undefined
-    const onDown = (event) => {
-      if (event.target instanceof Element && (event.target.closest('.bt-account-menu') || button.current?.contains(event.target))) return
-      setOpen(false)
-    }
-    const onKey = (event) => {
-      if (stepMenuFocus(menuRef.current, event, button.current)) return
-      if (event.key === 'Escape') { event.stopPropagation(); setOpen(false); button.current?.focus() }
-    }
-    window.addEventListener('mousedown', onDown)
-    window.addEventListener('keydown', onKey, true)
-    return () => { window.removeEventListener('mousedown', onDown); window.removeEventListener('keydown', onKey, true) }
-  }, [open])
-  // The shell's account plugin lends its sign-out operation; the item shows only
-  // when the plugin's entry is there and its account snapshot says signed in. The
-  // entry can arrive after this mounts, so its operations follow the entry.
-  const signIn = actions.signInEntry?.() ?? null
-  const ops = useMemo(() => signIn?.inject?.() ?? {}, [signIn])
-  const accountSource = ops.hooks?.account
-  const account = useSyncExternalStore(accountSource?.subscribe ?? NO_SUBSCRIBE, accountSource ? () => accountSource.getSnapshot() : NO_SNAPSHOT)
-  const signedIn = signIn !== null && typeof ops.signOut === 'function' && account?.view?.status === 'credential-stored'
-  const signedOut = signIn !== null && typeof actions.signIn === 'function' && account?.view?.status === 'signed-out'
-  const accountT = actions.accountT?.() ?? (key => key)
-  const [confirm, setConfirm] = useState(null)
-  const [busy, setBusy] = useState(false)
-  const [signOutError, setSignOutError] = useState('')
-  const askSignOut = async () => {
-    setSignOutError('')
-    let state = 'none'
-    try {
-      if (await ops.hasRunningAccountTasks?.()) state = 'running'
-    } catch { state = 'unknown' }
-    setConfirm(state)
+  const settingsOpenFromUi = useUi ? useUi(value => value.settings !== null && value.settings !== undefined) : false
+  const settingsOpen = typeof propSettingsOpen === 'boolean' ? propSettingsOpen : settingsOpenFromUi
+  const open = () => {
+    if (settingsOpen) actions.closeSettings?.()
+    else if (typeof openSettings === 'function') openSettings()
+    else actions.openSettings?.('general')
   }
-  const cancelSignOut = () => { setConfirm(null); setSignOutError('') }
-  const runSignOut = async () => {
-    setBusy(true)
-    setSignOutError('')
-    try {
-      await ops.signOut()
-      setConfirm(null)
-      setOpen(false)
-    } catch (error) {
-      setSignOutError(String(error?.message ?? error))
-    } finally {
-      setBusy(false)
-    }
-  }
-  const tick = useViewport()
-  const anchor = () => {
-    const rect = button.current?.getBoundingClientRect()
-    if (rect) setBox({ left: rect.left, bottom: viewBottom() - rect.top + 5 })
-  }
-  useLayoutEffect(() => { if (open) anchor() }, [open, tick])
-  const toggle = () => { if (!open) anchor(); setOpen(value => !value) }
-  // Closing the menu drops a half-finished sign-out confirm with it.
-  useEffect(() => {
-    if (open) return
-    setConfirm(null)
-    setSignOutError('')
-    setBusy(false)
-  }, [open])
-  const openModels = actions.openModels
-  const groups = [
-    [
-      [t('Usage'), GaugeIcon, () => actions.openSettings('usage')],
-      openModels ? [t('Models and API keys'), SlidersIcon, () => openModels()] : null,
-      [t('Connectors'), ConnectorIcon, () => actions.openConnectors()],
-      [t('Automation tasks'), ClockIcon, () => actions.selectPanel('schedules')],
-      [t('Settings'), GearIcon, () => actions.openSettings('general')],
-    ].filter(Boolean),
-    typeof actions.setSurface === 'function' ? [[t('Classic Agent mode'), SwitchIcon, () => actions.setSurface('agent')]] : null,
-  ].filter(Boolean)
-  if (signedIn) groups.push([[accountT('signOut'), SignOutIcon, askSignOut, undefined, true]])
-  else if (signedOut) groups.push([[t('Sign in to DeepSeek'), SignInIcon, () => actions.signIn()]])
-  return h(Fragment, null,
-    h('button', { ref: button, type: 'button', className: 'bt-account', 'aria-label': t('Account'), 'aria-haspopup': 'menu', 'aria-expanded': open, onClick: toggle },
-      h('span', { className: 'bt-you', 'aria-hidden': true }, h(GearIcon))),
-    open && box ? createPortal(h('div', { ref: menuRef, className: 'bt-menu bt-menu-up bt-account-menu', role: 'menu', 'aria-label': t('Account'), style: box },
-      confirm !== null ? h('div', { className: 'bt-confirm', role: 'alertdialog', 'aria-label': accountT('signOut') },
-        h('p', { className: 'bt-confirm-text' }, accountT(confirm === 'running' ? 'signOutRunningDescription' : confirm === 'unknown' ? 'signOutUnknownDescription' : 'signOutDescription')),
-        signOutError !== '' ? h('p', { className: 'bt-confirm-error', role: 'alert' }, signOutError) : null,
-        h('div', { className: 'bt-confirm-row' },
-          h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: cancelSignOut }, t('Cancel')),
-          h('button', { type: 'button', className: 'bt-confirm-go', disabled: busy, onClick: () => { void runSignOut() } }, accountT('signOut'))))
-        : groups.map((group, index) => h(Fragment, { key: index },
-          index > 0 ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
-          group.map(([label, Icon, run, hint, stay]) => h('button', {
-            key: label, type: 'button', role: 'menuitem',
-            onClick: () => { if (stay !== true) setOpen(false); void Promise.resolve(run()).catch(error => actions.reportError(error, 'menu')) },
-          }, h(Icon), h('span', { className: 'bt-menu-label' }, label), hint ? h('span', { className: 'bt-menu-hint' }, hint) : null))))), document.body) : null)
+  return h('button', {
+    type: 'button',
+    className: 'bt-account',
+    'aria-label': t('Settings'),
+    title: t('Settings'),
+    'aria-haspopup': 'dialog',
+    'aria-expanded': Boolean(settingsOpen),
+    onClick: open,
+  }, h('span', { className: 'bt-you', 'aria-hidden': true }, h(GearIcon)))
 }
 
 // A desktop host can defer showing its window until the roster is ready.
@@ -1195,7 +1111,8 @@ export function PluginsButton({ actions }) {
 export function FooterAccount(props) {
   const seated = props.useUi(value => value.accountSeated === true)
   if (seated) return null
-  return h('span', { className: 'bt-foot-account' }, h(AccountLauncher, { ...props, seat: false }))
+  const settingsOpen = props.useUi ? props.useUi(value => value.settings !== null && value.settings !== undefined) : false
+  return h('span', { className: 'bt-foot-account' }, h(AccountLauncher, { ...props, seat: false, settingsOpen }))
 }
 
 // The only entry registered in every mode: in Agent mode the whole Bot surface is
