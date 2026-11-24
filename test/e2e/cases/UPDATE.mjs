@@ -164,6 +164,7 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
       details.getByRole('button', { name: /^(正在重启 DSH…|Restarting DSH…)$/u }).waitFor(),
     ])
     assert.equal(new URL(page.url()).origin, host.url)
+    await page.locator('.bt-head .bt-pill').waitFor({ timeout: 90_000 })
     const after = await host.bot('update-check', { fresh: false })
     assert.equal(after.current, version)
     assert.equal(after.phase, 'updated')
@@ -201,32 +202,43 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     assert.equal(await completedNotice.count(), 0, 'the installed notice stays dismissed in the rail')
     note('update-running', { version: after.current, phase: after.phase, buildId: next.buildId, automaticBrowserReload: true, asked: [...new Set(asked)] })
 
-    // DSH can also apply a bundle in the running process. An open page should
-    // recognize it without offering a restart.
+    // DSH may apply a bundle in the running process, or defer it when pnpm moved
+    // packages the running module resolution still owns. Verify the receipt and
+    // the running build in either case; a deferred install must survive a restart.
     const liveVersion = `${major}.${minor}.${patch + 2}`
     const live = await bumpedArchive(candidate, scratch, liveVersion)
     const liveHost = await makeHost({ env: { pnpm_config_store_dir: store } })
     await symlink(realpathSync(pnpm), join(liveHost.bin, 'pnpm'))
     await liveHost.install(candidate)
     await liveHost.start()
-    await openFullTeam(liveHost)
+    const liveMainBot = await openFullTeam(liveHost)
     await writeFile(join(workspaceHome(join(liveHost.home, 'godbot', 'web')), 'update.json'), JSON.stringify({
       from: candidate.version, to: liveVersion, spec: 'file:' + live.path,
     }), { mode: 0o600 })
     const applied = await liveHost.rpc('pluginManager/installBundle', {
       spec: live.path, options: { enabled: true, saveExact: true },
-    })
+    }, { timeout: 180_000 })
     const receipt = { application: applied.application, restartReason: applied.restartReason, error: applied.error }
     note('update-in-place-receipt', receipt)
-    assert.equal(applied.application, 'applied', JSON.stringify(receipt))
+    if (applied.application === 'restart-required') {
+      assert.equal(applied.restartReason, 'package-moved', JSON.stringify(receipt))
+      assert.equal((await liveHost.snapshot()).buildId, candidate.buildId, 'a deferred install keeps the original build running')
+      liveHost.artifact = live
+      await liveHost.restart()
+      assert.equal((await liveHost.bot('state')).mainBotId, liveMainBot, 'a deferred update retains the profile')
+    } else {
+      assert.equal(applied.application, 'applied', JSON.stringify(receipt))
+    }
     assert.equal((await liveHost.snapshot()).buildId, live.buildId)
     const liveLabel = new RegExp('^Godbot ' + liveVersion.replaceAll('.', '\\.') + ' (已生效。|is running\\.)$', 'u')
     await liveHost.page.getByRole('button', { name: liveLabel }).click({ timeout: 30_000 })
     const appliedDetails = liveHost.page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
     await appliedDetails.waitFor()
     assert.equal(await appliedDetails.getByRole('button', { name: restartLabel }).count(), 0)
-    await liveHost.capture('update-applied-in-place')
-    note('update-applied-in-place', { version: liveVersion, buildId: live.buildId, needsRestart: false })
+    await liveHost.capture('update-applied')
+    note(applied.application === 'applied' ? 'update-applied-in-place' : 'update-applied-after-restart', {
+      version: liveVersion, buildId: live.buildId, needsRestart: false,
+    })
   } finally {
     await new Promise(resolve => server.close(resolve))
   }

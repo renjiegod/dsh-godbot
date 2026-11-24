@@ -211,12 +211,12 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
         note('started', { buildId: snapshot.buildId, clientSha256: host.artifact.clientSha256, workspaceMode: snapshot.workspaceRuntime.mode, workspaceVersion: snapshot.workspaceRuntime.version })
       } catch (error) { throw new Error(redact(error.message) + '\n' + redact(output.slice(-3500))) }
     },
-    async rpc(method, args = {}) {
+    async rpc(method, args = {}, { timeout = 12_000 } = {}) {
       const endpoint = method.includes('/') ? method : 'godbot/' + method
       const rpcId = randomUUID()
       const res = await context.request.post(url + '/api/' + endpoint, {
         data: { type: 'client-request', rpcId, method: endpoint, payload: { args } },
-        headers: { Origin: url }, timeout: 12_000,
+        headers: { Origin: url }, timeout,
       })
       if (!res.ok()) throw new Error('DSH RPC ' + endpoint + ' returned HTTP ' + res.status())
       const frame = await res.json()
