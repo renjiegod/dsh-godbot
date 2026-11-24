@@ -12,6 +12,8 @@ import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { gunzipSync } from 'node:zlib'
 
+import { satisfiesDshRange } from '../../dsh-compatibility.js'
+
 const VERSION = /^v?(\d+\.\d+\.\d+(?:-[\w.]+)?)(?:\+[\w.]+)?$/
 const SHA256 = /^[0-9a-f]{64}$/
 // A whole release download, however slow, ends after this long.
@@ -172,16 +174,19 @@ export function archiveManifest(path) {
 /**
  * Whether an archive's manifest can replace the running plugin in this profile:
  * the same package at the version the release names, built for the running DSH,
- * with every peer it declares already linked in the profile (a peer pnpm would
- * fetch on its own is a second copy of DSH's scope registry).
+ * with every required peer already linked in the profile. DSH supplies
+ * optional host peers through its own module loader.
  */
 export function compatibility(manifest, { name, version, dsh, linked }) {
   if (manifest?.name !== name || cleanVersion(manifest?.version) !== version)
     return { reason: 'mismatch', found: `${manifest?.name ?? '?'}@${manifest?.version ?? '?'}` }
-  const needs = cleanVersion(manifest.engines?.dsh)
-  if (dsh && needs && needs !== dsh) return { reason: 'dsh', dsh: needs, current: dsh }
+  const needs = manifest.engines?.dsh
+  if (dsh && needs !== undefined && !satisfiesDshRange(dsh, needs)) {
+    return { reason: 'dsh', dsh: String(needs), current: dsh }
+  }
   if (Array.isArray(linked)) {
-    const missing = Object.keys(manifest.peerDependencies ?? {}).filter(peer => !linked.includes(peer))
+    const missing = Object.keys(manifest.peerDependencies ?? {}).filter(peer =>
+      manifest.peerDependenciesMeta?.[peer]?.optional !== true && !linked.includes(peer))
     if (missing.length) return { reason: 'peers', peers: missing }
   }
   return null

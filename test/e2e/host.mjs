@@ -8,6 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { promisify } from 'node:util'
 import { chromium } from 'playwright-core'
 import { findExecutable } from '../../src/drivers/external/discover.js'
+import { satisfiesDshRange, verifiedDshVersion } from '../../src/host/dsh-compatibility.js'
 import { hostPeerSpecs } from '../../scripts/host-peers.mjs'
 import { startModel } from './model.mjs'
 import { clientRegistrations } from './artifacts.mjs'
@@ -40,10 +41,11 @@ async function freePort() {
 export class EnvironmentError extends Error {}
 
 export async function dshForPreviousArchive(archive, scratch) {
-  const version = archive.pkg.engines?.dsh
-  if (!/^\d+\.\d+\.\d+(?:-[\w.-]+)?$/.test(version ?? '')) throw new EnvironmentError('The upgrade baseline must declare an exact DSH version')
-  if (execFileSync(dsh, ['--version'], { encoding: 'utf8' }).trim() === version) return dsh
+  const current = execFileSync(dsh, ['--version'], { encoding: 'utf8' }).trim()
+  if (satisfiesDshRange(current, archive.pkg.engines?.dsh)) return dsh
   if (process.env.GODBOT_E2E_PREVIOUS_DSH) return process.env.GODBOT_E2E_PREVIOUS_DSH
+  const version = verifiedDshVersion(archive.pkg)
+  if (!version) throw new EnvironmentError('The upgrade baseline must declare a verified DSH version')
   const npm = findExecutable('npm')
   if (!npm) throw new EnvironmentError('npm is needed to install DSH ' + version + ' for the upgrade baseline')
   const prefix = join(scratch, 'previous-dsh')
@@ -149,7 +151,8 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
       } catch (error) { throw new EnvironmentError('Installing the test artifact failed: ' + redact(error.stderr || error.message)) }
       host.artifact = artifact
       host.executable = executable
-      note('installed', { archive: artifact.sha256, expectedBuild: artifact.buildId, profile: 'web', dshVersion: artifact.pkg.engines?.dsh })
+      note('installed', { archive: artifact.sha256, expectedBuild: artifact.buildId, profile: 'web',
+        dshVersion: execFileSync(executable, ['--version'], { encoding: 'utf8' }).trim() })
     },
     async start({ expectedPluginFailure } = {}) {
       if (child || !host.artifact) throw new Error('Install an artifact into a stopped Host first')

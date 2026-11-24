@@ -70,13 +70,14 @@ export default async function E0({ makeHost, candidate, note }) {
   await a.capture('about-godbot')
   await a.stop()
 
-  // Plugin managers install just the release archive. Existing DSH profiles
-  // may let pnpm auto-install peers, so Godbot declares the host-supplied peers optional.
+  // The plugin manager installs only the archive, even in an older profile
+  // where pnpm auto-installs peers. The plugin uses DSH's own host modules.
   const b = await makeHost({ linkHostPeers: false })
   const profile = join(b.home, 'profiles', 'web')
   await mkdir(profile, { recursive: true })
   await writeFile(join(profile, 'pnpm-workspace.yaml'), 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: true\n')
   await b.install(candidate)
+  assert.equal(existsSync(join(profile, 'node_modules', '@deepseek-ai', 'dsh-tools')), false)
   assert.equal(existsSync(join(profile, 'node_modules', '@deepseek-ai', 'dsh-scope')), false)
   await b.start()
   assert.notEqual(await openFullTeam(b), godbot)
