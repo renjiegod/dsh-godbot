@@ -1,6 +1,6 @@
 {
   "name": "dsh-godbot",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Control native agent sessions and collaborate in a local dsh team.",
   "license": "MIT",
   "repository": {
@@ -81,13 +81,27 @@
     "@deepseek-ai/dsh-web": "0.2.2-rc.5"
   },
   "peerDependenciesMeta": {
-    "@deepseek-ai/cordis": { "optional": true },
-    "@deepseek-ai/dsh-app-boot": { "optional": true },
-    "@deepseek-ai/dsh-llm": { "optional": true },
-    "@deepseek-ai/dsh-scope": { "optional": true },
-    "@deepseek-ai/dsh-tools": { "optional": true },
-    "@deepseek-ai/dsh-typert-protocol": { "optional": true },
-    "@deepseek-ai/dsh-web": { "optional": true }
+    "@deepseek-ai/cordis": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-app-boot": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-llm": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-scope": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-typert-protocol": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-web": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@modelcontextprotocol/client": "2.4.0",
