@@ -216,7 +216,9 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     const applied = await liveHost.rpc('pluginManager/installBundle', {
       spec: live.path, options: { enabled: true, saveExact: true },
     })
-    assert.equal(applied.application, 'applied', JSON.stringify(applied.error))
+    const receipt = { application: applied.application, restartReason: applied.restartReason, error: applied.error }
+    note('update-in-place-receipt', receipt)
+    assert.equal(applied.application, 'applied', JSON.stringify(receipt))
     assert.equal((await liveHost.snapshot()).buildId, live.buildId)
     const liveLabel = new RegExp('^Godbot ' + liveVersion.replaceAll('.', '\\.') + ' (已生效。|is running\\.)$', 'u')
     await liveHost.page.getByRole('button', { name: liveLabel }).click({ timeout: 30_000 })
