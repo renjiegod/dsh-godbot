@@ -194,7 +194,6 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
             : null,
           search,
           actions.godbot.browserButton(bot, sessionId, roster),
-          actions.godbot.executionButton(bot, sessionId, roster, actions),
           actions.godbot.nativeButton(bot, sessionId, roster, actions, terminalActive))),
     h('span', { className: 'bt-sr', role: 'status' }, memoryNotice ? t('Memory updated') : ''),
     h(NewMessagePills, { key: sessionId, sessionId, useSessions, useUi, useTurnClock }),

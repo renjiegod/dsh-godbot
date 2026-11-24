@@ -283,7 +283,6 @@ export function DetailsDrawer(props) {
   const bot = roster.byId[sessionId]
   const mode = nativeMode(startTab)
   if (mode) return actions.godbot.nativePane(bot, sessionId, roster, close, mode, actions)
-  if (startTab === 'godbot-execution') return actions.godbot.executionPane(bot, sessionId, roster, close)
   return h(ConversationDetails, { ...props, close })
 }
 

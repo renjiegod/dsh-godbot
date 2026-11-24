@@ -254,15 +254,6 @@ async function exerciseRemote(host, ci, fixture) {
   }, 'remote Agent reported back to a manually assigned task')
   assert.match(dispatched.evidence, /REMOTE-ANSWER-/)
   await openBotChat(host, bot)
-  const openHistory = page.getByRole('button', { name: '查看会话执行记录', exact: true })
-  await openHistory.click()
-  const activity = page.locator('details').filter({ has: page.getByText('远程 Agent 事件', { exact: true }) })
-  await activity.getByText(/远端工具返回 · check_external_status/).first().waitFor()
-  const positions = activity.getByRole('listitem')
-  const initialCount = await positions.count()
-  await page.getByRole('button', { name: '关闭执行记录', exact: true }).click()
-  await openHistory.click()
-  await until(async () => await positions.count() === initialCount, 'reopening the panel replayed exactly the same remote activity')
   return sessionId
 }
 

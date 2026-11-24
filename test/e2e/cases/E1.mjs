@@ -265,16 +265,6 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
     await verifyOrder(flow, order)
     assert.equal((await delegated.exchange()).filter(row => row.id === delegated.requestId || row.replyTo === delegated.requestId).length, 2)
   }
-  await openChat(claude)
-  await page.getByRole('button', { name: '查看会话执行记录', exact: true }).click()
-  const history = page.getByRole('region', { name: '会话执行记录', exact: true })
-  await history.getByRole('button', { name: /^原生会话回合/u }).click()
-  await history.getByText('Historical Claude report from native conversation.', { exact: true }).waitFor()
-  await verifyTool(history, ['Bash', 'completed', ['printf earlier-fixture', 'The historical native command ran.']])
-  const recent = history.getByRole('button', { name: /^回合 \d+/u }).first()
-  await recent.click()
-  const settled = recent.locator('..')
-  await verifyOrder(settled, settledClaudeOrder)
   note('delegated-execution', {
     claude: { requestId: claudeRun.requestId, replyId: claudeReply, steps: claudeTools.length + 75, visibleBeforeReply: true, nativeBackfill: true },
     codex: { requestId: codexRun.requestId, replyId: codexReply, steps: codexTools.length },

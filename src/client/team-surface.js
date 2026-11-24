@@ -13,7 +13,7 @@ import { useProviderChoices } from './provider-agents-hook.js'
 import { sandboxSettingsStyle } from './bot-settings-style.js'
 import { AgentSetup } from './agent-setup.js'
 import { ConnectorToolsPanel } from './connector-tools.js'
-import { ExecutionHistory, executionStyle, InlineExecution, useExecutionTools } from './execution-history.js'
+import { executionStyle, InlineExecution, useExecutionTools } from './execution-history.js'
 import { openWorkspace } from './workspace-entry.js'
 import { botHome } from './session-links.js'
 import { Icon } from './chat-ui.js'
@@ -278,7 +278,6 @@ function mountProduct(ctx, client, navigation, target, ready) {
   const idOf = (session) => roster?.byId[session]?.id ?? roster?.roomsById[session]?.id
   const priorSidebar = document.querySelector('[class*="_sidebarCol"]')?.parentElement
   const wasCollapsed = priorSidebar?.hasAttribute('data-sidebar-collapsed')
-  const canViewExecution = (bot, id, state) => bot && !state.readOnly && !state.roomsById[id]
   const teamControls = {
     active: () => active,
     sessionSelection,
@@ -299,14 +298,6 @@ function mountProduct(ctx, client, navigation, target, ready) {
       const target = botNativeTarget(bot, id, state)
       return target ? h(TerminalPanel, { client, target, close, mode,
         onModeChange: next => actions.showDetails(id, nativeTabs[next]) }) : h('p', { role: 'status' }, '请选择当前 Bot 的 CLI 会话。')
-    },
-    executionButton(bot, id, state, actions) {
-      return canViewExecution(bot, id, state) && h('button', { key: 'execution:' + id, type: 'button',
-        className: 'bt-icon-btn bt-head-search', 'aria-label': '查看会话执行记录', title: '查看会话执行记录',
-        onClick: () => actions.showDetails(id, 'godbot-execution') }, h(Icon, { name: 'clock', size: 17 }))
-    },
-    executionPane(bot, id, state, close) {
-      return canViewExecution(bot, id, state) ? h(ExecutionHistory, { key: id, client, bot, sessionId: id, close }) : null
     },
     useExecutionTools: (botId, sessionId, turn, enabled) => useExecutionTools(client, botId, sessionId, turn, enabled),
     inlineExecution: (key, botId, sessionId, turn, running, events) => h(InlineExecution, {

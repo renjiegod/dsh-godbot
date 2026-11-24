@@ -1,4 +1,3 @@
-import { RemoteRunActivity } from './remote-run-activity.js'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { createElement as h, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { Icon } from './chat-ui.js'
@@ -26,12 +25,9 @@ export const executionStyle = `
 .gb-tool-group > svg { flex: none; }
 .gb-tool-group .gb-tool-group-failed { color: var(--bt-danger); }
 .gb-execution-list { display: grid; gap: 5px; min-width: 0; }
-.gb-execution-header, .gb-execution-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.gb-execution-header { justify-content: space-between; }
-.gb-execution-header h3 { margin: 0; font-size: 15px; }
 .gb-execution-button { min-height: 28px; padding: 3px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--bt-ink-2); font: inherit; cursor: pointer; }
 .gb-execution-button:hover, .gb-execution-button[aria-pressed=true] { background: var(--bt-hover); color: var(--bt-ink); }
-.gb-execution-button:focus-visible, .gb-execution-tool > summary:focus-visible, .gb-execution-select:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }
+.gb-execution-button:focus-visible, .gb-execution-tool > summary:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }
 .gb-execution-tool { min-width: 0; border: 1px solid var(--bt-line); border-radius: 8px; }
 .gb-execution-tool[data-child] { margin-inline-start: 12px; }
 .gb-execution-tool > summary, .gb-execution-legacy { padding: 5px 8px; }
@@ -48,12 +44,6 @@ export const executionStyle = `
 .gb-execution-code [data-diff=add] { color: var(--bt-green, #177246); }
 .gb-execution-code [data-diff=remove] { color: var(--bt-danger); }
 .gb-execution-note, .gb-execution-error { margin: 3px 0; overflow-wrap: anywhere; }
-.gb-execution-pane.bt-drawer-body { gap: 10px; padding: 12px; }
-.gb-execution-select { max-width: 100%; font: inherit; color: inherit; background: var(--bt-card); border: 1px solid var(--bt-line); border-radius: 6px; padding: 4px; }
-.gb-execution-history-turn { border: 1px solid var(--bt-line); border-radius: 8px; }
-.gb-execution-history-turn > button { display: block; width: 100%; text-align: start; }
-.gb-execution-history-turn .gb-execution-list { padding: 8px; }
-.gb-execution-history-turn .gb-execution-text { overflow-wrap: anywhere; }
 `
 
 function useExecution(client, botId, sessionId, { turn, toolId, expanded = true, running = false, live = false } = {}) {
@@ -318,69 +308,4 @@ export function InlineExecution({ client, botId, sessionId, turn, running, event
   group.running > 0 && h('span', { className: 'gb-execution-meta' }, t('{count} running', { count: group.running })),
   group.failed > 0 && h('span', { className: 'gb-execution-meta gb-tool-group-failed' }, t('{count} failed', { count: group.failed }))),
   h(Rows, { events, target: { client, botId, sessionId, turn }, running, visible }))
-}
-
-function TurnHistory({ client, botId, sessionId, turn, running }) {
-  const view = useExecution(client, botId, sessionId, { turn, running, live: true })
-  const events = view.data?.events ?? []
-  return h('div', { className: 'gb-execution-list' },
-    view.error && h('p', { className: 'gb-execution-error', role: 'alert' }, '暂时无法读取执行记录。', press('重试', view.reload)),
-    view.loading && !view.data && h('p', { className: 'gb-execution-note', role: 'status' }, '正在读取…'),
-    view.data && !events.length && h('p', { className: 'gb-execution-note' }, '该回合没有可读取的执行记录。'),
-    events.length > 0 && h(Rows, { events, target: { client, botId, sessionId, turn }, running: running || view.data?.running, transcript: true }))
-}
-
-function turnLabel(row) {
-  const date = row.startedAt == null ? null : new Date(row.startedAt)
-  const time = date && !Number.isNaN(+date) ? date.toLocaleString() : ''
-  return [row.native ? '原生会话回合' : '回合 ' + row.turn, time, row.running && '运行中'].filter(Boolean).join(' · ')
-}
-
-function HistoryList({ client, botId, sessionId }) {
-  const view = useExecution(client, botId, sessionId, { live: true })
-  const [selected, select] = useState(null)
-  const [older, setOlder] = useState(null)
-  const [paging, setPaging] = useState(false)
-  const [pagingError, setPagingError] = useState(false)
-  const turns = view.data?.turns ?? []
-  const listed = new Set(turns.map(row => row.turn))
-  const rows = view.data ? [...turns, ...(older?.turns ?? []).filter(row => !listed.has(row.turn))] : []
-  const cursor = view.data && (older ? older.cursor : view.data.cursor)
-  async function more() {
-    setPaging(true)
-    setPagingError(false)
-    try {
-      const page = await client.dispatch({ action: 'execution.history', botId, sessionId, beforeTurn: cursor })
-      setOlder(last => ({ ...page, turns: [...(last?.turns ?? []), ...(page.turns ?? [])] }))
-    } catch { setPagingError(true) }
-    finally { setPaging(false) }
-  }
-  return h('div', { className: 'gb-execution-list' },
-    press('刷新', view.reload, { disabled: view.loading }),
-    view.error && h('p', { className: 'gb-execution-error', role: 'alert' }, '暂时无法读取会话执行记录。'),
-    view.loading && !view.data && h('p', { className: 'gb-execution-note', role: 'status' }, '正在读取…'),
-    view.data && !rows.length && h('p', { className: 'gb-execution-note' }, '该会话暂无可读取的执行记录。'),
-    ...rows.map(row => h('article', { key: row.turn, className: 'gb-execution-history-turn' },
-      press(turnLabel(row), () => select(turn => turn === row.turn ? null : row.turn),
-        { 'aria-expanded': selected === row.turn, 'data-gb-execution-turn-choice': '' }),
-      selected === row.turn && h(TurnHistory, { client, botId, sessionId, turn: row.turn, running: row.running }))),
-    cursor != null && press(pagingError ? '重新加载更早回合' : '加载更早回合', more, { disabled: paging }))
-}
-
-export function ExecutionHistory({ client, bot, sessionId, close }) {
-  const current = bot.sessionId ?? bot.id
-  const parts = [...new Set([current,
-    ...(bot.openParts ?? []).flatMap(part => [part.sessionId, ...(part.parts ?? []).slice().reverse()]),
-    ...(bot.parts ?? []).slice().reverse(),
-  ])]
-  const [selected, select] = useState(sessionId)
-  const part = parts.includes(selected) ? selected : current
-  return h('section', { className: 'bt-drawer-body gb-execution-pane', 'aria-label': '会话执行记录' },
-    h('header', { className: 'gb-execution-header' },
-      h('h3', null, '会话执行记录'), press(h(Icon, { name: 'close', size: 16 }), close, { 'aria-label': '关闭执行记录' })),
-    parts.length > 1 && h('label', { className: 'gb-execution-controls' }, '会话',
-      h('select', { className: 'gb-execution-select', value: part, onChange: e => select(e.target.value) },
-        parts.map((id, index) => h('option', { key: id, value: id }, index === 0 ? '当前会话' : '其他会话 ' + index)))),
-    h(RemoteRunActivity, { key: 'remote:' + part, client, sessionId: part, live: (bot.model ?? bot.appliedModel)?.startsWith('ag-ui-') === true }),
-    h(HistoryList, { key: part, client, botId: bot.id, sessionId: part }))
 }
