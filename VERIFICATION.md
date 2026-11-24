@@ -38,3 +38,13 @@
 ## 验收范围
 
 本地候选包可用于指定 DSH 版本的 macOS profile。远程 Docker context 的设备接入代码已随包交付，本轮云端真机未验。第三方托管云机的供给、唤醒与休眠，以及独立桌面安装器，均在本轮插件交付范围之外。GitHub 原生适配覆盖公开仓库事件轮询，其他 SaaS 的原生订阅各需单独适配和验证。外部 CI 可通过受控隧道连接本机回环监听。操作说明见 [README](README.md)，复跑命令见[实施计划第 9 节](IMPLEMENTATION_PLAN.md#openmaus-e2e)。本轮使用本地隔离 profile，未触发远端 CI 或发布。
+
+## Godbot 0.2.16 — conversation switching (2026-11-25)
+
+- Rebased the conversation performance fix onto published 0.2.15 (`3a5b836`), retaining sandbox management; regenerated client and host build ID.
+- Unit tests: 556 passed, 4 skipped; TypeScript check passed.
+- Candidate SHA-256: `9ee582a406fc4aaa3d4c6b1e8054463a69728f230c69a9212611f1f0eed23de4`.
+- All 26 release scenarios passed on this candidate, including COMMAND-QUIET, phone/relay and bundled computer host; E9 additionally passed its batch/individual group-history comparison.
+- E12 was re-run with its required legacy two-roster baseline after the initial invocation supplied unsupported 0.2.15. UPDATE initially observed the new plugin build before a package-moved restart receipt; its independent retry passed. Initial reports are retained alongside the passing results.
+- A separate isolated 0.2.15 → 0.2.16 candidate update preserved the session and complete chat, and displayed sandbox settings after restart.
+- Evidence: `/tmp/godbot-perf-0216/candidate-acceptance.json`, `group-e2e/report.json`, `candidate-upgrade.json`.
