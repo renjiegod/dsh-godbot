@@ -423,6 +423,19 @@ godbot workspace restore --home /new/dsh --profile web --file team.godbot --pass
 
 ## 故障排查
 
+### 安装后提示 DSH 依赖有两份
+
+如果团队工作台提示 `This DSH profile uses a separate copy of @deepseek-ai/dsh-scope`，该 profile 里的包管理器装了另一份 DSH 作用域依赖。Godbot 需要与 DSH 共用这份依赖，才能让每个 Bot 只使用获准的工具。
+
+退出这个 profile 的 DSH 进程，然后在 Godbot 源码目录运行修复命令，再启动同一个 profile。
+
+```sh
+node scripts/install-local.mjs web --repair
+dsh web
+```
+
+如果使用了自定义 profile，把两条命令中的 `web` 换成原来的名称。修复命令按当前安装的 Godbot 版本链接 DSH 依赖，原安装包和团队数据继续使用。
+
 | 现象 | 处理 |
 | --- | --- |
 | **CLI 启动失败** | 以运行 DSH 的系统用户检查 `codex --version`、`claude --version` 或 `agy --version` 及登录状态，然后在该 Bot 的私聊重试。没登录或登录过期时，点修复卡片上的 **登录**。登录和授权交给原生 CLI，无需把订阅凭据填入团队聊天。 |

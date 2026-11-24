@@ -134,12 +134,16 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
     patch: options.patch ?? [], env: options.env ?? {}, artifact: undefined, executable: dsh,
     async install(artifact, executable = dsh) {
       if (child) throw new Error('Stop Host before replacing its package')
-      const key = JSON.stringify([executable, artifact.pkg.engines?.dsh, artifact.pkg.peerDependencies])
-      if (!peerCache.has(key)) peerCache.set(key, hostPeerSpecs(artifact.pkg, executable))
+      let peers = []
+      if (options.linkHostPeers !== false) {
+        const key = JSON.stringify([executable, artifact.pkg.engines?.dsh, artifact.pkg.peerDependencies])
+        if (!peerCache.has(key)) peerCache.set(key, hostPeerSpecs(artifact.pkg, executable))
+        peers = peerCache.get(key)
+      }
       const packaged = join(root, 'godbot-' + artifact.sha256 + '.tgz')
       if (!existsSync(packaged)) await symlink(artifact.path, packaged)
       try {
-        await run(executable, ['plugin', '--profile', 'web', 'add', '--save-exact', packaged, ...peerCache.get(key)], {
+        await run(executable, ['plugin', '--profile', 'web', 'add', '--save-exact', packaged, ...peers], {
           cwd: root, env: { ...process.env, DSH_HOME: home, CI: '1' }, timeout: 180_000, maxBuffer: 8_000_000,
         })
       } catch (error) { throw new EnvironmentError('Installing the test artifact failed: ' + redact(error.stderr || error.message)) }

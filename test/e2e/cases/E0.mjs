@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { until } from '../host.mjs'
 import { openBotChat, openFullTeam, openTaskBoard } from '../native-ui.mjs'
 import { verifySidebarPaint } from '../sidebar-paint.mjs'
@@ -67,8 +70,14 @@ export default async function E0({ makeHost, candidate, note }) {
   await a.capture('about-godbot')
   await a.stop()
 
-  const b = await makeHost()
+  // Plugin managers install just the release archive. Existing DSH profiles
+  // may let pnpm auto-install peers, so Godbot declares the host-supplied peers optional.
+  const b = await makeHost({ linkHostPeers: false })
+  const profile = join(b.home, 'profiles', 'web')
+  await mkdir(profile, { recursive: true })
+  await writeFile(join(profile, 'pnpm-workspace.yaml'), 'packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: true\n')
   await b.install(candidate)
+  assert.equal(existsSync(join(profile, 'node_modules', '@deepseek-ai', 'dsh-scope')), false)
   await b.start()
   assert.notEqual(await openFullTeam(b), godbot)
   await openTaskBoard(b)
@@ -77,7 +86,7 @@ export default async function E0({ makeHost, candidate, note }) {
   assert.ok(!other.bots.some(item => item.id === bot.id))
   assert.ok(!JSON.stringify(other).includes(marker))
   note('isolated-install-and-restart', { botId: bot.id, sessionId: before.sessionId, turn: turn.turn,
-    fixtureModelCalls: a.model.calls.length, secondBotCount: other.bots.length })
+    fixtureModelCalls: a.model.calls.length, secondBotCount: other.bots.length, directInstallWithAutoPeers: true })
 }
 
 async function verifyBotModelHeader(host, godbot, note) {

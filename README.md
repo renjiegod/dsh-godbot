@@ -36,6 +36,8 @@ dsh web
 
 用 DSH 提供的登录入口打开网页，点击侧栏的 **Godbot**（`/#/godbot`）。为 GodBot 选择模型，再新建团队成员。原生 DSH 成员需要该 profile 中配置可用的模型。
 
+如果安装后提示 `This DSH profile uses a separate copy`，请按步骤修复原 profile 的依赖链接。[安装故障排查](docs/user-guide.zh-CN.md#安装后提示-dsh-依赖有两份)
+
 Claude Code、Codex 和 Antigravity 使用本机 CLI。将需要的 CLI 安装在运行 DSH 的同一系统用户下。可以在 [Godbot 中登录 CLI](docs/user-guide.zh-CN.md#在页面中登录本机-cli)，沿用 CLI 自己的账号与配额。
 
 ## 在工作台里可以做什么
