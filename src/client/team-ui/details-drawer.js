@@ -19,7 +19,7 @@ import { canSetGoal, goalView, hasGoalAdmin } from './goal.js'
 import { PermissionPicker, presetDanger, presetName } from './permission-picker.js'
 import { TaskBoard } from './task-board.js'
 import { BotConnectors } from './connectors.js'
-import { ComputerView } from './computer.js'
+import { ComputerView, ComputerDrawerPane } from './computer.js'
 import { NewSessionButton } from './new-session.js'
 import { botSessions, sessionLabel, sessionMeta, sessionTime } from './bot-sessions.js'
 import { t } from './i18n.js'
@@ -82,10 +82,11 @@ function BrowserCards({ bot, sessionId, roster, actions, useBrowserTabs, useBrow
   const pages = useBrowserPages(map => map)
   useEffect(() => { actions.browserEnsure?.(bot.id) }, [bot.id])
   if (roster.browser !== true || !actions.browserShow) {
-    const webControls = !roster.browser && !roster.readOnly && currentPart(bot) === sessionId
-    return h('div', { className: 'bt-muted' }, webControls
-      ? t('Open the browser from the chat header.')
-      : t('Browser controls are unavailable for this conversation here.'))
+    return h('div', { className: 'bt-browser-empty-mark' },
+      h(BotMark, { bot, size: 40, state: 'idle', live: true }),
+      h('div', { className: 'bt-browser-empty-title' }, t("{name}'s browser", { name: bot.name })),
+      h('div', { className: 'bt-muted' }, t('Open a page here and {name} can read it with you. Logins and cookies stay with {name}; other Bots never see them.', { name: bot.name })),
+      h('button', { type: 'button', className: 'bt-browser-retry', onClick: () => (actions.openBrowser ? actions.openBrowser(sessionId) : (actions.showDetails ? actions.showDetails(sessionId, 'browser') : undefined)) }, t('Open browser')))
   }
   if (state.ids.length === 0) {
     return h('div', { className: 'bt-browser-empty-mark' },
@@ -360,8 +361,8 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
     if (room) await run(actions.updateRoom(room.id, { name: next }))
   }
   const subtitle = bot ? undefined : roomSubtitle(room, roster)
-  // Tab sets: a 1:1 Bot has Details and Browser; a group has only Details, so no tab row.
-  const tabs = bot ? (roster.computer?.enabled === true ? ['details', 'browser', 'computer'] : ['details', 'browser']) : ['details']
+  // Tab sets: a 1:1 Bot has Details, Browser and Computer; a group has only Details.
+  const tabs = bot ? ['details', 'browser', 'computer'] : ['details']
   return [h(Fragment, { key: 'top' }, top),
     h('div', { key: 'id', className: 'bt-drawer-id', 'data-move': side },
       bot ? h(BotAvatar, { bot, size: 64, state: botState(running, doing, roster.questions?.[part] !== undefined), main: isMainBot, badge: false, gaze: true, pokeable: true })
@@ -385,7 +386,7 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
     h('div', { key: `body:${tab}`, className: 'bt-drawer-body', 'data-move': move },
       errorLine,
       room && tab === 'details' ? h(GroupOverview, { room, roster, actions, usage, useWork, openSettings: () => setView('settings') }) : null,
-      bot && tab === 'computer' ? h(ComputerView, { bot, actions, hooks: { useComputer } }) : null,
+      bot && tab === 'computer' ? h(ComputerDrawerPane, { bot, sessionId, roster, actions, run, hooks: { useComputer } }) : null,
       bot && tab === 'details' ? [
         h(RunStats, { key: 'stats', bot, part, running, actions }),
         h('div', { key: 'model', className: 'bt-drawer-model' },
@@ -411,5 +412,7 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
           h('div', { className: 'bt-kv' }, h('span', null, bot.name), h('span', null, usage))) : null,
         h(ScheduleSummary, { key: 'routines', bot, actions }),
       ] : null,
-      bot && tab === 'browser' ? h(BrowserCards, { bot, sessionId, roster, actions, useBrowserTabs, useBrowserPages }) : null)]
+      bot && tab === 'browser' ? (actions.godbot?.browserDrawerPane
+        ? actions.godbot.browserDrawerPane(bot, sessionId, roster, actions, { useBrowserTabs, useBrowserPages })
+        : h(BrowserCards, { bot, sessionId, roster, actions, useBrowserTabs, useBrowserPages })) : null)]
 }

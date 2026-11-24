@@ -1,5 +1,6 @@
 import { createElement as h, useEffect, useId, useRef, useState } from 'react'
 import { CheckIcon } from './icons.js'
+import { Icon } from '../chat-ui.js'
 import { useDockHold } from './card-hold.js'
 import { heldCardKey } from './sources.js'
 import { CellEmpty } from './cell-empty.js'
@@ -299,6 +300,62 @@ export function SettledComputerHandoff({ handoff }) {
 }
 
 // ---- The indicator: who is on the computer, with a Stop for each. ----
+export function ComputerHeaderButton({ bot, sessionId, roster, actions, useComputer }) {
+  if (!bot || roster?.computer?.enabled !== true) return null
+  const live = useComputer?.(map => map) ?? {}
+  const entry = live.bots?.[bot.id] ?? { state: 'idle' }
+  const isOperating = entry.state === 'bot' || entry.waitingFor === 'user-idle'
+  const stateLabel = {
+    idle: t('Idle'),
+    bot: t('Operating'),
+    user: t('You have the computer'),
+    waiting: t('Waiting for you'),
+  }[entry.state] ?? t('Idle')
+  const title = `${t('Computer use')} (${stateLabel})`
+
+  return h('button', {
+    type: 'button',
+    className: `bt-icon-btn bt-head-search gb-computer-btn${isOperating ? ' bt-active' : ''}`,
+    'aria-label': title,
+    title,
+    onClick: () => actions.showDetails(sessionId, 'computer'),
+  },
+    h(Icon, { name: 'monitor', size: 17 }),
+    isOperating ? h('span', { className: 'gb-computer-dot' }) : null)
+}
+
+export function ComputerDrawerPane({ bot, sessionId, roster, actions, run, hooks }) {
+  const computer = roster?.computer ?? { enabled: false }
+  const provider = computer.provider ?? { state: computer.enabled ? 'loading' : 'off' }
+  const apps = Object.entries(bot?.computer?.apps ?? {})
+
+  return h('div', { className: 'gb-computer-drawer-pane' },
+    h('div', { className: 'bt-drawer-model' },
+      h('div', { className: 'bt-section-title' }, t('Computer use')),
+      !computer.enabled
+        ? h('div', { className: 'bt-kv' },
+            h('span', { className: 'bt-muted' }, t('Off in Settings → Computer use')),
+            h('button', {
+              type: 'button',
+              className: 'bt-soft bt-soft-sm',
+              onClick: () => run(actions.computerSetEnabled(true)),
+            }, t('Let Bots use the computer')),
+          )
+        : [
+            h('div', { key: 'level', className: 'bt-kv' },
+              h('span', null, t('Computer use level')),
+              h(LevelPicker, { bot, actions, run, disabled: !computer.enabled })),
+            !providerWorks(provider) ? h('p', { key: 'warn', className: 'bt-set-hint' }, t('Bots get no computer tools until the provider is ready.')) : null,
+            apps.length > 0 ? h('div', { key: 'apps', className: 'bt-section-title', style: { marginTop: 12 } }, t('Allowed apps')) : null,
+            ...apps.map(([key, app]) => h('div', { key, className: 'bt-kv' },
+              h('span', null, app.name),
+              h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => run(actions.computerRevokeApp(bot.id, key)) }, t('Revoke')))),
+          ]),
+    computer.enabled
+      ? h(ComputerView, { bot, actions, hooks })
+      : h('p', { className: 'bt-browser-note' }, t('A Bot can view the screen, click, and type when computer use is enabled in settings.')))
+}
+
 export function ComputerIndicator({ useComputer, useRoster, actions }) {
   const live = useComputer?.(map => map) ?? {}
   const roster = useRoster(value => value)
@@ -368,4 +425,7 @@ export const COMPUTER_CSS = `
 .bt-cstep-shot img{display:block;max-height:40px;max-width:72px;object-fit:cover}
 .bt-cstep-shot-open{max-height:none;cursor:zoom-out}
 .bt-cstep-shot-open img{max-height:280px;max-width:480px}
+.gb-computer-btn{position:relative}
+.gb-computer-dot{position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--bt-green,#10b981);box-shadow:0 0 0 1.5px var(--bt-main)}
+.gb-computer-drawer-pane{display:flex;flex-direction:column;gap:14px}
 `
