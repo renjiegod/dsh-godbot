@@ -33,6 +33,7 @@ import { layoutOf, thinkingShown, usesConversationLayout } from './themes.js'
 import { ProcessIcon, processLabel } from './process-activity.js'
 import { skillNameFromPath, toolKind } from '../../host/team-runtime/shared/tool-kind.js'
 import { commandLabel } from '../../host/team-runtime/tool-activity.js'
+import { hasProcess, workAt } from './member-work-model.js'
 
 export { clockLabel }
 
@@ -475,7 +476,7 @@ export function claimLines(claims) {
   return lines
 }
 
-export function GroupMessage({ bot, text, texts = [text], room, sessionId, roster, actions, msgKey, useUi, whole, time, duration, claims, changes }) {
+export function GroupMessage({ bot, text, texts = [text], room, sessionId, roster, actions, msgKey, useUi, whole, time, duration, claims, changes, work }) {
   const ref = useRef(null)
   useLayoutEffect(() => {
     const el = ref.current
@@ -496,7 +497,12 @@ export function GroupMessage({ bot, text, texts = [text], room, sessionId, roste
     h('span', { className: 'bt-group-name', style: flat ? undefined : { color: inkText(colorOf(bot)) } }, flat ? lead : null, bot.name,
       room?.admin === bot.id ? h('span', { className: 'bt-group-role' }, t('Admin')) : null,
       Number.isFinite(time) ? h('span', { className: 'bt-group-time', title: clockLabel(time) }, messageClock(time)) : null,
-      took ? h('span', { className: 'bt-group-took', title: t('Ran for {duration}', { duration: took }) }, took) : null),
+      took ? h('span', { className: 'bt-group-took', title: t('Ran for {duration}', { duration: took }) }, took) : null,
+      // The turn the message came from ran tools: its process opens beside the group.
+      hasProcess(work) && room !== undefined && actions.showMemberWork
+        ? h('button', { type: 'button', className: 'bt-group-work', title: t('View process'), onClick: () => actions.showMemberWork(room.id, bot.id, work) },
+          t('{count} tool calls', { count: work.tools }))
+        : null),
     h(Bubbles, { texts, roster, selfId: bot.id, actions, sessionId: quoteSession, msgKey, useUi, lead: flat ? null : lead, whole, textInteractionSource: true }),
     changes === undefined ? null : h(ChangesCard, { changes, actions }),
     claimLines(claims).map(line => h('div', { key: line.kind + line.text, className: `bt-claim bt-claim-${line.kind}`, role: 'status', title: line.detail ?? undefined }, line.text)))
@@ -761,7 +767,7 @@ function chatRow(row, key, { sessionId, selfId, roster, actions, useUi, onBtwDel
       const poster = roster.byId[row.botId] ?? { id: row.botId, name: row.name ?? t('a Bot'), color: 'gray' }
       return h(GroupMessage, {
         key, bot: poster, text: row.file ? stripLongNote(row.text) : row.text, texts: row.texts, room: roster.roomsById[sessionId], sessionId, roster, actions,
-        msgKey: `${sessionId}:post:${row.seq ?? row.time}`, time: row.time, duration: row.duration, claims: row.claims, changes: row.changes,
+        msgKey: `${sessionId}:post:${row.seq ?? row.time}`, time: row.time, duration: row.duration, claims: row.claims, changes: row.changes, work: row.work,
         whole: row.file ? { length: row.length, load: () => actions.fileText(row.file) } : undefined,
       })
     }
@@ -857,6 +863,7 @@ export function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnCl
           bot: poster, text: file ? stripLongNote(text) : text, room, sessionId, roster, actions, msgKey: `${sessionId}:post:${data.seq ?? node.key}`, useUi, time: data.time,
           claims: source.claims,
           changes: source.changes,
+          work: source.work,
           whole: file ? { length: source.length, load: () => actions.fileText(file) } : undefined,
         })
       }
@@ -1146,8 +1153,13 @@ function RelayEvent({ reply, bot, sessionId, actions }) {
     return h('div', { className: 'bt-event' }, t('{name} was cut off by a restart again and stopped', { name: bot.name }))
   }
   if (reply.kind === 'approval' || reply.kind === 'working') {
+    // Work going on opens its process beside the group; an approval is answered in the
+    // group's details.
+    const open = reply.kind === 'working' && actions.showMemberWork
+      ? () => actions.showMemberWork(sessionId, bot.id, workAt(reply.work))
+      : () => actions.showDetails(sessionId)
     return h('div', { className: 'bt-event' },
-      h('button', { type: 'button', className: 'bt-event-whole', onClick: () => actions.showDetails(sessionId) },
+      h('button', { type: 'button', className: 'bt-event-whole', onClick: open, title: reply.kind === 'working' ? t('View process') : undefined },
         h(BotMark, { bot, size: 16 }), h('span', { className: 'bt-event-name' }, t(reply.kind === 'working' ? '{name} started on it' : '{name} paused for your approval', { name: bot.name }))))
   }
   if (reply.kind === 'folder') {
@@ -1157,7 +1169,11 @@ function RelayEvent({ reply, bot, sessionId, actions }) {
     return h('div', { className: 'bt-event' }, t("You stopped {name}'s work", { name: bot.name }))
   }
   if (reply.kind === 'done') {
-    const line = h('div', { className: 'bt-event' }, t('{name} finished its work', { name: bot.name }))
+    const said = t('{name} finished its work', { name: bot.name })
+    const line = hasProcess(reply.work) && actions.showMemberWork
+      ? h('div', { className: 'bt-event' }, h('button', { type: 'button', className: 'bt-event-whole', title: t('View process'), onClick: () => actions.showMemberWork(sessionId, bot.id, reply.work) },
+        h(BotMark, { bot, size: 16 }), h('span', { className: 'bt-event-name' }, said)))
+      : h('div', { className: 'bt-event' }, said)
     return reply.changes === undefined ? line : h(Fragment, null, line, h(ChangesCard, { changes: reply.changes, actions }))
   }
   return null
@@ -1227,9 +1243,12 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
   // Every member answering in the round is typing; what each is doing comes as text,
   // so the cell redraws only when that changes.
   const pending = range !== undefined ? (view?.open ? view.speaking ?? [] : []) : done ? [] : live.speaking
+  // The third entry is the member's turn here, which its row opens beside the group.
+  const roomId = roster.roomsById[sessionId]?.id
   const doing = JSON.parse(useWork?.(work => JSON.stringify(pending.map((id) => {
     const tool = work.bots?.[id]?.tool
-    return tool ? [tool, workPhrase(work.bots[id])] : []
+    const at = workAt((work.rooms?.[roomId] ?? []).find(entry => entry.botId === id))
+    return tool ? [tool, workPhrase(work.bots[id]), at] : [undefined, undefined, at]
   }))) ?? '[]')
   if (replies.length === 0 && pending.length === 0) {
     // A pruned tool result left nothing to draw; keep a marker row instead of an
@@ -1238,7 +1257,7 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
   }
   const room = roster.roomsById[sessionId]
   return h('div', { className: 'bt-group-replies' },
-    stackReplies(replies).map(({ reply, index, texts, time, duration, claims, changes }) => {
+    stackReplies(replies).map(({ reply, index, texts, time, duration, claims, changes, work }) => {
       const bot = roster.byId[reply.botId] ?? { id: reply.botId, name: reply.name, color: reply.color ?? 'gray' }
       if (reply.kind === 'user') {
         return h('div', { key: `user-${index}`, className: 'bt-urow' },
@@ -1252,15 +1271,19 @@ function GroupReplies({ sessionId, callId, done, content, roster, actions, useUi
         return h('div', { key: `goal-${index}`, className: 'bt-event', title: reply.text || undefined },
           h('span', { className: 'bt-event-ico', 'aria-hidden': true }, h(GoalIcon)), goalEventText(reply))
       }
-      return h(GroupMessage, { key: `${reply.botId}-${index}`, bot, texts, room, sessionId, roster, actions, msgKey: callId ? `${sessionId}:${callId}:${index}` : undefined, useUi, time, duration, claims, changes })
+      return h(GroupMessage, { key: `${reply.botId}-${index}`, bot, texts, room, sessionId, roster, actions, msgKey: callId ? `${sessionId}:${callId}:${index}` : undefined, useUi, time, duration, claims, changes, work })
     }),
     pending.map((id, at) => {
       const bot = roster.byId[id]
       if (!bot) return null
-      const [tool, phrase] = doing[at] ?? []
-      return h('div', { key: `pending-${id}`, className: 'bt-activity' },
-        h(BotMark, { bot: bot, size: 22, state: tool ? toolState(tool) : 'thinking' }),
-        h(Shimmer, null, phrase ? `${bot.name} · ${phrase}…` : t('{name} is typing…', { name: bot.name })))
+      const [tool, phrase, turn] = doing[at] ?? []
+      const inner = [
+        h(BotMark, { key: 'mark', bot: bot, size: 22, state: tool ? toolState(tool) : 'thinking' }),
+        h(Shimmer, { key: 'what' }, phrase ? `${bot.name} · ${phrase}…` : t('{name} is typing…', { name: bot.name })),
+      ]
+      return turn?.sessionId !== undefined && room !== undefined && actions.showMemberWork
+        ? h('button', { key: `pending-${id}`, type: 'button', className: 'bt-activity bt-activity-open', title: t('View process'), onClick: () => actions.showMemberWork(room.id, bot.id, turn) }, inner)
+        : h('div', { key: `pending-${id}`, className: 'bt-activity' }, inner)
     }))
 }
 

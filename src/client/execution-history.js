@@ -4,6 +4,7 @@ import { Icon } from './chat-ui.js'
 import { ChevronDownIcon, ChevronRightIcon } from './team-ui/icons.js'
 import { t } from './team-ui/i18n.js'
 import { observeToolGroups } from './tool-call-groups.js'
+import { processSegments, runningCalls } from './execution-segments.js'
 import { skillNameFromPath, toolKind } from '../host/team-runtime/shared/tool-kind.js'
 import { ProcessIcon, processLabel } from './team-ui/process-activity.js'
 
@@ -43,6 +44,15 @@ export const executionStyle = `
 .gb-execution-code [data-diff=add] { color: var(--bt-green, #177246); }
 .gb-execution-code [data-diff=remove] { color: var(--bt-danger); }
 .gb-execution-note, .gb-execution-error { margin: 3px 0; overflow-wrap: anywhere; }
+.gb-execution-process { display: grid; gap: 10px; min-width: 0; color: var(--bt-ink); font-size: 13px; line-height: 1.5; }
+.gb-execution-process > .gb-execution-list > .gb-execution-text { overflow-wrap: anywhere; }
+.gb-process-group { display: grid; gap: 5px; min-width: 0; }
+.gb-execution-process .gb-execution-tool > summary { display: flex; align-items: baseline; gap: 6px; min-width: 0; list-style: none; }
+.gb-execution-process .gb-execution-tool > summary::-webkit-details-marker { display: none; }
+.gb-execution-process .gb-execution-tool > summary::before { content: '▸'; flex: none; color: var(--bt-ink-3); }
+.gb-execution-process .gb-execution-tool[open] > summary::before { content: '▾'; }
+.gb-execution-process .gb-execution-tool > summary > span { flex: none; margin-inline-end: 0; white-space: nowrap; }
+.gb-execution-process .gb-execution-tool > summary > .gb-execution-target { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
 `
 
 function useExecution(client, botId, sessionId, { turn, toolId, expanded = true, running = false, live = false } = {}) {
@@ -191,10 +201,12 @@ function locationText(location) {
     ? location.path + (location.line != null ? ':' + location.line : '') : ''
 }
 
+// `target` is the host's name for a call it summarized without its input: the last
+// resort, below any name the call carries itself.
 function targetOf(tool) {
   const input = tool.input
   return (Array.isArray(tool.locations) && locationText(tool.locations[0])) || tool.text ||
-    input?.file_path || input?.path || input?.query?.id
+    input?.file_path || input?.path || input?.query?.id || tool.target
 }
 
 function TraceField({ label, truncated, children }) {
@@ -240,7 +252,7 @@ function ToolRow({ event, target, running, visible }) {
   const heading = [
     h('span', { key: 'action', className: 'gb-execution-action' }, h(ProcessIcon, { kind: activityKind }), processLabel(activityKind)),
     h('span', { key: 'name', className: 'gb-execution-name' }, detail.name || event.id || '工具'),
-    typeof toolTarget === 'string' && h('span', { key: 'target', className: 'gb-execution-meta gb-execution-target', title: toolTarget }, toolTarget),
+    typeof toolTarget === 'string' && h('span', { key: 'target', className: 'gb-execution-meta gb-execution-target', title: toolTarget }, h('bdi', null, toolTarget)),
     h('span', { key: 'status', className: 'gb-execution-state' }, statusLabel),
     outcome.length > 0 && h('span', { key: 'outcome', className: 'gb-execution-meta' }, outcome.join(' · ')),
   ]
@@ -305,4 +317,40 @@ export function InlineExecution({ client, botId, sessionId, turn, running, event
   h('span', null, t('{count} tool calls', { count: group.count })),
   group.running > 0 && h('span', { className: 'gb-execution-meta' }, t('{count} running', { count: group.running }))),
   h(Rows, { events, target: { client, botId, sessionId, turn }, running, visible }))
+}
+
+// One run of tool calls in a process: folded to its count, except the newest run of a
+// turn still running, which stays open so its newest call shows.
+function ToolRun({ events, target, running, newest }) {
+  const [open, setOpen] = useState(null)
+  const shown = open ?? (newest && running)
+  const live = running ? runningCalls(events) : 0
+  return h('div', { className: 'gb-process-group' },
+    h('button', { type: 'button', className: 'gb-execution-button gb-tool-group', 'aria-expanded': shown, onClick: () => setOpen(!shown) },
+      h(shown ? ChevronDownIcon : ChevronRightIcon),
+      h('span', null, t('{count} tool calls', { count: events.length })),
+      live > 0 && h('span', { className: 'gb-execution-meta' }, t('{count} running', { count: live }))),
+    shown && h(Rows, { events, target, running }))
+}
+
+// A whole turn's process outside the transcript (a group member's work panel): what the
+// Bot wrote and the tool calls it ran, in order, read again while the turn runs. Each
+// call opens to its input and output, as in the Bot's own chat.
+export function ExecutionProcess({ client, botId, sessionId, turn, running }) {
+  const info = useExecution(client, botId, sessionId, { turn, running, live: true })
+  const data = info.data
+  if (!data) {
+    return info.error
+      ? h('p', { role: 'alert', className: 'gb-execution-error' }, '无法读取工作过程。', press('重试', info.reload))
+      : h('p', { role: 'status', className: 'gb-execution-note' }, '正在读取工作过程…')
+  }
+  const live = running && data.running !== false
+  const segments = processSegments(data.events)
+  if (segments.length === 0) return h('p', { className: 'gb-execution-note' }, live ? '还没有调用工具。' : '这一轮没有记录到工作过程。')
+  const target = { client, botId, sessionId, turn }
+  const newest = segments.findLastIndex(segment => segment.type === 'tools')
+  return h('div', { className: 'gb-execution-process', 'data-running': live || undefined },
+    segments.map((segment, index) => segment.type === 'tools'
+      ? h(ToolRun, { key: segment.key, events: segment.events, target, running: live, newest: index === newest })
+      : h(Rows, { key: segment.key, events: [segment.event], target, running: live, transcript: true })))
 }

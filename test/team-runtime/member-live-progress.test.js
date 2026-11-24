@@ -19,6 +19,7 @@ function memberTurn(t) {
     isBotSession: id => id === sessionId,
     roomOf: () => undefined,
     selfOf: () => 'claude',
+    botOf: () => undefined,
     switchJobs: () => [],
     approvalsView: () => [],
     touchRoomTurn: () => { calls.touched += 1 },
@@ -107,4 +108,22 @@ test('the newest calls are bounded and a new turn starts with none', (t) => {
   assert.equal(entry.count, undefined)
   assert.equal(entry.recent, undefined)
   assert.equal(entry.tool, undefined)
+})
+
+test('a member at work names its group Session and turn, which its work panel reads', (t) => {
+  const { rt, emit, work, sessionId } = memberTurn(t)
+  emit('turn/start', { turn: 4 })
+  rt.noteNativeTool(sessionId, { type: 'tool', id: 'toolu_1', name: 'Bash', status: 'running', input: { command: 'npm test' } })
+  const entry = work()
+  assert.equal(entry.sessionId, sessionId)
+  assert.equal(entry.turn, 4)
+  // The turn a group line comes from: the running one while it runs ...
+  assert.deepEqual(rt.turnWork(sessionId), { sessionId, turn: 4, tools: 1 })
+  emit('turn/end', { turn: 4, reason: { kind: 'completed' } })
+  // ... and once it ended, the one it ended last, for its late reply.
+  assert.equal(work(), undefined)
+  assert.deepEqual(rt.turnWork(sessionId), { sessionId, turn: 4, tools: 1 })
+  emit('turn/start', { turn: 5 })
+  assert.deepEqual(rt.turnWork(sessionId), { sessionId, turn: 5 })
+  assert.equal(rt.turnWork('another-session'), undefined)
 })

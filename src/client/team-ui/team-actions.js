@@ -1,6 +1,7 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 import { countCards, heldCardKey } from './sources.js'
 import { noteClientError } from './diagnostics.js'
+import { workAt } from './member-work-model.js'
 
 // The actions every window that draws the Bot views shares: dialogs and panels (the `ui`
 // source), requests to the host, and the notes the transcript keeps. The shell around the
@@ -53,11 +54,22 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
         const snap = roster.getSnapshot()
         const view = state.view === 'browser' && snap.byId[id] === undefined ? 'details'
           : state.view === 'side' && !(snap.sideChats?.[snap.byId[id]?.id] ?? []).some(chat => chat?.id === state.side) ? 'details'
-            : state.view
+            // A member's work belongs to its group: another conversation shows its details.
+            : state.view === 'work' && (snap.roomsById[id] === undefined || snap.roomsById[id] !== snap.roomsById[state.details]) ? 'details'
+              : state.view
         return { ...state, details: id, view, renaming: false, tab: null }
       })
     },
     showDetails: (id, tab = null) => { ui.set(state => ({ ...state, details: id, view: 'details', renaming: false, tab, panelYield: yieldTo(state, 'details') })) },
+    // A group member's work, in the panel beside the group: the turn `at` names (a group
+    // line's), else the one it runs there now. The panel follows the group's current
+    // part, as its details do.
+    showMemberWork: (roomId, botId, at = {}) => {
+      const room = roster.getSnapshot().roomsById[roomId]
+      if (room === undefined || typeof botId !== 'string') return
+      const tools = Number.isSafeInteger(at?.tools) && at.tools > 0 ? { tools: at.tools } : {}
+      ui.set(state => ({ ...state, details: room.sessionId ?? room.id, view: 'work', work: { botId, ...workAt(at), ...tools }, renaming: false, tab: null, panelYield: yieldTo(state, 'work') }))
+    },
     // Opening the conversation would move focus to its composer and blur the name field.
     renameBot: (id) => { ui.set(state => ({ ...state, details: id, view: 'details', renaming: true, tab: null, panelYield: yieldTo(state, 'details') })) },
     openSettings,
@@ -88,7 +100,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
       ui.set(state => (state.details && state.view === 'side' && state.side === chatId ? { ...state, view: 'details', side: null } : state))
       return after(call('side-close', { chatId }))
     },
-    closePanel: () => { ui.set(state => (state.details ? { ...state, details: null, view: 'details', renaming: false, tab: null, side: null } : state)) },
+    closePanel: () => { ui.set(state => (state.details ? { ...state, details: null, view: 'details', renaming: false, tab: null, side: null, work: null } : state)) },
     quote: (sessionId, text) => ui.set(state => ({ ...state, quote: { sessionId, text, token: Date.now() } })),
     // A long paste becomes a card; its text stays here until it goes back into the box.
     addPaste: (sessionId, text, name) => {

@@ -59,6 +59,7 @@ import { RIGHTBAR_ATTRIBUTES, columnOpened, createSwitchWindow, drawerOpened, ri
 import { ErrorToast, FEEDBACK_CSS } from './feedback.js'
 import { ABOUT_CSS } from './about.js'
 import { MEMBER_CSS, MemberDock } from './member-status.js'
+import { MEMBER_WORK_CSS } from './member-work.js'
 import { TASK_CSS } from './task-board.js'
 import { IM_CSS } from './im-page.js'
 import { GOAL_CSS } from './goal.js'
@@ -1339,7 +1340,7 @@ export function apply(ctx, godbot) {
     [SCHEDULE_CSS, 'schedules'],
     [FEEDBACK_CSS, 'feedback'],
     [ABOUT_CSS, 'about'],
-    [MEMBER_CSS, 'members'],
+    [MEMBER_CSS + MEMBER_WORK_CSS, 'members'],
     [TASK_CSS, 'tasks'],
     [PASTE_CSS, 'paste'],
     [OPENING_CSS, 'opening'],

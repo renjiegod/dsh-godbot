@@ -698,20 +698,37 @@ export function install(rt) {
       if (rooms[roomId]?.some(item => item.botId === botId)) return
       rooms[roomId] = [...(rooms[roomId] ?? []), { botId, ...work, ...(speaking.has(`${roomId}:${botId}`) ? { speaking: true } : {}) }]
     }
+    // `sessionId` and `turn` name the member's group Session and its running turn, which
+    // the member's work panel reads the process of.
     for (const [id, entry] of live) {
       const owner = rt.groupOwners.get(id)
-      if (entry.turn !== undefined && owner !== undefined) add(owner.roomId, owner.botId, { since: entry.since, ...doingOf(entry) })
+      if (entry.turn !== undefined && owner !== undefined) {
+        add(owner.roomId, owner.botId, { since: entry.since, sessionId: id, ...(entry.turn !== RECOVERED_TURN ? { turn: entry.turn } : {}), ...doingOf(entry) })
+      }
     }
     for (const [id] of subagentsByParent) {
       const owner = rt.groupOwners.get(id)
       const sub = owner !== undefined ? subagentDoingOf(id) : undefined
-      if (sub !== undefined) add(owner.roomId, owner.botId, sub)
+      if (sub !== undefined) add(owner.roomId, owner.botId, { ...sub, sessionId: id, ...(Number.isSafeInteger(live.get(id)?.lastWork?.turn) ? { turn: live.get(id).lastWork.turn } : {}) })
     }
     for (const job of rt.switchJobs()) {
       // `self`: the group's own Session moves; the group's activity row names it.
       if (job.roomId !== undefined) add(job.roomId, job.botId, { since: job.since, switching: true, ...(job.folder === true ? { folder: true } : {}), ...(job.botId === undefined ? { self: true } : {}) })
     }
     return rooms
+  }
+
+  // The turn a group line comes from: the running turn of the member's Session, else the
+  // one it ended last, with how many tools it ran. The group's rows carry it, so a reply
+  // opens the process that produced it. Undefined for a turn adopted after a reload,
+  // whose number is not known.
+  const turnWork = (sessionId) => {
+    const entry = live.get(sessionId)
+    if (entry === undefined) return undefined
+    if (entry.turn !== undefined) {
+      return entry.turn === RECOVERED_TURN ? undefined : { sessionId, turn: entry.turn, ...(entry.toolCount > 0 ? { tools: entry.toolCount } : {}) }
+    }
+    return entry.lastWork === undefined ? undefined : { sessionId, ...entry.lastWork }
   }
 
   // What a running tool call is about, for an approval card: its own description and
@@ -1078,6 +1095,8 @@ export function install(rt) {
             // The turn's change line travels with its post; without it a completion
             // notice that arrives after the round closed has nothing to show.
             ...(source.changes === undefined ? {} : { changes: source.changes }),
+            // The member's turn the post comes from, which opens its process.
+            ...(source.work === undefined ? {} : { work: source.work }),
             ...(source.member ? { member: true } : {}),
             // Who the whole post called. `text` may be only its opening (attachLong).
             ...(source.mentions ? { mentions: source.mentions } : {}),
@@ -1242,6 +1261,8 @@ export function install(rt) {
         // turn is settled from the Session's log, is not one (resume.js does that).
         const watched = entry.turn !== undefined
         const turn = entry.turn
+        // What the group's line for this turn points at, read after the reset below.
+        if (Number.isSafeInteger(turn) && turn !== RECOVERED_TURN) entry.lastWork = { turn, ...(entry.toolCount > 0 ? { tools: entry.toolCount } : {}) }
         entry.turn = undefined
         entry.info = undefined
         entry.texts = []
@@ -1500,5 +1521,5 @@ export function install(rt) {
     }, 'godbot: prompt rejection reasons')
   }
 
-  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteNativeTool, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })
+  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteNativeTool, turnWork, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })
 }

@@ -15,8 +15,8 @@ async function fixture(t) {
   return {
     home,
     botOf: id => ['worker', 'other'].includes(id) ? { id } : undefined,
-    chatOwners: new Map([['part', 'worker'], ['other-part', 'other'], ['room-part', 'worker']]),
-    groupOwners: new Map([['room-part', 'room']]),
+    chatOwners: new Map([['part', 'worker'], ['other-part', 'other']]),
+    groupOwners: new Map([['room-part', { botId: 'other', roomId: 'room' }]]),
     pastOwners: new Map([['past', { botId: 'worker' }]]),
     state: { localAgents: { sessions: {} } },
     redactSecrets: text => text.replaceAll('fixture-secret', '[redacted]'),
@@ -93,6 +93,7 @@ test('execution history updates one row per call and reads its details across re
   assert.equal(replay.events[0].exitCode, 1)
   assert.deepEqual((await reopened.read({ ...part, toolId: 'dsh-1' })).events[0].output, [{ type: 'text', text: 'found tests' }])
   await assert.rejects(reopened.read({ ...part, botId: 'other' }), /私聊/)
+  // Another member's group Session is that member's work, not this one's.
   await assert.rejects(reopened.read({ ...part, sessionId: 'room-part' }), /私聊/)
 })
 

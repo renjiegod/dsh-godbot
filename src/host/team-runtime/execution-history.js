@@ -5,6 +5,8 @@ import { dshShellOutcome } from '../../drivers/dsh-tool-receipt.js'
 import { readAntigravityToolResult } from './antigravity-tool-result.js'
 import { readClaudeExecutionHistory } from './claude-execution-history.js'
 import { bindToolSlots, mirroredTools, readToolActivity, toolSlots } from './shared/tool-timeline.js'
+import { skillNameFromPath, toolKind } from './shared/tool-kind.js'
+import { commandLabel } from './tool-activity.js'
 
 const fieldLimit = 256 * 1024
 const turnPageSize = 12
@@ -65,9 +67,35 @@ function mergeEvent(previous, next) {
   return row
 }
 
+// What a call works on, from its input, for a summary that leaves the input out, named
+// the way the chat names a call from its arguments: a DSH tool's arguments come as JSON
+// text, a CLI's command as plain text, of which only the program shows.
+function inputTarget(row) {
+  let value = row.input
+  if (typeof value === 'string' && value.trimStart().startsWith('{')) {
+    try { value = JSON.parse(value) } catch { /* plain text */ }
+  }
+  let target
+  if (typeof value === 'string') target = commandLabel(value)
+  else if (value !== null && typeof value === 'object') {
+    const arg = key => (typeof value[key] === 'string' && value[key].trim() !== '' ? value[key] : undefined)
+    const path = arg('file_path') ?? arg('path')
+    target = (row.activityKind ?? toolKind(row.name, path)) === 'skill'
+      ? arg('name') ?? arg('skill') ?? skillNameFromPath(path)
+      : arg('description') ?? path ?? arg('pattern') ?? arg('query') ?? commandLabel(arg('command') ?? arg('cmd'))
+  }
+  return typeof target === 'string' ? target.replace(/\s+/g, ' ').trim().slice(0, 240) || undefined : undefined
+}
+
+// `target` stands apart from `text`: the chat lays a call's summary over the name it
+// read from the call itself, and a guess from the input must not replace that name.
 function summary(row) {
   if (row.type !== 'tool') return row
   const preview = { ...row, detailAvailable: toolDetails.some(key => row[key] !== undefined) }
+  if ((typeof preview.text !== 'string' || preview.text === '') && !Array.isArray(preview.locations)) {
+    const target = inputTarget(row)
+    if (target) preview.target = target
+  }
   for (const key of toolDetails) delete preview[key]
   return preview
 }
@@ -147,11 +175,15 @@ export class ExecutionHistory {
     this.nativeCache = new Map()
   }
 
+  // The Bot whose work a Session holds: its own chat and its parts, and its Session in
+  // a group, which the group's member work panel reads. A group's own Session runs no
+  // model and belongs to no Bot.
   ownerOf(sessionId) {
     const rt = this.rt
-    if (rt.groupOwners?.has(sessionId) || rt.roomOwners?.has(sessionId)) return undefined
+    if (rt.roomOwners?.has(sessionId)) return undefined
+    const member = rt.groupOwners?.get(sessionId)
+    if (member !== undefined) return typeof member?.botId === 'string' ? member.botId : undefined
     const past = rt.pastOwners?.get(sessionId)
-    if (past?.roomId) return undefined
     return rt.chatOwners?.get(sessionId) ?? past?.botId
   }
 

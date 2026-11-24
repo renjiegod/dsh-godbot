@@ -16,6 +16,7 @@ import { FLIGHT_ENDS, INTENT_MS, createFlight, flightEnd, flightStart, planFligh
 import { DetailsDrawer } from './details-drawer.js'
 import { nativeMode } from '../native-agent-target.js'
 import { SideChatView } from './side-chat.js'
+import { MemberWorkView } from './member-work.js'
 import { panelHasStrip, sideChatsOf, stripMenuKeys } from './side-model.js'
 import { DotsIcon, FolderIcon, SideIcon, TerminalIcon } from './icons.js'
 import { t } from './i18n.js'
@@ -527,7 +528,9 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
   const canBrowse = Boolean(bot && roster.browser === true && actions.browserShow)
   const sideChats = bot ? sideChatsOf(roster, bot.id) : []
   const sideChat = sideChats.find(chat => chat?.id === pane.side)
-  const view = pane.view === 'browser' && canBrowse ? 'browser' : pane.view === 'side' && sideChat !== undefined ? 'side' : 'details'
+  // A group's member work view needs the group and the member it shows.
+  const work = pane.view === 'work' && roster.roomsById[pane.id] !== undefined && typeof pane.work?.botId === 'string' ? pane.work : undefined
+  const view = pane.view === 'browser' && canBrowse ? 'browser' : pane.view === 'side' && sideChat !== undefined ? 'side' : work !== undefined ? 'work' : 'details'
   const tabState = useBrowserTabs(map => (bot ? (map[bot.id] ?? EMPTY_TABS) : EMPTY_TABS))
   const active = tabState.active
   const page = useBrowserPages(pages => (active ? pages[active] : null) ?? EMPTY_PAGE)
@@ -725,7 +728,7 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
   const hasStrip = panelHasStrip(canBrowse, tabState.ids.length, sideChats.length)
   return h('aside', {
     ref: root, className: 'bt-panel', 'data-view': view,
-    'aria-label': view === 'browser' && bot ? t("{name}'s browser", { name: bot.name }) : view === 'side' ? t('Side chat') : t('Conversation details'),
+    'aria-label': view === 'browser' && bot ? t("{name}'s browser", { name: bot.name }) : view === 'side' ? t('Side chat') : view === 'work' ? t('Work process') : t('Conversation details'),
     'data-leaving': leaving || undefined, 'aria-hidden': leaving || undefined, 'data-settling': settling || undefined,
     'data-instant': instant || undefined, 'data-dragging': dragging || undefined, 'data-overlay': overlay || undefined, style: { '--bt-panel-w': `${panelWidth}px` },
     onAnimationEnd: (event) => { if (event.target === event.currentTarget) setLanded(true) },
@@ -739,7 +742,10 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
       ? h(BrowserView, { key: `browser:${active}`, bot, tabId: active, leaving, landed: landed && !settling, actions, useBrowserPages, hold })
       : view === 'side' && sideChat
         ? h('div', { key: `side:${sideChat.id}`, className: 'bt-panel-view' }, h(SideChatView, { subject: pane.id, chat: sideChat, roster, actions: panelActions }))
-        : h('div', { key: `details:${pane.id}:${pane.renaming ? 'rename' : ''}:${native ? 'native-agent' : pane.tab ?? ''}`, className: 'bt-panel-view' },
+        : view === 'work'
+          ? h('div', { key: `work:${pane.id}:${work.botId}:${work.sessionId ?? ''}:${work.turn ?? ''}`, className: 'bt-panel-view' },
+            h(MemberWorkView, { roomId: pane.id, at: work, roster, actions: panelActions, useWork }))
+          : h('div', { key: `details:${pane.id}:${pane.renaming ? 'rename' : ''}:${native ? 'native-agent' : pane.tab ?? ''}`, className: 'bt-panel-view' },
             h(DetailsDrawer, {
               sessionId: pane.id, startRenaming: pane.renaming, startTab: pane.tab, hasStrip,
               roster, actions: panelActions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer,

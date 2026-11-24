@@ -256,6 +256,9 @@ button.bt-lead{border:0;background:none;padding:0;cursor:pointer}
 .bt-group-name:has(>.bt-lead){display:flex;align-items:center;margin:0 0 2px;font-size:13px;line-height:22px;font-weight:600;color:var(--bt-ink)}
 .bt-group-name>.bt-lead{margin:0 8px 0 0}
 .bt-group-time,.bt-group-took{margin-left:6px;font-size:11px;line-height:16px;font-weight:400;color:var(--bt-ink-2);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bt-group-work{margin-left:6px;padding:0;border:0;background:none;font:inherit;font-size:11px;line-height:16px;font-weight:400;color:var(--bt-ink-2);font-variant-numeric:tabular-nums;white-space:nowrap;cursor:pointer}
+.bt-group-work::after{content:" ›"}
+.bt-group-work:hover{color:var(--bt-ink);text-decoration:underline}
 .bt-claim{margin-left:30px;font-size:11px;line-height:16px;color:var(--bt-ink-2)}
 body[data-bt-layout=flat] .bt-claim{margin-left:0}
 .bt-claim-file{color:var(--bt-danger)}
@@ -1208,6 +1211,8 @@ body[data-bt-layout=flat] .bt-think{max-width:calc(var(--bt-flat-w) * 100%)}
    (cells.js PartStart). */
 [class*="_scroll"]>[class*="_column"]:has(.bt-earlier,.bt-part-start)::before{content:none}
 .bt-activity{display:flex;align-items:center;gap:10px;margin:8px 0 4px 2px;font-size:14px;color:var(--bt-ink-2)}
+.bt-activity-open{width:auto;max-width:100%;padding:0;border:0;background:none;font:inherit;font-size:14px;text-align:left;cursor:pointer}
+.bt-activity-open:hover .bt-shimmer{color:var(--bt-ink)}
 .bt-group-replies{display:contents}
 /* A Bot chat is flat in every work-details mode, without changing the user's mode
    (it is a DSH-wide setting): step groups lose their header and stay open, and what a

@@ -18,7 +18,7 @@ import { useProviderChoices } from './provider-agents-hook.js'
 import { sandboxSettingsStyle } from './bot-settings-style.js'
 import { AgentSetup } from './agent-setup.js'
 import { ConnectorToolsPanel } from './connector-tools.js'
-import { executionStyle, InlineExecution, useExecutionTools } from './execution-history.js'
+import { executionStyle, ExecutionProcess, InlineExecution, useExecutionTools } from './execution-history.js'
 import { openWorkspace } from './workspace-entry.js'
 import { botHome } from './session-links.js'
 import { Icon } from './chat-ui.js'
@@ -328,6 +328,10 @@ function mountProduct(ctx, client, navigation, target, ready) {
     useExecutionTools: (botId, sessionId, turn, enabled) => useExecutionTools(client, botId, sessionId, turn, enabled),
     inlineExecution: (key, botId, sessionId, turn, running, events) => h(InlineExecution, {
       key, client, botId, sessionId, turn, running, events,
+    }),
+    // One turn of a group member's work, for the group's member work panel.
+    memberProcess: ({ key, botId, sessionId, turn, running }) => h(ExecutionProcess, {
+      key, client, botId, sessionId, turn, running,
     }),
     providerAgents: ({ readOnly, ...props }) => h(ProviderAgentsPage, {
       client, call, builtins, AgentLogo, AgentForm, readOnly,

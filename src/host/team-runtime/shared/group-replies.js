@@ -65,20 +65,27 @@ function scanReplies(text, start, replies) {
 
 // A member's messages in a row, as one block under its name: what it says while it
 // works comes one message at a time. A block carries the last message's time and run.
+// Two lines may share a message only when they come from one turn of the member, or
+// one of them names none (a line from before lines named their turn).
+const sameTurn = (a, b) => a === undefined || b === undefined || (a.sessionId === b.sessionId && a.turn === b.turn)
+
 export function stackReplies(replies) {
   const items = []
   replies.forEach((reply, index) => {
     const last = items.at(-1)
     if (reply.kind === undefined && last?.reply.kind === undefined && last?.reply.botId === reply.botId
       && last.claims === undefined && (last.changes === undefined
-        || (reply.changes?.sessionId === last.changes.sessionId && reply.changes?.turn === last.changes.turn))) {
+        || (reply.changes?.sessionId === last.changes.sessionId && reply.changes?.turn === last.changes.turn))
+      && sameTurn(last.work, reply.work)) {
       last.texts.push(reply.text)
       last.time = reply.time
       last.duration = reply.duration
       if (reply.claims !== undefined) last.claims = reply.claims
       // The change line belongs to the turn, so a later message of the same turn replaces
-      // it rather than stacking a second one.
+      // it rather than stacking a second one. So does the turn's process, which has run
+      // more tools by then.
       if (reply.changes !== undefined) last.changes = reply.changes
+      if (reply.work !== undefined) last.work = reply.work
     } else {
       items.push({
         reply, index,
@@ -86,6 +93,7 @@ export function stackReplies(replies) {
         time: reply.time, duration: reply.duration,
         ...(reply.claims === undefined ? {} : { claims: reply.claims }),
         ...(reply.changes === undefined ? {} : { changes: reply.changes }),
+        ...(reply.work === undefined ? {} : { work: reply.work }),
       })
     }
   })
