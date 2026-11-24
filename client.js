@@ -18431,7 +18431,7 @@ body{--bt-return-fill:rgba(127,127,127,.08);--bt-return-fill-hover:rgba(127,127,
 var import_react2 = require("react");
 
 // src/host/web-icon.js
-var webIconFile = "godbot-icon-a4e5427b7eeb.png";
+var webIconFile = "godbot-icon-936d999aa57c.svg";
 var webIconUrl = "./plugins/dsh-godbot/assets/" + webIconFile;
 
 // src/client/team-ui/mark.js
@@ -41164,7 +41164,7 @@ function showsDshRow(dsh, app) {
 }
 
 // package.json
-var version = "0.2.10";
+var version = "0.2.11";
 
 // src/client/team-ui/about.js
 var import_react42 = require("react");

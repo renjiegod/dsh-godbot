@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="src/host/assets/godbot-icon-a4e5427b7eeb.png" width="104" alt="">
+<img src="src/host/assets/godbot-icon-936d999aa57c.svg" width="104" alt="">
 
 <h1>Godbot</h1>
 

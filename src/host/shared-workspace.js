@@ -6,7 +6,7 @@ import { AutomationError } from './automation-runs.js'
 import { runOrigin } from './run-origin.js'
 import { normalizeEmail, SharedOidc } from './shared-oidc.js'
 import { record, required } from './team.js'
-import { webIconFile } from './web-icon.js'
+import { webIconFile, webIconPngFile } from './web-icon.js'
 
 const roles = ['view', 'chat', 'manage']
 const digest = value => createHash('sha256').update(value).digest('hex')
@@ -21,6 +21,7 @@ const html = readFileSync(new URL('./shared-web/index.html', import.meta.url))
 const script = readFileSync(new URL('./shared-web/app.js', import.meta.url))
 const css = readFileSync(new URL('./shared-web/app.css', import.meta.url))
 const icon = readFileSync(new URL('./assets/' + webIconFile, import.meta.url))
+const iconPng = readFileSync(new URL('./assets/' + webIconPngFile, import.meta.url))
 
 async function bodyOf(req, max = 64000) {
   if (!req.headers['content-type']?.startsWith('application/json')) throw new AutomationError(415, '仅接受 JSON')
@@ -413,7 +414,8 @@ export class SharedWorkspace {
       if (route === '/share' || route === '/share/') return send(res,200,'text/html; charset=utf-8',html)
       if (route === '/share/app.js') return send(res,200,'text/javascript; charset=utf-8',script)
       if (route === '/share/app.css') return send(res,200,'text/css; charset=utf-8',css)
-      if (route === '/share/icon.png') return send(res,200,'image/png',icon)
+      if (route === '/share/icon.svg') return send(res,200,'image/svg+xml',icon)
+      if (route === '/share/icon.png') return send(res,200,'image/png',iconPng)
       if (route === '/share/api/sign-in') return json(res, 200, { sso: this.oidc.enabled() && req.headers.host === this.oidc.publicUrl.host })
       if (route === '/share/oidc/start') return this.oidc.begin(req, res)
       if (route === '/share/oidc/callback') return this.signIn(req, res)

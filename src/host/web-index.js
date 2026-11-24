@@ -51,7 +51,7 @@ export function installSidebarLoadingStyle(document) {
 export function prepareWorkspaceIndex(html) {
   return html
     .replace(/<link\b[^>]*\srel=(?:"icon"|'icon')[^>]*>/gi, '')
-    .replace(/<\/head>/i, `<link rel="icon" type="image/png" href="${webIconUrl}">
+    .replace(/<\/head>/i, `<link rel="icon" type="image/svg+xml" href="${webIconUrl}">
 <style id="${styleId}">${sidebarStyle}</style>
 <script>${bootScript}</script>
 </head>`)

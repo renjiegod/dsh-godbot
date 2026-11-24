@@ -1,6 +1,6 @@
 {
   "name": "dsh-godbot",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "description": "Control native agent sessions and collaborate in a local dsh team.",
   "license": "MIT",
   "repository": {
@@ -13,6 +13,7 @@
     ".": "./src/host/plugin.js",
     "./client": "./client.js",
     "./assets/godbot-icon-*.png": "./src/host/assets/godbot-icon-*.png",
+    "./assets/godbot-icon-*.svg": "./src/host/assets/godbot-icon-*.svg",
     "./web-search": "./src/host/workspace-search.js",
     "./package.json": "./package.json"
   },
