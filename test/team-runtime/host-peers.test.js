@@ -35,6 +35,15 @@ test('local installation links the physical peers of the exact DSH launcher', as
   await writeFile(wrapper, '#!/bin/sh\nexec "' + executable + '" "$@"\n', { mode: 0o755 })
   assert.deepEqual(hostPeerSpecs(pkg, wrapper), expected)
   assert.throws(() => hostPeerSpecs({ ...pkg, peerDependencies: { [name]: '0.0.1' } }, executable), /Expected/)
+
+  const compatible = {
+    engines: { dsh: '>=0.2.2-rc.1 <0.2.3-0' },
+    peerDependencies: { [name]: '0.2.2-rc.5' },
+    peerDependenciesMeta: { [name]: { optional: true } },
+  }
+  assert.deepEqual(hostPeerSpecs(compatible, executable), expected)
+  await writeFile(join(peer, 'package.json'), JSON.stringify({ name, version: '0.2.2-rc.5' }))
+  assert.throws(() => hostPeerSpecs(compatible, executable), /Expected/)
 })
 
 test('a second copy of the same DSH scope package is rejected before the first Bot registers tools', async t => {

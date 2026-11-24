@@ -1,15 +1,11 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
-// DSH updates: a released Godbot may name the DSH release it was verified
-// against (`engines.dsh` in package.json); a release that names none
-// offers nothing. The newest released bot wins: offering that version and
-// nothing newer keeps the update path away from DSH releases we have not
-// checked. A DSH installed from npm swaps with `npm i -g`; a packaged app's
-// runtime lives inside its bundle and only its own updater moves it, to the
-// newest release it finds, so the client offers it only when that release is
-// the verified one.
+// Godbot can recommend a verified DSH release from within its compatibility
+// range. An npm installation can update to that release. A packaged app
+// updates through its own updater.
 import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 
+import { verifiedDshVersion } from '../../dsh-compatibility.js'
 import {
   FETCH_TIMEOUT_MS, cleanVersion, encodeName, fetchJson, followsPrereleases, installSpecOf,
   newer, registryPlan, repoSlug, runningDsh, sourceOf, updatesEnabled,
@@ -23,7 +19,7 @@ const CHECK_TTL_MS = 10 * 60_000
 // Only exact release versions describe a verified installation target.
 function dshRequirement(manifest) {
   if (manifest?.name !== PKG.name) return null
-  const verifiedDsh = cleanVersion(manifest.engines?.dsh)
+  const verifiedDsh = verifiedDshVersion(manifest)
   return verifiedDsh ? { verifiedDsh, minBot: manifest.godbot?.minBot } : null
 }
 
@@ -47,7 +43,7 @@ export function install(rt) {
     checkedAt: status.checkedAt, phase: status.phase, installed: status.installed, error: status.error,
     // Nothing is offered without a current version to compare against.
     available: status.phase !== 'installed' && target !== null && status.current !== null
-      && status.verified !== null && status.verified !== status.current && !blocked(),
+      && !blocked(),
   })
 
   const currentDsh = () => runningDsh(ctx)
@@ -95,19 +91,19 @@ export function install(rt) {
       status.kind = installKind()
       // The desktop app pins its DSH and updates it as a whole, so it has nothing to offer.
       const inApp = process.env.GODBOT_APP === '1'
-      // The release the running package itself verified stays the floor: a bot
-      // older than its own declaration has nothing newer to offer.
+      // Use the installed package's recommendation when the release feed is unavailable.
       const declared = inApp ? [] : [dshRequirement(PKG)].filter(Boolean)
       const released = inApp ? null : await releasedDeclaration(sourceOf(await installSpecOf(ctx)))
       if (released) declared.push(released)
       const newestDeclared = declared
         .filter(entry => cleanVersion(entry.verifiedDsh))
         .sort((a, b) => (newer(cleanVersion(a.verifiedDsh), cleanVersion(b.verifiedDsh)) ? -1 : 1))[0]
-      status.verified = cleanVersion(newestDeclared?.verifiedDsh)
+      const verified = cleanVersion(newestDeclared?.verifiedDsh)
+      status.verified = status.current && verified && newer(status.current, verified) ? null : verified
       // A release may gate the DSH update on a newer bot: offer nothing until
       // the bot itself is at least `minBot`.
       status.blockedBy = cleanVersion(newestDeclared?.minBot)
-      target = status.current !== null && status.verified !== null && status.verified !== status.current
+      target = status.current !== null && status.verified !== null && newer(status.verified, status.current)
         ? { version: status.verified }
         : null
       status.error = null

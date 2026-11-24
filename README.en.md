@@ -10,7 +10,7 @@
 
 <p><strong><a href="#quick-start">Quick start</a></strong> · <a href="docs/user-guide.zh-CN.md">User guide</a> · <a href="https://github.com/renjiegod/dsh-godbot/releases">Releases</a> · <a href="https://github.com/renjiegod/godbot-app#readme">Android</a> · <a href="README.md">简体中文</a></p>
 
-<p><sub>macOS · DSH Web · MIT</sub></p>
+<p><sub>macOS and Linux · DSH Web · MIT</sub></p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/workbench-dark.png">
@@ -23,10 +23,11 @@
 
 ## Quick start
 
-You need macOS, Node.js 24.9 or later, npm, and pnpm. The installer sets up Godbot in the DSH Web `web` profile.
+The Godbot workbench runs on macOS and Linux. You need Node.js 24.9 or later, npm, pnpm, and DSH `0.2.2-rc.2` or a later release in the 0.2.2 series. If you already have a compatible DSH installation, proceed straight to installing the plugin.
+
+For a fresh installation of DSH and pnpm, run `npm install -g @deepseek-ai/dsh@0.2.2-rc.5 pnpm@11.1.2`.
 
 ```sh
-npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 git clone https://github.com/renjiegod/dsh-godbot.git
 cd dsh-godbot
 npm ci
@@ -35,6 +36,8 @@ dsh web
 ```
 
 Open the sign-in link from DSH and select **Godbot** in the sidebar (`/#/godbot`). Choose a model for GodBot, then add team members. Native DSH members use a model configured in that profile.
+
+Use `dsh web --no-open` on a headless Linux host.
 
 If Godbot reports `This DSH profile uses a separate copy`, stop the affected DSH process and follow the repair steps. [Installation troubleshooting](docs/user-guide.zh-CN.md#安装后提示-dsh-依赖有两份)
 

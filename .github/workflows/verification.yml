@@ -17,12 +17,32 @@ jobs:
         with:
           node-version: 24.14.0
           cache: npm
-      - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@$(node -p "require('./package.json').engines.dsh")
+      - run: npm install -g pnpm@11.1.2 "@deepseek-ai/dsh@$(node -p "require('./package.json').godbot.verifiedDsh")"
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - run: npm pack --dry-run --ignore-scripts
+
+  linux-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        dsh: [0.2.2-rc.2, 0.2.2-rc.5]
+    env:
+      DSH_VERSION: ${{ matrix.dsh }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - run: npm install -g pnpm@11.1.2 "@deepseek-ai/dsh@$DSH_VERSION"
+      - run: npm ci
+      - run: npx --no-install playwright-core install --with-deps --no-shell chromium
+      - run: npm run test:e2e -- --case E0
 
   # The packaged browser end-to-end suite is long-running, so it only runs when
   # started by hand from the Actions tab (Run workflow).
@@ -38,7 +58,7 @@ jobs:
         with:
           node-version: 24.14.0
           cache: npm
-      - run: npm install -g pnpm@11.1.2 @deepseek-ai/dsh@$(node -p "require('./package.json').engines.dsh")
+      - run: npm install -g pnpm@11.1.2 "@deepseek-ai/dsh@$(node -p "require('./package.json').godbot.verifiedDsh")"
       - run: npm ci
       - name: Install Chromium matched to the locked Playwright version
         run: npx --no-install playwright-core install --no-shell chromium
