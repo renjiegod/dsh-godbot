@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { gzipSync } from 'node:zlib'
-import { CHECK_TTL_MS, IDLE_MS, RETRY_MS, install, profileCommand, sourceOf } from '../../src/host/team-runtime/core/update.js'
+import { IDLE_MS, RETRY_MS, install, profileCommand, sourceOf } from '../../src/host/team-runtime/core/update.js'
 import { dshRestart } from '../../src/host/team-runtime/core/dsh-restart.js'
 import {
   GITHUB_API, archiveManifest, compatibility, downloadArchive, newer, newestRelease, releasesApi, sidecarDigest,
@@ -116,7 +116,7 @@ function fakeSpawn({ code = 0, output = '', install } = {}) {
 // The team runtime's update module with the profile, plugin manager, network and clock it reads.
 // `hmr` gives the host DSH's in-place reload service; `cli` the profile facts and the
 // installed DSH that DSH's CLI is found from; `spawn` runs that CLI.
-function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = Object.keys(PKG.peerDependencies), install: answer, home = scratch(), hmr = false, cli = false, spawn, profileVersion } = {}) {
+function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = Object.keys(PKG.peerDependencies), install: answer, home = scratch(), hmr = false, cli = false, spawn, profileVersion, effect = () => {} } = {}) {
   const dshHome = scratch()
   const profile = join(dshHome, 'profiles', 'web')
   mkdirSync(profile, { recursive: true })
@@ -147,7 +147,7 @@ function harness({ releases, routes = {}, mode, dsh = PKG.engines.dsh, peers = O
     ...(hmr ? { hmr: {} } : {}),
   }
   const rt = {
-    ctx: { get: name => services[name], effect() {} },
+    ctx: { get: name => services[name], effect },
     config: { updateArchiveDir: archives, ...(mode ? { updateMode: mode } : {}) },
     home,
     live: new Map(),
@@ -294,23 +294,38 @@ test('auto mode downloads a release, waits until Godbot is idle, then installs i
   assert.equal(marker.auto, true)
 })
 
-test('the host detects later releases and windows share its release check', async () => {
+test('the host rechecks after five minutes and open windows share the result', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
   const next = release(NEXT)
   let published = false
   const { rt, net, clock } = harness({
-    releases: [next], mode: 'notify', routes: { [LIST]: () => published ? [next.body] : [] },
+    releases: [next],
+    mode: 'notify',
+    routes: { [LIST]: () => published ? [next.body] : [] },
+    effect: start => { t.after(start()) },
   })
+  const advance = async ms => {
+    clock.now += ms
+    t.mock.timers.tick(ms)
+    await settle()
+  }
   const reads = () => net.calls.filter(url => url === LIST).length
-  assert.equal((await rt.updateCheck()).available, false)
+
+  // A window checks before the host's delayed startup poll. The next release
+  // check is due five minutes after that request, between the minute ticks.
+  const initial = await Promise.all([rt.updateCheck(), rt.updateCheck()])
+  assert.ok(initial.every(view => !view.available))
+  assert.equal(reads(), 1)
   published = true
-  clock.now += CHECK_TTL_MS - 1
-  await rt.updateTick()
+  await advance(15_000)
+  for (let minute = 0; minute < 4; minute++) await advance(60_000)
+  await advance(44_999)
   assert.equal(rt.updateView().available, false)
   assert.equal(reads(), 1)
 
-  clock.now += 1
-  await Promise.all([rt.updateTick(), rt.updateCheck(), rt.updateCheck()])
-  await rt.updatePrepare()
+  await advance(1)
+  assert.equal(reads(), 2, 'the background clock runs at the five-minute deadline')
+  await Promise.all([rt.updateCheck(), rt.updateCheck(), rt.updatePrepare()])
   assert.equal(rt.updateView().latest, NEXT)
   assert.equal(rt.updateView().phase, 'ready')
   assert.equal(reads(), 2)

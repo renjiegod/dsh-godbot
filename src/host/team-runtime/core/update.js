@@ -810,7 +810,12 @@ export function install(rt) {
         if (stopped) return
         try { await tick() } catch (error) { rt.warn('godbot: update clock failed: %s', error?.message ?? error) }
         if (stopped) return
-        timer = setTimeout(loop, TICK_MS)
+        // A window can move the release deadline between the host's minute ticks.
+        const untilCheck = status.checkedAt + CHECK_TTL_MS - now()
+        const delay = settings.mode !== 'off' && status.checkedAt !== 0 && untilCheck > 0
+          ? Math.min(TICK_MS, untilCheck)
+          : TICK_MS
+        timer = setTimeout(loop, delay)
         // A pending check never keeps the process alive.
         timer.unref?.()
       }
