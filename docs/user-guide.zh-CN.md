@@ -430,11 +430,11 @@ godbot workspace restore --home /new/dsh --profile web --file team.godbot --pass
 退出这个 profile 的 DSH 进程，然后在 Godbot 源码目录运行修复命令，再启动同一个 profile。
 
 ```sh
-node scripts/install-local.mjs web --repair
+npm exec --yes --package=pnpm@11.29.0 -- node scripts/install-local.mjs web --repair
 dsh web
 ```
 
-如果使用了自定义 profile，把两条命令中的 `web` 换成原来的名称。修复命令按当前安装的 Godbot 版本链接 DSH 依赖，原安装包和团队数据继续使用。
+如果使用了自定义 profile，把两条命令中的 `web` 换成原来的名称。修复时会临时使用 pnpm 11.29.0，按当前安装的 Godbot 版本链接 DSH 依赖，原安装包和团队数据继续使用。
 
 | 现象 | 处理 |
 | --- | --- |

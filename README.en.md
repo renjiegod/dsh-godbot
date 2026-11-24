@@ -36,7 +36,7 @@ dsh web
 
 Open the sign-in link from DSH and select **Godbot** in the sidebar (`/#/godbot`). Choose a model for GodBot, then add team members. Native DSH members use a model configured in that profile.
 
-If Godbot reports `This DSH profile uses a separate copy`, stop DSH and run `node scripts/install-local.mjs web --repair` from the Godbot source checkout. Restart the same profile. For a custom profile, use its name in place of `web`. [Installation troubleshooting](docs/user-guide.zh-CN.md#安装后提示-dsh-依赖有两份)
+If Godbot reports `This DSH profile uses a separate copy`, stop the affected DSH process and follow the repair steps. [Installation troubleshooting](docs/user-guide.zh-CN.md#安装后提示-dsh-依赖有两份)
 
 Install the Claude Code, Codex, or Antigravity CLI under the same OS user that runs DSH. You can [sign in from Godbot](docs/user-guide.zh-CN.md#在页面中登录本机-cli) using each CLI’s own account and quota.
 
