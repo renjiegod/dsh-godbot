@@ -9,6 +9,7 @@ import { within } from './folders.js'
 import { missingFileRefs } from './claims.js'
 import { absoluteLinks } from './links.js'
 import { NAME_MAX } from './requests.js'
+import { relatedBotMessages } from './conversation-routing.js'
 import { unquote } from './text.js'
 import { isOpenPart, ownChatSessions } from './threads.js'
 import { mentionSpans } from '../shared/mentions.js'
@@ -164,11 +165,12 @@ export function install(rt) {
     return isOpenPart(rt.botOf(rt.chatOwners.get(sessionId)), sessionId) ? 'another of its conversations' : 'its own chat'
   }
   // A Bot request still in the inbox: no step or turn has taken it out yet.
-  const unreadRequest = (agent, senderId, toUser) => {
+  const unreadRequest = (agent, senderId, fromPart, work, toUser) => {
     for (const [message, steered] of [...(agent.inbox?.nextStep ?? []).map(message => [message, true]), ...(agent.inbox?.nextTurn ?? []).map(message => [message, false])]) {
       const source = message.source
       if (source?.kind === SOURCE_KIND && source.role === 'request' && source.senderSessionId === senderId
-        && (source.audience === 'user') === toUser && !source.deferred && !source.resumed) return { message, steered }
+        && source.senderPart === fromPart && (source.audience === 'user') === toUser
+        && rt.sameWork(source.exchangeId, work) && !source.deferred && !source.resumed) return { message, steered }
     }
     return undefined
   }
@@ -252,7 +254,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'message_bot',
-    description: 'Send a message to another Bot on the team. If that Bot is working, it reads your message at its next step and can change course, then answers once that work is done; if it is idle, it starts on it right away. Its reply arrives later as a new message to you; with reply_to "user" it answers the user in its own chat instead. Do not message a Bot that is waiting for the result of the work you are doing (the Bot that asked you for it, or one above that): your answer reaches it by itself once you end your turn and everything you handed on is back. In a group chat it reaches only members of that group, as writing "@Name" there does. With request_id you name the request yourself: a repeat of that name with the same message is not sent again, but gives the receipt of the first call back.',
+    description: 'Send a message to another Bot on the team. Godbot uses a relevant conversation of that Bot or opens a new one, so include the task name or other context. A reply comes back to the conversation you sent from. With reply_to "user" the Bot answers the user in its own chat. Do not message a Bot waiting for your current work: your answer reaches it once you end your turn and everything you handed on is back. In a group chat this calls a member there, as writing "@Name" does. With request_id, repeating the same request returns its first receipt.',
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
@@ -264,7 +266,7 @@ export function install(rt) {
       when: {
         type: 'string',
         enum: ['now', 'queue'],
-        description: '"now" (default): a working Bot reads your message at its next step, between its current actions, and answers once its current work is done; use it for questions, information it needs, corrections and warnings. "queue": it reads your message only after its current work is done, as a separate task; use it only for a new task unrelated to what it is doing now. With reply_to "user" the message always queues.',
+        description: '"now" (default) can reach the next step of the relevant running task. "queue" starts a separate turn in the selected conversation. With reply_to "user" the message always queues.',
       },
       request_id: {
         type: 'string',
@@ -330,58 +332,49 @@ export function install(rt) {
         // The part of the sender's own chat this request comes from: its answer goes back
         // to that part's thread.
         const fromPart = callerPart(exec).fromPart
-        const chat = rt.chatOf(target.id)
-        const agent = await rt.resolveAgent(chat)
-        const status = rt.statusOf(target.id)
-        // A request it has not read yet, sent for the same work, takes this one in, so
-        // messages to a Bot that cannot read them do not pile up. Two parts of the
-        // sender's own chat are two conversations, though: one answer could come back to
-        // only one of them, so their requests are sent and answered apart.
-        const earlier = unreadRequest(agent, sender.id, toUser)
-        const joinable = earlier !== undefined
-          && (toUser || ((earlier.message.source.senderPart ?? undefined) === fromPart && rt.sameWork(earlier.message.source.exchangeId, work)))
-        const before = joinable ? bodyOf(earlier.message) : undefined
-        let long = await rt.attachLong(before ? `${before.text}\n\n${text}` : text, `Message from ${sender.name}.txt`)
+        const filename = `Message from ${sender.name}.txt`
+        const original = await rt.attachLong(text, filename)
         // Nothing went out, so a named request must not take this as a delivered
         // receipt: admitRequest drops the pending record instead, and a retry can send.
-        if (long === undefined) { if (request !== undefined) request.unsent = true; return tooLong(text) }
-        const joins = before !== undefined && agent.inbox?.remove?.(earlier.message.id) === true
-        if (before !== undefined && !joins) long = await rt.attachLong(text, `Message from ${sender.name}.txt`) ?? long
-        const working = rt.live.get(chat)?.turn !== undefined
-        const steer = (args.when !== 'queue' && !toUser) || (joins && earlier.steered)
-        const exchangeId = joins ? earlier.message.source.exchangeId : randomUUID()
-        if (joins) rt.forgetDelivery?.(exchangeId)
-        else if (!toUser) rt.openWork(exchangeId, { from: sender.id, to: target.id, parent: work, ...(fromPart ? { fromPart } : {}) })
-        try {
-          await rt.deliver({ fromId: sender.id, toId: target.id, ...(fromPart ? { fromPart } : {}), text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length, role: 'request', steer, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
-        } catch (error) {
-          // The delivery stays noted for the next start while its Bot exists
-          // (resume.js), and the resent request still answers up the tree, so the
-          // work it opened stays too. Only a target that is gone drops the work.
-          if (!joins && rt.botOf(target.id) === undefined) rt.dropWork(exchangeId)
-          throw error
-        }
-        const sent = toUser
-          ? `Delivered to ${target.name}. It will answer the user in its own chat; nothing comes back to you, so point the user to ${target.name}'s chat instead of relaying.`
-          : working && steer
-            ? `Delivered to ${target.name} while it is working: it reads your message at its next step and answers once that work is done. Its reply will arrive later as a new message; do not wait for it.`
-            : working
-              ? `Queued for ${target.name}: it reads your message after its current work. Its reply will arrive later as a new message; do not wait for it.`
-              : `Delivered to ${target.name}. Its reply will arrive later as a new message; do not wait for it.`
-        const asker = rt.ownsWork(sender.id, work) ? rt.botOf(state.works[work].from)?.name : undefined
-        const notes = [
-          joins ? `${target.name} had not read your earlier message yet, so this one was added to it, and it answers both at once.` : '',
-          status === 'idle' ? '' : `${target.name} now: ${status}.`,
-          asker ? `When you have handed on everything, end your turn: each reply brings you back to this work, and your answer goes to ${asker} once all of it is back.` : '',
-        ].filter(Boolean)
-        const out = [sent, ...notes].join(' ')
-        // A message reaches the part of the Bot's own chat it is delivered to only; work
-        // going on elsewhere (a group, or another live part of its own chat) goes on
-        // without it.
-        const elsewhere = activeSessions(target.id).running.filter(sessionId => sessionId !== chat)
-        if (elsewhere.length === 0) return out
-        const stop = rt.isMain(sender.id) ? ' If it must not go on there, use stop_bot.' : ''
-        return `${out} Your message does not reach its work in ${elsewhere.map(whereOf).join(' and ')}.${stop}`
+        if (original === undefined) { if (request !== undefined) request.unsent = true; return tooLong(text) }
+        const route = { text, fromId: sender.id, fromPart, work, toUser, steer: args.when !== 'queue' && !toUser, signal: exec.signal }
+        return rt.routeBotMessage(target, route, async (sessionId, { steer, created }) => {
+          const agent = await rt.resolveAgent(sessionId)
+          // Only coalesce requests in the selected conversation with a common
+          // origin, work, and audience. A reply must have exactly one destination.
+          const earlier = unreadRequest(agent, sender.id, fromPart, work, toUser)
+          const before = earlier === undefined ? undefined : bodyOf(earlier.message)
+          const canMerge = before !== undefined && (!earlier.steered || steer) && relatedBotMessages(text, before.text)
+          const merged = canMerge ? await rt.attachLong(`${before.text}\n\n${text}`, filename) : undefined
+          const joins = merged !== undefined && agent.inbox?.remove?.(earlier.message.id) === true
+          const long = joins ? merged : original
+          const working = rt.live.get(sessionId)?.turn !== undefined
+          const atNextStep = steer || (joins && earlier.steered)
+          const exchangeId = joins ? earlier.message.source.exchangeId : randomUUID()
+          if (joins) rt.forgetDelivery?.(exchangeId)
+          else if (!toUser) rt.openWork(exchangeId, { from: sender.id, to: target.id, parent: work, ...(fromPart ? { fromPart } : {}) })
+          try {
+            await rt.deliver({ fromId: sender.id, toId: target.id, sessionId, ...(fromPart ? { fromPart } : {}), text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length, role: 'request', steer: atNextStep, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
+          } catch (error) {
+            // A queued delivery for an existing Bot can be retried after restart.
+            if (!joins && rt.botOf(target.id) === undefined) rt.dropWork(exchangeId)
+            throw error
+          }
+          const where = created ? 'a new conversation' : 'its conversation for this work'
+          const sent = `Delivered to ${target.name} in ${where}.`
+          const when = working ? (atNextStep ? 'It can read the message at its next step.' : 'It will read the message in a separate turn.') : ''
+          const reply = toUser
+            ? `It will answer the user in that conversation. Point the user to ${target.name}'s chat.`
+            : 'Its reply will arrive back in this conversation as a new message. Do not wait for it.'
+          const asker = rt.ownsWork(sender.id, work) ? rt.botOf(state.works[work].from)?.name : undefined
+          const elsewhere = activeSessions(target.id).running.filter(id => id !== sessionId)
+          return [
+            sent, when, reply,
+            joins ? 'It will answer this and your earlier unread message together.' : '',
+            asker ? `When you have handed on everything, end your turn. Each reply brings you back to this work, and your answer goes to ${asker} once all of it is back.` : '',
+            elsewhere.length ? `Its other work continues in ${elsewhere.map(whereOf).join(' and ')}.` : '',
+          ].filter(Boolean).join(' ')
+        })
       }
       return request === undefined ? await send() : answer(await rt.admitRequest(request, send))
     },

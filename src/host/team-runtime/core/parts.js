@@ -28,7 +28,7 @@ import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, split
 import { pageThinkingMs } from './thinking.js'
 import { mobileToolRows, openChatPage, withLiveAttempt } from '../mobile-tool-timeline.js'
 import { viaOf } from '../shared/im-platforms.js'
-import { earlierPlace, focusOpenPart, isOpenPart, openEarlierBeside, openEarlierOfThread, ownChatSessions, pushThreadPart, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
+import { addBackgroundConversation, conversationHead, earlierPlace, focusOpenPart, isOpenPart, openEarlierBeside, openEarlierOfThread, ownChatSessions, pushThreadPart, reopenBackgroundConversation, sessionFloor, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
 import { firstPrompt, partTitle } from './part-titles.js'
 import { checkShownView, normalizeView, readViewReply, viewCardText, viewReply, viewReplyText } from 'deep-view/core'
 
@@ -176,16 +176,7 @@ export function canonicalHeadings(note, names) {
   return lines.join('\n')
 }
 
-// The first part of the session `at` is in: a New session the user started begins one
-// (the segment before it is marked `manual`; older ones say so as their note's
-// fallback), and so does a seam an opened session left (`cut`, switchPart). Pages of
-// earlier parts go no further back, so sessions show apart.
-export function sessionFloor(parts, at) {
-  for (let index = at - 1; index >= 0; index -= 1) {
-    if (parts[index]?.manual === true || parts[index]?.cut === true || parts[index]?.fallback === 'manual') return index + 1
-  }
-  return 0
-}
+export { sessionFloor } from './threads.js'
 
 export function install(rt) {
   const { ctx, config, state } = rt
@@ -1226,7 +1217,7 @@ export function install(rt) {
   async function freshRoute(bot, session) {
     const ref = await rt.desiredModel(bot)
     if (ref !== undefined) return { ref, effort: await rt.desiredEffort(bot, ref) }
-    const route = session.requestHeader()?.config
+    const route = session?.requestHeader()?.config
     return route?.provider && route?.model ? { ref: `${route.provider}/${route.model}`, effort: route.reasoningEffort } : undefined
   }
   const selectRoute = (named, sessionId, { ref, effort }) => rt.selectSessionModel(sessionId, { ...splitRef(ref), ...(effort === undefined ? {} : { reasoningEffort: effort }) })
@@ -2171,8 +2162,8 @@ export function install(rt) {
     return false
   }
 
-  // A part's name in the session list is the first thing the user asked in it
-  // (part-titles.js). DSH's turn outline says which turn the user's first message opened,
+  // A part's name in the session list is the first user request or Bot request for a
+  // user-facing answer. DSH's turn outline says which turn the first message opened,
   // and a short page at that turn's start holds the whole message. Each part is read
   // once, a few at a time, then kept; a part read with no message from the user yet, or
   // made here, takes its name from the first one that lands.
@@ -2184,7 +2175,15 @@ export function install(rt) {
   let titleReading = 0
   const TITLE_WINDOW = 24
   const TITLE_READS_AT_ONCE = 2
-  const isPrompt = event => event?.type === 'user/message' && event.data?.source?.kind === 'user'
+  const isPrompt = event => {
+    if (event?.type !== 'user/message') return false
+    const source = event.data?.source
+    return source?.kind === 'user' || (source?.kind === SOURCE_KIND && source.role === 'request' && source.audience === 'user')
+  }
+  const promptTitle = event => {
+    const text = textOf(event.data.content)
+    return partTitle(event.data.source.kind === SOURCE_KIND ? text.slice(text.indexOf('\n') + 1) : text)
+  }
   async function readTitle(sessionId) {
     const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
     const projected = await ctx.sessionController.projections({ sessionId }, signal)
@@ -2195,7 +2194,7 @@ export function install(rt) {
       address: { kind: 'session', sessionId }, beforeSeq: first.seq + TITLE_WINDOW, maxMessages: TITLE_WINDOW,
     }, signal)
     const prompt = page.records.map(record => record.event).find(event => event?.seq >= first.seq && isPrompt(event))
-    return partTitle(prompt === undefined ? first.preview : textOf(prompt.data.content)) || partTitle(first.preview)
+    return (prompt === undefined ? '' : promptTitle(prompt)) || partTitle(first.preview)
   }
   function pumpTitles() {
     while (titleReading < TITLE_READS_AT_ONCE && titleQueue.length > 0) {
@@ -2231,7 +2230,7 @@ export function install(rt) {
   ctx.on('session/event', (session, event) => {
     if (!isPrompt(event) || titles.has(session.id)) return
     if (untitled.has(session.id)) {
-      const title = partTitle(textOf(event.data.content))
+      const title = promptTitle(event)
       if (title === '') return
       titles.set(session.id, title)
       untitled.delete(session.id)
@@ -2316,28 +2315,32 @@ export function install(rt) {
   // The part the user leaves stays live: no handoff note, no archive, no stop of its
   // turn. It keeps its own earlier parts with it (threads.js). The fresh part opens with
   // OPENING_PACKAGE.
-  async function openPartNow(bot, agent) {
+  async function openPartNow(bot, agent, { background = false, title = bot.name } = {}) {
     const dir = rt.workDirOf({ botId: bot.id })
-    const freshId = await rt.createSession(bot.name, { dir })
+    const freshId = await rt.createSession(title, { dir })
     freshPart(freshId)
-    const picked = await freshRoute(bot, agent.session)
+    const picked = await freshRoute(bot, agent?.session)
     if (picked !== undefined) await selectRoute({ name: bot.name }, freshId, picked)
     await rt.applyPermission(bot, freshId, undefined)
       .catch(error => rt.warn('godbot: permission for the new part of %s not applied: %s', bot.name, error))
+    if (background) await ctx.sessions.flush((await rt.resolveAgent(freshId)).session)
     if (rt.botOf(bot.id) !== bot) {
       await ctx.workspaceRegistry.archiveSession(freshId, { stopActivity: true })
         .catch(error => rt.warn('godbot: unused fresh part of %s not archived: %s', bot.name, error))
       return
     }
-    startOpenPart(bot, freshId)
+    if (background) addBackgroundConversation(bot, freshId)
+    else startOpenPart(bot, freshId)
     rt.chatOwners.set(freshId, bot.id)
-    await rt.save()
+    await rt.save({ required: background })
     // A model the user picked while this part was being made went to the parts that were
     // registered then, and the sync recorded it as applied; this part was not one of them
     // yet, so the route picked at the top may be the old one. Read it again now that the
     // part is the Bot's, as the switch does.
-    const now = await freshRoute(bot, agent.session)
+    const now = await freshRoute(bot, agent?.session)
     if (now !== undefined && (now.ref !== picked?.ref || now.effort !== picked?.effort)) await selectRoute({ name: bot.name }, freshId, now)
+    // Let the incoming message open its conversation as the first real turn.
+    if (background) return freshId
     // The part is the Bot's now; it opens the way a handoff package opens one. A part
     // that did not open still works: the user's first message starts its first turn.
     try {
@@ -2348,6 +2351,35 @@ export function install(rt) {
       await ctx.sessions.flush(fresh.session)
     } catch (error) {
       rt.warn('godbot: the new part of %s did not open with its first turn: %s', bot.name, error)
+    }
+  }
+
+  async function newBotConversation(bot, title) {
+    const current = await rt.resolveAgent(rt.chatOf(bot.id)).catch(() => undefined)
+    return openPartNow(bot, current, { background: true, title: title || bot.name })
+  }
+
+  // Reopen a whole archived conversation beside the current one. The head may have
+  // moved while the session registry was unarchiving it.
+  async function openBotConversation(bot, partId) {
+    for (;;) {
+      if (rt.botOf(bot.id) !== bot) return undefined
+      const head = conversationHead(bot, partId)
+      if (head === undefined || threadOf(bot, head) !== undefined) return head
+      const wasArchived = ctx.workspaceRegistry.archivedSessionIds.includes(head)
+      await ctx.workspaceRegistry.unarchiveSession(head)
+      if (rt.botOf(bot.id) === bot && conversationHead(bot, partId) === head) {
+        if (!reopenBackgroundConversation(bot, head)) return head
+        rt.chatOwners.set(head, bot.id)
+        rt.pastOwners.delete(head)
+        await rt.save({ required: true })
+        const agent = await rt.resolveAgent(head)
+        const route = await freshRoute(bot, agent.session)
+        if (route !== undefined) await selectRoute(bot, head, route)
+        await rt.applyPermission(bot, head, undefined).catch(() => {})
+        return head
+      }
+      if (wasArchived && !rt.isBotSession(head)) await ctx.workspaceRegistry.archiveSession(head).catch(() => {})
     }
   }
 
@@ -2452,5 +2484,5 @@ export function install(rt) {
     return true
   }
 
-  Object.assign(rt, { clock, partsOf, partsOfThread, historyEntry, partLines, noteText, earlierPage, chatPage, displayItems, applySteps, followFolder, followEngine, heldBack, newPart, switchPart, sessionTokens: session => tokensOf(session), switchJobs: () => switches.values() })
+  Object.assign(rt, { clock, partsOf, partsOfThread, historyEntry, partLines, noteText, earlierPage, chatPage, displayItems, applySteps, followFolder, followEngine, heldBack, partTalked, newPart, switchPart, newBotConversation, openBotConversation, sessionTokens: session => tokensOf(session), switchJobs: () => switches.values() })
 }

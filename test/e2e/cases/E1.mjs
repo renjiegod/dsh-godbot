@@ -90,7 +90,9 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
     ['Search', 'failed', ['needle from fixture', 'ACP fixture search error']],
     ['Edit', 'completed', ['acp-fixture-trace.txt', 'before fixture edit', 'after fixture edit'], ['文件变更', '修改前', '修改后']],
   ]
-  const openChat = async bot => {
+  const botState = async bot => (await host.bot('state')).bots.find(item => item.id === bot.id)
+  const openChat = async (bot, sessionId) => {
+    if ((await botState(bot)).sessionId !== sessionId) await host.bot('bot-open-part', { botId: bot.id, sessionId })
     await page.locator('.bt-row-title').filter({ hasText: bot.name }).click()
     await page.locator('.bt-head .bt-pill-name').filter({ hasText: bot.name }).waitFor()
   }
@@ -145,6 +147,7 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
     const marker = randomUUID()
     const task = `GODBOT-${agent}-EXECUTION-TRACE ${marker}`
     const exchange = () => host.bot('exchange', { a: codex.id, b: bot.id })
+    const before = await botState(bot)
     await host.bot('send', { sessionId: codex.id, text: `GODBOT-CODEX-DELEGATE ${agent} ${marker} ${bot.name}` })
     const request = await until(async () => (await exchange()).find(row => row.role === 'request' && row.text === task), `Codex delegated to ${bot.name} through message_bot`)
     assert.equal(request.from, codex.id)
@@ -156,7 +159,10 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
       assert.ok(reply.text.endsWith('TRACE_COMPLETE ' + marker + '\n\n## ' + reportHeading + '\n\n' + reportBody), 'the same complete report reached the original sender')
       return reply.id
     }
-    return { exchange, marker, requestId: request.id, waitForReply }
+    const after = await botState(bot)
+    const known = new Set((before.openParts ?? []).map(part => part.sessionId))
+    const sessionId = after.openParts?.find(part => !known.has(part.sessionId))?.sessionId ?? after.sessionId
+    return { exchange, marker, sessionId, requestId: request.id, waitForReply }
   }
 
   const claudeRun = await delegate(claude, 'CLAUDE')
@@ -172,7 +178,7 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
   const dispatchRoute = '**/api/godbot/dispatch'
   await page.route(dispatchRoute, delayReceipts)
   try {
-    await openChat(claude)
+    await openChat(claude, claudeRun.sessionId)
     await until(() => receiptWaiting, 'the tool receipt request is waiting')
     await verifyOrder(flow, [progress, ['Read', 'running']])
   } finally {
@@ -206,7 +212,7 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
 
   await page.reload()
   await openFullTeam(host)
-  await openChat(claude)
+  await openChat(claude, claudeRun.sessionId)
   const replayGroup = await openGroup(read, 2, true)
   assert.equal(await replayGroup.innerText(), '2 次工具调用', 'replaying the chat keeps the settled group summary')
   await openGroup(bash, 73, true)
@@ -223,7 +229,7 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
 
   const codexTarget = await member(host, 'Execution Codex', 'local-codex-cli/default')
   const codexRun = await delegate(codexTarget, 'CODEX')
-  await openChat(codexTarget)
+  await openChat(codexTarget, codexRun.sessionId)
   await verifyOrder(flow, [codexProgress, ['Shell', 'running', 'fixture-trace.txt'], codexDuring])
   await writeFile(join(host.workspace, 'codex-execution-trace-release'), '')
   const codexReply = await codexRun.waitForReply()
@@ -234,7 +240,7 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
 
   const acpTarget = await member(host, 'Execution Antigravity', 'local-antigravity/default')
   const acpRun = await delegate(acpTarget, 'ACP')
-  await openChat(acpTarget)
+  await openChat(acpTarget, acpRun.sessionId)
   await verifyOrder(flow, [['Read', 'running', 'acp-fixture-trace.txt']])
   assert.equal(await step(flow, 'Read', 'running', 'acp-fixture-trace.txt').getAttribute('data-gb-tool-kind'), 'read')
   assert.equal(await flow.getByText(acpProgress).count(), 0, 'ACP tool is visible before any response text')
@@ -254,7 +260,7 @@ async function verifyDelegatedTrace(host, codex, claude, note) {
     [codexTarget, codexTools, codexRun, [codexProgress, ['Shell', 'completed', 'fixture-trace.txt'], codexDuring, reportHeading]],
     [acpTarget, acpTools, acpRun, [['Read', 'completed', 'acp-fixture-trace.txt'], acpProgress, ['Search', 'failed'], ['Edit', 'completed'], reportHeading]],
   ]) {
-    await openChat(bot)
+    await openChat(bot, delegated.sessionId)
     if (bot === claude) {
       await openGroup(read, 2, true)
       await openGroup(step(flow, 'Bash', 'failed', 'Read fixture version'), 73, true)

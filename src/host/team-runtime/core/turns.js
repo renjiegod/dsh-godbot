@@ -58,14 +58,10 @@ export const failureLine = failure => `${failure.code}${failure.status ? ` ${fai
 // answer comes from; `source` is the trigger the turn answered.
 export function answerSender(rt, id, source, text, long) {
   const back = rt.roomOf(source.senderRoomId)?.sessions?.[source.senderSessionId]
-  // The asking Bot may have written from a background part of its own chat: its reply
-  // goes back to that part's thread, not to the part the user is reading. When the part
-  // is gone, or no part was recorded, the reply goes to the Bot's current chat, as before.
-  const asker = source.senderPart === undefined ? undefined : rt.botOf(source.senderSessionId)
-  const part = back === undefined && asker !== undefined ? threadCurrentOfPart(asker, source.senderPart) : undefined
-  const target = back ?? part
+  const destination = back !== undefined ? { sessionId: back } : { replyPart: source.senderPart ?? null }
   const name = rt.botOf(rt.selfOf(id))?.name ?? 'The other Bot'
   const work = rt.closeWork?.(source.exchangeId, name, text)
+  if (back === undefined && source.senderRoomId !== undefined) return
   // A reply that arrives after the user gave up the wait is a late answer: it closes
   // nothing, opens nothing, and says on it that the wait was already over.
   const late = work === undefined ? rt.abandonedWork?.(source.exchangeId) : undefined
@@ -76,7 +72,7 @@ export function answerSender(rt, id, source, text, long) {
   void rt.deliver({
     fromId: rt.selfOf(id),
     toId: source.senderSessionId,
-    ...(target ? { sessionId: target } : {}),
+    ...destination,
     text: body,
     ...(length === undefined ? {} : { files: long.files, length }),
     role: 'reply',
@@ -95,7 +91,7 @@ export function answerSender(rt, id, source, text, long) {
     void rt.deliver({
       fromId: rt.selfOf(id),
       toId: source.senderSessionId,
-      ...(target ? { sessionId: target } : {}),
+      ...destination,
       text: `${said}${long?.text ?? text}`,
       ...(long?.length === undefined ? {} : { files: long.files, length: said.length + long.length }),
       role: 'reply',

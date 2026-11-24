@@ -15,6 +15,7 @@ import * as steer from './core/steer.js'
 import * as handoffs from './core/handoffs.js'
 import * as requests from './core/requests.js'
 import * as delivery from './core/delivery.js'
+import * as conversationRouting from './core/conversation-routing.js'
 import * as roster from './roster.js'
 import * as folders from './core/folders.js'
 import * as privacy from './privacy.js'
@@ -72,7 +73,7 @@ export { name, inject } from './core/entry.js'
 // call before the hooks of tools do, so a closed call never reaches a card they show.
 const memory = sandboxPrivacy.sandboxAwareObserver(memoryObserver)
 const learning = sandboxPrivacy.sandboxAwareObserver(learningObserver)
-const MODULES = [diagnostics, store, ledger, models, sandboxPrivacy, providers, permissions, governance, turns, steer, handoffs, requests, delivery, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, goals, agentCommands, tasks, approvals, resume, memory, parts, changes, images, avatarLibrary, secrets, connectors, capabilities, components, learning, schedules, browser, browserPlugins, computer, usage, update, dshUpdate, thinking, mobile, feed, phone, im, channel, remote, officeSkills, goalSkills, executionHistory, localAgents, remoteAgents, roomRouting]
+const MODULES = [diagnostics, store, ledger, models, sandboxPrivacy, providers, permissions, governance, turns, steer, handoffs, requests, delivery, conversationRouting, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, goals, agentCommands, tasks, approvals, resume, memory, parts, changes, images, avatarLibrary, secrets, connectors, capabilities, components, learning, schedules, browser, browserPlugins, computer, usage, update, dshUpdate, thinking, mobile, feed, phone, im, channel, remote, officeSkills, goalSkills, executionHistory, localAgents, remoteAgents, roomRouting]
 
 export function apply(ctx, config = {}) {
   createRuntime(ctx, config)

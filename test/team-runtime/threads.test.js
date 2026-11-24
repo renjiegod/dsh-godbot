@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { earlierPlace, focusOpenPart, openEarlierBeside, openEarlierOfThread, ownChatParts, startOpenPart, threadOfPart, threadStart } from '../../src/host/team-runtime/core/threads.js'
+import { conversationHead, earlierPlace, focusOpenPart, openEarlierBeside, openEarlierOfThread, ownChatParts, ownConversations, reopenBackgroundConversation, startOpenPart, threadOfPart, threadStart } from '../../src/host/team-runtime/core/threads.js'
 import { sessionFloor } from '../../src/host/team-runtime/core/parts.js'
 
 const botWith = () => ({
@@ -56,6 +56,18 @@ const codexBot = () => ({
     { sessionId: 'p3', endedAt: 4_000, fallback: 'manual', manual: true },
   ],
   openParts: [{ sessionId: 'p5', segments: [], threadStartedAt: 4_500 }],
+})
+
+test('automatic routing reopens an archived conversation with its own contiguous parts', () => {
+  const bot = codexBot()
+  assert.equal(conversationHead(bot, 'p1'), 'p2')
+  assert.equal(conversationHead(bot, 'p3'), 'p3')
+  assert.ok(reopenBackgroundConversation(bot, 'p2', 6_000))
+  assert.equal(bot.sessionId, 'p4')
+  assert.deepEqual(bot.segments.map(part => part.sessionId), ['p3'])
+  assert.deepEqual(ownConversations(bot).map(({ parts }) => parts), [['p4'], ['p1', 'p2'], ['p5'], ['p3']])
+  assert.equal(conversationHead(bot, 'p1'), 'p2')
+  assert.equal(conversationHead(bot, 'missing'), undefined)
 })
 
 test('an earlier part is found in the current chain or in a background one', () => {

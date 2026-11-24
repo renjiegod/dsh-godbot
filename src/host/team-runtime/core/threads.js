@@ -7,6 +7,44 @@
 // (store.js chatOf falls back to it).
 export const currentSession = bot => bot?.sessionId ?? bot?.id
 
+const endsConversation = part => part?.manual === true || part?.cut === true || part?.fallback === 'manual'
+
+export function sessionFloor(parts, at) {
+  for (let index = at - 1; index >= 0; index -= 1) {
+    if (endsConversation(parts[index])) return index + 1
+  }
+  return 0
+}
+
+// Each live thread can also hold archived conversations behind a New session or
+// session-selection boundary. Only the contiguous parts share a conversation.
+export function ownConversations(bot) {
+  if (bot === undefined) return []
+  const open = []
+  const archived = []
+  for (const thread of [bot, ...(bot.openParts ?? []).toReversed()]) {
+    let parts = []
+    for (const segment of thread.segments ?? []) {
+      parts.push(segment.sessionId)
+      if (!endsConversation(segment)) continue
+      archived.push({ sessionId: segment.sessionId, parts, endedAt: segment.endedAt ?? 0 })
+      parts = []
+    }
+    const sessionId = thread === bot ? currentSession(bot) : thread.sessionId
+    open.push({ sessionId, parts: [...parts, sessionId] })
+  }
+  return [...open, ...archived.sort((a, b) => b.endedAt - a.endedAt)]
+}
+
+export function conversationHead(bot, partId) {
+  if (partId === undefined) return undefined
+  if (threadOf(bot, partId) !== undefined) return partId
+  const place = earlierPlace(bot, partId)
+  if (place === undefined) return undefined
+  return place.segments.slice(place.at).find(endsConversation)?.sessionId
+    ?? (place.thread === 'current' ? currentSession(bot) : bot.openParts[place.index].sessionId)
+}
+
 export function threadOf(bot, sessionId) {
   if (bot === undefined || sessionId === undefined) return undefined
   if (currentSession(bot) === sessionId) return { thread: 'current', segments: bot.segments ?? [] }
@@ -67,6 +105,24 @@ export function pushThreadPart(bot, sessionId, freshId, segment) {
 // and travels with the thread when the two swap. A thread saved before this was kept
 // has none and reads as begun with the Bot.
 const threadBegun = at => (Number.isFinite(at) ? { threadStartedAt: at } : {})
+
+export function addBackgroundConversation(bot, sessionId, now = Date.now()) {
+  ;(bot.openParts ??= []).push({ sessionId, segments: [], startedAt: now, threadStartedAt: now })
+}
+
+export function reopenBackgroundConversation(bot, sessionId, now = Date.now()) {
+  const place = earlierPlace(bot, sessionId)
+  if (place === undefined || !endsConversation(place.segments[place.at])) return false
+  const { segments, at } = place
+  const owner = place.thread === 'current' ? bot : bot.openParts[place.index]
+  const floor = sessionFloor(segments, at)
+  const startedAt = floor > 0 ? segments[floor - 1].endedAt : owner.threadStartedAt ?? bot.createdAt
+  const earlier = segments.splice(floor, at - floor + 1)
+  const head = earlier.pop()
+  if (floor === 0 && Number.isFinite(head.endedAt)) owner.threadStartedAt = head.endedAt
+  ;(bot.openParts ??= []).push({ sessionId, segments: earlier, startedAt: now, ...threadBegun(startedAt) })
+  return true
+}
 
 export function threadStart(bot, sessionId) {
   const thread = threadOfPart(bot, sessionId)
