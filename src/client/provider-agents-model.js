@@ -1,6 +1,6 @@
 // The team runtime publishes each sandbox account as a callable engine route.
 // Those routes are execution targets. The settings list groups them under the CLI.
-const kinds = {
+export const sandboxProviderKinds = {
   'local-antigravity': 'antigravity',
   'local-claude-code': 'claude',
   'local-codex-cli': 'codex',
@@ -14,7 +14,7 @@ export function providerRows(builtins, discovery, catalog) {
   }
   for (const agent of discovery?.custom ?? []) byRoute.set(agent.route, { ...agent, custom: true })
   for (const row of byRoute.values()) {
-    row.kind = kinds[row.route]
+    row.kind = sandboxProviderKinds[row.route]
     row.accounts = row.kind && catalog?.providers.find(provider => provider.kind === row.kind)
     row.isolated = row.accounts?.accounts.filter(account => !account.local && !account.removed).length ?? 0
     row.accountCount = row.accounts?.accounts.filter(account => !account.local && !account.removed &&
@@ -50,7 +50,7 @@ export function providerChoices(view, catalog) {
   const detected = view?.detected ?? []
   const rows = detected.filter(row => !row.sandbox && !row.accountProfileId && !row.route.startsWith('local-sandbox-'))
   const names = { antigravity:'Antigravity', claude:'Claude Code', codex:'Codex CLI' }
-  for (const [baseRoute,kind] of Object.entries(kinds)) {
+  for (const [baseRoute,kind] of Object.entries(sandboxProviderKinds)) {
     const index = rows.findIndex(row => row.route === baseRoute)
     const slots = detected.filter(row => row.sandbox && row.kind === kind)
     const provider = catalog?.providers?.find(p => p.kind === kind)

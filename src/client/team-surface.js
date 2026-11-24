@@ -13,6 +13,7 @@ import { ENGINES } from '../host/team-runtime/core/local-agents/engines.js'
 import { ChatsIcon, TerminalIcon } from './team-ui/icons.js'
 import { installStyles } from './team-ui/styles.js'
 import { SandboxBinding } from './sandbox-settings.js'
+import { SandboxSetupPage } from './sandbox-setup-page.js'
 import { ProviderAgentsPage } from './provider-agents.js'
 import { useProviderChoices } from './provider-agents-hook.js'
 import { sandboxSettingsStyle } from './bot-settings-style.js'
@@ -337,6 +338,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
       client, call, builtins, AgentLogo, AgentForm, readOnly,
       SignIn: readOnly ? undefined : LocalSignInPanel, ...props,
     }),
+    sandboxSettings: props => h(SandboxSetupPage, { client, builtins, ...props }),
     taskSettings: (page, focus, actions, readOnly) => h(TaskSettings, { client, actions, page, focus, readOnly }),
     platformSettings(page, roster, actions, initial, ui = {}) {
       const pages = { automation: AutomationSetupPage, components: ComponentSettings, governance: GovernanceSettings, 'remote-agents': RemoteAgentSettings }

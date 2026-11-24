@@ -231,10 +231,23 @@ DSH Web 0.2.2-rc.1 的网页搜索设置页提供内置 DeepSeek 选项。要选
 
 打开 **设置 → 本地 Agent**。列表按提供商显示本机检测到的 CLI、自定义 ACP 以及已有隔离环境支持的 Agent。点开 Antigravity、Claude Code 或 Codex，即可管理该提供商的本机账号和隔离账号。
 
-- **单账号** 使用本机 CLI。需要多账号时，在此页开启 **启用沙箱多账号**，开关按 DSH profile 保存。
-- **添加账号** 时选择已登记的隔离环境，可以填写便于识别的名称。点 **登录** 完成厂商授权，再点 **核验身份** 获取 CLI 返回的登录状态及可用的账号标识。打开列表时读取上次核验结果；主动核验隔离账号时才启动相应虚拟机。
+- **单账号** 使用本机 CLI。需要隔离账号时，在 **设置 → 沙箱** 开启 **启用沙箱多账号**，开关按 DSH profile 保存。
+- **自动创建沙箱** 在 **设置 → 沙箱** 选择提供商和要共享的项目目录，也可使用新的空目录。macOS 14 或更新的 Mac，以及 x86-64 和 ARM64 Linux 宿主机支持自动创建。Godbot 会准备 Lima 和 Ubuntu、安装所选 CLI，并在核验后把账号加到该提供商的列表。首次下载可能需要几分钟，创建后在提供商账号页完成 CLI 登录。
+- **添加账号** 时选择已登记的隔离环境，可以填写便于识别的名称。没有可用环境时，可从提示直接进入对应提供商的沙箱设置。点 **登录** 完成厂商授权，再点 **核验身份** 获取 CLI 返回的登录状态及可用的账号标识。
 - **设为默认** 后，为新 Bot 选择该提供商时会使用首选账号。也可以给不同 Bot 显式选择不同账号和允许挂载的工作目录，既有会话继续使用已绑定的账号。
 - **更多操作** 可以编辑名称、查看目录和登录命令，或将账号从该提供商的列表移出。已登记的环境可以再次添加，账号盘上的厂商登录仍可使用。
+
+Linux 上请以普通用户运行 Godbot，并安装 QEMU、相应 EFI 固件和 OpenSSH 客户端。沙箱通过 QEMU 的 9p 文件系统共享所选目录。Ubuntu 24.04 的安装示例如下。
+
+```sh
+# x86-64
+sudo apt install qemu-system-x86 qemu-utils ovmf ipxe-qemu openssh-client curl tar
+
+# ARM64
+sudo apt install qemu-system-arm qemu-utils qemu-efi-aarch64 ipxe-qemu openssh-client curl tar
+```
+
+若宿主已提供 `/dev/kvm`，运行 Godbot 的用户需要能读写该设备。完成配置后，回到 **设置 → 沙箱** 刷新检测。参考 [Lima 的 QEMU 说明](https://lima-vm.io/docs/config/vmtype/qemu/)。
 
 ### 在页面中登录本机 CLI
 

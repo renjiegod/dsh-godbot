@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { prepareProviderAccounts } from '../fixtures/provider-account-setup.mjs'
 import { until } from '../host.mjs'
+import { openSettingsPage } from '../native-ui.mjs'
 import { openProviderSettingsFromTeam } from '../provider-settings.mjs'
 
 const routes = { antigravity:'local-antigravity', claude:'local-claude-code', codex:'local-codex-cli' }
@@ -81,12 +82,25 @@ export default async function run({ makeHost, candidate, note, scratch }) {
   await host.install(candidate)
   await host.start()
   let view = await openProviderSettingsFromTeam(host)
-  const switcher = () => view.getByRole('switch',{name:'启用沙箱多账号'})
-  await until(() => switcher().isEnabled(),'unified provider settings loaded')
+  const sandboxPage = host.page.locator('[data-godbot-sandbox-setup]')
+  const switcher = () => sandboxPage.getByRole('switch',{name:'启用沙箱多账号'})
+  const codex = await openDetail(view,routes.codex)
+  await codex.locator('[data-agent-action="add-account"]').click()
+  await codex.getByRole('button', { name:'打开沙箱设置' }).click()
+  await until(() => switcher().isEnabled(),'sandbox settings opened from the add-account notice')
+  assert.equal(await host.page.getByRole('button', { name:'沙箱', exact:true }).getAttribute('aria-current'),'page')
   assert.equal(await switcher().isChecked(),false)
   assert.equal((await catalog()).enabled,false)
   await switcher().click()
   await until(async () => (await catalog()).enabled,'sandbox opt-in')
+  await sandboxPage.locator('[data-sandbox-id="test-alpha"]').waitFor()
+  const setup = await owner({ action:'sandbox-setup' })
+  if (setup.available) assert.equal(await sandboxPage.locator('[name=sandboxProvider]').inputValue(),'codex')
+  assert.equal(setup.job,null,'opening settings and enabling accounts does not create a sandbox')
+  await host.capture('sandbox-settings-entry')
+  await sandboxPage.getByRole('button', { name:'返回提供商账号' }).click()
+  await view.locator(selector('data-provider-detail',routes.codex)).waitFor()
+  await back(view)
   const allRoutes = await view.locator('[data-provider-route]').evaluateAll(nodes => nodes.map(n=>n.dataset.providerRoute))
   assert.equal(allRoutes.length,new Set(allRoutes).size,'every builtin and detected provider occurs only once')
   for (const route of Object.values(routes)) {
@@ -156,11 +170,12 @@ export default async function run({ makeHost, candidate, note, scratch }) {
   await host.capture('unified-provider-settings')
   const fresh = await host.page.context().newPage()
   try {
+    await fresh.goto(host.url + '/#/godbot/settings/sandboxes')
+    await fresh.locator('[data-godbot-sandbox-setup]:visible [data-sandbox-id="test-alpha"]').waitFor()
     await fresh.goto(host.url + '/#/godbot/settings/local-agents')
     const deepLinked = fresh.locator('[data-godbot-provider-agents]:visible')
-    await deepLinked.getByRole('switch',{name:'启用沙箱多账号'}).waitFor()
     await openDetail(deepLinked,routes.antigravity)
-    assert.equal(await entry(deepLinked,'test-beta').getAttribute('data-account-default'),'true',
+    await until(() => entry(deepLinked,'test-beta').getAttribute('data-account-default').then(value => value === 'true'),
       'a fresh tab opens the actual provider settings and resolves the saved preference')
   } finally { await fresh.close() }
   await host.page.locator('.bt-settings-nav:visible').getByRole('button',{name:/^(Bot|Bots|机器人)$/u}).click()
@@ -214,10 +229,11 @@ export default async function run({ makeHost, candidate, note, scratch }) {
     return found?.managed && !found.removed && found.name==='Re-added test account' && p.defaultAccountId===null
   },'provider account can be added back without silently selecting it')
   await back(view)
+  await openSettingsPage(host, /^(沙箱|Sandboxes)$/u)
   await switcher().click()
   await until(async () => !(await catalog()).enabled,'sandbox option disabled')
   assert.deepEqual(await preservedBot(host,bot.id),original)
   assert.equal(host.model.calls.length,0,'settings operations did not dispatch an inference')
-  note('unified-provider-settings',{settingsPage:true,providers:Object.keys(routes),accountsPerProvider:3,
+  note('unified-provider-settings',{settingsPage:true,sandboxManagement:true,providerSettingsRedirect:true,providers:Object.keys(routes),accountsPerProvider:3,
     loginCommandPreview:true,freshDeepLink:true,newBotPicker:true,refreshedNewExecutable:true,customAgentCrud:true,removeAndReadd:true,identityChecks:2,defaultSurvivedRestart:true,existingBotUnchanged:true,newBotPreferredAccount:selected.account,newBotId:created.id})
 }

@@ -16,6 +16,7 @@ export async function openProviderSettingsFromTeam(host) {
 }
 
 export async function openSandboxToggle(host) {
-  const view = await openProviderSettingsFromTeam(host)
-  return view.getByRole('switch', { name: '启用沙箱多账号' })
+  await openFullTeam(host)
+  await openSettingsPage(host, /^(沙箱|Sandboxes)$/u)
+  return host.page.locator('[data-godbot-sandbox-setup]').getByRole('switch', { name: '启用沙箱多账号' })
 }

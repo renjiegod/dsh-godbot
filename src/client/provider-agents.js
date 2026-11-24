@@ -3,9 +3,10 @@ import { Icon } from './chat-ui.js'
 import { installGuide, providerRows, signInLabels } from './provider-agents-model.js'
 import { AccountUsage, UsageOverview, ProviderUsageSummary, useLocalConsumption } from './provider-agents-usage.js'
 import { usageDetail } from './provider-usage-model.js'
+import { providerAccountsChanged } from './sandbox-settings.js'
+import { t } from './team-ui/i18n.js'
 import style from './provider-agents.css'
 
-const changedEvent = 'godbot:sandbox-settings-changed'
 const errorText = error => error?.message || String(error)
 
 function Button({ children, ...props }) {
@@ -91,7 +92,7 @@ function AccountRow({ account, provider, kind, change, busy, readOnly, usageProp
     signing && inPage && h(SignIn, { route, name, onDone:() => void act('check').then(() => refresh?.()), onClose:() => setSigning(false) }))
 }
 
-function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, SignIn, refresh }) {
+function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, SignIn, refresh, openSandboxSettings }) {
   const [adding, setAdding] = useState(false)
   const [slot, setSlot] = useState('')
   const [alias,setAlias] = useState('')
@@ -117,10 +118,12 @@ function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, Si
         maxLength:120,placeholder:'可选'})),
       h('button', {type:'submit',className:'bt-send bt-soft-sm','data-account-action':'save',disabled:busy},'保存'),
       h(Button,{onClick:()=>setAdding(false),disabled:busy},'取消')) :
-      h(Fragment, null, h('small',{className:'gb-pr-muted'},enabled
-        ? '没有可添加的隔离环境。请先在宿主机登记一个支持此提供商的沙箱。'
-        : '请先在提供商列表中启用沙箱多账号。'),
-      h('div',null,h(Button,{onClick:()=>setAdding(false)},'关闭')))),
+      h(Fragment, null, h('small',{className:'gb-pr-muted', role:'status'},enabled
+        ? t('There is no sandbox available for {provider}. Create one in Sandbox settings.', { provider:row.name })
+        : t('Enable sandbox accounts and create an environment in Sandbox settings.')),
+      h('div',{className:'gb-pr-actions'},
+        openSandboxSettings && h(Button, { 'data-agent-action':'sandbox-settings', onClick:() => openSandboxSettings(row.route) }, t('Open Sandbox settings')),
+        h(Button,{onClick:()=>setAdding(false)},'关闭')))),
     row.accounts.defaultAvailable === false && h('p',{className:'gb-pr-hint',role:'status'},'当前默认账号已不可用，请重新选择默认账号。'),
     h('div', { className:'bt-set-card' }, known.map(render)),
     environments.length > 0 && h('details', { className:'gb-pr-missing' },
@@ -129,7 +132,7 @@ function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, Si
 
 }
 
-function ProviderDetail({ row, AgentLogo, AgentForm, back, section, change, customAction, busy, readOnly, refresh, enabled, client, consumption, period, setPeriod, usageError, SignIn }) {
+function ProviderDetail({ row, AgentLogo, AgentForm, back, section, change, customAction, busy, readOnly, refresh, enabled, client, consumption, period, setPeriod, usageError, SignIn, openSandboxSettings }) {
   const [command, setCommand] = useState('')
   const [signing, setSigning] = useState(false)
   const inPage = typeof SignIn === 'function' && row.signInMethods?.length > 0
@@ -167,7 +170,7 @@ function ProviderDetail({ row, AgentLogo, AgentForm, back, section, change, cust
             typeof row.signedIn === 'boolean' && h('span', { className:'gb-pr-muted' }, row.signedIn ? 'CLI 已登录' : 'CLI 未登录'),
             command && h(LoginCommand, { value:command }),
             signing && inPage && h(SignIn, { route:row.route, name:row.name, command:row.signIn, onDone:() => void refresh(), onClose:() => setSigning(false) })))),
-    row.accounts ? h(ProviderAccounts, { row, change, busy, readOnly, enabled, SignIn, refresh, usageProps:{client,route:row.route,consumption,period} }) :
+    row.accounts ? h(ProviderAccounts, { row, change, busy, readOnly, enabled, SignIn, refresh, openSandboxSettings, usageProps:{client,route:row.route,consumption,period} }) :
       h(AccountUsage, {client,route:row.route,accountId:null,consumption,period,disabled:!row.installed,readOnly}),
     h(ProviderUsageSummary,{provider:consumption,period,history:true,accountList:row.accounts?.accounts ?? []}))
 }
@@ -190,10 +193,10 @@ function ProviderList({ rows, AgentLogo, select, focusRoute }) {
   }))
 }
 
-export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentForm, readOnly, SignIn, initialSection = 'providers', usageOnly = false }) {
+export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentForm, readOnly, SignIn, initialSection = 'providers', initialRoute = '', usageOnly = false, openSandboxSettings }) {
   const [view, setView] = useState(null)
   const [catalog, setCatalog] = useState(null)
-  const [route, setRoute] = useState('')
+  const [route, setRoute] = useState(initialRoute)
   const [adding, setAdding] = useState(false)
   const [query, setQuery] = useState('')
   const [error, setError] = useState('')
@@ -237,12 +240,9 @@ export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentFor
       const value = await client.dispatch({ action,...payload })
       if (!mounted.current) return
       if (action === 'provider-account-login') return value
-      if (action === 'sandbox-settings-set') await load()
-      else {
-        ++loadId.current
-        setCatalog(value); setLoading(false)
-      }
-      window.dispatchEvent(new Event(changedEvent))
+      ++loadId.current
+      setCatalog(value); setLoading(false)
+      window.dispatchEvent(new Event(providerAccountsChanged))
       return value
     } catch (cause) {
       if (mounted.current) setError(errorText(cause))
@@ -267,7 +267,7 @@ export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentFor
     !current && !usageOnly && h('div',{className:'gb-pr-periods',role:'group','aria-label':'本地 Agent 视图'},
       ['providers','usage'].map(id=>h('button',{key:id,type:'button','data-agent-action':id,'aria-pressed':section===id,onClick:()=>setSection(id)},id==='usage'?'用量':'提供商'))),
     current ? h(ProviderDetail, { key:route,row:current, AgentLogo,AgentForm, back,section,change,customAction,busy:busy || loading,readOnly,refresh,SignIn,
-      enabled:catalog?.enabled,client,consumption,period,setPeriod,usageError:localUsage.error }) :
+      enabled:catalog?.enabled,client,consumption,period,setPeriod,usageError:localUsage.error,openSandboxSettings }) :
       section==='usage' ? h(UsageOverview,{rows,usage:localUsage,period,setPeriod,select:setRoute,client,readOnly,AgentLogo,focusRoute}) :
       h(Fragment, null,
         h('div', { className:'gb-pr-heading' }, h('h3', null, '本地 Agent'),
@@ -282,9 +282,5 @@ export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentFor
           primary.length > 0 && list(primary),
           missing.length > 0 && (filter ? list(missing) : h('details', { className:'gb-pr-missing' },
             h('summary',null,'其他内置提供商（' + missing.length + '）'),list(missing))),
-          !visible.length && h('p', { className:'gb-pr-muted' }, '没有匹配的提供商。')),
-        catalog && h('label', { className:'bt-set-card gb-pr-toggle' }, h('span', { className:'gb-pr-copy' },
-          h('strong', null, '启用沙箱多账号'), h('small', null, '按提供商管理隔离账号和可访问的目录。')),
-          h('input', { type:'checkbox',role:'switch','aria-label':'启用沙箱多账号',checked:catalog.enabled === true,
-            disabled:loading || busy || readOnly,onChange:e => change('sandbox-settings-set',{enabled:e.target.checked}) }))))
+          !visible.length && h('p', { className:'gb-pr-muted' }, '没有匹配的提供商。'))))
 }

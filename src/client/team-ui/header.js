@@ -83,7 +83,10 @@ function BotUsageButton({ actions }) {
     }, h(GaugeIcon), h('span', { className: 'gb-usage-label' }, t('Usage'))),
     open ? createPortal(h(GodbotModal, {
       title: label, close: () => setOpen(false), closeLabel: t('Close'), dismissOnBackdrop: true,
-    }, actions.godbot.providerAgents({ usageOnly: true })), document.body) : null)
+    }, actions.godbot.providerAgents({ usageOnly: true, openSandboxSettings: route => {
+      setOpen(false)
+      actions.openSettings('sandboxes', route)
+    } })), document.body) : null)
 }
 
 export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSession, useActivity, useMemoryNews, useTurnClock, useUi, useLive, useWork, useStore, useConversationViews, selectView, actions, useComputer }) {

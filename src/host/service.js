@@ -8,6 +8,7 @@ import { Store } from './store.js'
 import { BotTaskWorkspace, botWorkspaceId, botWorkspaceSnapshot } from './bot-task-workspace.js'
 import { getSandboxWorkspace, resolveSandboxLaunch } from './sandbox-accounts.js'
 import { sandboxAccountsEnabled, sandboxSettings, setSandboxEnabled } from './sandbox-settings.js'
+import { SandboxSetup } from './sandbox-provisioning.js'
 import { ProviderAccounts } from './provider-accounts.js'
 import { ProviderUsage } from './provider-usage.js'
 import { nativeUsageAdapters } from './native-provider-quota.js'
@@ -23,7 +24,7 @@ const localRoutes = { antigravity: 'local-antigravity', claude: 'local-claude-co
 const claudeConfigDir = cwd => process.env.CLAUDE_CONFIG_DIR ? resolve(cwd, process.env.CLAUDE_CONFIG_DIR) : undefined
 const readActions = new Set(['team-workspace.management', 'team-workspace.inbox', 'team-workspace.scheduleList',
   'team-workspace.scheduleHistory', 'team-workspace.templateExport', 'team-workspace.templatePreview', 'team-workspace.templatePlans',
-  'provider-usage', 'local-provider-usage', 'provider-accounts', 'sandbox-settings', 'connector.tools', 'budget.view',
+  'provider-usage', 'local-provider-usage', 'provider-accounts', 'sandbox-settings', 'sandbox-setup', 'connector.tools', 'budget.view',
   'workflow.list', 'automation.routine.list', 'automation.routine.history', 'automation.list', 'automation.people.list'])
 
 export function readOnlyWorkspaceSnapshot(stateDir, runtime) {
@@ -60,6 +61,10 @@ export class GodbotService {
         inUse: (kind, account) => Object.values(runtime.state.bots).some(bot =>
           (bot.accountProfileId ?? null) === account && (account ? bot.sandboxKind === kind : runtime.engineOfBot(bot) === localRoutes[kind])),
       })
+      this.sandboxSetup = new SandboxSetup(stateDir, async (kind, accountId) => {
+        this.providerAccounts.dispatch({ action: 'provider-account-save', kind, accountId, name: '' })
+        await runtime.syncSandboxRoutes?.()
+      })
     } catch (error) {
       this.botTasks?.dispose()
       this.database.close()
@@ -81,7 +86,7 @@ export class GodbotService {
     this.closing = true
     this.routines.close()
     try {
-      const stopped = await Promise.allSettled([this.automation.close(), this.providerAccounts.close(), this.providerUsage.close()])
+      const stopped = await Promise.allSettled([this.automation.close(), this.providerAccounts.close(), this.providerUsage.close(), this.sandboxSetup.close()])
       const failed = stopped.find(result => result.status === 'rejected')
       if (failed) throw failed.reason
     } finally {
@@ -190,7 +195,10 @@ export class GodbotService {
     if (action === 'local-provider-usage') return req.refreshHistory ? refreshLocalProviderUsage(this) : localProviderUsage(this)
     if (action === 'provider-accounts' || action.startsWith('provider-account-')) return this.providerAccounts.dispatch(req)
     if (action === 'sandbox-settings') return sandboxSettings(this.stateDir)
+    if (action === 'sandbox-setup') return { ...sandboxSettings(this.stateDir), ...this.sandboxSetup.view() }
+    if (action === 'sandbox-create') return this.sandboxSetup.create(req)
     if (action === 'sandbox-settings-set') {
+      if (req.enabled === false && this.sandboxSetup.pending) throw new Error('沙箱正在创建，请在创建完成后关闭多账号。')
       const settings = setSandboxEnabled(this.stateDir, req.enabled)
       return Promise.resolve(rt.syncSandboxRoutes?.()).then(() => settings)
     }

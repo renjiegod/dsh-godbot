@@ -1,6 +1,6 @@
 import { execFile, spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { accessSync, constants, lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs'
+import { accessSync, constants, linkSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, delimiter, isAbsolute, join, normalize, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
@@ -8,20 +8,21 @@ import { usageProbeSources } from './provider-usage-sources.js'
 
 const exec = promisify(execFile)
 const kinds = new Set(['antigravity', 'claude', 'codex'])
+const filesystems = new Set(['virtiofs', '9p'])
 const accountName = /^[a-z][a-z0-9-]{0,62}$/
 const starts = new Map()
 let guestProgram
 let guestMcp
 const identityProgram = new URL('./provider-accounts-probe.py', import.meta.url)
 
-const registry = () => process.env.GODBOT_SANDBOX_ACCOUNTS_DIR || join(homedir(), '.local/share/dsh-godbot/sandbox-accounts')
+export const sandboxRegistry = () => process.env.GODBOT_SANDBOX_ACCOUNTS_DIR || join(homedir(), '.local/share/dsh-godbot/sandbox-accounts')
 const fault = message => new Error('Sandbox account: ' + message)
 const childEnv = () => ({
   HOME: homedir(), PATH: ['/usr/bin', '/bin', '/usr/sbin', '/sbin', '/usr/local/bin'].join(delimiter),
   LANG: 'C.UTF-8', TERM: 'xterm-256color',
 })
 
-function owned(path, directory = false) {
+export function owned(path, directory = false) {
   const stat = lstatSync(path)
   if ((directory ? !stat.isDirectory() : !stat.isFile()) || stat.uid !== process.getuid() || (stat.mode & 0o022))
     throw fault('registry entries must be owner-controlled files and directories')
@@ -34,7 +35,7 @@ function pathString(value) {
   return value
 }
 
-function trustedCommand(argv) {
+export function trustedCommand(argv) {
   if (!Array.isArray(argv) || argv.length === 0 || argv.some(arg => typeof arg !== 'string' || /[\0\r\n]/u.test(arg)))
     throw fault('invalid launcher argv')
   const file = pathString(argv[0])
@@ -47,11 +48,14 @@ function trustedCommand(argv) {
 
 function readAccount(id) {
   if (typeof id !== 'string' || !accountName.test(id)) throw fault('invalid account identifier')
-  const base = registry()
+  const base = sandboxRegistry()
   owned(base, true)
   const file = join(base, id + '.json')
   if (owned(file).size > 131072) throw fault('manifest is too large')
-  const data = JSON.parse(readFileSync(file, 'utf8'))
+  return validateAccount(id, JSON.parse(readFileSync(file, 'utf8')))
+}
+
+function validateAccount(id, data) {
   if (data.id !== id || typeof data.name !== 'string' || !data.name.trim() || !Array.isArray(data.workspaces) || !data.workspaces.length)
     throw fault('invalid account metadata')
   if (!/^[a-f0-9]{32}$/u.test(data.machineId) || !Number.isSafeInteger(data.uid) || data.uid < 1)
@@ -69,7 +73,7 @@ function readAccount(id) {
     pathString(ws.hostPath)
     pathString(ws.guestPath)
     if (ws.hostPath === '/' || ws.guestPath === '/' || typeof ws.readOnly !== 'boolean' ||
-        ws.filesystem !== 'virtiofs' || !/^[a-zA-Z0-9_.:-]{1,128}$/u.test(ws.source))
+        !filesystems.has(ws.filesystem) || !/^[a-zA-Z0-9_.:-]{1,128}$/u.test(ws.source))
       throw fault('invalid workspace export')
     if (hostRoots.has(ws.hostPath) || guestRoots.has(ws.guestPath)) throw fault('ambiguous workspace export')
     hostRoots.add(ws.hostPath)
@@ -79,7 +83,7 @@ function readAccount(id) {
 }
 
 export function listSandboxAccounts() {
-  const dir = registry()
+  const dir = sandboxRegistry()
   try { owned(dir, true) } catch (error) {
     if (error.code === 'ENOENT') return []
     throw error
@@ -91,6 +95,19 @@ export function listSandboxAccounts() {
       workspaces: account.workspaces.map(({ hostPath, guestPath, readOnly }) => ({ hostPath, guestPath, readOnly })),
     }
   })
+}
+
+export function registerSandboxAccount(account) {
+  if (!accountName.test(account.id)) throw fault('invalid account identifier')
+  validateAccount(account.id, account)
+  const dir = sandboxRegistry()
+  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  owned(dir, true)
+  const tmp = join(dir, '.' + randomUUID())
+  try {
+    writeFileSync(tmp, JSON.stringify(account, null, 2) + '\n', { flag: 'wx', mode: 0o600 })
+    linkSync(tmp, join(dir, account.id + '.json'))
+  } finally { rmSync(tmp, { force: true }) }
 }
 
 // Identity belongs to a CLI/user/guest, independently of its workspace list or display name.
@@ -169,6 +186,21 @@ function start(account) {
   return request
 }
 
+function guestArgs(action, spec, args = []) {
+  guestProgram ??= readFileSync(new URL('../drivers/external/sandbox-guest.py', import.meta.url), 'utf8')
+  return ['/usr/bin/python3', '-I', '-c', guestProgram, action, JSON.stringify(spec), ...args]
+}
+
+async function checkGuest(account, spec) {
+  if (await run([...account.ssh, '-T', '--', ...guestArgs('check', spec)], 12000, 'guest check failed') !== 'ready')
+    throw fault('unexpected guest readiness response')
+}
+
+export function checkProvisionedSandbox(account, kind) {
+  const { spec } = workspaceFor(account, kind, account.workspaces[0].hostPath)
+  return checkGuest(account, spec)
+}
+
 function bridge(mcp) {
   if (!mcp) return {}
   const url = new URL(mcp.url)
@@ -220,14 +252,12 @@ export async function resolveSandboxLaunch({ accountId, kind, cwd, mcp }) {
   const account = readAccount(accountId)
   const { workspace, spec } = workspaceFor(account, kind, cwd)
   const { forward, server } = bridge(mcp)
-  guestProgram ??= readFileSync(new URL('../drivers/external/sandbox-guest.py', import.meta.url), 'utf8')
   const units = new Set()
   let closed = false
   let closing
-  const guestArgs = (action, args) => ['/usr/bin/python3', '-I', '-c', guestProgram, action, JSON.stringify(spec), ...args]
-  const control = (action, args, timeout) => run([...account.ssh, '-T', '--', ...guestArgs(action, args)], timeout, 'guest ' + action + ' failed')
+  const control = (action, args, timeout) => run([...account.ssh, '-T', '--', ...guestArgs(action, spec, args)], timeout, 'guest ' + action + ' failed')
   await start(account)
-  if (await control('check', [], 12000) !== 'ready') throw fault('unexpected guest readiness response')
+  await checkGuest(account, spec)
 
   const tunnel = forward ? await openTunnel(account, forward) : undefined
 
@@ -238,7 +268,7 @@ export async function resolveSandboxLaunch({ accountId, kind, cwd, mcp }) {
     const unit = 'godbot-agent-' + randomUUID() + '.service'
     units.add(unit)
     return [...account.ssh.slice(1), terminal ? '-tt' : '-T', '--',
-      ...guestArgs(terminal ? 'terminal' : 'stdio', [unit, ...args])]
+      ...guestArgs(terminal ? 'terminal' : 'stdio', spec, [unit, ...args])]
   }
   return {
     ...workspace, command: account.ssh[0], mcp: server,

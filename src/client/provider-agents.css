@@ -28,8 +28,9 @@
 .gb-pr-edit{display:flex;flex-wrap:wrap;align-items:end;gap:7px}
 .gb-pr-edit label{display:grid;gap:3px;flex:1 1 160px;font-size:12px}
 .gb-pr-edit .bt-input{min-width:0;width:100%}
-.gb-pr-toggle{display:flex;gap:10px;align-items:center;padding:11px 13px;cursor:pointer}
-.gb-pr-toggle input{accent-color:var(--bt-accent)}
+.gb-pr-toggle{display:flex;gap:10px;align-items:center;padding:11px 13px}
+.gb-sandbox-create{display:grid;gap:12px}
+.gb-sandbox-create .bt-input{width:100%}
 .gb-pr-hint{font-size:12px;color:var(--bt-ink-2)}
 .gb-pr-count{font-weight:400;color:var(--bt-ink-2);font-size:12px}
 .gb-providers a{color:var(--bt-accent);text-decoration:underline;text-underline-offset:2px}

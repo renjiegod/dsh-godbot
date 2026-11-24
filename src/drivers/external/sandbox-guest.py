@@ -121,6 +121,8 @@ if __name__ == "__main__":
     spec = json.loads(raw)
     check_identity(spec)
     manager = manager_environment()
+    for name in ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"):
+        os.environ.setdefault(name, manager[name])
     if action == "stop":
         stop_units(args, manager)
     else:

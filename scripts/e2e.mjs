@@ -31,7 +31,7 @@ if (values.help) {
   const connectorCases = ['L-CLAUDE', 'L-CODEX']
   const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
   const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK']
-  const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX']
+  const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX', 'SANDBOX-SETUP']
   const suites = { release, all, 'live-connectors': connectorCases, 'live-routines': Object.keys(routineFiles) }
   if ((values.case && ![...all, ...live, ...androidCases].includes(values.case)) || (values.suite && !Object.hasOwn(suites, values.suite))) throw new Error('Unknown case or suite')
   const cases = values.case ? [values.case] : suites[values.suite ?? 'release']
@@ -40,7 +40,8 @@ if (values.help) {
   const scratch = await mkdtemp(join(tmpdir(), 'godbot-e2e-'))
   const report = { startedAt: new Date().toISOString(), revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8' }).trim(),
     platform: process.platform + '-' + process.arch, versions: installedVersions(), cases: cases.map(id => ({ id, status: 'not-run', evidence: [] })),
-    level: androidCases.includes(values.case) ? 'packaged Android app / emulator / relay / packaged DSH Web / fixture agents'
+    level: values.case === 'SANDBOX-SETUP' ? 'packaged DSH Web / browser / disposable Lima guest and provider CLI'
+      : androidCases.includes(values.case) ? 'packaged Android app / emulator / relay / packaged DSH Web / fixture agents'
       : cases.some(id => live.includes(id)) ? 'packaged DSH Web / browser / authenticated native CLI / local test application' : 'packaged DSH Web / browser / fixture models' }
   await saveEvidence(reportDir, 'report.json', report)
   let browser

@@ -58,7 +58,7 @@ export function AccountFields({ catalog, kind, accountId, onAccount, cwd, onCwd,
       h('select', { name: 'sandboxCwd', value: cwd, onChange: e => onCwd(e.target.value), disabled: disabled || !selected?.available },
         !folders.some(w => w.hostPath === cwd) && h('option', { value: cwd }, cwd || '请选择目录'),
         folders.map(w => h('option', { key: w.hostPath, value: w.hostPath }, w.hostPath + (w.readOnly ? '（只读）' : '（读写）'))))),
-    accountId && !catalog?.enabled && h('p', { role: 'status' }, '请在设置 → 本地 Agent 启用多账号后使用此账号。'))
+    accountId && !catalog?.enabled && h('p', { role: 'status' }, '请在设置 → 沙箱启用多账号后使用此账号。'))
 }
 
 export function SandboxBinding({ client, subject, kind, fullTeam = false, disabled, onSave }) {

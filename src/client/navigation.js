@@ -1,4 +1,4 @@
-import { workspaceHash, managementHash, legacyAgentsHash, providerSettingsHash, workspaceHashes } from '../team/workspace-routes.js'
+import { workspaceHash, managementHash, legacyAgentsHash, providerSettingsHash, sandboxSettingsHash, workspaceHashes } from '../team/workspace-routes.js'
 
 export { workspaceHash, managementHash }
 export const panelId = 'dsh-godbot'
@@ -167,7 +167,8 @@ export function connectNavigation(ctx, browser, mountBot) {
     const { hash } = browser.location
     if (isWorkspaceHash(hash)) {
       if (!active) previous = browser.history.state?.[historyKey] ?? place(false)
-      const settings = hash === managementHash ? 'tasks' : hash === providerSettingsHash ? 'local-agents' : null
+      const settings = hash === managementHash ? 'tasks' : hash === providerSettingsHash ? 'local-agents'
+        : hash === sandboxSettingsHash ? 'sandboxes' : null
       if (settings || hash === legacyAgentsHash || !browser.history.state?.[historyKey]) saveRoute(false)
       show(true, settings ? { settings } : undefined)
     } else if (active) leave(previous?.panel, true)

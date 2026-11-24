@@ -51,7 +51,7 @@ test('read-only mount can inspect the real Bot roster and new tasks without migr
   assert.deepEqual(a.service.database.all('teams'),[])
   assert.equal(a.service.botTasks.snapshot().bots[0].name,'Existing Bot')
   rt.setReadOnly('Team became read-only')
-  for (const action of ['budget.configure','provider-account-default','sandbox-settings-set','automation.grant','automation.people.invite','task.create']) {
+  for (const action of ['budget.configure','provider-account-default','sandbox-settings-set','sandbox-create','automation.grant','automation.people.invite','task.create']) {
     assert.throws(()=>a.service.dispatch({action}),/read-only/)
   }
 })
