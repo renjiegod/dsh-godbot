@@ -308,7 +308,7 @@ export function install(rt) {
     return rt.save()
   }
 
-  const handle = async (endpoint, payload, signal, browser = false) => {
+  const handle = async (endpoint, payload, signal, { browser = false, profileOwner = browser } = {}) => {
     try {
       const body = payload ?? {}
       // Only the authenticated Web route can restart the process. The team
@@ -709,6 +709,12 @@ export function install(rt) {
         case 'learning-answer':
           await rt.load()
           return ok(await rt.learningEndpoint(endpoint, body))
+        case 'local-agent-usage':
+        case 'local-agent-quota': {
+          if (!profileOwner) return fail('Local agent usage is available to the profile owner.', 'bot/refused')
+          const read = endpoint === 'local-agent-usage' ? rt.localAgentUsage : rt.localAgentQuota
+          return ok(await read(body))
+        }
         // The mobile API (mobile.js).
         case 'hello':
         case 'notices':
@@ -966,7 +972,7 @@ export function install(rt) {
   }
 
   rt.channelCall = handle
-  rt.phoneServe(handle)
+  rt.phoneServe((endpoint, payload, signal) => handle(endpoint, payload, signal, { profileOwner: true }))
 
   // How a user message reaches a Session: a Bot id, a group chat's id, or an earlier
   // part of either resolves to its current part. `content` is the prompt blocks DSH
@@ -1026,7 +1032,7 @@ export function install(rt) {
     fetch: async (request) => {
       let body
       try { body = await request.json() } catch { body = {} }
-      const result = await handle(String(body?.endpoint ?? ''), body?.payload, request.signal, true)
+      const result = await handle(String(body?.endpoint ?? ''), body?.payload, request.signal, { browser: true })
       return new Response(JSON.stringify(result), { status: 200, headers: { 'content-type': 'application/json' } })
     },
   }), 'godbot: api route')

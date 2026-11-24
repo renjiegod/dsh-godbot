@@ -64,7 +64,9 @@ test('the managed runtime loads one durable workspace in the owning Godbot profi
   assert.equal(state.value.bots[0].avatar.shape, 'godbot')
   assert.equal(state.value.bots[0].color, 'cyan')
   assert.equal(rt.phoneView().server, '')
-
+  rt.localAgentUsage = async () => ({ providers: [] })
+  assert.equal((await rt.channelCall('local-agent-usage', { profileOwner: true })).error?.code, 'bot/refused')
+  assert.deepEqual((await rt.channelCall('local-agent-usage', {}, undefined, { profileOwner: true })).value, { providers: [] })
 })
 
 test('a Main Bot that kept the old defaults Chief, Chief of Staff becomes GodBot, Team Lead once', async t => {

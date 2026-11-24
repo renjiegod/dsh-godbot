@@ -1,12 +1,10 @@
 export const usagePeriods = { today:'今日（UTC）', week:'近 7 天', month:'本月（UTC）' }
 
-export const quotaKind = route => ({
-  'local-antigravity':'antigravity', 'local-claude-code':'claude', 'local-codex-cli':'codex', 'local-gemini-cli':'gemini',
-})[route]
+export { quotaKind } from '../host/team-runtime/core/local-agents/engines.js'
 
 export function accountConsumption(provider, id) {
   const attribution = id === null ? 'host' : 'sandbox'
-  return provider?.accounts.find(row => row.attribution === attribution && row.accountId === id)
+  return provider?.accounts?.find(row => row.attribution === attribution && row.accountId === id)
 }
 
 export function usageCount(value) {
@@ -41,23 +39,16 @@ export function localTime(value) {
   return Number.isNaN(date.getTime()) ? '' : date.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
 }
 
-// Include configured providers even before their first measured turn. A removed
-// provider keeps its own ledger identity without becoming a launch choice.
-export function usageProviders(settings, measured = [], period = 'week') {
-  const byRoute = new Map()
-  for (const row of settings) {
-    if (row.installed || row.custom || row.accountCount || row.isolated) byRoute.set(row.route,{route:row.route,name:row.name})
-  }
-  for (const provider of measured) {
-    const setting = settings.find(row=>row.route===provider.route)
-    byRoute.set(provider.route,{...provider,name:setting?.name || provider.route,archived:!setting})
-  }
-  return [...byRoute.values()].sort((a,b)=>(b.periods?.[period]?.tokens ?? 0)-(a.periods?.[period]?.tokens ?? 0)
-    || a.name.localeCompare(b.name))
+export function usageProviders(providers = [], period = 'week') {
+  const activity = provider => Boolean(provider.periods?.[period]?.reports || provider.periods?.[period]?.unreported)
+  return providers.toSorted((a,b) => Number(activity(b)) - Number(activity(a))
+    || (b.periods?.[period]?.tokens ?? 0) - (a.periods?.[period]?.tokens ?? 0)
+    || Number(Boolean(b.available)) - Number(Boolean(a.available))
+    || a.name.localeCompare(b.name, 'en') || a.route.localeCompare(b.route, 'en'))
 }
 
 export function usageDetail(route, settings, consumption) {
   if (!route) return undefined
   return settings.find(row=>row.route===route)
-    ?? (consumption?.route === route ? {route,name:route,archived:true} : undefined)
+    ?? (consumption?.route === route ? { route, name: consumption.name ?? route, archived: consumption.archived === true } : undefined)
 }

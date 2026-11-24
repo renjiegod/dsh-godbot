@@ -129,7 +129,7 @@ function ProviderAccounts({ row, change, busy, readOnly, enabled, usageProps, Si
 
 }
 
-function ProviderDetail({ row, AgentLogo, AgentForm, back, change, customAction, busy, readOnly, refresh, enabled, client, consumption, period, setPeriod, usageError, SignIn }) {
+function ProviderDetail({ row, AgentLogo, AgentForm, back, section, change, customAction, busy, readOnly, refresh, enabled, client, consumption, period, setPeriod, usageError, SignIn }) {
   const [command, setCommand] = useState('')
   const [signing, setSigning] = useState(false)
   const inPage = typeof SignIn === 'function' && row.signInMethods?.length > 0
@@ -137,9 +137,10 @@ function ProviderDetail({ row, AgentLogo, AgentForm, back, change, customAction,
   const [remove, setRemove] = useState(false)
   const title = useRef(null)
   useEffect(() => { title.current?.focus() }, [])
+  const backLabel = section === 'usage' ? '全部用量' : '提供商列表'
   return h('section', { className:'gb-pr-detail', 'data-provider-detail':row.route, 'aria-label':row.name },
-    h('button', { type:'button', className:'gb-pr-back', onClick:back, 'aria-label':'返回提供商列表' },
-      h(Icon, { name:'back',size:15 }), '提供商列表'),
+    h('button', { type:'button', className:'gb-pr-back', onClick:back, 'aria-label':'返回' + backLabel },
+      h(Icon, { name:'back',size:15 }), backLabel),
     h('div', { className:'gb-pr-title' }, h(AgentLogo, { route:row.route, name:row.name, size:36 }),
       h('h3', { ref:title, tabIndex:-1 }, row.name)),
     h(ProviderUsageSummary,{provider:consumption,period,setPeriod,usageError}),
@@ -189,7 +190,7 @@ function ProviderList({ rows, AgentLogo, select, focusRoute }) {
   }))
 }
 
-export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentForm, readOnly, SignIn }) {
+export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentForm, readOnly, SignIn, initialSection = 'providers' }) {
   const [view, setView] = useState(null)
   const [catalog, setCatalog] = useState(null)
   const [route, setRoute] = useState('')
@@ -198,9 +199,9 @@ export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentFor
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [section,setSection] = useState('providers')
+  const [section,setSection] = useState(initialSection)
   const [period,setPeriod] = useState('week')
-  const localUsage = useLocalConsumption(client)
+  const localUsage = useLocalConsumption(call, section === 'usage' || Boolean(route))
   const focusRoute = useRef(null)
   const loadId = useRef(0)
   const pending = useRef(false)
@@ -265,9 +266,9 @@ export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentFor
     error && h('div', { role:'alert', className:'bt-error' }, error, ' ', h(Button, { onClick:() => load(), disabled:loading }, '重试')),
     !current && h('div',{className:'gb-pr-periods',role:'group','aria-label':'本地 Agent 视图'},
       ['providers','usage'].map(id=>h('button',{key:id,type:'button','data-agent-action':id,'aria-pressed':section===id,onClick:()=>setSection(id)},id==='usage'?'用量':'提供商'))),
-    current ? h(ProviderDetail, { key:route,row:current, AgentLogo,AgentForm, back,change,customAction,busy:busy || loading,readOnly,refresh,SignIn,
+    current ? h(ProviderDetail, { key:route,row:current, AgentLogo,AgentForm, back,section,change,customAction,busy:busy || loading,readOnly,refresh,SignIn,
       enabled:catalog?.enabled,client,consumption,period,setPeriod,usageError:localUsage.error }) :
-      section==='usage' ? h(UsageOverview,{rows,usage:localUsage,period,setPeriod,select:setRoute,client,readOnly}) :
+      section==='usage' ? h(UsageOverview,{rows,usage:localUsage,period,setPeriod,select:setRoute,client,readOnly,AgentLogo,focusRoute}) :
       h(Fragment, null,
         h('div', { className:'gb-pr-heading' }, h('h3', null, '本地 Agent'),
           h('div', { className:'gb-pr-actions' }, h(Button, { 'data-agent-action':'refresh', onClick:refresh, disabled:loading || busy }, loading ? '正在检测…' : '刷新'),

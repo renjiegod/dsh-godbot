@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Store } from '../../src/host/store.js'
 import { UsagePolicy } from '../../src/host/usage-policy.js'
-import { localProviderUsage } from '../../src/host/local-provider-usage.js'
+import { localAgentQuota, localAgentUsageView, localProviderUsage } from '../../src/host/local-provider-usage.js'
 
 const now = Date.UTC(2026, 10, 2, 12)
 const day = 86400000
@@ -19,7 +19,7 @@ async function fixture(t) {
   const service = { stateDir, store, runtime:rt }
   const policy = new UsagePolicy(service, () => now)
   t.after(async () => { policy.close(); store.close(); await rm(stateDir,{recursive:true,force:true}) })
-  return { store, policy, ledger:join(rt.home,'usage.sqlite'), read:()=>localProviderUsage(service,now) }
+  return { service, store, policy, ledger:join(rt.home,'usage.sqlite'), read:()=>localProviderUsage(service,now) }
 }
 const route = (result, name) => result.providers.find(item=>item.route===name)
 const account = (provider,type,id=null) => provider.accounts.find(item=>item.attribution===type && item.accountId===id)
@@ -69,6 +69,8 @@ test('team attempt settlement, retries and fork cuts reconcile with measured jou
   assert.equal(codex.periods.today.tokens,24)
   assert.equal(codex.periods.month.tokens,25)
   assert.equal(codex.periods.week.reports,4)
+  assert.equal(view.totals.week.tokens,26)
+  assert.equal(view.totals.week.unreported,1)
   assert.equal(account(codex,'sandbox','test-b').periods.today.unreported,1)
   assert.equal(account(codex,'host').history.at(-2).tokens,1)
   const custom = route(view,'local-acp-made-up')
@@ -79,6 +81,43 @@ test('team attempt settlement, retries and fork cuts reconcile with measured jou
   emit('session/end-seed',{inherited:true})
   assert.equal(store.all('localUsageGaps').length,0)
   assert.equal(store.all('usageReceipts').length,0)
+})
+
+test('the local agent view keeps undetected CLIs and historical usage and only shares account display fields', async t => {
+  const { service, store } = await fixture(t)
+  const at = Date.now()
+  const codex = 'local-codex-cli'
+  store.put('usageReceipts', { id: 'sandbox', provider: 'local-sandbox-codex-test-b', input: 20, time: at })
+  store.put('localUsageGaps', { id: 'old', provider: 'local-acp-old', missing: true, time: at })
+  service.runtime.localAgentUsageCatalog = async () => [
+    { route: codex, name: 'Codex CLI', installed: false },
+    { route: 'local-goose', name: 'Goose', installed: false },
+    { route: 'local-acp-custom', name: 'My agent', installed: true },
+  ]
+  service.providerAccounts = { view: () => ({ providers: [{ kind: 'codex', accounts: [
+    { id: null, local: true, available: false, identity: { email: 'host@example.test' } },
+    { id: 'test-b', managed: true, name: 'owner@example.test', customName: 'Work Codex', available: true, workspaces: ['/private'] },
+    { id: 'removed', managed: true, removed: true, available: true },
+  ] }] }) }
+  const view = await localAgentUsageView(service)
+  assert.deepEqual(view.providers.map(p => p.route), [codex, 'local-goose', 'local-acp-custom', 'local-acp-old'])
+  assert.deepEqual(route(view,codex).configuredAccounts, [
+    { id: null, name: null, available: false }, { id: 'test-b', name: 'Work Codex', available: true },
+  ])
+  assert.equal(route(view,codex).available,true)
+  assert.equal(route(view,codex).quotaSupported,true)
+  assert.equal(route(view,'local-goose').available,false)
+  assert.equal(route(view,'local-goose').periods,undefined)
+  assert.equal(route(view,'local-acp-old').archived,true)
+  assert.equal(route(view,'local-acp-old').periods.week.unreported,1)
+  assert.equal(view.totals.week.tokens,20)
+})
+
+test('the paired usage view can read a saved provider quota without starting a probe', () => {
+  const service = { providerUsage: { dispatch: request => request } }
+  assert.deepEqual(localAgentQuota(service, { route: 'local-codex-cli', accountId: 'slot', refresh: true }),
+    { action: 'provider-usage', kind: 'codex', accountId: 'slot' })
+  assert.throws(() => localAgentQuota(service, { route: 'local-goose' }), { code: 'bot/invalid' })
 })
 
 test('an unreadable donor ledger reports partial coverage, while local receipts still work',async t=>{

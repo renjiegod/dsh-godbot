@@ -88,15 +88,18 @@ test('official quota meters preserve units and unknown coverage stays separate f
   assert.equal(usageCount(null),'—')
 })
 
-test('usage overview includes installed, configured and custom providers before reporting and keeps removed provider histories navigable',async()=>{
-  const {usageProviders,usageDetail}=await import('../../src/client/provider-usage-model.js')
-  const rows=[{route:'local-a',name:'A',installed:true},{route:'local-b',name:'B',isolated:2},
-    {route:'local-custom',name:'Configured ACP',custom:true},{route:'local-missing',name:'Not installed'}]
-  const past={route:'local-acp-old',periods:{week:{tokens:300,reports:1}}}
-  const merged=usageProviders(rows,[past],'week')
-  assert.deepEqual(merged.map(row=>row.route),['local-acp-old','local-a','local-b','local-custom'])
-  assert.equal(merged[1].periods,undefined)
+test('usage overview orders measured and unreported agents first and keeps every row navigable',async()=>{
+  const {accountConsumption,usageProviders,usageDetail}=await import('../../src/client/provider-usage-model.js')
+  const rows=[{route:'local-a',name:'A',available:true},{route:'local-b',name:'B',available:true,
+    periods:{week:{tokens:0,unreported:2}}},
+    {route:'local-custom',name:'Configured ACP',available:true},{route:'local-missing',name:'Not installed',available:false}]
+  const past={route:'local-acp-old',name:'Old ACP',archived:true,periods:{week:{tokens:300,reports:1}}}
+  const sorted=usageProviders([...rows,past],'week')
+  assert.deepEqual(sorted.map(row=>row.route),['local-acp-old','local-b','local-a','local-custom','local-missing'])
+  assert.equal(sorted[2].periods,undefined)
+  assert.equal(accountConsumption(sorted[2],null),undefined)
   assert.equal(usageDetail(past.route,rows,past).archived,true)
+  assert.equal(usageDetail(rows[3].route,[],rows[3]).archived,false)
   assert.equal(usageDetail('local-custom',rows,past),rows[2])
   assert.equal(usageDetail('missing',rows,past),undefined)
 })

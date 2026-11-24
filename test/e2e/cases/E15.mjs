@@ -7,6 +7,7 @@ import { until } from '../host.mjs'
 import { openBotChat, openFullTeam } from '../native-ui.mjs'
 import { openProviderSettingsFromTeam } from '../provider-settings.mjs'
 import { prepareProviderAccounts } from '../fixtures/provider-account-setup.mjs'
+import { ENGINES } from '../../../src/host/team-runtime/core/local-agents/engines.js'
 
 const number = n => new Intl.NumberFormat('zh-CN').format(n)
 const select = (field,value) => '['+field+'="'+value+'"]'
@@ -66,6 +67,10 @@ else {
   const read=()=>owner('local-provider-usage')
   await openFullTeam(host)
   assert.deepEqual((await read()).providers,[])
+  const custom = await host.bot('local-agent-add', { name: 'Fixture ACP', command: join(host.bin, 'opencode') })
+  const all = await host.bot('local-agent-usage')
+  assert.deepEqual(all.providers.map(agent => agent.route).sort(), [...Object.keys(ENGINES), custom.route].sort())
+  assert.equal(all.totals.today.reports, 0)
   await owner('sandbox-settings-set',{enabled:true})
   await owner('provider-account-save',{kind:'antigravity',accountId:'test-alpha',name:'Metered guest'})
   const agy='local-antigravity'
@@ -175,6 +180,9 @@ else {
   assert.match(await overview.locator(select('data-usage-provider','local-opencode')).innerText(),/未报告 token 数/u)
   for (const vendor of ['local-claude-code','local-codex-cli'])
     await overview.locator(select('data-usage-provider',vendor)).waitFor()
+  assert.equal(await overview.locator('[data-usage-provider]').count(), Object.keys(ENGINES).length + 1)
+  assert.match(await overview.locator(select('data-usage-provider','local-goose')).innerText(),/本机未检测到 CLI.*暂无记录/su)
+  assert.match(await overview.locator(select('data-usage-provider',custom.route)).innerText(),/Fixture ACP.*暂无记录/su)
   await host.capture('local-provider-usage-overview')
   await visible.click()
   const detail=view.locator(select('data-provider-detail',agy))
@@ -191,6 +199,8 @@ else {
   const quotas=account('test-alpha').locator('[data-account-quota]')
   await until(async()=>await quotas.getAttribute('data-quota-status')==='available','explicit guest quota refresh')
   assert.ok((await quotas.innerText()).includes('20%'))
+  assert.deepEqual(await quotaReads(),[{slot:'alpha',action:'usage'}])
+  assert.equal((await host.bot('local-agent-quota',{route:agy,accountId:'test-alpha'})).windows[0].usedPercent,20)
   assert.deepEqual(await quotaReads(),[{slot:'alpha',action:'usage'}])
   assert.equal((await owner('provider-usage',{kind:'antigravity',accountId:null})).status,'unchecked')
   assert.equal(route(await read(),agy).periods.today.tokens,totals.tokens,'official quota is independent of measured token usage')

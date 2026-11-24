@@ -162,6 +162,16 @@ export async function checkPages({ bot, channel, folder, note = () => {} }) {
     return { read: 'usage', write: 'none (read-only page)' }
   })
 
+  await page('local-agent-usage', async () => {
+    assert.ok((await bot('hello', { api: [1] })).capabilities.includes('local-agent-usage'))
+    const fromPhone = await bot('local-agent-usage')
+    const fromWeb = await channel('local-agent-usage')
+    assert.ok(fromPhone.providers.some(agent => agent.route === 'local-codex-cli'))
+    assert.deepEqual(fromPhone.providers, fromWeb.providers)
+    assert.deepEqual(fromPhone.totals, fromWeb.totals)
+    return { read: 'local-agent-usage', write: 'none (read-only page)' }
+  })
+
   await page('updates', async () => {
     const before = await bot('update-check', {})
     const original = before.update?.mode ?? before.mode

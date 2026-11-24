@@ -9,7 +9,7 @@ const reasonLabels = { 'not-authenticated':'请先登录当前账号，再刷新
   'source-unavailable':'暂时无法从该账号读取额度。', unsupported:'此提供商未开放可读取的官方额度接口。',
   'identity-changed':'登录身份已变化，请刷新当前账号的额度。',expired:'上次额度读数已过期，请刷新。' }
 
-export function useLocalConsumption(client) {
+export function useLocalConsumption(call, enabled) {
   const [usage,setUsage] = useState(null)
   const [error,setError] = useState('')
   const [loading,setLoading] = useState(false)
@@ -20,7 +20,7 @@ export function useLocalConsumption(client) {
     try {
       const deadline = Date.now() + 60000
       while (id === ticket.current) {
-        const result = await client.dispatch({ action:'local-provider-usage', refreshHistory })
+        const result = await call('local-agent-usage', { refreshHistory })
         if (id !== ticket.current) break
         setUsage(result); setError('')
         if (!refreshHistory || !result.historyScanning || Date.now() >= deadline) break
@@ -29,8 +29,12 @@ export function useLocalConsumption(client) {
     } catch (cause) {
       if (id === ticket.current) setError(cause?.message ?? String(cause))
     } finally { if (id === ticket.current) setLoading(false) }
-  },[client])
-  useEffect(() => { void refresh(); return () => { ticket.current++ } },[refresh])
+  },[call])
+  useEffect(() => {
+    if (!enabled) return
+    void refresh()
+    return () => { ticket.current++ }
+  },[enabled,refresh])
   return {usage,loading,error,refresh}
 }
 
@@ -53,6 +57,12 @@ function Coverage({totals}) {
   return h('small',{className:'gb-pr-muted'},text.join(' · '))
 }
 
+function Breakdown({totals}) {
+  if (!totals?.reports) return null
+  return h('div',{className:'gb-pr-usage-numbers'},[['输入','input'],['输出','output'],['缓存读取','cacheRead'],['缓存写入','cacheWrite']].map(([label,key])=>
+    h('span',{key},label+' '+usageCount(totals[key]))))
+}
+
 function DailyHistory({history}) {
   if (!Array.isArray(history) || !history.some(day=>day.reports || day.unreported)) return null
   const peak = Math.max(1,...history.map(day=>day.tokens || 0))
@@ -69,8 +79,7 @@ function LocalDetail({row,period}) {
     (totals?.reports || totals?.unreported) > 0 && row.attribution !== 'unknown' &&
       h('small',{className:'gb-pr-muted'},'按运行环境累计。同一环境更换登录账号后，历史记录仍计入这里。'),
     h(Coverage,{totals}),h(DailyHistory,{history:row?.history}),
-    totals?.reports > 0 && h('div',{className:'gb-pr-usage-numbers'},[['输入','input'],['输出','output'],['缓存读取','cacheRead'],['缓存写入','cacheWrite']].map(([label,key])=>
-      h('span',{key},label+' '+usageCount(totals[key])))),
+    h(Breakdown,{totals}),
     row?.models?.some(model => model.periods?.[period]?.reports || model.periods?.[period]?.unreported) &&
       h('details',null,h('summary',null,'按模型查看'),h('ul',{className:'gb-pr-model-totals'},
         row.models.filter(m=>m.periods?.[period]?.reports || m.periods?.[period]?.unreported).map(model=>
@@ -160,25 +169,33 @@ function QuotaComparison({rows,client,readOnly}) {
         id:account.id,disabled:!account.available,readOnly})))))
 }
 
-export function UsageOverview({rows,usage,period,setPeriod,select,client,readOnly}) {
+export function UsageOverview({rows,usage,period,setPeriod,select,client,readOnly,AgentLogo,focusRoute}) {
   const data = usage.usage
-  const sorted = usageProviders(rows,data?.providers,period)
+  const sorted = usageProviders(data?.providers,period)
+  const peak = Math.max(1,...sorted.map(provider => provider.periods?.[period]?.tokens ?? 0))
   return h('section',{className:'gb-pr-section','data-provider-usage-overview':true},
-    h(QuotaComparison,{rows,client,readOnly}),
     h('div',{className:'gb-pr-heading'},h('h3',null,'Godbot 会话用量'),
-      h('button',{type:'button',className:'bt-soft bt-soft-sm',onClick:()=>usage.refresh(true),disabled:usage.loading},'刷新统计')),
+      h('button',{type:'button',className:'bt-soft bt-soft-sm',onClick:()=>usage.refresh(!readOnly),disabled:usage.loading},'刷新统计')),
     h(PeriodSwitch,{period,setPeriod}),
-    h('p',{className:'gb-pr-muted'},'按提供商汇总本工作台收到的 token 计数。'),
     usage.error && h('small',{className:'bt-error',role:'alert'},usage.error),
     data?.historyScanning && h('small',{className:'gb-pr-muted',role:'status'},'正在读取历史会话，当前显示已收录的记录。'),
     data?.ledgerStatus==='unavailable' && h('small',{className:'gb-pr-muted',role:'status'},'团队用量账本暂不可读，以下为当前可取得的记录。'),
-    sorted.length ? h('div',{className:'bt-set-card'},sorted.map(provider=>{
+    data && h('div',{className:'bt-set-card gb-pr-box'},
+      h('div',{className:'gb-pr-heading'},h('strong',null,'全部本地 Agent'),h(Count,{totals:data.totals?.[period]})),
+      h(Breakdown,{totals:data.totals?.[period]}),h(Coverage,{totals:data.totals?.[period]})),
+    sorted.length ? h('ul',{className:'bt-set-card gb-pr-list'},sorted.map(provider=>{
       const totals=provider.periods?.[period]
-      return h('button',{key:provider.route,className:'gb-pr-row gb-pr-usage-summary',type:'button','data-usage-provider':provider.route,
-        onClick:()=>select(provider.route)},h('span',{className:'gb-pr-copy'},h('strong',null,provider.name),provider.archived && h('small',{className:'gb-pr-muted'},'历史提供商'),
-        h(Coverage,{totals})),h(Count,{totals}),h('span',{'aria-hidden':true},'›'))
-    })) : h('p',{className:'gb-pr-muted',role:'status'},usage.loading?'正在读取统计…':'暂无已记录的提供商会话。'),
-    data?.asOf && h('small',{className:'gb-pr-muted'},'更新于 '+localTime(data.asOf)))
+      const status = provider.archived ? '历史 Agent' : !provider.available ? '本机未检测到 CLI' : ''
+      return h('li',{key:provider.route},h('button',{className:'gb-pr-row gb-pr-usage-summary',type:'button','data-usage-provider':provider.route,
+        ref:el => { if (el && focusRoute.current === provider.route) { el.focus(); focusRoute.current = null } },
+        onClick:()=>select(provider.route)},h(AgentLogo,{route:provider.route,name:provider.name,size:28}),
+        h('span',{className:'gb-pr-copy'},h('strong',null,provider.name),status && h('small',{className:'gb-pr-muted'},status),
+          totals?.reports > 0 && h(Coverage,{totals})),
+        h('span',{className:'gb-pr-usage-amount'},h(Count,{totals}),totals?.tokens > 0 &&
+          h('progress',{max:peak,value:totals.tokens,'aria-hidden':true})),h('span',{'aria-hidden':true},'›')))
+    })) : !usage.error && h('p',{className:'gb-pr-muted',role:'status'},data?'暂无本地 Agent。':'正在读取统计…'),
+    data?.asOf && h('small',{className:'gb-pr-muted'},'更新于 '+localTime(data.asOf)),
+    h(QuotaComparison,{rows,client,readOnly}))
 }
 
 export function ProviderUsageSummary({provider,period,setPeriod,usageError,history=false,accountList=[]}) {
@@ -191,6 +208,7 @@ export function ProviderUsageSummary({provider,period,setPeriod,usageError,histo
       previous.map(row=>h('div',{key:row.attribution+':'+row.accountId},h('strong',null,row.attribution==='unknown'?'未归属账号':row.accountId),h(LocalDetail,{row,period})))) : null
   }
   return h('div',{className:'gb-pr-section'},h('div',{className:'gb-pr-heading'},
-    h('h4',null,'提供商会话用量'),h(Count,{totals})),h(PeriodSwitch,{period,setPeriod}),h(Coverage,{totals}),h(DailyHistory,{history:provider?.history}),
+    h('h4',null,'提供商会话用量'),h(Count,{totals})),h(PeriodSwitch,{period,setPeriod}),
+    h(Breakdown,{totals}),h(Coverage,{totals}),h(DailyHistory,{history:provider?.history}),
     usageError && h('small',{className:'bt-error',role:'alert'},usageError))
 }

@@ -5,6 +5,7 @@ import { RemoteComputers } from './remote-computers.js'
 import { BundledComputerHost } from './bundled-computer-host.js'
 import { BotTerminals } from './bot-terminals.js'
 import { GodbotService, readOnlyWorkspaceSnapshot } from './service.js'
+import { localAgentQuota, localAgentUsageView } from './local-provider-usage.js'
 import { createGodbotRemote } from './dsh-remote.js'
 import { dshModelCatalog } from './dsh-models.js'
 import { teamRuntimeStatus, getTeamRuntime, mountTeamRuntime } from './team-runtime.js'
@@ -107,6 +108,12 @@ export async function apply(ctx, config = {}) {
       }
     }, error => child.logger.warn('Could not activate Bot workspace operations: %s', error.message))
     current = scope
+    const withService = handler => async body => {
+      await scope.ready()
+      return handler(scope.existing().service, body)
+    }
+    runtime.localAgentUsage = withService(localAgentUsageView)
+    runtime.localAgentQuota = withService(localAgentQuota)
     child.effect(() => () => {
       if (current === scope) current = undefined
       return scope.close()

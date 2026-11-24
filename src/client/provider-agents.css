@@ -66,6 +66,9 @@
 .gb-pr-window progress[data-limited=true]::-webkit-progress-value{background:var(--bt-danger,#b64b34)}
 .gb-pr-model-totals{list-style:none;margin:4px 0 0;padding:0}.gb-pr-model-totals li{display:flex;gap:8px;justify-content:space-between}
 .gb-pr-model-totals,.gb-pr-usage-summary{font-variant-numeric:tabular-nums}
+.gb-pr-usage-summary .gb-pr-copy strong{overflow-wrap:anywhere}
+.gb-pr-usage-amount{display:grid;min-width:0;width:min(9rem,33%);gap:4px;text-align:end;font-size:12px;overflow-wrap:anywhere}
+.gb-pr-usage-amount progress{width:100%;height:4px;accent-color:var(--bt-accent)}
 .gb-pr-quota-compare{display:grid;grid-template-columns:minmax(90px,.35fr) minmax(0,1fr);align-items:start;gap:10px;padding:10px 12px}
 .gb-pr-quota-compare>strong{overflow-wrap:anywhere;font-size:13px;padding:8px 0}
 .gb-pr-quota-compare .gb-pr-usage-official{background:transparent}

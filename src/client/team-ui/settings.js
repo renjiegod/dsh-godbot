@@ -348,7 +348,8 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
   // A page enters from the right when it is one level in, from the left when it comes
   // back out, and from below beside it. Usage keeps its own entrance and its data
   // across its own levels, so they share one page.
-  const pageKey = `${shown}:${bot?.id ?? room?.id ?? section?.id ?? (advanced ? 'advanced' : usageLimits ? 'limits' : '')}`
+  const localAgentUsage = shown === 'local-agents' && id === 'usage'
+  const pageKey = `${shown}:${bot?.id ?? room?.id ?? section?.id ?? (advanced ? 'advanced' : usageLimits ? 'limits' : localAgentUsage ? 'usage' : '')}`
   const depth = bot || room || advanced || usageLimits ? 1 : 0
   const last = useRef({ key: pageKey, depth, move: 'up' })
   if (last.current.key !== pageKey) {
@@ -383,6 +384,9 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
           back ? h('button', { type: 'button', className: 'bt-icon-btn', 'aria-label': back, title: back, onClick: () => actions.openSettings(shown) }, h(ChevronLeftIcon)) : null,
           h('h2', { key: bot?.id ?? room?.id ?? section?.id ?? (advanced ? 'advanced' : usageLimits ? 'limits' : shown) }, bot?.name ?? room?.name ?? label),
           h('div', { className: 'bt-settings-actions' },
+            usageShown && !usageFocus ? h('button', {
+              type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openSettings('local-agents', 'usage'),
+            }, t('Local agents')) : null,
             usageShown && !usageFocus && !roster.readOnly ? h('button', {
               type: 'button', className: 'bt-soft bt-soft-sm', onClick: () => actions.openSettings('usage', 'limits'),
             }, t('Usage limits and fallback models')) : null,
@@ -395,7 +399,8 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
           shown === 'models' && !advanced ? h(ProvidersPage, { actions, run, roster, Section: SetSection, advanced: hasSection(dsh, 'models') ? () => actions.openSettings('models', 'advanced') : null }) : null,
           advanced ? h('div', { className: 'bt-dsh-section' }, dsh.renderSlot('settings.section', { close }, { only: 'models' })) : null,
           section ? h('div', { className: 'bt-dsh-section' }, dsh.renderSlot('settings.section', { close }, { only: section.id })) : null,
-          shown === 'local-agents' ? actions.godbot.providerAgents({ call, AgentLogo, AgentForm, readOnly: roster.readOnly, builtins, SignIn: roster.readOnly ? undefined : LocalSignInPanel }) : null,
+          shown === 'local-agents' ? actions.godbot.providerAgents({ call, AgentLogo, AgentForm, readOnly: roster.readOnly, builtins,
+            initialSection: localAgentUsage ? 'usage' : 'providers', SignIn: roster.readOnly ? undefined : LocalSignInPanel }) : null,
           bot ? h('div', { className: 'bt-settings-form' }, h(BotSettingsForm, { key: bot.id, bot, roster, actions, run })) : null,
           shown === 'bots' && !bot ? h(BotsPage, { roster, actions, run }) : null,
           shown === 'bot-models' ? h(BotModelsPage, { roster, actions, run, Section: SetSection }) : null,

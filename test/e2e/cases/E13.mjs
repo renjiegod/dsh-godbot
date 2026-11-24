@@ -45,6 +45,10 @@ async function checkCustomAgent(host,view) {
   await inputs.nth(2).fill('acp')
   await form.getByRole('button',{name:/^(保存|Save)$/u}).click()
   const added = await until(async () => (await host.bot('local-agents')).custom.find(item=>item.name==='Synthetic ACP'),'custom route created')
+  const usageRow = view.locator(selector('data-usage-provider',added.route))
+  await view.locator('[data-agent-action="usage"]').click()
+  await usageRow.waitFor()
+  await view.locator('[data-agent-action="providers"]').click()
   const detail = await openDetail(view,added.route)
   await detail.locator('[data-agent-action="edit-custom"]').click()
   await form.locator('input').nth(0).fill('Synthetic ACP renamed')
@@ -55,6 +59,9 @@ async function checkCustomAgent(host,view) {
   await detail.locator('[data-agent-action="remove-custom"]').click()
   await until(async () => !(await host.bot('local-agents')).custom.some(item=>item.id===added.id),'confirmed custom route removal')
   await until(async () => await row(view,added.route).count()===0,'removed custom row')
+  await view.locator('[data-agent-action="usage"]').click()
+  await usageRow.waitFor({ state:'detached' })
+  await view.locator('[data-agent-action="providers"]').click()
 }
 
 async function preservedBot(host,id) {

@@ -904,6 +904,14 @@ export function install(rt) {
   const detected = () => [...found.values()].map(entry => ({ route: entry.route, name: entry.name, path: entry.path, version: entry.version ?? null, signIn: entry.signIn, signedIn: entry.signedIn ?? null, signInMethods: signIns.methodsOf(ENGINES[entry.route]) }))
   const customView = () => store().custom.map(agent => ({ ...agent, route: customRoute(agent.id) }))
 
+  async function localAgentUsageCatalog() {
+    await scan()
+    return [
+      ...Object.entries(ENGINES).map(([route, { name }]) => ({ route, name, installed: found.has(route) })),
+      ...customView().map(({ route, name, command }) => ({ route, name, installed: Boolean(findExecutable(command)) })),
+    ]
+  }
+
   // One CLI's models: the first look starts that CLI, later ones read what it said.
   const localAgentModels = async route => {
     const target = sandboxRouteInfo(route)
@@ -1026,7 +1034,7 @@ export function install(rt) {
     },
     validateSandboxPart: (bot, route, part) => sandboxes.validate(bot, route, { part }),
     isLocalAgentRoute, isLocalAgentRef, engineOf, engineOfBot, localAgentOf, isLocalAgentSession,
-    localAgentRoutes: allRoutes, localAgentsEndpoint, localAgentModels, slashCatalog,
+    localAgentRoutes: allRoutes, localAgentsEndpoint, localAgentModels, localAgentUsageCatalog, slashCatalog,
     claimAgentTerminal: (botId, part) => claimTeamTerminal(rt, adapter, botId, part, partAdapter(part)),
     engineNameOf: ref => (isLocalAgentRef(ref) ? adapter.providerInfo(splitRef(ref).provider).name : `the model ${ref}`),
     closeLocalAgentSession: (sessionId, reason) => sandboxes.parts.has(String(sessionId)) ? sandboxes.closePart(sessionId, reason) : adapter.closeSession(sessionId, reason),

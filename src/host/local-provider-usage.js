@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { sandboxRouteInfo } from './team-runtime/sandbox-agents.js'
+import { quotaKind } from './team-runtime/core/local-agents/engines.js'
 
 const dayMs = 86_400_000
 const counters = ['input', 'cacheRead', 'cacheWrite', 'output']
@@ -89,6 +90,7 @@ export function localProviderUsage(service, now = Date.now()) {
   }))
   const { rows, ledgerStatus } = measuredRows(service, Math.min(...Object.values(from)), now)
   const providers = new Map()
+  const combined = periods()
   for (const row of rows.values()) {
     const identity = identify(row)
     if (!identity) continue
@@ -106,6 +108,7 @@ export function localProviderUsage(service, now = Date.now()) {
     for (const [period, start] of Object.entries(from)) {
       if (row.time < start) continue
       for (const entry of [provider, account, model]) add(entry.periods[period], row)
+      add(combined[period], row)
     }
     if (row.time >= historyStart) {
       const index = Math.floor((row.time - historyStart) / dayMs)
@@ -116,6 +119,7 @@ export function localProviderUsage(service, now = Date.now()) {
   return {
     asOf: iso(now), ledgerStatus,
     periods: Object.fromEntries(Object.entries(from).map(([key, start]) => [key, { start: iso(start), end: iso(now) }])),
+    totals: combined,
     providers: [...providers.values()].sort((a, b) => a.route.localeCompare(b.route)).map(publicProvider),
   }
 }
@@ -133,4 +137,38 @@ export async function refreshLocalProviderUsage(service) {
   }
   const result = localProviderUsage(service)
   return { ...result, historyScanning: scanning, ...(failed ? { ledgerStatus: 'unavailable' } : {}) }
+}
+
+export async function localAgentUsageView(service, { refreshHistory } = {}) {
+  const [catalog, usage] = await Promise.all([
+    service.runtime.localAgentUsageCatalog(),
+    refreshHistory === true ? refreshLocalProviderUsage(service) : localProviderUsage(service),
+  ])
+  const accountCatalog = new Map(service.providerAccounts.view().providers.map(row => [row.kind, row.accounts]))
+  const byRoute = new Map(usage.providers.map(provider => [provider.route, provider]))
+  const providers = catalog.map(agent => {
+    const recorded = byRoute.get(agent.route)
+    byRoute.delete(agent.route)
+    const kind = quotaKind(agent.route)
+    const environments = accountCatalog.get(kind)
+    const configuredAccounts = environments?.filter(account => !account.removed &&
+      (account.local || account.managed || account.inUse || account.identity?.status === 'signed-in'))
+      .map(account => ({
+        id: account.id, name: account.customName ?? (account.local ? null : account.slotName),
+        available: account.available,
+      })) ?? [{ id: null, name: null, available: agent.installed }]
+    return {
+      ...recorded, ...agent, configuredAccounts,
+      available: agent.installed || environments?.some(account => !account.removed && account.available) === true,
+      quotaSupported: kind !== undefined,
+    }
+  })
+  for (const recorded of byRoute.values()) providers.push({ ...recorded, name: recorded.route, archived: true })
+  return { ...usage, providers }
+}
+
+export function localAgentQuota(service, { route, accountId = null } = {}) {
+  const kind = typeof route === 'string' && quotaKind(route)
+  if (!kind) throw Object.assign(new Error('This local agent has no quota source.'), { code: 'bot/invalid' })
+  return service.providerUsage.dispatch({ action: 'provider-usage', kind, accountId })
 }

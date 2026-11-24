@@ -34125,6 +34125,13 @@ var CLIS = {
   "iflow": { name: "iFlow CLI", kind: "acp", command: "iflow", args: ["--experimental-acp"], version: ["--version"], signIn: "iflow" }
 };
 var ENGINES = Object.fromEntries(Object.entries(CLIS).map(([id, spec]) => [`${ROUTE_PREFIX}${id}`, { ...spec, id }]));
+var quotaKinds = {
+  "local-antigravity": "antigravity",
+  "local-claude-code": "claude",
+  "local-codex-cli": "codex",
+  "local-gemini-cli": "gemini"
+};
+var quotaKind = (route) => Object.hasOwn(quotaKinds, route) ? quotaKinds[route] : void 0;
 var CUSTOM_PREFIX2 = `${ROUTE_PREFIX}acp-`;
 
 // src/client/team-ui/local-sign-in-model.js
@@ -48607,7 +48614,8 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false,
   const label = section ? section.label : advanced ? t("Advanced settings") : usageLimits ? t("Usage limits and fallback models") : t(pages.find(([key]) => key === shown)[1]);
   const back = bot ? t("Back to Bots") : room2 ? t("Back to group chats") : usageFocus || usageLimits ? t("All usage") : advanced ? t("Back to models") : null;
   const nav = useGlide(section ? `dsh:${section.id}` : shown, { axis: "y" });
-  const pageKey = `${shown}:${bot?.id ?? room2?.id ?? section?.id ?? (advanced ? "advanced" : usageLimits ? "limits" : "")}`;
+  const localAgentUsage = shown === "local-agents" && id === "usage";
+  const pageKey = `${shown}:${bot?.id ?? room2?.id ?? section?.id ?? (advanced ? "advanced" : usageLimits ? "limits" : localAgentUsage ? "usage" : "")}`;
   const depth = bot || room2 || advanced || usageLimits ? 1 : 0;
   const last = (0, import_react56.useRef)({ key: pageKey, depth, move: "up" });
   if (last.current.key !== pageKey) {
@@ -48660,6 +48668,11 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false,
           (0, import_react56.createElement)(
             "div",
             { className: "bt-settings-actions" },
+            usageShown && !usageFocus ? (0, import_react56.createElement)("button", {
+              type: "button",
+              className: "bt-soft bt-soft-sm",
+              onClick: () => actions.openSettings("local-agents", "usage")
+            }, t("Local agents")) : null,
             usageShown && !usageFocus && !roster.readOnly ? (0, import_react56.createElement)("button", {
               type: "button",
               className: "bt-soft bt-soft-sm",
@@ -48680,7 +48693,15 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false,
             shown === "models" && !advanced ? (0, import_react56.createElement)(ProvidersPage, { actions, run: run2, roster, Section: SetSection, advanced: hasSection(dsh, "models") ? () => actions.openSettings("models", "advanced") : null }) : null,
             advanced ? (0, import_react56.createElement)("div", { className: "bt-dsh-section" }, dsh.renderSlot("settings.section", { close }, { only: "models" })) : null,
             section ? (0, import_react56.createElement)("div", { className: "bt-dsh-section" }, dsh.renderSlot("settings.section", { close }, { only: section.id })) : null,
-            shown === "local-agents" ? actions.godbot.providerAgents({ call, AgentLogo, AgentForm, readOnly: roster.readOnly, builtins, SignIn: roster.readOnly ? void 0 : LocalSignInPanel }) : null,
+            shown === "local-agents" ? actions.godbot.providerAgents({
+              call,
+              AgentLogo,
+              AgentForm,
+              readOnly: roster.readOnly,
+              builtins,
+              initialSection: localAgentUsage ? "usage" : "providers",
+              SignIn: roster.readOnly ? void 0 : LocalSignInPanel
+            }) : null,
             bot ? (0, import_react56.createElement)("div", { className: "bt-settings-form" }, (0, import_react56.createElement)(BotSettingsForm, { key: bot.id, bot, roster, actions, run: run2 })) : null,
             shown === "bots" && !bot ? (0, import_react56.createElement)(BotsPage, { roster, actions, run: run2 }) : null,
             shown === "bot-models" ? (0, import_react56.createElement)(BotModelsPage, { roster, actions, run: run2, Section: SetSection }) : null,
@@ -60265,15 +60286,9 @@ var import_react89 = require("react");
 
 // src/client/provider-usage-model.js
 var usagePeriods = { today: "今日（UTC）", week: "近 7 天", month: "本月（UTC）" };
-var quotaKind = (route) => ({
-  "local-antigravity": "antigravity",
-  "local-claude-code": "claude",
-  "local-codex-cli": "codex",
-  "local-gemini-cli": "gemini"
-})[route];
 function accountConsumption(provider, id) {
   const attribution = id === null ? "host" : "sandbox";
-  return provider?.accounts.find((row2) => row2.attribution === attribution && row2.accountId === id);
+  return provider?.accounts?.find((row2) => row2.attribution === attribution && row2.accountId === id);
 }
 function usageCount(value) {
   if (!Number.isFinite(value) || value < 0) return "—";
@@ -60303,20 +60318,13 @@ function localTime(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleString(void 0, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
-function usageProviders(settings2, measured = [], period = "week") {
-  const byRoute = /* @__PURE__ */ new Map();
-  for (const row2 of settings2) {
-    if (row2.installed || row2.custom || row2.accountCount || row2.isolated) byRoute.set(row2.route, { route: row2.route, name: row2.name });
-  }
-  for (const provider of measured) {
-    const setting = settings2.find((row2) => row2.route === provider.route);
-    byRoute.set(provider.route, { ...provider, name: setting?.name || provider.route, archived: !setting });
-  }
-  return [...byRoute.values()].sort((a, b2) => (b2.periods?.[period]?.tokens ?? 0) - (a.periods?.[period]?.tokens ?? 0) || a.name.localeCompare(b2.name));
+function usageProviders(providers = [], period = "week") {
+  const activity2 = (provider) => Boolean(provider.periods?.[period]?.reports || provider.periods?.[period]?.unreported);
+  return providers.toSorted((a, b2) => Number(activity2(b2)) - Number(activity2(a)) || (b2.periods?.[period]?.tokens ?? 0) - (a.periods?.[period]?.tokens ?? 0) || Number(Boolean(b2.available)) - Number(Boolean(a.available)) || a.name.localeCompare(b2.name, "en") || a.route.localeCompare(b2.route, "en"));
 }
 function usageDetail(route, settings2, consumption) {
   if (!route) return void 0;
-  return settings2.find((row2) => row2.route === route) ?? (consumption?.route === route ? { route, name: route, archived: true } : void 0);
+  return settings2.find((row2) => row2.route === route) ?? (consumption?.route === route ? { route, name: consumption.name ?? route, archived: consumption.archived === true } : void 0);
 }
 
 // src/client/provider-agents-usage.js
@@ -60336,7 +60344,7 @@ var reasonLabels = {
   "identity-changed": "登录身份已变化，请刷新当前账号的额度。",
   expired: "上次额度读数已过期，请刷新。"
 };
-function useLocalConsumption(client) {
+function useLocalConsumption(call3, enabled) {
   const [usage, setUsage] = (0, import_react89.useState)(null);
   const [error, setError] = (0, import_react89.useState)("");
   const [loading, setLoading] = (0, import_react89.useState)(false);
@@ -60347,7 +60355,7 @@ function useLocalConsumption(client) {
     try {
       const deadline = Date.now() + 6e4;
       while (id === ticket.current) {
-        const result = await client.dispatch({ action: "local-provider-usage", refreshHistory });
+        const result = await call3("local-agent-usage", { refreshHistory });
         if (id !== ticket.current) break;
         setUsage(result);
         setError("");
@@ -60359,13 +60367,14 @@ function useLocalConsumption(client) {
     } finally {
       if (id === ticket.current) setLoading(false);
     }
-  }, [client]);
+  }, [call3]);
   (0, import_react89.useEffect)(() => {
+    if (!enabled) return;
     void refresh();
     return () => {
       ticket.current++;
     };
-  }, [refresh]);
+  }, [enabled, refresh]);
   return { usage, loading, error, refresh };
 }
 function PeriodSwitch({ period, setPeriod }) {
@@ -60392,6 +60401,10 @@ function Coverage({ totals }) {
   if (totals.unreported) text.push(usageCount(totals.unreported) + " 条未报告 token 数");
   return (0, import_react89.createElement)("small", { className: "gb-pr-muted" }, text.join(" · "));
 }
+function Breakdown({ totals }) {
+  if (!totals?.reports) return null;
+  return (0, import_react89.createElement)("div", { className: "gb-pr-usage-numbers" }, [["输入", "input"], ["输出", "output"], ["缓存读取", "cacheRead"], ["缓存写入", "cacheWrite"]].map(([label, key]) => (0, import_react89.createElement)("span", { key }, label + " " + usageCount(totals[key]))));
+}
 function DailyHistory({ history }) {
   if (!Array.isArray(history) || !history.some((day) => day.reports || day.unreported)) return null;
   const peak = Math.max(1, ...history.map((day) => day.tokens || 0));
@@ -60417,7 +60430,7 @@ function LocalDetail({ row: row2, period }) {
     (totals?.reports || totals?.unreported) > 0 && row2.attribution !== "unknown" && (0, import_react89.createElement)("small", { className: "gb-pr-muted" }, "按运行环境累计。同一环境更换登录账号后，历史记录仍计入这里。"),
     (0, import_react89.createElement)(Coverage, { totals }),
     (0, import_react89.createElement)(DailyHistory, { history: row2?.history }),
-    totals?.reports > 0 && (0, import_react89.createElement)("div", { className: "gb-pr-usage-numbers" }, [["输入", "input"], ["输出", "output"], ["缓存读取", "cacheRead"], ["缓存写入", "cacheWrite"]].map(([label, key]) => (0, import_react89.createElement)("span", { key }, label + " " + usageCount(totals[key])))),
+    (0, import_react89.createElement)(Breakdown, { totals }),
     row2?.models?.some((model) => model.periods?.[period]?.reports || model.periods?.[period]?.unreported) && (0, import_react89.createElement)("details", null, (0, import_react89.createElement)("summary", null, "按模型查看"), (0, import_react89.createElement)(
       "ul",
       { className: "gb-pr-model-totals" },
@@ -60567,41 +60580,61 @@ function QuotaComparison({ rows: rows2, client, readOnly }) {
     )))
   );
 }
-function UsageOverview({ rows: rows2, usage, period, setPeriod, select, client, readOnly }) {
+function UsageOverview({ rows: rows2, usage, period, setPeriod, select, client, readOnly, AgentLogo: AgentLogo2, focusRoute }) {
   const data = usage.usage;
-  const sorted = usageProviders(rows2, data?.providers, period);
+  const sorted = usageProviders(data?.providers, period);
+  const peak = Math.max(1, ...sorted.map((provider) => provider.periods?.[period]?.tokens ?? 0));
   return (0, import_react89.createElement)(
     "section",
     { className: "gb-pr-section", "data-provider-usage-overview": true },
-    (0, import_react89.createElement)(QuotaComparison, { rows: rows2, client, readOnly }),
     (0, import_react89.createElement)(
       "div",
       { className: "gb-pr-heading" },
       (0, import_react89.createElement)("h3", null, "Godbot 会话用量"),
-      (0, import_react89.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => usage.refresh(true), disabled: usage.loading }, "刷新统计")
+      (0, import_react89.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: () => usage.refresh(!readOnly), disabled: usage.loading }, "刷新统计")
     ),
     (0, import_react89.createElement)(PeriodSwitch, { period, setPeriod }),
-    (0, import_react89.createElement)("p", { className: "gb-pr-muted" }, "按提供商汇总本工作台收到的 token 计数。"),
     usage.error && (0, import_react89.createElement)("small", { className: "bt-error", role: "alert" }, usage.error),
     data?.historyScanning && (0, import_react89.createElement)("small", { className: "gb-pr-muted", role: "status" }, "正在读取历史会话，当前显示已收录的记录。"),
     data?.ledgerStatus === "unavailable" && (0, import_react89.createElement)("small", { className: "gb-pr-muted", role: "status" }, "团队用量账本暂不可读，以下为当前可取得的记录。"),
-    sorted.length ? (0, import_react89.createElement)("div", { className: "bt-set-card" }, sorted.map((provider) => {
+    data && (0, import_react89.createElement)(
+      "div",
+      { className: "bt-set-card gb-pr-box" },
+      (0, import_react89.createElement)("div", { className: "gb-pr-heading" }, (0, import_react89.createElement)("strong", null, "全部本地 Agent"), (0, import_react89.createElement)(Count, { totals: data.totals?.[period] })),
+      (0, import_react89.createElement)(Breakdown, { totals: data.totals?.[period] }),
+      (0, import_react89.createElement)(Coverage, { totals: data.totals?.[period] })
+    ),
+    sorted.length ? (0, import_react89.createElement)("ul", { className: "bt-set-card gb-pr-list" }, sorted.map((provider) => {
       const totals = provider.periods?.[period];
-      return (0, import_react89.createElement)("button", {
-        key: provider.route,
-        className: "gb-pr-row gb-pr-usage-summary",
-        type: "button",
-        "data-usage-provider": provider.route,
-        onClick: () => select(provider.route)
-      }, (0, import_react89.createElement)(
-        "span",
-        { className: "gb-pr-copy" },
-        (0, import_react89.createElement)("strong", null, provider.name),
-        provider.archived && (0, import_react89.createElement)("small", { className: "gb-pr-muted" }, "历史提供商"),
-        (0, import_react89.createElement)(Coverage, { totals })
-      ), (0, import_react89.createElement)(Count, { totals }), (0, import_react89.createElement)("span", { "aria-hidden": true }, "›"));
-    })) : (0, import_react89.createElement)("p", { className: "gb-pr-muted", role: "status" }, usage.loading ? "正在读取统计…" : "暂无已记录的提供商会话。"),
-    data?.asOf && (0, import_react89.createElement)("small", { className: "gb-pr-muted" }, "更新于 " + localTime(data.asOf))
+      const status = provider.archived ? "历史 Agent" : !provider.available ? "本机未检测到 CLI" : "";
+      return (0, import_react89.createElement)("li", { key: provider.route }, (0, import_react89.createElement)(
+        "button",
+        {
+          className: "gb-pr-row gb-pr-usage-summary",
+          type: "button",
+          "data-usage-provider": provider.route,
+          ref: (el2) => {
+            if (el2 && focusRoute.current === provider.route) {
+              el2.focus();
+              focusRoute.current = null;
+            }
+          },
+          onClick: () => select(provider.route)
+        },
+        (0, import_react89.createElement)(AgentLogo2, { route: provider.route, name: provider.name, size: 28 }),
+        (0, import_react89.createElement)(
+          "span",
+          { className: "gb-pr-copy" },
+          (0, import_react89.createElement)("strong", null, provider.name),
+          status && (0, import_react89.createElement)("small", { className: "gb-pr-muted" }, status),
+          totals?.reports > 0 && (0, import_react89.createElement)(Coverage, { totals })
+        ),
+        (0, import_react89.createElement)("span", { className: "gb-pr-usage-amount" }, (0, import_react89.createElement)(Count, { totals }), totals?.tokens > 0 && (0, import_react89.createElement)("progress", { max: peak, value: totals.tokens, "aria-hidden": true })),
+        (0, import_react89.createElement)("span", { "aria-hidden": true }, "›")
+      ));
+    })) : !usage.error && (0, import_react89.createElement)("p", { className: "gb-pr-muted", role: "status" }, data ? "暂无本地 Agent。" : "正在读取统计…"),
+    data?.asOf && (0, import_react89.createElement)("small", { className: "gb-pr-muted" }, "更新于 " + localTime(data.asOf)),
+    (0, import_react89.createElement)(QuotaComparison, { rows: rows2, client, readOnly })
   );
 }
 function ProviderUsageSummary({ provider, period, setPeriod, usageError, history = false, accountList = [] }) {
@@ -60625,6 +60658,7 @@ function ProviderUsageSummary({ provider, period, setPeriod, usageError, history
       (0, import_react89.createElement)(Count, { totals })
     ),
     (0, import_react89.createElement)(PeriodSwitch, { period, setPeriod }),
+    (0, import_react89.createElement)(Breakdown, { totals }),
     (0, import_react89.createElement)(Coverage, { totals }),
     (0, import_react89.createElement)(DailyHistory, { history: provider?.history }),
     usageError && (0, import_react89.createElement)("small", { className: "bt-error", role: "alert" }, usageError)
@@ -60632,7 +60666,7 @@ function ProviderUsageSummary({ provider, period, setPeriod, usageError, history
 }
 
 // src/client/provider-agents.css
-var provider_agents_default = ".gb-providers{display:grid;gap:18px;min-width:0;color:var(--bt-ink)}\n.gb-providers :is(h3,h4,p){margin:0}\n.gb-providers h3{font-size:16px;font-weight:600;line-height:1.4}\n.gb-pr-toolbar,.gb-pr-heading,.gb-pr-actions,.gb-pr-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}\n.gb-pr-toolbar,.gb-pr-heading{justify-content:space-between}\n.gb-pr-toolbar>.bt-input{flex:1 1 135px;min-width:0}\n.gb-pr-section{display:grid;gap:7px}\n.gb-pr-list{overflow:hidden;padding:0;list-style:none;margin:0}\n.gb-pr-row{display:flex;align-items:center;gap:11px;padding:11px 13px;width:100%;min-width:0;border:0;background:transparent;color:inherit;text-align:start;cursor:pointer;font:inherit}\n.gb-pr-list li+li{border-top:1px solid var(--bt-glass-rim,var(--bt-line))}\n.gb-pr-row:is(:hover,:focus-visible){background:var(--bt-hover)}\n.gb-pr-row:focus-visible,.gb-pr-back:focus-visible,.gb-providers summary:focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}\n.gb-pr-copy{display:grid;gap:3px;flex:1;min-width:0}\n.gb-pr-copy strong,.gb-pr-name{font-size:14px;font-weight:600;line-height:1.5}\n.gb-pr-copy small,.gb-pr-muted{font-size:12px;color:var(--bt-ink-2);overflow-wrap:anywhere}\n.gb-pr-row-end{display:flex;align-items:center;gap:7px;color:var(--bt-ink-2);font-size:12px}\n.gb-pr-detail{display:grid;gap:15px;min-width:0}\n.gb-pr-back{display:inline-flex;align-items:center;gap:6px;color:var(--bt-ink-2);font:inherit;background:none;border:0;padding:2px 0;cursor:pointer;justify-self:start}\n.gb-pr-title{display:flex;align-items:center;gap:10px}\n.gb-pr-box{padding:13px;display:grid;gap:10px}\n.gb-pr-account{display:grid;gap:9px;padding:13px}\n.gb-pr-account+.gb-pr-account{border-top:1px solid var(--bt-glass-rim,var(--bt-line))}\n.gb-pr-account-head{display:flex;align-items:flex-start;gap:8px}\n.gb-pr-default{font-size:11px;font-weight:600;color:var(--bt-accent);border:1px solid var(--bt-glass-rim,var(--bt-line));border-radius:6px;padding:1px 5px}\n.gb-pr-paths,.gb-pr-commands{display:grid;gap:6px;margin:4px 0 0}\n.gb-pr-paths code,.gb-pr-commands code,.gb-pr-path{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}\n.gb-providers details>summary{color:var(--bt-ink-2);cursor:pointer;font-size:13px;line-height:1.6}\n.gb-pr-edit{display:flex;flex-wrap:wrap;align-items:end;gap:7px}\n.gb-pr-edit label{display:grid;gap:3px;flex:1 1 160px;font-size:12px}\n.gb-pr-edit .bt-input{min-width:0;width:100%}\n.gb-pr-toggle{display:flex;gap:10px;align-items:center;padding:11px 13px;cursor:pointer}\n.gb-pr-toggle input{accent-color:var(--bt-accent)}\n.gb-pr-hint{font-size:12px;color:var(--bt-ink-2)}\n.gb-pr-count{font-weight:400;color:var(--bt-ink-2);font-size:12px}\n.gb-providers a{color:var(--bt-accent);text-decoration:underline;text-underline-offset:2px}\n.gb-pr-missing>summary{padding:5px 0}\n.gb-pr-missing[open]>summary{margin-bottom:6px}\n\n.gb-pr-more>summary{width:fit-content}\n.gb-pr-extra{display:grid;gap:9px;padding-top:7px}\n.gb-pr-account{grid-template-columns:minmax(0,1fr) auto;align-items:center}\n.gb-pr-account-head{align-items:center}\n.gb-pr-more,.gb-pr-account>.gb-pr-commands{grid-column:1/-1}\n@media(max-width:680px){\n  .gb-pr-account{grid-template-columns:minmax(0,1fr)}\n  .gb-pr-account-head{align-items:flex-start}\n}\n.gb-pr-toggle{flex-direction:row}\n.gb-pr-box>*+*,.gb-pr-toggle>*+*{border-top:0}\n\n.gb-pr-version{margin-inline-start:8px;font-weight:400}\n.gb-pr-subtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.gb-pr-row-end{flex:none}\n.gb-pr-account-usage{grid-column:1/-1;display:grid;gap:7px}\n.gb-pr-usage-official,.gb-pr-usage-local{display:grid;gap:5px;padding:9px 12px;border-radius:8px;background:var(--bt-hover);font-size:12px}\n.gb-pr-usage-official strong small{font-weight:400}\n.gb-pr-usage-numbers,.gb-pr-periods{display:flex;gap:6px;align-items:center;flex-wrap:wrap}\n.gb-pr-usage-numbers{color:var(--bt-ink-2);font-variant-numeric:tabular-nums}\n.gb-pr-periods{padding:3px;border-radius:8px;background:var(--bt-hover);width:fit-content}\n.gb-pr-periods button{appearance:none;border:0;border-radius:6px;color:var(--bt-ink-2);background:transparent;cursor:pointer;padding:5px 9px;font:inherit;font-size:12px}\n.gb-pr-periods button[aria-pressed=true]{background:var(--bt-card);color:var(--bt-ink);box-shadow:var(--bt-card-shadow)}\n.gb-pr-windows,.gb-pr-window{display:grid;gap:4px}.gb-pr-windows{gap:9px}\n.gb-pr-window progress{display:block;width:100%;height:5px;border:0;border-radius:4px;overflow:hidden;appearance:none;background:var(--bt-line);accent-color:var(--bt-accent)}\n.gb-pr-window progress::-webkit-progress-bar{background:var(--bt-line)}\n.gb-pr-window progress::-webkit-progress-value{background:var(--bt-accent)}\n.gb-pr-window progress[data-limited=true]::-webkit-progress-value{background:var(--bt-danger,#b64b34)}\n.gb-pr-model-totals{list-style:none;margin:4px 0 0;padding:0}.gb-pr-model-totals li{display:flex;gap:8px;justify-content:space-between}\n.gb-pr-model-totals,.gb-pr-usage-summary{font-variant-numeric:tabular-nums}\n.gb-pr-quota-compare{display:grid;grid-template-columns:minmax(90px,.35fr) minmax(0,1fr);align-items:start;gap:10px;padding:10px 12px}\n.gb-pr-quota-compare>strong{overflow-wrap:anywhere;font-size:13px;padding:8px 0}\n.gb-pr-quota-compare .gb-pr-usage-official{background:transparent}\n@media(max-width:700px){.gb-pr-quota-compare{grid-template-columns:1fr;gap:0}.gb-pr-quota-compare .gb-pr-usage-official{padding-inline:0}}\n.gb-pr-days{list-style:none;margin:6px 0;padding:0;font-variant-numeric:tabular-nums}\n.gb-pr-days li{display:grid;grid-template-columns:5ch minmax(12px,1fr) auto;align-items:center;gap:8px;font-size:12px}\n.gb-pr-days progress{width:100%;height:5px;accent-color:var(--bt-accent)}\n";
+var provider_agents_default = ".gb-providers{display:grid;gap:18px;min-width:0;color:var(--bt-ink)}\n.gb-providers :is(h3,h4,p){margin:0}\n.gb-providers h3{font-size:16px;font-weight:600;line-height:1.4}\n.gb-pr-toolbar,.gb-pr-heading,.gb-pr-actions,.gb-pr-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}\n.gb-pr-toolbar,.gb-pr-heading{justify-content:space-between}\n.gb-pr-toolbar>.bt-input{flex:1 1 135px;min-width:0}\n.gb-pr-section{display:grid;gap:7px}\n.gb-pr-list{overflow:hidden;padding:0;list-style:none;margin:0}\n.gb-pr-row{display:flex;align-items:center;gap:11px;padding:11px 13px;width:100%;min-width:0;border:0;background:transparent;color:inherit;text-align:start;cursor:pointer;font:inherit}\n.gb-pr-list li+li{border-top:1px solid var(--bt-glass-rim,var(--bt-line))}\n.gb-pr-row:is(:hover,:focus-visible){background:var(--bt-hover)}\n.gb-pr-row:focus-visible,.gb-pr-back:focus-visible,.gb-providers summary:focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}\n.gb-pr-copy{display:grid;gap:3px;flex:1;min-width:0}\n.gb-pr-copy strong,.gb-pr-name{font-size:14px;font-weight:600;line-height:1.5}\n.gb-pr-copy small,.gb-pr-muted{font-size:12px;color:var(--bt-ink-2);overflow-wrap:anywhere}\n.gb-pr-row-end{display:flex;align-items:center;gap:7px;color:var(--bt-ink-2);font-size:12px}\n.gb-pr-detail{display:grid;gap:15px;min-width:0}\n.gb-pr-back{display:inline-flex;align-items:center;gap:6px;color:var(--bt-ink-2);font:inherit;background:none;border:0;padding:2px 0;cursor:pointer;justify-self:start}\n.gb-pr-title{display:flex;align-items:center;gap:10px}\n.gb-pr-box{padding:13px;display:grid;gap:10px}\n.gb-pr-account{display:grid;gap:9px;padding:13px}\n.gb-pr-account+.gb-pr-account{border-top:1px solid var(--bt-glass-rim,var(--bt-line))}\n.gb-pr-account-head{display:flex;align-items:flex-start;gap:8px}\n.gb-pr-default{font-size:11px;font-weight:600;color:var(--bt-accent);border:1px solid var(--bt-glass-rim,var(--bt-line));border-radius:6px;padding:1px 5px}\n.gb-pr-paths,.gb-pr-commands{display:grid;gap:6px;margin:4px 0 0}\n.gb-pr-paths code,.gb-pr-commands code,.gb-pr-path{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}\n.gb-providers details>summary{color:var(--bt-ink-2);cursor:pointer;font-size:13px;line-height:1.6}\n.gb-pr-edit{display:flex;flex-wrap:wrap;align-items:end;gap:7px}\n.gb-pr-edit label{display:grid;gap:3px;flex:1 1 160px;font-size:12px}\n.gb-pr-edit .bt-input{min-width:0;width:100%}\n.gb-pr-toggle{display:flex;gap:10px;align-items:center;padding:11px 13px;cursor:pointer}\n.gb-pr-toggle input{accent-color:var(--bt-accent)}\n.gb-pr-hint{font-size:12px;color:var(--bt-ink-2)}\n.gb-pr-count{font-weight:400;color:var(--bt-ink-2);font-size:12px}\n.gb-providers a{color:var(--bt-accent);text-decoration:underline;text-underline-offset:2px}\n.gb-pr-missing>summary{padding:5px 0}\n.gb-pr-missing[open]>summary{margin-bottom:6px}\n\n.gb-pr-more>summary{width:fit-content}\n.gb-pr-extra{display:grid;gap:9px;padding-top:7px}\n.gb-pr-account{grid-template-columns:minmax(0,1fr) auto;align-items:center}\n.gb-pr-account-head{align-items:center}\n.gb-pr-more,.gb-pr-account>.gb-pr-commands{grid-column:1/-1}\n@media(max-width:680px){\n  .gb-pr-account{grid-template-columns:minmax(0,1fr)}\n  .gb-pr-account-head{align-items:flex-start}\n}\n.gb-pr-toggle{flex-direction:row}\n.gb-pr-box>*+*,.gb-pr-toggle>*+*{border-top:0}\n\n.gb-pr-version{margin-inline-start:8px;font-weight:400}\n.gb-pr-subtitle{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}\n.gb-pr-row-end{flex:none}\n.gb-pr-account-usage{grid-column:1/-1;display:grid;gap:7px}\n.gb-pr-usage-official,.gb-pr-usage-local{display:grid;gap:5px;padding:9px 12px;border-radius:8px;background:var(--bt-hover);font-size:12px}\n.gb-pr-usage-official strong small{font-weight:400}\n.gb-pr-usage-numbers,.gb-pr-periods{display:flex;gap:6px;align-items:center;flex-wrap:wrap}\n.gb-pr-usage-numbers{color:var(--bt-ink-2);font-variant-numeric:tabular-nums}\n.gb-pr-periods{padding:3px;border-radius:8px;background:var(--bt-hover);width:fit-content}\n.gb-pr-periods button{appearance:none;border:0;border-radius:6px;color:var(--bt-ink-2);background:transparent;cursor:pointer;padding:5px 9px;font:inherit;font-size:12px}\n.gb-pr-periods button[aria-pressed=true]{background:var(--bt-card);color:var(--bt-ink);box-shadow:var(--bt-card-shadow)}\n.gb-pr-windows,.gb-pr-window{display:grid;gap:4px}.gb-pr-windows{gap:9px}\n.gb-pr-window progress{display:block;width:100%;height:5px;border:0;border-radius:4px;overflow:hidden;appearance:none;background:var(--bt-line);accent-color:var(--bt-accent)}\n.gb-pr-window progress::-webkit-progress-bar{background:var(--bt-line)}\n.gb-pr-window progress::-webkit-progress-value{background:var(--bt-accent)}\n.gb-pr-window progress[data-limited=true]::-webkit-progress-value{background:var(--bt-danger,#b64b34)}\n.gb-pr-model-totals{list-style:none;margin:4px 0 0;padding:0}.gb-pr-model-totals li{display:flex;gap:8px;justify-content:space-between}\n.gb-pr-model-totals,.gb-pr-usage-summary{font-variant-numeric:tabular-nums}\n.gb-pr-usage-summary .gb-pr-copy strong{overflow-wrap:anywhere}\n.gb-pr-usage-amount{display:grid;min-width:0;width:min(9rem,33%);gap:4px;text-align:end;font-size:12px;overflow-wrap:anywhere}\n.gb-pr-usage-amount progress{width:100%;height:4px;accent-color:var(--bt-accent)}\n.gb-pr-quota-compare{display:grid;grid-template-columns:minmax(90px,.35fr) minmax(0,1fr);align-items:start;gap:10px;padding:10px 12px}\n.gb-pr-quota-compare>strong{overflow-wrap:anywhere;font-size:13px;padding:8px 0}\n.gb-pr-quota-compare .gb-pr-usage-official{background:transparent}\n@media(max-width:700px){.gb-pr-quota-compare{grid-template-columns:1fr;gap:0}.gb-pr-quota-compare .gb-pr-usage-official{padding-inline:0}}\n.gb-pr-days{list-style:none;margin:6px 0;padding:0;font-variant-numeric:tabular-nums}\n.gb-pr-days li{display:grid;grid-template-columns:5ch minmax(12px,1fr) auto;align-items:center;gap:8px;font-size:12px}\n.gb-pr-days progress{width:100%;height:5px;accent-color:var(--bt-accent)}\n";
 
 // src/client/provider-agents.js
 var changedEvent = "godbot:sandbox-settings-changed";
@@ -60867,7 +60901,7 @@ function ProviderAccounts({ row: row2, change, busy, readOnly, enabled, usagePro
     )
   );
 }
-function ProviderDetail({ row: row2, AgentLogo: AgentLogo2, AgentForm: AgentForm2, back, change, customAction, busy, readOnly, refresh, enabled, client, consumption, period, setPeriod, usageError, SignIn }) {
+function ProviderDetail({ row: row2, AgentLogo: AgentLogo2, AgentForm: AgentForm2, back, section, change, customAction, busy, readOnly, refresh, enabled, client, consumption, period, setPeriod, usageError, SignIn }) {
   const [command, setCommand] = (0, import_react90.useState)("");
   const [signing, setSigning] = (0, import_react90.useState)(false);
   const inPage = typeof SignIn === "function" && row2.signInMethods?.length > 0;
@@ -60877,14 +60911,15 @@ function ProviderDetail({ row: row2, AgentLogo: AgentLogo2, AgentForm: AgentForm
   (0, import_react90.useEffect)(() => {
     title2.current?.focus();
   }, []);
+  const backLabel = section === "usage" ? "全部用量" : "提供商列表";
   return (0, import_react90.createElement)(
     "section",
     { className: "gb-pr-detail", "data-provider-detail": row2.route, "aria-label": row2.name },
     (0, import_react90.createElement)(
       "button",
-      { type: "button", className: "gb-pr-back", onClick: back, "aria-label": "返回提供商列表" },
+      { type: "button", className: "gb-pr-back", onClick: back, "aria-label": "返回" + backLabel },
       (0, import_react90.createElement)(Icon, { name: "back", size: 15 }),
-      "提供商列表"
+      backLabel
     ),
     (0, import_react90.createElement)(
       "div",
@@ -60992,7 +61027,7 @@ function ProviderList({ rows: rows2, AgentLogo: AgentLogo2, select, focusRoute }
     ));
   }));
 }
-function ProviderAgentsPage({ client, call: call3, builtins: builtins2, AgentLogo: AgentLogo2, AgentForm: AgentForm2, readOnly, SignIn }) {
+function ProviderAgentsPage({ client, call: call3, builtins: builtins2, AgentLogo: AgentLogo2, AgentForm: AgentForm2, readOnly, SignIn, initialSection = "providers" }) {
   const [view, setView] = (0, import_react90.useState)(null);
   const [catalog, setCatalog] = (0, import_react90.useState)(null);
   const [route, setRoute] = (0, import_react90.useState)("");
@@ -61001,9 +61036,9 @@ function ProviderAgentsPage({ client, call: call3, builtins: builtins2, AgentLog
   const [error, setError] = (0, import_react90.useState)("");
   const [busy, setBusy] = (0, import_react90.useState)(false);
   const [loading, setLoading] = (0, import_react90.useState)(true);
-  const [section, setSection] = (0, import_react90.useState)("providers");
+  const [section, setSection] = (0, import_react90.useState)(initialSection);
   const [period, setPeriod] = (0, import_react90.useState)("week");
-  const localUsage = useLocalConsumption(client);
+  const localUsage = useLocalConsumption(call3, section === "usage" || Boolean(route));
   const focusRoute = (0, import_react90.useRef)(null);
   const loadId = (0, import_react90.useRef)(0);
   const pending = (0, import_react90.useRef)(false);
@@ -61087,6 +61122,7 @@ function ProviderAgentsPage({ client, call: call3, builtins: builtins2, AgentLog
       AgentLogo: AgentLogo2,
       AgentForm: AgentForm2,
       back,
+      section,
       change,
       customAction,
       busy: busy || loading,
@@ -61099,7 +61135,7 @@ function ProviderAgentsPage({ client, call: call3, builtins: builtins2, AgentLog
       period,
       setPeriod,
       usageError: localUsage.error
-    }) : section === "usage" ? (0, import_react90.createElement)(UsageOverview, { rows: rows2, usage: localUsage, period, setPeriod, select: setRoute, client, readOnly }) : (0, import_react90.createElement)(
+    }) : section === "usage" ? (0, import_react90.createElement)(UsageOverview, { rows: rows2, usage: localUsage, period, setPeriod, select: setRoute, client, readOnly, AgentLogo: AgentLogo2, focusRoute }) : (0, import_react90.createElement)(
       import_react90.Fragment,
       null,
       (0, import_react90.createElement)(

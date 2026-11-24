@@ -59,6 +59,14 @@ const CLIS = {
 // route -> engine, e.g. 'local-codex-cli'. `id` is the CLI's name without the prefix.
 export const ENGINES = Object.fromEntries(Object.entries(CLIS).map(([id, spec]) => [`${ROUTE_PREFIX}${id}`, { ...spec, id }]))
 
+const quotaKinds = {
+  'local-antigravity': 'antigravity',
+  'local-claude-code': 'claude',
+  'local-codex-cli': 'codex',
+  'local-gemini-cli': 'gemini',
+}
+export const quotaKind = route => Object.hasOwn(quotaKinds, route) ? quotaKinds[route] : undefined
+
 export const CUSTOM_PREFIX = `${ROUTE_PREFIX}acp-`
 
 // LEGACY: the route a ref saved before the prefix names, or undefined when its
