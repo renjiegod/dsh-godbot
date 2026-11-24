@@ -235,7 +235,20 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'chat-tool', 'turn-process', 'run-stats', 'room-progress', 'group-rows', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'update-settings', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'browser-frame', 'hello', 'notices', 'avatar', 'room-chat', 'usage-summary', 'image', 'markdown-image', 'file-download', 'changes-check', 'changes-summary', 'changes-diff'])
+  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'chat-tool', 'turn-process', 'run-stats', 'room-progress', 'group-rows', 'group-rows-many', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'update-settings', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'browser-frame', 'hello', 'notices', 'avatar', 'room-chat', 'usage-summary', 'image', 'markdown-image', 'file-download', 'changes-check', 'changes-summary', 'changes-diff'])
+
+  // One group_relay call's rows in the group's book, from `from` up to `to` or the next anchor.
+  function groupRowsOf(roomId, { from: start, to: end, anchor }) {
+    const room = rt.roomOf(roomId) ?? rt.roomOf(rt.pastOwners.get(roomId)?.roomId)
+    const from = Number(start)
+    const to = end === undefined ? undefined : Number(end)
+    if (room === undefined || !Number.isInteger(from) || (to !== undefined && !Number.isInteger(to))) return { rows: [], open: false, speaking: [] }
+    const view = rt.groupRowsView(room.id, from, to, typeof anchor === 'string' ? anchor : undefined)
+    // The newest call's rows grow while the group works; who is answering shows under them.
+    const active = view.open && rt.roomActive(room.id)
+    const speaking = active ? [...rt.roomProgress.values()].filter(round => round.roomId === room.id).flatMap(round => round.slots.filter(slot => slot.status === 'speaking').map(slot => slot.id)) : []
+    return { ...view, active, speaking }
+  }
 
   async function setPrefs(body) {
     if (body.theme !== undefined) {
@@ -441,15 +454,14 @@ export function install(rt) {
           return ok(rt.changesAvailable?.(String(body.sessionId ?? ''), Number(body.seq)) === true)
         case 'group-rows': {
           await rt.load()
-          const room = rt.roomOf(body.roomId) ?? rt.roomOf(rt.pastOwners.get(body.roomId)?.roomId)
-          const from = Number(body.from)
-          const to = body.to === undefined ? undefined : Number(body.to)
-          if (room === undefined || !Number.isInteger(from) || (to !== undefined && !Number.isInteger(to))) return ok({ rows: [], open: false, speaking: [] })
-          const view = rt.groupRowsView(room.id, from, to, typeof body.anchor === 'string' ? body.anchor : undefined)
-          // The newest call's rows grow while the group works; who is answering shows under them.
-          const active = view.open && rt.roomActive(room.id)
-          const speaking = active ? [...rt.roomProgress.values()].filter(round => round.roomId === room.id).flatMap(round => round.slots.filter(slot => slot.status === 'speaking').map(slot => slot.id)) : []
-          return ok({ ...view, active, speaking })
+          return ok(groupRowsOf(body.roomId, body))
+        }
+        // Every settled call a group chat shows names its own rows; a chat opened for the
+        // first time reads them in one request instead of one per call.
+        case 'group-rows-many': {
+          await rt.load()
+          const ranges = Array.isArray(body.ranges) ? body.ranges.slice(0, 500) : []
+          return ok(ranges.map(range => groupRowsOf(body.roomId, range ?? {})))
         }
         case 'create-bot': {
           await rt.bootstrap()
