@@ -8,7 +8,7 @@ import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'
 import { ownChatParts, threadCurrentOfPart } from './threads.js'
 import { validateViewAnswer } from 'deep-view/core'
-import { COLORS, EXTRA_COLORS, ROUTE } from './constants.js'
+import { COLORS, EXTRA_COLORS, HISTORY_TIMEOUT_MS, ROUTE } from './constants.js'
 import { dshRestart } from './dsh-restart.js'
 
 const STAGED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
@@ -78,6 +78,26 @@ export function install(rt) {
     // places, so the list order and the last activity time cannot number them.
     const parts = await Promise.all([...ids].map(async id => ({ id, at: id === bot.id ? -1 : await createdAtOf(id) })))
     return parts.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)).map(part => part.id)
+  }
+  // Paired clients use the same timestamps as the DSH session list. Read its
+  // existing summaries once, then follow the feed without polling the logs.
+  const sessionActivity = new Map()
+  const recordActivity = (id, at) => {
+    if (Number.isFinite(at) && at > (sessionActivity.get(id) ?? 0)) sessionActivity.set(id, at)
+  }
+  const recordSummary = ({ sessionId, updatedAt }) => recordActivity(sessionId, updatedAt)
+  ctx.on('api-session/added', recordSummary)
+  ctx.on('api-session/activity', recordActivity)
+  let activityRead
+  let activityRetryAt = 0
+  function loadSessionActivity() {
+    if (Date.now() < activityRetryAt) return
+    return activityRead ??= ctx.sessionController.list({}, AbortSignal.timeout(HISTORY_TIMEOUT_MS)).then(({ items }) => {
+      for (const item of items) recordSummary(item)
+    }, () => {
+      activityRead = undefined
+      activityRetryAt = Date.now() + 30_000
+    })
   }
   // Models come from DSH, not state.json, so a provider added on the Models pages of Settings
   // changes the view without a new revision.
@@ -202,6 +222,8 @@ export function install(rt) {
     // Each part of a Bot's own chat by the first thing the user asked in it, for the
     // session lists; a part not read yet, or not asked anything yet, has no entry.
     partTitles: Object.fromEntries(Object.values(state.bots).flatMap(bot => rt.chatPartTitles?.(bot) ?? [])),
+    partActivity: Object.fromEntries(Object.values(state.bots).flatMap(bot => ownChatParts(bot)
+      .filter(id => sessionActivity.has(id)).map(id => [id, sessionActivity.get(id)]))),
     work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
     memoryNews: rt.memoryNews(),
     memoryReviews: rt.memoryReviews(),
@@ -341,6 +363,7 @@ export function install(rt) {
           if (readOnly === undefined) await rt.bootstrap()
           await rt.catalog()
           await rt.loadSecrets()
+          if (!browser && body.sessionOrder === true) await loadSessionActivity()
           const answer = liveAnswer()
           if (body.since === state.revision && (body.models === undefined || body.models === modelsKey())) {
             if (body.live === answer.key) return ok({ revision: state.revision, unchanged: true, liveKey: answer.key })

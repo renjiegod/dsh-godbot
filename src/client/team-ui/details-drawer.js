@@ -21,7 +21,7 @@ import { TaskBoard } from './task-board.js'
 import { BotConnectors } from './connectors.js'
 import { ComputerView, ComputerDrawerPane } from './computer.js'
 import { NewSessionButton } from './new-session.js'
-import { botSessions, sessionLabel, sessionMeta, sessionTime } from './bot-sessions.js'
+import { sessionLabel, sessionMeta, sessionTime, useBotSessionRows } from './bot-sessions.js'
 import { t } from './i18n.js'
 import { nativeMode } from '../native-agent-target.js'
 
@@ -239,16 +239,15 @@ function GroupOverview({ room, roster, actions, usage, useWork, openSettings }) 
   ]
 }
 
-// A Bot's chat sessions (bot-sessions.js), newest first, each by the first thing the user
-// asked in it. Every Bot's chat has parts, whether it answers with a Godbot model or a
+// A Bot's chat sessions by last activity, with running sessions first. Each row shows
+// the first thing the user asked in it. Every Bot's chat has parts, whether it answers with a Godbot model or a
 // local CLI. Any of them opens from here, even while another one works: the one that
 // works goes on in the background, marked Running, and takes input again once opened.
 function BotSessions({ bot, part, run, useSessions, actions, roster }) {
-  const entries = botSessions(bot, roster)
+  const entries = useBotSessionRows(bot, roster, useSessions)
   // Two sessions running at once means two model calls: shown only while a background
   // part really runs, above the list rather than as a quiet footnote.
   const backgroundRunning = entries.some(entry => !entry.current && entry.running)
-  const rows = useSessions(list => entries.map(entry => sessionRow(list.byId?.[entry.id])), rowsEqual)
   return h('div', { className: 'bt-drawer-model' },
     h('div', { className: 'bt-section-title' }, t('Sessions')),
     h(NewSessionButton, { bot, roster, actions, sessionId: part, variant: 'panel' }),
@@ -257,16 +256,15 @@ function BotSessions({ bot, part, run, useSessions, actions, roster }) {
           h(AlertIcon),
           h('span', null, t('A running session keeps using model calls in the background.')))
       : null,
-    h('div', { className: 'bt-agent-sessions' }, entries.map((entry, index) => {
-      const row = rows[index]
-      const label = sessionLabel(entry, { bot, roster, rowTitle: row?.title })
-      const meta = entry.current && !entry.running && !entry.waiting ? { text: t('Current') } : sessionMeta(entry, row?.at)
+    h('div', { className: 'bt-agent-sessions' }, entries.map(entry => {
+      const label = sessionLabel(entry, { bot, roster, rowTitle: entry.rowTitle })
+      const meta = entry.current && !entry.running && !entry.waiting ? { text: t('Current') } : sessionMeta(entry, entry.at)
       const hint = entry.current ? t('Current session') : entry.running ? t('Open this running session') : entry.background ? t('Open this session') : t('Open this earlier session')
       return h('button', {
         key: entry.id, type: 'button', disabled: entry.current,
         'aria-current': entry.current || undefined,
         className: `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`,
-        title: [label, sessionTime(row?.at), hint].filter(Boolean).join('\n'),
+        title: [label, sessionTime(entry.at), hint].filter(Boolean).join('\n'),
         onClick: entry.current ? undefined : () => run(actions.openPart(bot.id, entry.id)),
       },
         h('span', { className: 'bt-agent-session-name' }, label),
@@ -275,8 +273,6 @@ function BotSessions({ bot, part, run, useSessions, actions, roster }) {
             : meta.text))
     })))
 }
-const sessionRow = row => ({ title: row?.title, at: row?.updatedAt ?? row?.createdAt })
-const rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row.title === b[index].title && row.at === b[index].at)
 
 export function DetailsDrawer(props) {
   const { sessionId, startTab, roster, actions } = props

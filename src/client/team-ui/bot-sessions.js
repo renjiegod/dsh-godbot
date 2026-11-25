@@ -14,8 +14,8 @@ export const ownPartIds = bot => [currentPart(bot), ...(bot.openParts ?? []).map
 export const lastActivity = (bot, stamps) => Math.max(0, ...ownPartIds(bot).map(id => stamps[id] ?? 0)) || bot.createdAt
 
 // Every session of a Bot's own chat: the current one, each one going on in the
-// background, and the earlier ones of every chain, newest first. A session nobody talked
-// in holds nothing to go back to and is left out, unless it is current or still running.
+// background, and the earlier ones of every chain, in reverse creation order. A session
+// nobody talked in is left out, unless it is current or still running.
 // `number` counts sessions in the order they were made; `title` is the first thing the
 // user asked in it, as the host reads it (`roster.partTitles`).
 export function botSessions(bot, roster) {
@@ -39,6 +39,23 @@ export function botSessions(bot, roster) {
       title: roster.partTitles?.[id] ?? '',
     }))
     .sort((a, b) => (b.number ?? 0) - (a.number ?? 0))
+}
+
+const sessionDetails = row => {
+  const at = row?.updatedAt ?? row?.createdAt
+  return { rowTitle: row?.title, at: Number.isFinite(at) && at > 0 ? at : 0 }
+}
+const detailsEqual = (a, b) => a.length === b.length && a.every((row, index) => row.rowTitle === b[index].rowTitle && row.at === b[index].at)
+const runningRank = entry => Number(entry.running && !entry.waiting)
+
+// Running rows come first. Within each set, both lists sort by the DSH timestamp they
+// display. The creation number breaks ties, including when there is no DSH summary.
+export function useBotSessionRows(bot, roster, useSessions) {
+  const entries = botSessions(bot, roster)
+  const details = useSessions(list => entries.map(entry => sessionDetails(list.byId?.[entry.id])), detailsEqual)
+  return entries
+    .map((entry, index) => ({ ...entry, ...details[index] }))
+    .sort((a, b) => runningRank(b) - runningRank(a) || b.at - a.at || b.number - a.number)
 }
 
 // A session's name: what the user first asked in it. A part is made under the Bot's

@@ -2,16 +2,16 @@ import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useSt
 import { createPortal } from 'react-dom'
 import { ChatsIcon, CheckIcon } from './icons.js'
 import { stepMenuFocus, useLinger, useViewport, viewBottom } from './motion.js'
-import { botSessions, sessionLabel, sessionMeta, sessionTime } from './bot-sessions.js'
+import { sessionLabel, sessionMeta, sessionTime, useBotSessionRows } from './bot-sessions.js'
 import { t } from './i18n.js'
 
 const MENU_WIDTH = 340
 const MENU_EXIT_MS = 120
 
 // A Bot's sessions from the chat's top bar, beside New session: a button that opens
-// them as a list, newest first, each by the first thing the user asked in it, with the
-// open one checked and the ones running or waiting for an answer marked. Picking one
-// opens it; a session at work goes on in the background (parts.js selectPart). The
+// them by last activity with running sessions first. Each row shows the first thing the
+// user asked, with marks for the open, running and waiting sessions. Picking one opens
+// it; a session at work goes on in the background (parts.js selectPart). The
 // button shows once the Bot has more than one session, with a dot while one other than
 // the open one runs or waits.
 //
@@ -25,8 +25,7 @@ export function SessionMenu({ bot, roster, actions, useSessions }) {
   const button = useRef(null)
   const menu = useRef(null)
   const tick = useViewport()
-  const entries = botSessions(bot, roster)
-  const rows = useSessions(list => entries.map(entry => sessionRow(list.byId?.[entry.id])), rowsEqual)
+  const entries = useBotSessionRows(bot, roster, useSessions)
   const close = () => setOpen(false)
   useLayoutEffect(() => {
     if (!open || !button.current) return
@@ -73,14 +72,13 @@ export function SessionMenu({ bot, roster, actions, useSessions }) {
       ref: menu, className: 'bt-menu bt-smenu-pop', role: 'menu', 'aria-label': t('Sessions'), style: shownPlace, 'data-leaving': leaving || undefined,
     },
     h('div', { className: 'bt-smenu-head', 'aria-hidden': true }, t('Sessions'), h('span', { className: 'bt-smenu-count' }, entries.length)),
-    h('div', { className: 'bt-smenu-list' }, entries.map((entry, index) => {
-      const row = rows[index]
-      const name = sessionLabel(entry, { bot, roster, rowTitle: row?.title })
-      const meta = sessionMeta(entry, row?.at)
+    h('div', { className: 'bt-smenu-list' }, entries.map(entry => {
+      const name = sessionLabel(entry, { bot, roster, rowTitle: entry.rowTitle })
+      const meta = sessionMeta(entry, entry.at)
       return h('button', {
         key: entry.id, type: 'button', role: 'menuitemradio', 'aria-checked': entry.current,
         className: 'bt-smenu-item', 'data-tone': meta.tone, 'data-current': entry.current || undefined,
-        title: [name, sessionTime(row?.at)].filter(Boolean).join('\n'),
+        title: [name, sessionTime(entry.at)].filter(Boolean).join('\n'),
         onClick: () => pick(entry),
       },
       h('span', { className: 'bt-smenu-mark', 'aria-hidden': true }, entry.current ? h(CheckIcon) : null),
@@ -88,9 +86,6 @@ export function SessionMenu({ bot, roster, actions, useSessions }) {
       h('span', { className: 'bt-smenu-meta' }, meta.text))
     }))), document.body) : null)
 }
-
-const sessionRow = row => ({ title: row?.title, at: row?.updatedAt ?? row?.createdAt })
-const rowsEqual = (a, b) => a.length === b.length && a.every((row, index) => row.title === b[index].title && row.at === b[index].at)
 
 export const SESSION_MENU_CSS = `
 .gb-chat-tools > .bt-smenu-btn[data-open]{background:var(--bt-hover);color:var(--bt-ink)}

@@ -18813,6 +18813,17 @@ function botSessions(bot, roster) {
     title: roster.partTitles?.[id] ?? ""
   })).sort((a, b2) => (b2.number ?? 0) - (a.number ?? 0));
 }
+var sessionDetails = (row2) => {
+  const at2 = row2?.updatedAt ?? row2?.createdAt;
+  return { rowTitle: row2?.title, at: Number.isFinite(at2) && at2 > 0 ? at2 : 0 };
+};
+var detailsEqual = (a, b2) => a.length === b2.length && a.every((row2, index) => row2.rowTitle === b2[index].rowTitle && row2.at === b2[index].at);
+var runningRank = (entry) => Number(entry.running && !entry.waiting);
+function useBotSessionRows(bot, roster, useSessions) {
+  const entries2 = botSessions(bot, roster);
+  const details = useSessions((list) => entries2.map((entry) => sessionDetails(list.byId?.[entry.id])), detailsEqual);
+  return entries2.map((entry, index) => ({ ...entry, ...details[index] })).sort((a, b2) => runningRank(b2) - runningRank(a) || b2.at - a.at || b2.number - a.number);
+}
 function sessionLabel(entry, { bot, roster, rowTitle }) {
   if (entry.title !== "") return entry.title;
   const own = typeof rowTitle === "string" ? rowTitle.trim() : "";
@@ -50066,8 +50077,7 @@ function SessionMenu({ bot, roster, actions, useSessions }) {
   const button6 = (0, import_react61.useRef)(null);
   const menu = (0, import_react61.useRef)(null);
   const tick = useViewport();
-  const entries2 = botSessions(bot, roster);
-  const rows2 = useSessions((list) => entries2.map((entry) => sessionRow(list.byId?.[entry.id])), rowsEqual);
+  const entries2 = useBotSessionRows(bot, roster, useSessions);
   const close = () => setOpen(false);
   (0, import_react61.useLayoutEffect)(() => {
     if (!open || !button6.current) return;
@@ -50129,10 +50139,9 @@ function SessionMenu({ bot, roster, actions, useSessions }) {
         "data-leaving": leaving || void 0
       },
       (0, import_react61.createElement)("div", { className: "bt-smenu-head", "aria-hidden": true }, t("Sessions"), (0, import_react61.createElement)("span", { className: "bt-smenu-count" }, entries2.length)),
-      (0, import_react61.createElement)("div", { className: "bt-smenu-list" }, entries2.map((entry, index) => {
-        const row2 = rows2[index];
-        const name = sessionLabel(entry, { bot, roster, rowTitle: row2?.title });
-        const meta = sessionMeta(entry, row2?.at);
+      (0, import_react61.createElement)("div", { className: "bt-smenu-list" }, entries2.map((entry) => {
+        const name = sessionLabel(entry, { bot, roster, rowTitle: entry.rowTitle });
+        const meta = sessionMeta(entry, entry.at);
         return (0, import_react61.createElement)(
           "button",
           {
@@ -50143,7 +50152,7 @@ function SessionMenu({ bot, roster, actions, useSessions }) {
             className: "bt-smenu-item",
             "data-tone": meta.tone,
             "data-current": entry.current || void 0,
-            title: [name, sessionTime(row2?.at)].filter(Boolean).join("\n"),
+            title: [name, sessionTime(entry.at)].filter(Boolean).join("\n"),
             onClick: () => pick2(entry)
           },
           (0, import_react61.createElement)("span", { className: "bt-smenu-mark", "aria-hidden": true }, entry.current ? (0, import_react61.createElement)(CheckIcon) : null),
@@ -50154,8 +50163,6 @@ function SessionMenu({ bot, roster, actions, useSessions }) {
     ), document.body) : null
   );
 }
-var sessionRow = (row2) => ({ title: row2?.title, at: row2?.updatedAt ?? row2?.createdAt });
-var rowsEqual = (a, b2) => a.length === b2.length && a.every((row2, index) => row2.title === b2[index].title && row2.at === b2[index].at);
 var SESSION_MENU_CSS = `
 .gb-chat-tools > .bt-smenu-btn[data-open]{background:var(--bt-hover);color:var(--bt-ink)}
 .bt-smenu-dot{position:absolute;top:5px;right:5px;width:7px;height:7px;border-radius:50%;background:var(--bt-green);box-shadow:0 0 0 2px var(--bt-main);animation:bt-smenu-pulse 1.4s ease-in-out infinite}
@@ -54208,9 +54215,8 @@ function GroupOverview({ room: room2, roster, actions, usage, useWork, openSetti
   ];
 }
 function BotSessions({ bot, part, run: run2, useSessions, actions, roster }) {
-  const entries2 = botSessions(bot, roster);
+  const entries2 = useBotSessionRows(bot, roster, useSessions);
   const backgroundRunning = entries2.some((entry) => !entry.current && entry.running);
-  const rows2 = useSessions((list) => entries2.map((entry) => sessionRow2(list.byId?.[entry.id])), rowsEqual2);
   return (0, import_react76.createElement)(
     "div",
     { className: "bt-drawer-model" },
@@ -54222,10 +54228,9 @@ function BotSessions({ bot, part, run: run2, useSessions, actions, roster }) {
       (0, import_react76.createElement)(AlertIcon),
       (0, import_react76.createElement)("span", null, t("A running session keeps using model calls in the background."))
     ) : null,
-    (0, import_react76.createElement)("div", { className: "bt-agent-sessions" }, entries2.map((entry, index) => {
-      const row2 = rows2[index];
-      const label = sessionLabel(entry, { bot, roster, rowTitle: row2?.title });
-      const meta = entry.current && !entry.running && !entry.waiting ? { text: t("Current") } : sessionMeta(entry, row2?.at);
+    (0, import_react76.createElement)("div", { className: "bt-agent-sessions" }, entries2.map((entry) => {
+      const label = sessionLabel(entry, { bot, roster, rowTitle: entry.rowTitle });
+      const meta = entry.current && !entry.running && !entry.waiting ? { text: t("Current") } : sessionMeta(entry, entry.at);
       const hint = entry.current ? t("Current session") : entry.running ? t("Open this running session") : entry.background ? t("Open this session") : t("Open this earlier session");
       return (0, import_react76.createElement)(
         "button",
@@ -54235,7 +54240,7 @@ function BotSessions({ bot, part, run: run2, useSessions, actions, roster }) {
           disabled: entry.current,
           "aria-current": entry.current || void 0,
           className: `bt-agent-session${entry.current ? " is-current" : ""}${entry.running ? " is-running" : ""}`,
-          title: [label, sessionTime(row2?.at), hint].filter(Boolean).join("\n"),
+          title: [label, sessionTime(entry.at), hint].filter(Boolean).join("\n"),
           onClick: entry.current ? void 0 : () => run2(actions.openPart(bot.id, entry.id))
         },
         (0, import_react76.createElement)("span", { className: "bt-agent-session-name" }, label),
@@ -54248,8 +54253,6 @@ function BotSessions({ bot, part, run: run2, useSessions, actions, roster }) {
     }))
   );
 }
-var sessionRow2 = (row2) => ({ title: row2?.title, at: row2?.updatedAt ?? row2?.createdAt });
-var rowsEqual2 = (a, b2) => a.length === b2.length && a.every((row2, index) => row2.title === b2[index].title && row2.at === b2[index].at);
 function DetailsDrawer(props) {
   const { sessionId, startTab, roster, actions } = props;
   const close = () => actions.closeOverlay();

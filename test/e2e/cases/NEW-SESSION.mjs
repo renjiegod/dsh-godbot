@@ -232,9 +232,9 @@ export default async function newSession({ makeHost, candidate, note }) {
   assert.ok(!opened.items.some(item => item.kind === 'bot'), 'the opening shows no reply: ' + JSON.stringify(opened.items))
   await openPanel()
   // The earlier sessions went on with the running one's thread and stay in the list.
-  await until(async () => JSON.stringify(await page.locator('.bt-agent-session .bt-agent-session-name').allInnerTexts()) === JSON.stringify(['新会话', busyText, ...named]),
-    'the panel lists the new session, the one still running and the earlier ones')
-  assert.equal(await rows.nth(1).locator('.bt-agent-session-run').count(), 1, 'the background session is marked running')
+  await until(async () => JSON.stringify(await page.locator('.bt-agent-session .bt-agent-session-name').allInnerTexts()) === JSON.stringify([busyText, '新会话', ...named]),
+    'the panel pins the running session above the newer empty session')
+  assert.equal(await rows.first().locator('.bt-agent-session-run').count(), 1, 'the background session is marked running')
   await page.locator('.bt-agent-sessions-warn').waitFor()
   await host.capture('new-session-busy-fresh-part')
 
@@ -242,7 +242,7 @@ export default async function newSession({ makeHost, candidate, note }) {
   // part nobody talked in out of the list.
   busy.release()
   await until(async () => (await state()).partsRunning?.[busy.left] !== true, 'the background part finished its answer')
-  await rows.nth(1).click()
+  await rows.filter({ hasText: busyText }).click()
   await until(async () => (await threadNow()).current === busy.left, 'the background part became current again')
   await until(async () => (await state()).emptyParts?.[bot.id]?.includes(busy.after.current), 'the host counts the busy-time part as empty')
   // The part it went back to and its four earlier ones, all talked in; the busy-time part
@@ -301,6 +301,9 @@ export default async function newSession({ makeHost, candidate, note }) {
   // open one checked; the sidebar lists none.
   const menuButton = page.locator('.bt-head .bt-smenu-btn')
   const menuItems = page.locator('.bt-smenu-item')
+  const menuFirst = menuItems.first().locator('.bt-smenu-title')
+  const firstLabel = 'First question ' + tag
+  const secondLabel = 'Second question ' + tag
   const openMenu = async () => {
     if (await menuItems.count() > 0) return
     await menuButton.click()
@@ -315,7 +318,9 @@ export default async function newSession({ makeHost, candidate, note }) {
   await openMenu()
   const workingItem = menuItems.filter({ hasText: 'After the busy one ' + tag })
   await until(async () => (await workingItem.getAttribute('data-tone').catch(() => null)) === 'run', 'the menu marks the session at work')
-  assert.equal(await menuItems.filter({ hasText: 'First question ' + tag }).getAttribute('aria-checked'), 'true', 'the menu checks the open session')
+  await until(async () => (await state()).partsRunning?.[first.current] !== true, 'the more recent session finished')
+  await until(async () => (await menuFirst.textContent()) === 'After the busy one ' + tag, 'the older running session comes first')
+  assert.equal(await menuItems.filter({ hasText: firstLabel }).getAttribute('aria-checked'), 'true', 'the menu checks the open session')
   assert.equal(await page.locator('.bt-bot-sub-row, .bt-bot-sub').count(), 0, 'the sidebar lists no sessions')
   // Once it has settled, every row is on top: the transcript under the top bar never
   // draws over the list.
@@ -331,6 +336,7 @@ export default async function newSession({ makeHost, candidate, note }) {
   await until(async () => (await state()).partsRunning?.[first.current] !== true, 'the opened session finished its answer')
   // Back to it from the menu; its answer is there.
   await openMenu()
+  await until(async () => (await menuFirst.textContent()) === firstLabel, 'the finished session falls back into timestamp order')
   await workingItem.click()
   await until(async () => (await threadNow()).current === working, 'the menu opened the session that worked in the background')
   await scroller.getByText('Answer to ' + parallelText).first().waitFor()
@@ -353,10 +359,20 @@ export default async function newSession({ makeHost, candidate, note }) {
   }, 'the Bot that talked last is listed first')
   const orderBefore = await rowOrder()
   await openMenu()
-  await menuItems.filter({ hasText: 'First question ' + tag }).click()
+  await until(async () => (await menuFirst.textContent()) === secondLabel, 'the newer timestamp leads the menu')
+  await menuItems.filter({ hasText: firstLabel }).click()
   await until(async () => (await threadNow()).current === first.current, 'the oldest session opened from the menu')
   await delay(1500)
   assert.deepEqual(await rowOrder(), orderBefore, 'opening an older session left the Bot where it was in the sidebar')
+  await openMenu()
+  assert.equal(await menuFirst.textContent(), secondLabel, 'opening the older session did not change its time order')
+  await talk('Follow-up in the old session ' + tag)
+  await until(async () => (await state()).partsRunning?.[first.current] !== true, 'the follow-up turn finished')
+  await until(async () => (await menuFirst.textContent()) === firstLabel, 'the already open menu moved the recently active session to the top')
+  assert.equal(await menuItems.first().getAttribute('aria-checked'), 'true')
+  await closeMenu()
+  await openPanel()
+  await until(async () => (await rows.first().locator('.bt-agent-session-name').textContent()) === firstLabel, 'the details list has the same order')
 
   // The names come back after a restart: each one is read from its session's record,
   // archived sessions included, as for sessions made before names were kept.

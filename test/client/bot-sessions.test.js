@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { botSessions, lastActivity, ownPartIds, sessionLabel, sessionMeta, shortList } from '../../src/client/team-ui/bot-sessions.js'
+import { botSessions, lastActivity, ownPartIds, sessionLabel, sessionMeta, shortList, useBotSessionRows } from '../../src/client/team-ui/bot-sessions.js'
 
 // The Codex Bot from the report as the host lists it: p4 current and running, p5 a
 // busy-time part nobody talked in, p6 another one still running in the background with
@@ -46,6 +46,26 @@ test('a row says a question waits, a turn runs, or how long ago it was active', 
   assert.equal(sessionMeta(p2, Date.now() - 5 * 60_000).tone, undefined)
   assert.notEqual(sessionMeta(p2, Date.now() - 5 * 60_000).text, '')
   assert.equal(sessionMeta(p2, undefined).text, '')
+})
+
+test('running rows come first, and the displayed timestamp orders each set of rows', () => {
+  const byId = {
+    p1: { title: 'Old chat', updatedAt: 200, createdAt: 10 },
+    p2: { updatedAt: 100 },
+    p3: { updatedAt: 100 },
+    p4: { createdAt: 100 },
+    p6: { updatedAt: 80 },
+  }
+  const selectRows = select => select({ byId })
+  const rows = useBotSessionRows(bot, { ...roster, partsRunning: { ...roster.partsRunning, p3: true } }, selectRows)
+  assert.deepEqual(rows.map(({ id, number, at }) => [id, number, at]), [
+    ['p4', 5, 100], ['p6', 7, 80], ['p1', 1, 200], ['p3', 4, 100], ['p2', 3, 100], ['p0', 2, 0],
+  ])
+  assert.equal(rows[0].current, true)
+  assert.equal(rows[2].rowTitle, 'Old chat')
+  assert.equal(rows[3].waiting, true)
+  const idle = useBotSessionRows(bot, { ...roster, partsRunning: {} }, selectRows)
+  assert.deepEqual(idle.map(row => row.id), ['p1', 'p4', 'p3', 'p2', 'p6', 'p0'])
 })
 
 test('a short list keeps the current, running and waiting sessions, then the newest', () => {
