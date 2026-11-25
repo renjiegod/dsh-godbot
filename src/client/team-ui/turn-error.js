@@ -54,6 +54,7 @@ export function failureText(code, { name, provider, status }) {
     case 'LOCAL_AGENT_QUOTA': return t('{agent} is out of usage or quota for now.', { agent: provider })
     case 'LOCAL_AGENT_MISSING': return t('{agent} is not installed on this computer.', { agent: provider })
     case 'LOCAL_AGENT_EXIT': return t('{agent} stopped before this turn finished.', { agent: provider })
+    case 'LOCAL_AGENT_INTERRUPTED': return t('The native agent stopped before finishing this turn.')
     default: return knownFailure(code) ?? t('This turn failed.')
   }
 }

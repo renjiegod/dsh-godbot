@@ -21,6 +21,25 @@ function adapterFor(records) {
   })
 }
 
+for (const prompt of ['OUTCOME-LATE', 'OUTCOME-FAILED', 'OUTCOME-RECOVERED']) {
+  test('classifies Claude tool termination for ' + prompt, { timeout: 15_000 }, async t => {
+    const adapter = adapterFor({})
+    t.after(() => adapter.dispose())
+    const chunks = await Array.fromAsync(adapter.stream({
+      provider: route, model: 'default', sessionId: 'part', messages: [user('u1', prompt)],
+      signal: AbortSignal.timeout(10_000),
+    }))
+    assert.match(textOf(chunks), /Started the fixture command/u)
+    if (prompt === 'OUTCOME-RECOVERED') {
+      assert.match(textOf(chunks), /Claude handled the tool failure/u)
+      assert.equal(chunks.at(-1).reason.kind, 'stop')
+    } else {
+      assert.equal(chunks.at(-1).reason.failure.code, 'LOCAL_AGENT_INTERRUPTED')
+      assert.match(chunks.at(-1).reason.failure.message, prompt === 'OUTCOME-LATE' ? /before a tool returned/u : /exit code 137/u)
+    }
+  })
+}
+
 test('a Bot reply arrives although the resumed Claude CLI first ends a turn for a task its last process left running', { timeout: 15000 }, async (t) => {
   // The Bot's CLI process was closed while a Monitor ran; the next message resumes it.
   const records = { part: { route, cliSessionId: `orphan-${randomUUID()}`, cwd: tmpdir() } }

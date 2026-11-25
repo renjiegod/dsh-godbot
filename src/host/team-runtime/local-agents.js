@@ -447,6 +447,13 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     const adapter = fallback ? this.fallbackAgent(fallback, `${options.provider}/${options.model}`) : this
     try { yield* adapter.streamChat(options) } finally { release() }
   }
+  observe(live, event) {
+    if (event.late === true && event.trace?.type === 'tool') {
+      this.deps.rt?.executionHistory?.recordLateTool(live.sessionId, event.trace)
+      return true
+    }
+    return super.observe(live, event)
+  }
   async *drain(live, options) {
     const rt = this.deps.rt
     const history = rt?.executionHistory
@@ -530,7 +537,7 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     const child = session?.child
     const exited = child && child.exitCode === null && child.signalCode === null
       ? once(child, 'exit', { signal: AbortSignal.timeout(10_000) }) : undefined
-    await Promise.all([exited, this.closeLive(live, { idle: true })])
+    await Promise.all([exited, this.closeLive(live, { idle: true, cause: 'terminal-handoff' })])
   }
   recordOf(live, extra) {
     const record = super.recordOf(live, extra)

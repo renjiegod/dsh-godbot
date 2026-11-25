@@ -11,9 +11,13 @@ export function acpToolStatus(call, exitCode) {
   return toolStatusWithExitCode(call.status ?? 'pending', exitCode)
 }
 
-export function claudeToolResult(block, details) {
-  const exitCode = [details?.exitCode, details?.exit_code].find(Number.isSafeInteger)
-  const status = details?.interrupted === true ? 'interrupted' : toolStatusWithExitCode(block.is_error === true ? 'failed' : 'completed', exitCode)
+export function claudeToolResult(block, details, name) {
+  // Claude's transcript can carry only the shell's textual failure receipt.
+  const shellError = ['Bash', 'PowerShell'].includes(name) && block.is_error === true && typeof block.content === 'string'
+    ? /^(?:Error: )?Exit code (\d{1,3})(?:\r?\n|$)/u.exec(block.content)?.[1] : undefined
+  const exitCode = [details?.exitCode, details?.exit_code, Number(shellError)].find(Number.isSafeInteger)
+  const status = details?.interrupted === true || details?.timedOut === true ? 'interrupted'
+    : toolStatusWithExitCode(block.is_error === true ? 'failed' : 'completed', exitCode)
   const feedback = {}
   for (const field of ['stdout', 'stderr']) {
     if (typeof details?.[field] === 'string') feedback[field] = details[field]

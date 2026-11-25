@@ -13,6 +13,7 @@ import { threadCurrentOfPart } from './threads.js'
 import { viaOf } from '../shared/im-platforms.js'
 import { reminderText } from './schedules.js'
 import { usageChunk } from './usage.js'
+import { turnOutcome } from '../shared/turn-outcome.js'
 
 // Failures only the user can fix: a key, a sign-in, a balance. They block the Bot
 // until it is fixed (`bot.blocked`, for the repair card).
@@ -748,7 +749,7 @@ export function install(rt) {
     const room = rt.roomOf(rt.groupOwners.get(id)?.roomId) ?? rt.roomOf(id)
     return room ? `group "${room.name}"` : 'own chat'
   }
-  const noteTurnFailure = (id, failure) => {
+  const noteTurnFailure = (id, failure, turn) => {
     rt.noteFailure({
       source: 'turn',
       text: failure.message || 'the model call failed',
@@ -758,6 +759,7 @@ export function install(rt) {
       bot: rt.botOf(rt.selfOf(id))?.name ?? (rt.roomOf(id) ? undefined : 'unknown Bot'),
       where: placeOf(id),
       sessionId: id,
+      turn,
     })
   }
 
@@ -1236,6 +1238,13 @@ export function install(rt) {
         break
       }
       case 'turn/end': {
+        const reason = event.data?.reason
+        const outcome = turnOutcome(reason)
+        if (outcome?.status === 'stopped' || outcome?.status === 'interrupted') rt.noteFailure({
+          source: 'turn', level: 'info', text: 'Godbot ended a turn before completion',
+          sessionId: id, turn: event.data?.turn, bot: rt.botOf(rt.selfOf(id))?.name, where: placeOf(id),
+          outcome: outcome.status, cause: outcome.cause, code: outcome.code,
+        })
         setActivity(id, undefined)
         // A steer cut leaves the turn's routing state for the fresh turn that
         // claims the steer: nothing is answered or delivered for the cut one.
@@ -1306,9 +1315,8 @@ export function install(rt) {
             deferred: true,
           }).catch(error => rt.warn('godbot: handing back a result failed: %s', error))
         }
-        const reason = event.data?.reason
         const failure = reason?.kind === 'error' && !switched ? turnFailure(reason.error) : undefined
-        if (failure !== undefined) noteTurnFailure(id, failure)
+        if (failure !== undefined) noteTurnFailure(id, failure, event.data?.turn)
         // A route that is not a model endpoint refuses every generation; the failed
         // Session's own request names it, so it is refused everywhere from now on.
         if (failure?.code === 'HOSTED_ENGINE_ROUTE') {

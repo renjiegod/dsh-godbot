@@ -71,6 +71,25 @@ async function turnFor({ uuid, text }) {
   init()
   requesting([uuid])
   const last = text.trim().split('\n').at(-1)
+  const outcome = Array.from(text.matchAll(/\b(OUTCOME-(?:QUIET|LATE|FAILED|RECOVERED|HOLD))\b/gu)).at(-1)?.[1]
+  if (outcome !== undefined) {
+    const tool = 'toolu_' + randomUUID()
+    await say('Started the fixture command.')
+    send({ type: 'assistant', message: { id: 'msg_' + randomUUID(), stop_reason: 'tool_use', content: [
+      { type: 'tool_use', id: tool, name: 'Bash', input: { command: 'fixture-private-command', timeout: 900000 } },
+    ] } })
+    const failed = outcome !== 'OUTCOME-QUIET'
+    if (outcome === 'OUTCOME-LATE') result({ stop_reason: 'tool_use' })
+    await delay(outcome === 'OUTCOME-HOLD' ? 8000 : 300)
+    send({ type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: tool, is_error: failed, content: failed ? 'Exit code 137\nfixture-private-output' : 'finished' },
+    ] } })
+    if (outcome === 'OUTCOME-QUIET') await say('The quiet command finished.')
+    if (outcome === 'OUTCOME-RECOVERED') await say('Claude handled the tool failure.')
+    if (outcome !== 'OUTCOME-LATE') result({ stop_reason: failed && outcome !== 'OUTCOME-RECOVERED' ? 'tool_use' : 'end_turn' })
+    lifecycle(uuid, 'completed')
+    return
+  }
   const task = /\bTASK(?: (\d+))?/u.exec(text)
   if (task !== null || text.includes('AMBIENT') || text.includes('OFF_HOST')) {
     if (task !== null) startTask({ task_type: 'local_bash', description: 'Run the e2e suite' }, task[1] === undefined ? undefined : Number(task[1]))

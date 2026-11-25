@@ -56,7 +56,11 @@ const errorText = error => `${error.name && error.name !== 'Error' ? `${error.na
 export function entryLine(entry) {
   const where = [entry.bot, entry.where].filter(Boolean).join(' · ')
   const code = entry.code ? ` [${entry.code}${entry.status ? ` ${entry.status}` : ''}]` : ''
-  return `${new Date(entry.time).toISOString()} ${entry.level.toUpperCase()} ${entry.source}${where ? ` (${where})` : ''}${code} ${entry.text}`
+  const facts = ['sessionId', 'turn', 'route', 'nativeSessionId', 'nativeTurnId', 'nativeEvent', 'nativeSubtype', 'nativeStopReason',
+    'nativeOrigin', 'nativeError', 'nativeDurationMs', 'disposition', 'cause', 'outcome', 'pendingTools', 'toolId', 'toolName',
+    'exitCode', 'processId', 'processExitCode', 'signal', 'timedOut', 'late', 'elapsedMs', 'requestedTimeoutMs', 'adapterState']
+    .filter(key => entry[key] != null).map(key => key + '=' + JSON.stringify(entry[key])).join(' ')
+  return `${new Date(entry.time).toISOString()} ${entry.level.toUpperCase()} ${entry.source}${where ? ` (${where})` : ''}${code} ${entry.text}${facts ? ' ' + facts : ''}`
 }
 
 // The Markdown block for an issue. `facts` come from this host, `client` from the
@@ -79,7 +83,7 @@ export function reportMarkdown({ facts, client = {}, entries = [], clientEntries
   ].filter(Boolean)
   const recent = entries.slice(-REPORT_ENTRIES)
   const out = [...lines, '']
-  out.push(recent.length === 0 ? 'No host errors recorded.' : `Recent host errors (${recent.length} of ${entries.length}, oldest first):`)
+  out.push(recent.length === 0 ? 'No host diagnostics recorded.' : `Recent host diagnostics (${recent.length} of ${entries.length}, oldest first):`)
   if (recent.length > 0) out.push('```', ...recent.map(entryLine), '```')
   const stacks = recent.filter(entry => entry.stack).slice(-3)
   for (const entry of stacks) out.push('', `<details><summary>Stack: ${entry.text.slice(0, 80).replace(/</g, '&lt;')}</summary>`, '', '```', entry.stack, '```', '</details>')

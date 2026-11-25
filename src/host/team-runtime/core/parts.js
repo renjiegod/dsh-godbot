@@ -26,7 +26,8 @@ import { CHECKPOINT_PROMPT, STEWARD_SYSTEM, checkpointCount, checkpointTail, che
 import { RESUME_DELAY_MS } from './resume.js'
 import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, splitRef, textOf } from './text.js'
 import { pageThinkingMs } from './thinking.js'
-import { mobileToolRows, openChatPage, withLiveAttempt } from '../mobile-tool-timeline.js'
+import { mobileToolRows, openChatPage, withInterruptedAttempts, withLiveAttempt } from '../mobile-tool-timeline.js'
+import { turnOutcome } from '../shared/turn-outcome.js'
 import { viaOf } from '../shared/im-platforms.js'
 import { addBackgroundConversation, conversationHead, earlierPlace, focusOpenPart, isOpenPart, openEarlierBeside, openEarlierOfThread, ownChatSessions, pushThreadPart, reopenBackgroundConversation, sessionFloor, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
 import { firstPrompt, partTitle } from './part-titles.js'
@@ -1762,7 +1763,7 @@ export function install(rt) {
   // Earlier parts of a Bot's own chat, newest page first, for the chat to show above
   // the current part as one conversation.
   const EARLIER_PAGE = 60
-  function displayItems(partId, events, session, seedTurn, inlineTools = false) {
+  function displayItems(partId, events, session, seedTurn, { inlineTools, turnStatuses, recovered } = {}) {
     const hidden = new Set(state.exchangeTurns[partId] ?? [])
     // Files a turn presented, attached to its closing Bot row so the phone can save
     // them: the card shows name and type, the save action names seq and index.
@@ -1786,10 +1787,24 @@ export function install(rt) {
       if (owner !== undefined) item.turn = owner
       items.push(item)
     }
+    const toolItem = (event, row) => {
+      const receipt = recovered?.get(row.turn)
+      stamp(event, { ...row, ...(receipt && receipt.id === row.toolId ? { status: receipt.status } : {}), time: event.time })
+    }
     for (const event of events) {
-      for (const row of toolRows?.get(event) ?? []) stamp(event, { ...row, time: event.time })
+      for (const row of toolRows?.get(event) ?? []) toolItem(event, row)
       if (event.type === 'turn/start') {
         if (typeof event.data?.turn === 'number' && Number.isInteger(event.data.turn)) turn = event.data.turn
+        continue
+      }
+      if (event.type === 'turn/end' && turnStatuses) {
+        const owner = event.data?.turn ?? turn
+        const legacy = recovered?.get(owner)
+        const outcome = legacy === undefined ? turnOutcome(event.data?.reason) : { status: 'interrupted', exitCode: legacy.exitCode }
+        if (!hidden.has(owner) && outcome && outcome.status !== 'completed') {
+          stamp(event, { kind: 'turn-status', ...outcome, time: event.time,
+            timelineId: JSON.stringify([partId, owner, 'outcome']) })
+        }
         continue
       }
       if (event.type === 'deliverables/presented') {
@@ -1802,7 +1817,7 @@ export function install(rt) {
         // One entry per text block: the chat shows each block in a bubble of its own.
         const content = Array.isArray(event.data?.message?.content) ? event.data.message.content : []
         for (const [index, block] of content.entries()) {
-          for (const row of toolRows?.get(block) ?? []) stamp(event, { ...row, time: event.time })
+          for (const row of toolRows?.get(block) ?? []) toolItem(event, row)
           if (block?.type === 'text' && typeof block.text === 'string' && block.text.trim() !== '') {
             const timelineId = inlineTools ? JSON.stringify([partId, event.data.turn ?? turn, 'text', event.data.step ?? event.seq, index]) : undefined
             stamp(event, { kind: 'bot', text: block.text, time: event.time, ...(inlineTools ? { timelineId } : {}) })
@@ -1918,7 +1933,7 @@ export function install(rt) {
     return items
   }
 
-  async function partPage(parts, index, cursor, steps = false, floor = 0) {
+  async function partPage(parts, index, cursor, steps = false, floor = 0, turnStatuses = false) {
     const part = parts[index]
     const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
     // An archived earlier part may have no live agent left; its stored events
@@ -1956,7 +1971,16 @@ export function install(rt) {
         before = back.records[0]?.event?.seq
       }
     }
-    const items = displayItems(part.sessionId, withLiveAttempt(events, page.assistantStream?.activeAttempt), agent?.session, seedTurn, inline)
+    let recovered
+    if (turnStatuses && rt.executionHistory) {
+      const completed = events.filter(event => event.type === 'turn/end' && event.data?.reason?.kind === 'completed')
+      const results = await Promise.all(completed.map(async ({ data }) =>
+        [data.turn, await rt.executionHistory.recoverClaudeInterruption(part.sessionId, data.turn)]))
+      recovered = new Map(results.filter(([, receipt]) => receipt !== undefined))
+    }
+    const shown = turnStatuses ? withInterruptedAttempts(events) : events
+    const items = displayItems(part.sessionId, withLiveAttempt(shown, page.assistantStream?.activeAttempt), agent?.session, seedTurn,
+      { inlineTools: inline, turnStatuses, recovered })
     if (index < parts.length - 1) {
       for (const item of items) {
         if (item.sessionId === undefined && (item.kind === 'bot' || item.kind === 'post')) item.sessionId = part.sessionId
@@ -2092,14 +2116,14 @@ export function install(rt) {
     } catch { /* a tail miss must never take out the other listeners */ }
   })
 
-  async function chatPage(botId, cursor, steps = false) {
+  async function chatPage(botId, cursor, steps = false, turnStatuses = false) {
     const parts = partsOf(botId)
     if (parts.length === 0) throw Object.assign(new Error('Unknown Bot'), { code: 'bot/not-found' })
     const index = Number.isInteger(cursor?.part) ? cursor.part : parts.length - 1
     const floor = sessionFloor(parts, parts.length - 1)
     if (index < floor || index >= parts.length) return { sessionId: parts.at(-1).sessionId, items: [], cursor: null }
     return { sessionId: parts.at(-1).sessionId, ...(steps === 'inline' ? { inlineTools: true } : {}),
-      ...(await partPage(parts, index, cursor, steps, floor)) }
+      ...(await partPage(parts, index, cursor, steps, floor, turnStatuses)) }
   }
 
   // Whether anyone has talked in a part yet: the user, another Bot, or an answer to a

@@ -7,9 +7,14 @@ import { readClaudeExecutionHistory } from './claude-execution-history.js'
 import { bindToolSlots, mirroredTools, readToolActivity, toolSlots } from './shared/tool-timeline.js'
 import { skillNameFromPath, toolKind } from './shared/tool-kind.js'
 import { commandLabel } from './tool-activity.js'
+import { turnOutcome } from './shared/turn-outcome.js'
+import { interruptedAttemptContent, withInterruptedAttempts } from './mobile-tool-timeline.js'
 
 const fieldLimit = 256 * 1024
 const turnPageSize = 12
+const legacyReceiptWindowMs = 5_000
+const pendingClaudeShell = row => row.type === 'tool' && ['Bash', 'PowerShell'].includes(row.name) &&
+  row.id?.startsWith('toolu_') && row.parentId === undefined && ['running', 'pending'].includes(row.status)
 const toolDetails = ['input', 'output', 'changes', 'error']
 const persistedFields = ['name', 'activityKind', 'status', 'text', 'layout', 'cwd', 'exitCode', 'durationMs', 'locations', 'parentId', ...toolDetails]
 const now = () => new Date().toISOString()
@@ -172,6 +177,7 @@ export class ExecutionHistory {
     this.readClaude = readClaude
     this.readAntigravity = readAntigravity
     this.active = new Map()
+    this.attempts = new Map()
     this.nativeCache = new Map()
   }
 
@@ -218,6 +224,7 @@ export class ExecutionHistory {
     this.db?.close()
     this.db = undefined
     this.nativeCache.clear()
+    this.attempts.clear()
   }
 
   observe(sessionId, event) {
@@ -225,23 +232,33 @@ export class ExecutionHistory {
     const turn = event.data?.turn ?? this.active.get(sessionId)
     if (!Number.isSafeInteger(turn)) return
     if (event.type === 'turn/start') {
+      this.attempts.delete(sessionId)
       this.active.set(sessionId, turn)
       this.tryWrite(db => db.prepare('INSERT OR IGNORE INTO execution_turns(part, turn, started_at) VALUES (?, ?, ?)').run(sessionId, turn, eventTime(event)))
       return
     }
     if (event.type === 'turn/end') {
+      const outcome = turnOutcome(event.data?.reason)?.status
+      const attempt = this.attempts.get(sessionId)
+      this.attempts.delete(sessionId)
+      if (outcome === 'interrupted' && attempt?.data?.turn === turn) {
+        const partial = assistantEvent(interruptedAttemptContent(attempt), attempt.seq)
+        if (partial) this.record(sessionId, partial, turn)
+      }
       const item = turnEvent(event)
       if (item) this.record(sessionId, item, turn)
       if (this.active.get(sessionId) === turn) this.active.delete(sessionId)
       this.tryWrite(db => {
         db.prepare('UPDATE execution_turns SET ended_at=? WHERE part=? AND turn=?').run(eventTime(event), sessionId, turn)
-        if (['aborted', 'interrupted'].includes(event.data?.reason?.kind)) {
+        if (['stopped', 'interrupted', 'failed'].includes(outcome)) {
           db.prepare(`UPDATE execution_events SET data=json_set(data, '$.status', 'interrupted') WHERE part=? AND turn=?
             AND json_extract(data, '$.status') IN ('running','pending')`).run(sessionId, turn)
         }
       })
       return
     }
+    if (event.type === 'assistant/attempt' && Array.isArray(event.data?.stream)) this.attempts.set(sessionId, event)
+    else if (event.type === 'assistant/message') this.attempts.delete(sessionId)
     const item = turnEvent(event)
     if (item) this.record(sessionId, item, turn)
   }
@@ -252,6 +269,38 @@ export class ExecutionHistory {
         this.loggedWriteFailure = true
         this.rt.ctx?.logger?.warn('Could not save Godbot execution history: %s', error?.code ?? 'write failed')
       }
+    }
+  }
+
+  recordLateTool(sessionId, event) {
+    if (this.closed || !this.ownerOf(sessionId) || event.type !== 'tool') return
+    const key = identity(event)
+    if (!key) return
+    this.tryWrite(db => {
+      const rows = db.prepare('SELECT turn FROM execution_events WHERE part=? AND identity=? LIMIT 2').all(sessionId, key)
+      if (rows.length === 1) this.record(sessionId, event, rows[0].turn)
+    })
+  }
+
+  // Older adapters could close the DSH turn as completed before Claude wrote a
+  // shell termination receipt. Require the same tool id in the bound transcript
+  // and a receipt at the close boundary, with no subsequent assistant reply.
+  async recoverClaudeInterruption(sessionId, turn) {
+    if (this.closed || !this.ownerOf(sessionId) || !Number.isSafeInteger(turn) ||
+        this.rt.state.localAgents?.sessions?.[sessionId]?.route !== 'local-claude-code') return
+    const db = this.database()
+    const ended = db.prepare('SELECT ended_at FROM execution_turns WHERE part=? AND turn=?').get(sessionId, turn)?.ended_at
+    if (!ended) return
+    const pending = new Set(db.prepare("SELECT data FROM execution_events WHERE part=? AND turn=? AND identity LIKE 'tool:%'").all(sessionId, turn)
+      .map(row => JSON.parse(row.data)).filter(pendingClaudeShell).map(row => row.id))
+    if (pending.size === 0) return
+    const endedAt = Date.parse(ended)
+    for (const native of await this.nativeTurns(sessionId)) {
+      const receipt = native.events.findLast(row => row.type === 'tool' && pending.has(row.id) &&
+        (row.status === 'interrupted' || row.status === 'failed' && row.exitCode >= 128) &&
+        Math.abs(Date.parse(row.receivedAt) - endedAt) <= legacyReceiptWindowMs)
+      if (receipt && !native.events.some(row => row.type === 'text' && row.seq > receipt.seq && row.text?.trim()))
+        return { ...receipt, recoveredInterruption: true }
     }
   }
 
@@ -334,7 +383,7 @@ export class ExecutionHistory {
     }
     const turns = []
     let current
-    for (const event of records) {
+    for (const event of withInterruptedAttempts(records)) {
       if (event.type === 'turn/start') {
         current = { turn: event.data.turn, startedAt: eventTime(event), events: [] }
         if (target === undefined || current.turn === target) turns.push(current)
@@ -370,6 +419,10 @@ export class ExecutionHistory {
     if (Number.isSafeInteger(turn)) {
       const running = this.active.get(sessionId) === turn || this.rt.live?.get(sessionId)?.turn === turn
       let events = this.storedEvents(db, sessionId, turn, toolId, onlyTools)
+      const recovered = !running && events.some(pendingClaudeShell) ? await this.recoverClaudeInterruption(sessionId, turn) : undefined
+      if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
+      if (recovered) events = events.map(row => row.id === recovered.id
+        ? { ...protect(this.rt, mergeEvent(row, recovered)), recoveredInterruption: true } : row)
       if (!running && !db.prepare('SELECT 1 FROM execution_turns WHERE part=? AND turn=?').get(sessionId, turn)) {
         const prior = (await this.sessionTurns(sessionId, turn))[0]
         const native = prior ? matchNative(prior, await this.nativeTurns(sessionId)) : undefined

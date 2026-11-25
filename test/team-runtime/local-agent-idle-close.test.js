@@ -50,6 +50,20 @@ async function ask(adapter, text) {
 describe('the idle close of a Claude Code process', { concurrency: true }, () => {
   for (const engine of Object.keys(engines)) {
     describe(`${engine} Claude Code`, { concurrency: true }, () => {
+      test('a quiet foreground tool can take longer than the idle limit', { timeout: 15_000 }, async t => {
+        const adapter = adapterFor(engine, { idleCloseMs: 65 })
+        t.after(() => adapter.dispose())
+        const chunks = await Array.fromAsync(adapter.stream({
+          provider: route, model: 'default', sessionId: 'part', messages: [user('u1', 'OUTCOME-QUIET')],
+          signal: AbortSignal.timeout(10_000),
+        }))
+        assert.match(textOf(chunks), /The quiet command finished/u)
+        assert.deepEqual(chunks.at(-1), { type: 'finish', reason: { kind: 'stop' } })
+        const { child } = adapter.live.get('part').engineSession
+        if (running(child)) await once(child, 'exit')
+        assert.equal(adapter.live.has('part'), false, 'a genuinely idle process is still reclaimed')
+      })
+
       test('a process outlasts the idle limit while a background task runs, and leaves a full idle limit after the task ends', { timeout: 15000 }, async (t) => {
         const adapter = adapterFor(engine, { idleCloseMs: 800, backgroundIdleCloseMs: 60_000 })
         t.after(() => adapter.dispose())

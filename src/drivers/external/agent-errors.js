@@ -18,6 +18,10 @@ const CLAUDE_ERRORS = {
 // assistant message whose text is the error, so is_error alone decides.
 export const claudeResultFailed = event => event?.is_error === true
 
+const interruptedResults = new Set(['interrupted', 'aborted', 'canceled', 'cancelled'])
+export const claudeResultInterrupted = event =>
+  [event?.subtype, event?.stop_reason, event?.result].some(value => interruptedResults.has(value))
+
 export function claudeTurnError(event, apiError) {
   const error = new Error(event?.result || 'the agent failed')
   const code = CLAUDE_ERRORS[apiError] ?? (SIGN_IN_TEXT.test(error.message) ? 'LOCAL_AGENT_SIGNIN' : undefined)

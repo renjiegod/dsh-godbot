@@ -44,7 +44,7 @@ export async function openTaskBoard(host) {
 export async function openBotChat(host, bot) {
   const { page } = host
   await page.locator(`[data-bot-id="${bot.id}"]`).click()
-  await page.locator('.bt-head .bt-pill-name').getByText(bot.name, { exact: true }).waitFor()
+  await page.locator('.bt-head .bt-pill-name').filter({ hasText: bot.name }).waitFor()
 }
 
 export async function verifyModalTheme(dialog, themeSelector = 'body') {

@@ -171,6 +171,24 @@ body[data-gb-conversation] .bt-typing-time { color: var(--bt-ink-2); }
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+.gb-turn-outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 9px;
+  margin-block: 6px 8px;
+  color: var(--bt-ink-2);
+  font-size: 13px;
+}
+.gb-turn-outcome-label {
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.gb-turn-outcome[data-outcome=interrupted] .gb-turn-outcome-label { color: var(--bt-danger); }
+.gb-turn-attempt { margin-block: 4px 12px; color: var(--bt-ink-2); font-size: 13px; }
+.gb-turn-attempt > summary { margin-block-end: 6px; cursor: pointer; }
 body[data-gb-conversation] .bt-think { max-width: 100%; margin: 0; }
 body[data-gb-conversation] .bt-think summary {
   display: flex;

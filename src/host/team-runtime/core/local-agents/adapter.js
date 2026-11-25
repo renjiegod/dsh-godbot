@@ -12,6 +12,7 @@ import { engineOf, cliMode } from './engines.js'
 import { LoopbackMcp } from './mcp.js'
 import { withoutNativeContext } from './native-context.js'
 import { QUOTA_TEXT, SIGN_IN_TEXT } from '../../../../drivers/external/agent-errors.js'
+import { NATIVE_INTERRUPTED } from '../../shared/turn-outcome.js'
 
 export const DEFAULT_CONTEXT_WINDOW = 200_000
 // The replay window when a CLI session is new or its resume failed.
@@ -205,8 +206,8 @@ export class LocalAgentAdapter extends LlmAdapter {
       // A CLI takes its model and permission mode when its session opens. Another
       // model or preset reopens the same CLI session as soon as no turn runs in it.
       if ((live.model === options.model && live.preset === preset) || live.state !== 'idle') return live
-      await this.closeLive(live, { idle: true })
-    } else if (live !== undefined) await this.closeLive(live)
+      await this.closeLive(live, { idle: true, cause: 'agent-reconfigured' })
+    } else if (live !== undefined) await this.closeLive(live, { cause: 'agent-reconfigured' })
     const spec = engineOf(route, this.deps.customAgents())
     if (spec === undefined) throw new LlmError(`Unknown local agent ${route}`, 'LOCAL_AGENT_MISSING')
     const engine = this.engine(route)
@@ -250,7 +251,7 @@ export class LocalAgentAdapter extends LlmAdapter {
       showing: undefined,
     }
     live.push = (event) => {
-      this.observe(live, event)
+      if (this.observe(live, event) === true) return
       if (live.mute && live.state === 'idle' && (event?.type === 'text' || event?.type === 'thought' || event?.type === 'activity')) return
       this.armIdle(live)
       // A turn the CLI ran by itself (a background task ended, say) answers no request:
@@ -260,7 +261,10 @@ export class LocalAgentAdapter extends LlmAdapter {
       if (waiter !== undefined) waiter(event)
       else live.events.push(event)
     }
-    live.next = () => (live.events.length > 0 ? Promise.resolve(live.events.shift()) : new Promise(resolve => live.waiters.push(resolve)))
+    live.next = () => {
+      if (live.closeEvent !== undefined) return Promise.resolve(live.closeEvent)
+      return live.events.length > 0 ? Promise.resolve(live.events.shift()) : new Promise(resolve => live.waiters.push(resolve))
+    }
     this.live.set(sessionId, live)
     return live
   }
@@ -348,8 +352,12 @@ export class LocalAgentAdapter extends LlmAdapter {
   // and the next prompt resumes it.
   armIdle(live) {
     live.heard = Date.now()
+    this.scheduleIdleCheck(live)
+  }
+
+  scheduleIdleCheck(live, ms = this.deps.idleCloseMs ?? IDLE_CLOSE_MS) {
     clearTimeout(live.idle)
-    live.idle = setTimeout(() => this.idleOut(live), this.deps.idleCloseMs ?? IDLE_CLOSE_MS)
+    live.idle = setTimeout(() => this.idleOut(live), ms)
     live.idle.unref?.()
   }
 
@@ -359,18 +367,32 @@ export class LocalAgentAdapter extends LlmAdapter {
   // its Session has not shown yet keeps it the same way: it goes with the process.
   idleOut(live) {
     if (live.dead) return
+    // CLI stdout can stay quiet throughout a foreground command or while a
+    // bridged call is suspended for approval. Only an idle adapter can be reaped.
+    if (live.state !== 'idle') {
+      this.scheduleIdleCheck(live)
+      return
+    }
     const left = (this.deps.backgroundIdleCloseMs ?? BACKGROUND_IDLE_CLOSE_MS) - (Date.now() - live.heard)
     const session = live.engineSession
     if (left > 0 && session !== undefined && (this.backgroundWaits(live) || live.engine.backgroundTasks?.(session)?.length > 0)) {
-      live.idle = setTimeout(() => this.idleOut(live), Math.min(left, this.deps.idleCloseMs ?? IDLE_CLOSE_MS))
-      live.idle.unref?.()
+      this.scheduleIdleCheck(live, Math.min(left, this.deps.idleCloseMs ?? IDLE_CLOSE_MS))
       return
     }
-    void this.closeLive(live, { idle: true })
+    void this.closeLive(live, { idle: true, cause: 'idle-timeout' })
   }
 
-  async closeLive(live, { idle = false } = {}) {
+  async closeLive(live, { idle = false, cause = 'session-closed' } = {}) {
     if (live.dead) return
+    if (live.engineSession !== undefined) {
+      const rt = this.deps.rt
+      rt?.noteFailure?.({ source: 'native-agent', level: live.state === 'idle' ? 'info' : 'warn',
+        text: 'Godbot closed a native agent session', nativeEvent: 'process-close-request', cause,
+        sessionId: live.sessionId, route: live.route, nativeSessionId: live.cliSessionId,
+        nativeTurnId: live.turnTag, turn: rt.live?.get(live.sessionId)?.turn, adapterState: live.state,
+        processId: live.engineSession.child?.pid,
+        elapsedMs: live.heard === undefined ? undefined : Date.now() - live.heard })
+    }
     live.dead = true
     clearTimeout(live.idle)
     this.live.delete(live.sessionId)
@@ -382,7 +404,9 @@ export class LocalAgentAdapter extends LlmAdapter {
       live.engineSession = undefined
       live.started = false
     }
-    for (const waiter of live.waiters.splice(0)) waiter({ type: 'done', reason: 'stop' })
+    const closed = live.closeEvent = { type: 'done', reason: 'interrupted',
+      detail: 'Godbot closed the native agent session before the turn finished.' }
+    for (const waiter of live.waiters.splice(0)) waiter(closed)
     const stillUsed = this.engineInUse(live.engine)
     if (!stillUsed) await live.engine.close?.().catch(() => {})
   }
@@ -665,6 +689,12 @@ export class LocalAgentAdapter extends LlmAdapter {
         model: options.model,
         defaultEffort: live.defaultEffort,
         effort: live.effort,
+        onDiagnostic: (text, fields) => {
+          const rt = this.deps.rt
+          rt?.noteFailure?.({ source: 'native-agent', text, sessionId, route: live.route,
+            turn: fields.late ? undefined : rt.live?.get(sessionId)?.turn,
+            level: fields.cause || fields.nativeError || fields.outcome === 'failed' ? 'warn' : 'info', ...fields })
+        },
         // Codex carries the team instructions as developer config on a new
         // thread (a resumed one keeps its own); Claude gets them appended at
         // spawn; ACP reads them in the first prompt below.
@@ -1052,7 +1082,8 @@ export class LocalAgentAdapter extends LlmAdapter {
           // The answer resolved a call this turn never read — it ended while the user
           // was still deciding. Nothing was said after that answer, so start the turn
           // that carries it instead of ending on the finished turn's old reply (#1513).
-          if (live.continuation !== undefined && index === 0) {
+          const interrupted = ['interrupted', 'cancelled', 'canceled', 'aborted'].includes(event.reason)
+          if (!interrupted && live.continuation !== undefined && index === 0) {
             const continuation = live.continuation
             live.continuation = undefined
             this.discardTurnOutput(live)
@@ -1063,6 +1094,11 @@ export class LocalAgentAdapter extends LlmAdapter {
           yield* closeBlocks()
           if (event.usage !== undefined) yield addUsage(event.usage)
           live.state = 'idle'
+          if (interrupted) {
+            yield { type: 'finish', reason: { kind: 'error',
+              failure: { code: NATIVE_INTERRUPTED, message: event.detail ?? 'The native agent stopped before finishing this turn.' } } }
+            return
+          }
           // Input queued while this turn ran goes out as the next prompt
           // inside the same drain (ACP takes one prompt at a time).
           const next = live.queue.shift()
@@ -1315,7 +1351,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     for (const request of requests) request.controller.abort(new LlmError('the local agents adapter is disposed', 'NO_ADAPTER'))
     await Promise.all(requests.filter(request => request.isolated).map(request => request.engine.close?.().catch(() => {})))
     await Promise.all(requests.map(request => request.done.promise))
-    for (const live of Array.from(this.live.values())) await this.closeLive(live)
+    for (const live of Array.from(this.live.values())) await this.closeLive(live, { cause: 'adapter-dispose' })
     for (const engine of Array.from(this.engines.values())) await engine.close?.().catch(() => {})
     this.engines.clear()
   }

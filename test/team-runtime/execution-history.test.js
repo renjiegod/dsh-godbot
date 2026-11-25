@@ -65,6 +65,34 @@ test('a phone reopening mid-attempt gets the visible blocks at the stream cut, t
   assert.equal(withLiveAttempt(saved, attempt), saved)
 })
 
+test('recovers a legacy Claude shell interruption only at the matching turn boundary', async t => {
+  const rt = await fixture(t)
+  rt.state.localAgents.sessions.part = { route: 'local-claude-code', cwd: rt.home, cliSessionId: 'native' }
+  const end = Date.parse('2026-11-25T12:52:17.420Z')
+  const receipt = { type: 'tool', name: 'Bash', id: 'toolu_last', status: 'failed', exitCode: 137,
+    output: 'Exit code 137\nfixture-secret', seq: 3, receivedAt: new Date(end + 21).toISOString() }
+  const history = new ExecutionHistory(rt, { readClaude: async () => [
+    { events: [receipt] },
+    { events: [{ ...receipt, id: 'toolu_replied' }, { type: 'text', text: 'The agent handled it.', seq: 4 }] },
+    { events: [{ ...receipt, id: 'toolu_earlier', receivedAt: new Date(end - 1_000_000).toISOString() }] },
+  ] })
+  t.after(() => history.close())
+  for (const [index, id] of ['toolu_last', 'toolu_replied', 'toolu_earlier'].entries()) {
+    const turn = index + 1
+    history.observe('part', { type: 'turn/start', time: end - 10_000, data: { turn } })
+    history.record('part', { type: 'tool', name: 'Bash', id, status: 'running' }, turn)
+    history.observe('part', { type: 'turn/end', time: end, data: { turn, reason: { kind: 'completed' } } })
+  }
+  const query = { botId: 'worker', sessionId: 'part', turn: 1 }
+  const summary = (await history.read({ ...query, onlyTools: true })).events[0]
+  assert.equal(summary.recoveredInterruption, true)
+  assert.equal(summary.exitCode, 137)
+  assert.equal(summary.status, 'failed')
+  assert.equal((await history.read({ ...query, toolId: receipt.id })).events[0].output, 'Exit code 137\n[redacted]')
+  assert.equal(await history.recoverClaudeInterruption('part', 2), undefined)
+  assert.equal(await history.recoverClaudeInterruption('part', 3), undefined)
+})
+
 test('execution history updates one row per call and reads its details across restart', async (t) => {
   const rt = await fixture(t)
   const part = { botId: 'worker', sessionId: 'part', turn: 2 }

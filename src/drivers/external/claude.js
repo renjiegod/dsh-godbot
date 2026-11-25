@@ -9,7 +9,7 @@ import { cleanEnv, findEngineExecutable, spawnAgent } from './discover.js'
 import { claudeToolResult } from './tool-results.js'
 import { ClaudeTurns } from './claude-turns.js'
 import { tasksNeedingProcess } from './claude-tasks.js'
-import { claudeResultFailed, claudeTurnError } from './agent-errors.js'
+import { claudeResultFailed, claudeResultInterrupted, claudeTurnError } from './agent-errors.js'
 
 // Claude Code tools that only read; the rest may change files or run something.
 const READ_TOOLS = new Set(['Read', 'Glob', 'Grep', 'LS', 'WebFetch', 'WebSearch', 'TodoWrite', 'NotebookRead'])
@@ -23,14 +23,14 @@ export class ClaudeEngine {
   }
 
   // A live process holds its own event queue; the adapter drains it.
-  open(dshSessionId, { cwd, resumeId, system, mode, mcp, model }) {
+  open(dshSessionId, options) {
     let session = this.sessions.get(dshSessionId)
     if (session !== undefined && session.dead) session = undefined
     if (session === undefined) {
       session = new ClaudeSession(this, dshSessionId)
       this.sessions.set(dshSessionId, session)
     }
-    return session.start({ cwd, resumeId, system, mode, mcp, model })
+    return session.start(options)
   }
 
   prompt(session, blocks, {commandId} = {}) {
@@ -109,8 +109,9 @@ class ClaudeSession extends ClaudeControlSession {
 
   }
 
-  async start({ cwd, resumeId, system, mode, mcp, model }) {
+  async start({ cwd, resumeId, system, mode, mcp, model, onDiagnostic }) {
     if (this.child !== undefined) return this
+    this.noteDiagnostic = (text, fields) => onDiagnostic?.(text, { nativeSessionId: this.cliSessionId ?? resumeId, ...fields })
     const bin = findEngineExecutable(this.engine.engine, name => this.engine.findExecutable(name))
     if (bin === undefined) throw Object.assign(new Error(`${this.engine.engine.name} is not installed`), { code: 'NO_ADAPTER' })
     // Fixture scripts in tests ride in spec.args ahead of the real CLI flags.
@@ -176,6 +177,9 @@ class ClaudeSession extends ClaudeControlSession {
       this.emit({ type: 'error', error: failure })
     })
     child.on('exit', (code, signal) => {
+      if (!this.dead || this.turns.busy) this.noteDiagnostic('Claude Code process exited', {
+        nativeEvent: 'process-exit', nativeTurnId: this.turns.owner(), processId: child.pid, processExitCode: code, signal,
+      })
       this.dead = true
       // Claude Code deletes old conversations; resuming one that is gone exits
       // before init with this line on stderr.
@@ -198,7 +202,10 @@ class ClaudeSession extends ClaudeControlSession {
     let event
     try { event = JSON.parse(line) } catch { return }
     const due = this.turns.observe(event)
-    if (due !== undefined) this.emit({ type: 'done', reason: 'stop', turnId: due })
+    if (due !== undefined) {
+      this.noteDiagnostic?.('Claude Code discarded a queued prompt', { nativeEvent: 'command-lifecycle', nativeTurnId: due, disposition: 'discarded' })
+      this.emit({ type: 'done', reason: 'interrupted', turnId: due })
+    }
     switch (event?.type) {
       case 'system':
         if (event.subtype === 'init') {
@@ -340,6 +347,7 @@ class ClaudeSession extends ClaudeControlSession {
   // itself ends nothing; one that leaves a queued steer waiting only counts usage.
   settle(event) {
     const answer = this.turns.settle(event.origin)
+    const incomplete = this.onTurnResult?.(event, answer)
     if (answer === undefined) {
       // A stop asked for while the CLI ran a turn of its own stopped that turn: a
       // later prompt's result is not read as stopped.
@@ -350,8 +358,7 @@ class ClaudeSession extends ClaudeControlSession {
       return
     }
     const { turn, finished } = answer
-    const interrupted = this.interruptPending !== undefined && (event.result === 'interrupted' || event.subtype === 'interrupted' ||
-      event.stop_reason === 'interrupted' || this.interruptAcknowledged)
+    const interrupted = claudeResultInterrupted(event) || (this.interruptPending !== undefined && this.interruptAcknowledged)
     this.interruptPending = undefined
     this.interruptAcknowledged = false
     const failed = !interrupted && claudeResultFailed(event)
@@ -366,7 +373,7 @@ class ClaudeSession extends ClaudeControlSession {
     }
     for (const id of finished) {
       if (id !== turn) this.emit({ type: 'done', reason: 'stop', turnId: id })
-      else if (interrupted) this.emit({ type: 'done', reason: 'interrupted', turnId: id })
+      else if (interrupted || (!failed && incomplete)) this.emit({ type: 'done', reason: 'interrupted', detail: incomplete, turnId: id, usage })
       else this.emit(failed
         ? { type: 'error', error: claudeTurnError(event, apiError), turnId: id }
         : { type: 'done', reason: 'stop', usage, turnId: id })
@@ -403,6 +410,7 @@ class ClaudeSession extends ClaudeControlSession {
 
   cancel() {
     // The documented interrupt asks the turn to stop cleanly.
+    this.noteDiagnostic?.('Godbot requested a Claude Code interrupt', { nativeEvent: 'interrupt-request', nativeTurnId: this.turns.owner() })
     this.interruptPending = randomUUID()
     this.interruptAcknowledged = false
     return this.write({ type: 'control_request', request_id:this.interruptPending, request: { subtype: 'interrupt' } })

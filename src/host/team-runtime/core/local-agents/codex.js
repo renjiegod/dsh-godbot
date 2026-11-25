@@ -131,7 +131,7 @@ export class CodexEngine {
         thread.completedTurnId = turn.id
         if (turn.id === undefined || thread.turnId === turn.id) thread.turnId = undefined
         if (turn.status === 'failed') thread.push({ type: 'error', error: new Error(turn.error?.message ?? 'the turn failed'), turnId: turn.id })
-        else thread.push({ type: 'done', reason: 'stop', turnId: turn.id })
+        else thread.push({ type: 'done', reason: turn.status === 'interrupted' ? 'interrupted' : 'stop', turnId: turn.id })
         break
       }
       case 'thread/tokenUsage/updated': {

@@ -435,7 +435,8 @@ export function install(rt) {
           return ok(await rt.earlierPage(String(body.sessionId ?? ''), body.cursor ?? undefined))
         case 'chat':
           await rt.load()
-          return ok(await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined, body.inlineTools === true ? 'inline' : body.steps === true))
+          return ok(await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined,
+            body.inlineTools === true ? 'inline' : body.steps === true, body.turnStatuses === true))
         case 'chat-tool':
           await rt.load()
           return ok(await mobileToolDetail(rt, body))

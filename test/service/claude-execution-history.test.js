@@ -66,8 +66,8 @@ test('read-only history retains delegated prompt, tool inputs and outcomes, diff
       { seq: 1, type: 'input', text: 'Implement the fixture' },
       { seq: 2, type: 'tool', id: 'call-edit', name: 'Edit', status: 'running', cwd: toolCwd, input: calls[0].input },
       { seq: 3, type: 'tool', id: 'call-shell', name: 'Bash', status: 'running', cwd: toolCwd, input: command },
-      { seq: 4, type: 'tool', id: 'call-edit', name: 'Edit', status: 'completed', output: 'File updated', changes: [{ path: 'sample.txt', hunks }] },
-      { seq: 5, type: 'tool', id: 'call-shell', name: 'Bash', status: 'failed', output: { stdout: 'Two tests ran', stderr: 'One failure' }, exitCode: 1, durationMs: 750 },
+      { seq: 4, type: 'tool', id: 'call-edit', name: 'Edit', status: 'completed', output: 'File updated', changes: [{ path: 'sample.txt', hunks }], receivedAt: '2023-11-14T22:13:26.000Z' },
+      { seq: 5, type: 'tool', id: 'call-shell', name: 'Bash', status: 'failed', output: { stdout: 'Two tests ran', stderr: 'One failure' }, exitCode: 1, durationMs: 750, receivedAt: '2023-11-14T22:13:27.000Z' },
       { seq: 6, type: 'text', text: report[0].text },
     ],
   }, { nativeTurnId: followup.uuid, startedAt: followup.timestamp, events: [{ seq: 7, type: 'input', text: 'Follow up' }] }])

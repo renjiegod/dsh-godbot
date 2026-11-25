@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { assembleAssistantStream } from '@deepseek-ai/dsh-llm'
 import { bindToolSlots, readToolActivity, toolSlots } from './shared/tool-timeline.js'
+import { turnOutcome } from './shared/turn-outcome.js'
 
 // A follow opening is a consistent cut of the saved events and the current
 // assistant attempt. Returning from the loop also releases the subscription.
@@ -23,6 +24,30 @@ export function withLiveAttempt(events, attempt) {
     data: { turn: attempt.turn, step: attempt.step, message: { content } } }
   const next = events.findIndex(event => event.seq > attempt.startedAfterSeq)
   return next < 0 ? [...events, live] : [...events.slice(0, next), live, ...events.slice(next)]
+}
+
+export function interruptedAttemptContent(event) {
+  return Array.isArray(event.data?.stream) ? assembleAssistantStream(event.data.stream).interruptedBlocks() : []
+}
+
+// DSH stores a request that failed as an attempt. Keep the last visible
+// attempt of an interrupted turn, while hiding attempts the next reply replaced.
+export function withInterruptedAttempts(events) {
+  const interrupted = new Set()
+  const attempts = new Map()
+  for (const event of events) {
+    const turn = event.data?.turn
+    if (event.type === 'assistant/attempt') attempts.set(turn, event)
+    else if (event.type === 'assistant/message') attempts.delete(turn)
+    else if (event.type === 'turn/end' && turnOutcome(event.data.reason)?.status === 'interrupted') interrupted.add(turn)
+  }
+  if (interrupted.size === 0 || attempts.size === 0) return events
+  return events.map(event => {
+    const data = event.data
+    if (event.type !== 'assistant/attempt' || attempts.get(data.turn) !== event || !interrupted.has(data.turn)) return event
+    const content = interruptedAttemptContent(event)
+    return { ...event, type: 'assistant/message', data: { turn: data.turn, step: data.step, message: { content } } }
+  })
 }
 
 const interactive = new Set(['ask_user', 'request_secret', 'show_view', 'group_relay'])

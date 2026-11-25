@@ -102,7 +102,7 @@ export class ClaudeTurns {
   // Output carries the prompt it answers. Output of a turn nobody sent comes wrapped as
   // background: it answers no prompt, and the adapter shows it as a reply of its own.
   tag(event) {
-    if (!OUTPUT.has(event?.type)) return event
+    if (!OUTPUT.has(event?.type) || event.turnId !== undefined) return event
     const turn = this.owner()
     return turn === undefined ? { type: 'background', of: event.type, event } : { ...event, turnId: turn }
   }

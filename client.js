@@ -13140,6 +13140,12 @@ var ZH = {
   "Tool call": "工具调用",
   Thought: "思考",
   "Completed in {duration}": "已完成，用时 {duration}",
+  "Turn stopped": "回合已停止",
+  "Turn interrupted": "回合已中断",
+  "Work before the interruption": "中断前的执行记录",
+  "Continued with the new message": "已接续新消息",
+  "Exit code {code}": "退出码 {code}",
+  "The native agent stopped before finishing this turn.": "原生 Agent 在本轮完成前停止了。",
   "{count} tool calls": "{count} 次工具调用",
   "{count} running": "{count} 项进行中",
   "A new reply is waiting": "有一条新回复",
@@ -40170,6 +40176,32 @@ function commandLabel(value) {
   return task?.[0] ?? /^(?:[\w./\\:-]*[/\\])?([\w.-]+)(?=\s|$)/u.exec(command)?.[1];
 }
 
+// src/host/team-runtime/shared/turn-outcome.js
+var NATIVE_INTERRUPTED = "LOCAL_AGENT_INTERRUPTED";
+function turnOutcome(reason) {
+  switch (reason?.kind) {
+    case "aborted": {
+      const cause = reason.reason?.kind === "hook" ? reason.reason.reason : reason.reason?.kind;
+      if (cause === "user" || cause === "godbot/stopped" || cause === "ds-bot/stopped") return { status: "stopped", cause };
+      if (cause === "godbot/steer" || cause === "ds-bot/steer") return { status: "interrupted", cause: "steered" };
+      return { status: "interrupted", cause };
+    }
+    case "interrupted":
+      return { status: "interrupted", cause: "host-interrupted" };
+    case "max-tokens":
+      return { status: "interrupted", cause: "output-limit" };
+    case "error":
+    case "failed": {
+      const code = reason.error?.code;
+      if (code === NATIVE_INTERRUPTED || code === "LOCAL_AGENT_EXIT" || code === "INTERRUPTED")
+        return { status: "interrupted", cause: "agent-interrupted", code };
+      return { status: "failed", code };
+    }
+    case "completed":
+      return { status: "completed" };
+  }
+}
+
 // src/client/team-ui/cells.js
 function Bubbles({ nativeReport, texts: texts2, roster, selfId, actions, streaming, sessionId, msgKey, useUi, lead, mentions, fold = FOLD_AT, whole, time, textInteractionSource, processBefore, variant = "compact" }) {
   const onClick = (event) => {
@@ -41056,6 +41088,18 @@ function TriggerCell({ node, sessionId, useRoster, useSessions, useTurnClock, us
 function NewDivider() {
   return (0, import_react41.createElement)("div", { className: "bt-new-sep", role: "separator", "aria-label": t("New messages") }, (0, import_react41.createElement)("span", null, t("New")));
 }
+function useTurnOutcome(location2, roster, sessionId, actions) {
+  const outcome = turnOutcome(location2?.end?.data?.reason);
+  const botId = roster.byId[sessionId]?.id;
+  const receipts = actions.godbot.useExecutionTools(
+    botId,
+    sessionId,
+    location2?.turn,
+    outcome?.status === "completed" && ownExecutionChat(roster, sessionId)
+  );
+  const interrupted = receipts.find((tool) => tool.recoveredInterruption);
+  return interrupted === void 0 ? outcome : { status: "interrupted", exitCode: interrupted.exitCode };
+}
 function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useUi, useTurnClock, actions }) {
   const open = turnProcess === void 0 || !turnProcess.foldable || turnProcess.open;
   (0, import_react41.useEffect)(() => {
@@ -41075,8 +41119,8 @@ function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useUi, useTu
     return !hidden && typeof visit?.seen === "number" && own?.first !== void 0 && own.first <= visit.seen && own.end !== void 0 && own.end > visit.seen && own.end <= visit.entered;
   });
   const elapsed = location2?.end?.time - start;
-  const reason = location2?.end?.data?.reason?.kind;
-  const complete = !hidden && usesConversationLayout(roster, sessionId) && Number.isFinite(elapsed) && !["aborted", "interrupted", "failed", "error"].includes(reason);
+  const outcome = useTurnOutcome(location2, roster, sessionId, actions);
+  const complete = !hidden && usesConversationLayout(roster, sessionId) && Number.isFinite(elapsed) && outcome?.status === "completed";
   if (!complete) return fresh ? (0, import_react41.createElement)(NewDivider) : (0, import_react41.createElement)(CellEmpty);
   return (0, import_react41.createElement)(import_react41.Fragment, null, fresh && (0, import_react41.createElement)(NewDivider), (0, import_react41.createElement)(
     "div",
@@ -41119,7 +41163,7 @@ function openingTurn(turns, firstTurns, hiddenTurns) {
   return listed.includes(turn) && earlier.every((entry) => hiddenTurns?.includes(entry)) ? { turn, start } : null;
 }
 var unseenSince = (visit, time) => typeof visit?.seen === "number" && time > visit.seen && time <= visit.entered;
-function TurnTailCell({ turn: location2, sessionId, useTurnClock, useUi, actions }) {
+function TurnTailCell({ turn: location2, sessionId, useRoster, useTurnClock, useUi, actions }) {
   const turn = location2.turn;
   const time = location2.end.time;
   (0, import_react41.useEffect)(() => {
@@ -41135,10 +41179,28 @@ function TurnTailCell({ turn: location2, sessionId, useTurnClock, useUi, actions
     const start = nextTurnStart(state[sessionId] ?? {}, turn);
     return start !== void 0 && start > visit.seen && start <= visit.entered;
   });
-  if (!label && !fresh) return null;
+  const roster = useRoster((value) => value);
+  const outcome = useTurnOutcome(location2, roster, sessionId, actions);
+  const [showAttempt, setShowAttempt] = (0, import_react41.useState)(false);
+  const showOutcome = Boolean(roster.byId[sessionId]) && !roster.roomsById[sessionId] && !isHiddenTurn(roster, sessionId, turn) && (outcome?.status === "stopped" || outcome?.status === "interrupted");
+  const detail = outcome?.cause === "steered" ? t("Continued with the new message") : outcome?.cause === "output-limit" ? t("Reached the output limit") : outcome?.exitCode === void 0 ? void 0 : t("Exit code {code}", { code: outcome.exitCode });
+  if (!label && !fresh && !showOutcome) return null;
+  const nativeAttempt = showOutcome && ownExecutionChat(roster, sessionId) && ["LOCAL_AGENT_INTERRUPTED", "LOCAL_AGENT_EXIT"].includes(outcome.code);
   return (0, import_react41.createElement)(
     import_react41.Fragment,
     null,
+    showOutcome ? (0, import_react41.createElement)(
+      "div",
+      { className: "gb-turn-outcome", "data-outcome": outcome.status, role: "status" },
+      (0, import_react41.createElement)("span", { className: "gb-turn-outcome-label" }, t(outcome.status === "stopped" ? "Turn stopped" : "Turn interrupted")),
+      detail ? (0, import_react41.createElement)("span", null, detail) : null
+    ) : null,
+    nativeAttempt ? (0, import_react41.createElement)(
+      "details",
+      { className: "gb-turn-attempt", onToggle: (event) => setShowAttempt(event.currentTarget.open) },
+      (0, import_react41.createElement)("summary", null, t("Work before the interruption")),
+      showAttempt ? actions.godbot.memberProcess({ botId: roster.byId[sessionId].id, sessionId, turn, running: false }) : null
+    ) : null,
     label ? (0, import_react41.createElement)("div", { className: "bt-time-sep", role: "separator" }, label) : null,
     fresh ? (0, import_react41.createElement)(NewDivider) : null
   );
@@ -51824,6 +51886,8 @@ function failureText2(code, { name, provider, status }) {
       return t("{agent} is not installed on this computer.", { agent: provider });
     case "LOCAL_AGENT_EXIT":
       return t("{agent} stopped before this turn finished.", { agent: provider });
+    case "LOCAL_AGENT_INTERRUPTED":
+      return t("The native agent stopped before finishing this turn.");
     default:
       return knownFailure(code) ?? t("This turn failed.");
   }
@@ -58437,6 +58501,24 @@ body[data-gb-conversation] .bt-typing-time { color: var(--bt-ink-2); }
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+.gb-turn-outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 9px;
+  margin-block: 6px 8px;
+  color: var(--bt-ink-2);
+  font-size: 13px;
+}
+.gb-turn-outcome-label {
+  padding: 2px 7px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  font-weight: 600;
+}
+.gb-turn-outcome[data-outcome=interrupted] .gb-turn-outcome-label { color: var(--bt-danger); }
+.gb-turn-attempt { margin-block: 4px 12px; color: var(--bt-ink-2); font-size: 13px; }
+.gb-turn-attempt > summary { margin-block-end: 6px; cursor: pointer; }
 body[data-gb-conversation] .bt-think { max-width: 100%; margin: 0; }
 body[data-gb-conversation] .bt-think summary {
   display: flex;

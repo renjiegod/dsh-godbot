@@ -13,7 +13,7 @@ function inputText(content) {
 }
 
 function toolResult(block, metadata, tool) {
-  const { status, output, exitCode } = claudeToolResult(block, metadata)
+  const { status, output, exitCode } = claudeToolResult(block, metadata, tool.name)
   const path = metadata?.filePath ?? tool.input?.file_path
   const hunks = metadata?.structuredPatch
   return {
@@ -70,7 +70,7 @@ export async function readClaudeExecutionHistory({ cwd, nativeId, configDir } = 
             const call = calls.get(block.tool_use_id)
             if (!call || call.settled) continue
             call.settled = true
-            append(call.turn, toolResult(block, metadata, call.tool), at)
+            append(call.turn, { ...toolResult(block, metadata, call.tool), receivedAt: at }, at)
           }
           continue
         }

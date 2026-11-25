@@ -34,6 +34,7 @@ import { ProcessIcon, processLabel } from './process-activity.js'
 import { skillNameFromPath, toolKind } from '../../host/team-runtime/shared/tool-kind.js'
 import { commandLabel } from '../../host/team-runtime/tool-activity.js'
 import { hasProcess, workAt } from './member-work-model.js'
+import { turnOutcome } from '../../host/team-runtime/shared/turn-outcome.js'
 
 export { clockLabel }
 
@@ -912,6 +913,15 @@ function NewDivider() {
   return h('div', { className: 'bt-new-sep', role: 'separator', 'aria-label': t('New messages') }, h('span', null, t('New')))
 }
 
+function useTurnOutcome(location, roster, sessionId, actions) {
+  const outcome = turnOutcome(location?.end?.data?.reason)
+  const botId = roster.byId[sessionId]?.id
+  const receipts = actions.godbot.useExecutionTools(botId, sessionId, location?.turn,
+    outcome?.status === 'completed' && ownExecutionChat(roster, sessionId))
+  const interrupted = receipts.find(tool => tool.recoveredInterruption)
+  return interrupted === undefined ? outcome : { status: 'interrupted', exitCode: interrupted.exitCode }
+}
+
 export function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useUi, useTurnClock, actions }) {
   const open = turnProcess === undefined || !turnProcess.foldable || turnProcess.open
   useEffect(() => {
@@ -935,9 +945,8 @@ export function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useUi
       && own.end !== undefined && own.end > visit.seen && own.end <= visit.entered
   })
   const elapsed = location?.end?.time - start
-  const reason = location?.end?.data?.reason?.kind
-  const complete = !hidden && usesConversationLayout(roster, sessionId) && Number.isFinite(elapsed) &&
-    !['aborted', 'interrupted', 'failed', 'error'].includes(reason)
+  const outcome = useTurnOutcome(location, roster, sessionId, actions)
+  const complete = !hidden && usesConversationLayout(roster, sessionId) && Number.isFinite(elapsed) && outcome?.status === 'completed'
   if (!complete) return fresh ? h(NewDivider) : h(CellEmpty)
   return h(Fragment, null, fresh && h(NewDivider), h('div', { className: 'gb-turn-duration' },
     t('Completed in {duration}', { duration: elapsedLabel(Math.max(1000, elapsed)) })))
@@ -987,7 +996,7 @@ export const unseenSince = (visit, time) => typeof visit?.seen === 'number' && t
 // An entry in DSH's own turn tail, after what other plugins put there (the cards of
 // the files a turn delivered). The tail sits right before the next turn's first row,
 // so the separator for a pause between turns renders here.
-export function TurnTailCell({ turn: location, sessionId, useTurnClock, useUi, actions }) {
+export function TurnTailCell({ turn: location, sessionId, useRoster, useTurnClock, useUi, actions }) {
   const turn = location.turn
   // DSH builds the tail from the turn's end, so it is there.
   const time = location.end.time
@@ -1004,8 +1013,24 @@ export function TurnTailCell({ turn: location, sessionId, useTurnClock, useUi, a
     const start = nextTurnStart(state[sessionId] ?? {}, turn)
     return start !== undefined && start > visit.seen && start <= visit.entered
   })
-  if (!label && !fresh) return null
+  const roster = useRoster(value => value)
+  const outcome = useTurnOutcome(location, roster, sessionId, actions)
+  const [showAttempt, setShowAttempt] = useState(false)
+  const showOutcome = Boolean(roster.byId[sessionId]) && !roster.roomsById[sessionId] && !isHiddenTurn(roster, sessionId, turn) &&
+    (outcome?.status === 'stopped' || outcome?.status === 'interrupted')
+  const detail = outcome?.cause === 'steered' ? t('Continued with the new message')
+    : outcome?.cause === 'output-limit' ? t('Reached the output limit')
+      : outcome?.exitCode === undefined ? undefined : t('Exit code {code}', { code: outcome.exitCode })
+  if (!label && !fresh && !showOutcome) return null
+  const nativeAttempt = showOutcome && ownExecutionChat(roster, sessionId) &&
+    ['LOCAL_AGENT_INTERRUPTED', 'LOCAL_AGENT_EXIT'].includes(outcome.code)
   return h(Fragment, null,
+    showOutcome ? h('div', { className: 'gb-turn-outcome', 'data-outcome': outcome.status, role: 'status' },
+      h('span', { className: 'gb-turn-outcome-label' }, t(outcome.status === 'stopped' ? 'Turn stopped' : 'Turn interrupted')),
+      detail ? h('span', null, detail) : null) : null,
+    nativeAttempt ? h('details', { className: 'gb-turn-attempt', onToggle: event => setShowAttempt(event.currentTarget.open) },
+      h('summary', null, t('Work before the interruption')),
+      showAttempt ? actions.godbot.memberProcess({ botId: roster.byId[sessionId].id, sessionId, turn, running: false }) : null) : null,
     label ? h('div', { className: 'bt-time-sep', role: 'separator' }, label) : null,
     fresh ? h(NewDivider) : null)
 }
