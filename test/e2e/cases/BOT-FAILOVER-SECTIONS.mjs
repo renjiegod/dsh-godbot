@@ -67,7 +67,13 @@ else {
   const editor = page.locator(`[data-godbot-section-context="${section.id}"]`)
   await page.mouse.move(440, 64)
   await contextButton.waitFor({ state: 'visible' })
-  assert.equal(await contextButton.innerText(), '分组简介与记忆')
+  assert.equal(await contextButton.innerText(), '', 'the entry is an icon only')
+  assert.equal(await contextButton.getAttribute('title'), '分组简介与记忆')
+  assert.ok(await contextButton.evaluate(button => {
+    const head = button.closest('.bt-sec-head-wrap')
+    const a = button.getBoundingClientRect(), b = head?.getBoundingClientRect()
+    return !!b && a.top >= b.top && a.bottom <= b.bottom
+  }), 'the entry sits in the section heading row')
   await host.capture('section-context-entry')
   await contextButton.click()
   await editor.getByLabel('分组简介', { exact: true }).fill('SECTION-MISSION-ONLY')
