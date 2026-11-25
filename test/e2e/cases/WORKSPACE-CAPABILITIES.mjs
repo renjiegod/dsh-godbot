@@ -208,14 +208,15 @@ async function exerciseAutomation(host, ci) {
   await until(async () => (await ci.owner('governance.view')).audit.some(row => row.name === 'remember' && row.origin.kind === 'person' && row.decision === 'allow'), 'same tool allowed in a direct turn')
 
   await openSettingsPage(host, '自动化')
-  const form = page.getByRole('form', { name: '统一创建自动化' })
+  await page.getByRole('button', { name: '新建自动化' }).click()
+  const form = page.getByRole('form', { name: '新建自动化' })
   await form.getByLabel('执行方式').selectOption('task')
   await form.getByLabel('执行对象').selectOption(ci.member.id)
-  await form.getByLabel('任务名称').fill(checkText)
+  await form.getByLabel('自动化名称').fill(checkText)
   await form.getByLabel('执行要求与验收条件').fill('Return evidence of the check')
   await form.getByLabel('重复方式').selectOption('interval')
   await form.getByRole('button', { name: '创建自动化', exact: true }).click()
-  await page.getByText('自动化已创建', { exact: true }).waitFor()
+  await page.getByText('已创建自动化', { exact: true }).waitFor()
   const { routines } = await ci.owner('automation.routine.list')
   const routine = routines.find(row => row.title === checkText)
   assert.ok(routine)
@@ -228,8 +229,16 @@ async function exerciseAutomation(host, ci) {
     trigger: { kind: 'schedule', when: { kind: 'interval', minutes: 60 } }, requestId: randomUUID(), checkOnly: true }
   const scheduled = await ci.owner('automation.setup.create', request)
   assert.equal((await ci.owner('automation.setup.create', request)).id, scheduled.id)
-  const schedule = (await ci.owner('team-workspace.scheduleList')).tasks.find(task => task.id === scheduled.id)
-  await ci.owner('team-workspace.scheduleRun', { id: schedule.id, sessionId: schedule.sessionId })
+  const schedule = (await ci.owner('automation.setup.view')).items.find(task => task.id === scheduled.id)
+  assert.equal(schedule.checkOnly, true)
+  assert.ok(schedule.instructions.includes(checkInText))
+  assert.ok(!schedule.instructions.startsWith('[GODBOT CHECK-ONLY]'))
+  const { source, id: scheduleId, sessionId, updatedAt } = schedule
+  await ci.owner('automation.setup.change', { source, id: scheduleId, sessionId, updatedAt, operation: 'update',
+    title: 'Scheduled message fixture revised', instructions: checkInText })
+  const persisted = (await ci.owner('team-workspace.scheduleList')).tasks.find(task => task.id === scheduled.id)
+  assert.ok(persisted.prompt.startsWith('[GODBOT CHECK-ONLY]\n'))
+  await ci.owner('automation.setup.change', { source, id: scheduleId, sessionId, operation: 'run' })
   await until(async () => (await ci.owner('governance.view')).audit.some(row =>
     row.botId === checkBot.id && row.name === 'remember' && row.reason === '此自动化只检查并反馈' && row.origin.triggerId === schedule.id),
   'check-in restriction carried by the DSH schedule')
@@ -239,6 +248,15 @@ async function exerciseAutomation(host, ci) {
     nodes: [{ id: 'check', title: 'Check the event', ownerId: worker.id, criteria: 'Return one result' }], edges: [] })
   const hook = await ci.owner('automation.setup.create', { title: 'Webhook workflow', requestId: randomUUID(),
     target: { kind: 'workflow', id: workflow.id, revision: workflow.revision }, trigger: { kind: 'webhook' } })
+  const event = (await ci.owner('automation.setup.view')).items.find(item => item.id === hook.id)
+  assert.equal(event.trigger.url, hook.url)
+  assert.equal(event.target.revision, workflow.revision)
+  assert.ok(!Object.hasOwn(event, 'secret'))
+  await page.getByRole('article', { name: 'Webhook workflow' }).waitFor({ timeout: 15_000 })
+  await ci.owner('automation.setup.change', { source: 'webhook', id: hook.id, operation: 'pause' })
+  assert.equal((await ci.owner('automation.setup.view')).items.find(item => item.id === hook.id).status, 'paused')
+  await ci.owner('automation.setup.change', { source: 'webhook', id: hook.id, operation: 'resume' })
+
   const id = randomUUID()
   const body = JSON.stringify({ source: 'fixture' })
   const signature = createHmac('sha256', hook.secret).update(id + '\n' + body).digest('hex')

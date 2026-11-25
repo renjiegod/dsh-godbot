@@ -25,7 +25,17 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     ui.set(state => ({ ...state, details: sessionId, view: 'side', side: chatId ?? null, renaming: false, tab: null, panelYield: yieldTo(state, 'side') }))
   }
   // `id` opens one Bot (page 'bots') or one group chat (page 'groups').
-  const openSettings = (page = 'general', id = null) => { ui.set(state => ({ ...state, settings: { page, id }, menu: null, palette: null, newChat: null })) }
+  const openSettings = (page = 'general', id = null) => {
+    if (page === 'schedules') {
+      page = 'automation'
+      if (typeof id === 'string') id = id.startsWith('bot:') || id.startsWith('room:')
+        ? { scope: id.slice(id.indexOf(':') + 1) } : { kind: 'message', id }
+    } else if (page === 'routines') {
+      page = 'automation'
+      id = null
+    }
+    ui.set(state => ({ ...state, settings: { page, id }, menu: null, palette: null, newChat: null }))
+  }
   return {
     // The pane starts at the rail's edge, so a floating drawer would stick out from under it.
     openNewChat: (mode, sectionId = null) => { ui.set(state => ({ ...state, newChat: mode, newChatSection: sectionId ?? null, menu: null, palette: null, leftDrawer: false })) },
@@ -258,9 +268,6 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     deleteCapability: name => after(call('capability-delete', { name })),
     approveCapability: name => after(call('capability-approve', { name })),
     setBotCapability: (botId, name, attached) => after(call('bot-capability', { botId, name, attached })),
-    schedules: () => call('schedules'),
-    scheduleCreate: task => call('schedule-create', task),
-    scheduleDelete: (sessionId, id) => call('schedule-delete', { sessionId, id }),
     exchange: (a, b) => call('exchange', { a, b }).catch(() => []),
     exchangeText: (id, a, b) => call('exchange-text', { id, ...(a !== undefined && b !== undefined ? { a, b } : {}) }).catch(() => undefined),
     fileText: file => call('file-text', { file }).catch(() => undefined),

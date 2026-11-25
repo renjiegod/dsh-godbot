@@ -22,11 +22,11 @@
 }
 .gb-workspace-actions .gb-workspace-action:hover { background: var(--bt-hover); color: var(--bt-ink); }
 .gb-workspace-action:focus-visible { outline: 2px solid var(--bt-accent); outline-offset: 1px; }
-.gb-workspace-actions .gb-schedule-shortcut {
+.gb-workspace-actions .gb-automation-shortcut {
   background: var(--bt-hover);
   color: var(--bt-ink);
 }
-.gb-workspace-actions .gb-schedule-shortcut:hover { background: var(--bt-active); }
+.gb-workspace-actions .gb-automation-shortcut:hover { background: var(--bt-active); }
 .gb-workspace-actions[data-rail] {
   flex-direction: column;
   padding-block: 0 4px;

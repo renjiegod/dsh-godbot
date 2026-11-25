@@ -1,7 +1,7 @@
 import { createElement as h, useState } from 'react'
 import { button, field, row } from './controls.js'
 
-export function AutomationAccess({ client, team, members }) {
+export function AutomationAccess({ client, team }) {
   const [list, setList] = useState(null)
   const [issued, setIssued] = useState(null)
   const [error, setError] = useState('')
@@ -15,7 +15,7 @@ export function AutomationAccess({ client, team, members }) {
     setIssued(null)
     try {
       const value = await call(name, args)
-      if (value.token || value.secret) setIssued(value)
+      if (value.token) setIssued(value)
       await refresh()
     } catch (cause) {
       setError(cause.message)
@@ -44,10 +44,9 @@ export function AutomationAccess({ client, team, members }) {
         else setIssued(null)
       },
     },
-    h('summary', null, 'CI 与 Webhook'),
+    h('summary', null, 'CI 凭据'),
     (error || list?.listenError) && h('p', { role: 'alert', className: 'gb-error' }, error || list.listenError),
     list?.url && h('p', null, 'GODBOT_URL ', h('code', null, list.url)),
-    h('h3', null, 'CI 凭据'),
     form(
       'grant',
       (fields) => ({
@@ -126,73 +125,6 @@ export function AutomationAccess({ client, team, members }) {
       ),
     ),
     button('刷新 CI 状态', () => void refresh().catch((cause) => setError(cause.message))),
-    h('h3', null, 'Webhook'),
-    form(
-      'hook',
-      (fields) => Object.fromEntries(fields),
-      field('触发器名称', h('input', { name: 'label', required: true })),
-      field(
-        '执行成员',
-        h(
-          'select',
-          { name: 'ownerId', required: true },
-          ...members.map((m) => h('option', { key: m.id, value: m.id }, m.name)),
-        ),
-      ),
-      field('任务标题', h('input', { name: 'title', required: true })),
-      field('验收标准', h('textarea', { name: 'criteria', required: true })),
-      h('button', { type: 'submit', disabled: pending || !members.length }, '创建 Webhook'),
-    ),
-    ...(list?.hooks ?? []).map((hook) =>
-      h(
-        'div',
-        { key: hook.id, className: 'gb-row' },
-        h('span', null, hook.label),
-        h('code', null, list.url + '/hooks/' + hook.id),
-        button(
-          hook.paused ? '恢复' : '暂停',
-          () => void act('pauseHook', { id: hook.id, paused: !hook.paused }),
-          { disabled: pending },
-        ),
-      ),
-    ),
-    h('h3', null, 'GitHub 公开仓库事件'),
-    form(
-      'githubCreate',
-      (fields) => ({ ...Object.fromEntries(fields), includeLatest: fields.has('includeLatest') }),
-      field('订阅名称', h('input', { name: 'label', required: true })),
-      field('仓库', h('input', { name: 'repo', placeholder: 'owner/repository', required: true })),
-      field('事件类型', h('input', { name: 'eventType', placeholder: '例如 PullRequestEvent，留空接收全部' })),
-      field(
-        '执行成员',
-        h(
-          'select',
-          { name: 'ownerId', required: true },
-          ...members.map((m) => h('option', { key: m.id, value: m.id }, m.name)),
-        ),
-      ),
-      field('任务标题', h('input', { name: 'title', required: true })),
-      field('验收标准', h('textarea', { name: 'criteria', required: true })),
-      field('创建时处理最近一条匹配事件', h('input', { type: 'checkbox', name: 'includeLatest' })),
-      h('button', { type: 'submit', disabled: pending || !members.length }, '订阅仓库'),
-    ),
-    ...(list?.sources ?? []).map((source) =>
-      h(
-        'div',
-        { key: source.id, className: 'gb-row' },
-        h('span', null, source.label + ' · ' + source.repo),
-        source.issue && h('span', { role: 'alert', className: 'gb-error' }, source.issue),
-        source.lastRunId && h('code', null, source.lastRunId),
-        button('检查事件', () => void act('githubPoll', { id: source.id }), {
-          disabled: pending || source.paused,
-        }),
-        button(
-          source.paused ? '恢复订阅' : '暂停订阅',
-          () => void act('githubPause', { id: source.id, paused: !source.paused }),
-          { disabled: pending },
-        ),
-      ),
-    ),
     issued &&
       h(
         'div',
@@ -200,12 +132,10 @@ export function AutomationAccess({ client, team, members }) {
         h(
           'p',
           null,
-          issued.token
-            ? '将以下凭据保存到 GODBOT_TOKEN_FILE。仅显示一次。'
-            : '保存 Webhook 地址和签名密钥。密钥仅显示一次。',
+          '将以下凭据保存到 GODBOT_TOKEN_FILE。仅显示一次。',
         ),
         h('code', null, issued.url),
-        h('pre', null, issued.token || issued.secret),
+        h('pre', { 'data-sensitive': true }, issued.token),
         button('已保存', () => setIssued(null)),
       ),
   )

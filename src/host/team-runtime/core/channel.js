@@ -740,6 +740,12 @@ export function install(rt) {
         case 'schedule-delete':
           await rt.load()
           return ok(await rt.scheduleEndpoint(endpoint, body))
+        case 'automation-view':
+        case 'automation-create':
+        case 'automation-change':
+        case 'automation-history':
+          if (!profileOwner) return fail('Automation is available to the profile owner.', 'bot/refused')
+          return ok(await rt.automationSetup({ ...body, action: 'automation.setup.' + endpoint.slice('automation-'.length) }))
         case 'memory-view':
         case 'memory-ask':
         case 'memory-pin':

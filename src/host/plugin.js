@@ -117,6 +117,7 @@ export async function apply(ctx, config = {}) {
     }
     runtime.localAgentUsage = withService(localAgentUsageView)
     runtime.localAgentQuota = withService(localAgentQuota)
+    runtime.automationSetup = withService((service, request) => service.dispatch(request))
     child.effect(() => () => {
       if (current === scope) current = undefined
       return scope.close()

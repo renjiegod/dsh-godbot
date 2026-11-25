@@ -11,7 +11,7 @@ const maxWakeDelay = 60000
 
 function settings(req, store, prior) {
   const title = required(req.title, '任务说明')
-  const schedule = normalizeRoutineTiming(req.schedule)
+  const schedule = req.schedule === undefined && prior ? prior.schedule : normalizeRoutineTiming(req.schedule)
   if (title.length > 32000) throw new Error('任务说明最多 32000 字。')
   const checkOnly = req.checkOnly === undefined ? prior?.checkOnly === true : req.checkOnly === true
   const target = req.target ?? prior?.target ?? 'member'

@@ -16,7 +16,7 @@ export default async function botManagement({ makeHost, candidate, note }) {
   await page.getByRole('button', { name: /^(用量上限与备用模型|Usage limits and fallback models)$/u }).click()
   await page.getByRole('button', { name: '保存用量策略', exact: true }).waitFor()
   const board = await openTaskBoard(host)
-  await board.getByText('CI 与 Webhook', { exact: true }).waitFor()
+  await board.getByText('CI 凭据', { exact: true }).waitFor()
   await board.getByText('多人共享与审计', { exact: true }).waitFor()
   assert.equal(await page.locator('input[name=teamName], input[name=memberName]').count(), 0)
   assert.equal(await page.getByRole('button', { name: '导入 Bot 团队', exact: true }).count(), 0)

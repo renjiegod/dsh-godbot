@@ -199,7 +199,7 @@ export function ComposerPlus({ sessionId, inputActions, useInput, useRoster, act
   }
   const schedule = () => {
     setOpen(null)
-    actions.openSettings('schedules', target)
+    actions.openSettings('automation', { kind: 'message', id: target, scope: target })
   }
   // The chats open in the shell's "@" menu at the caret, so the pick lands where the
   // user was typing.

@@ -44,6 +44,7 @@ export const CAPABILITIES = [
   'bot-failover',
   'usage-summary',
   'local-agent-usage',
+  'unified-automation',
   'stop-chat',
   'row-meta',
   'chat-steps',

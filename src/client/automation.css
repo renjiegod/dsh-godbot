@@ -1,0 +1,89 @@
+.gb-automation, .gb-auto-list-view, .gb-auto-editor, .gb-auto-fields, .gb-auto-detail, .gb-auto-history, .gb-auto-issued {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+}
+.gb-automation { font-size: 13px; line-height: 1.45; }
+.gb-automation :is(h3, h4, p) { margin: 0; }
+.gb-automation :is(h3, h4, strong, code, .gb-auto-error) { overflow-wrap: anywhere; }
+.gb-auto-toolbar, .gb-auto-actions, .gb-auto-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.gb-auto-toolbar { justify-content: space-between; }
+.gb-auto-filters { gap: 3px; }
+.gb-auto-filters button {
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  padding: 6px 9px;
+  font: inherit;
+  color: var(--bt-ink-2);
+  cursor: pointer;
+}
+.gb-auto-filters button:hover { background: var(--bt-hover); }
+.gb-auto-filters button[aria-pressed=true] { background: var(--bt-active); color: var(--bt-ink); font-weight: 600; }
+.gb-auto-new { display: inline-flex; align-items: center; gap: 5px; }
+.gb-auto-new svg, .gb-auto-chevron svg { width: 14px; height: 14px; }
+.gb-auto-list { overflow: hidden; }
+.gb-auto-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+  gap: 11px;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 12px 14px;
+  font: inherit;
+  color: var(--bt-ink);
+  text-align: left;
+  cursor: pointer;
+}
+.gb-auto-row:hover, .gb-auto-row[aria-expanded=true] { background: var(--bt-hover); }
+.gb-auto-row:focus-visible { outline-offset: -3px; }
+.gb-auto-row-main { display: grid; gap: 3px; min-width: 0; }
+.gb-auto-row-main .bt-set-hint, .gb-auto-text { overflow-wrap: anywhere; white-space: pre-wrap; }
+.gb-auto-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--bt-hover);
+  color: var(--bt-ink-2);
+}
+.gb-auto-icon svg { width: 16px; height: 16px; }
+.gb-auto-state, .gb-auto-next { font-size: 12px; color: var(--bt-ink-2); }
+.gb-auto-state { white-space: nowrap; }
+.gb-auto-state[data-state=overdue], .gb-auto-error { color: var(--bt-danger); }
+.gb-auto-next { text-align: right; font-variant-numeric: tabular-nums; }
+.gb-auto-chevron { grid-column: -2; color: var(--bt-ink-3); line-height: 0; }
+.gb-auto-row[aria-expanded=true] .gb-auto-chevron { transform: rotate(90deg); }
+.gb-auto-detail { padding: 13px 14px 15px; border-top: 1px solid var(--bt-line); }
+.gb-auto-history { gap: 9px; border-top: 1px solid var(--bt-line); padding-top: 10px; }
+.gb-auto-history ol { display: grid; gap: 9px; margin: 0; padding: 0; list-style: none; }
+.gb-auto-history li { display: grid; gap: 6px; min-width: 0; }
+.gb-auto-empty { display: grid; justify-items: center; gap: 8px; padding: 28px 16px; color: var(--bt-ink-2); text-align: center; }
+.gb-auto-empty svg { width: 22px; height: 22px; color: var(--bt-ink-3); }
+.gb-auto-editor, .gb-auto-issued { padding: 15px; }
+.gb-auto-editor > *, .gb-auto-issued > *, .gb-auto-empty > * { border-top: 0; }
+.gb-auto-editor h3 { font-size: 15px; }
+.gb-auto-fields, .gb-auto-days { border: 0; margin: 0; padding: 0; }
+.gb-auto-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.gb-auto-field { display: grid; gap: 5px; min-width: 0; }
+.gb-auto-field > span, .gb-auto-days legend { color: var(--bt-ink-2); }
+.gb-auto-field :is(input, select, textarea) { box-sizing: border-box; width: 100%; min-width: 0; max-width: 100%; }
+.gb-auto-days { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 7px 12px; min-width: 0; }
+.gb-auto-days label, .gb-auto-check { display: inline-flex; align-items: center; gap: 5px; }
+.gb-auto-footer { justify-content: flex-end; }
+.gb-auto-issued button { justify-self: start; }
+@media (max-width: 680px) {
+  .gb-auto-grid { grid-template-columns: minmax(0, 1fr); }
+  .gb-auto-row { grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 5px 8px; }
+  .gb-auto-next { grid-row: 2; grid-column: 2 / 4; text-align: left; }
+  .gb-auto-chevron { grid-row: 1; }
+}

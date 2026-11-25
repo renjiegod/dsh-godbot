@@ -25,7 +25,6 @@ import { botHome } from './session-links.js'
 import { Icon } from './chat-ui.js'
 import { WorkspaceActions } from './workspace-actions.js'
 import { TaskSettings } from './task-settings.js'
-import { BotSchedulesPage } from './bot-schedules.js'
 import { WebBrowserButton, BrowserDrawerPane } from './browser-viewer.js'
 import { ComputerHeaderButton } from './team-ui/computer.js'
 import { mainSession, sessionSelection } from './navigation.js'
@@ -350,14 +349,11 @@ function mountProduct(ctx, client, navigation, target, ready) {
     }),
     sandboxSettings: props => h(SandboxSetupPage, { client, builtins, ...props }),
     taskSettings: (page, focus, actions, readOnly) => h(TaskSettings, { client, actions, page, focus, readOnly }),
+    automations: () => client.dispatch({ action: 'automation.setup.view' }),
     platformSettings(page, roster, actions, initial, ui = {}) {
-      const pages = { automation: AutomationSetupPage, components: ComponentSettings, governance: GovernanceSettings, 'remote-agents': RemoteAgentSettings }
+      if (page === 'automation') return h(AutomationSetupPage, { key: JSON.stringify(initial), client, roster, actions, initial })
+      const pages = { components: ComponentSettings, governance: GovernanceSettings, 'remote-agents': RemoteAgentSettings }
       return h('div', { className: 'gb-platform' }, h(pages[page], { client, roster, actions, initial, ...ui }))
-    },
-    schedulesPage(state, actions, start, publish) {
-      const session = mainSession(ctx)
-      return h(BotSchedulesPage, { key: start ?? 'all', client, roster: state, actions, start,
-        initialTarget: state.byId[session]?.id ?? state.roomsById[session]?.id ?? state.mainBotId, publish })
     },
     useProviderChoices: (wanted, call) => useProviderChoices(wanted, call, client),
     async changeProvider(bot, agent, target, actions, avatarAfter) {
@@ -402,7 +398,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
     },
     navigation(wide, latest, actions) {
       roster = latest
-      return h(WorkspaceActions, { client, wide, onSchedules: () => actions.openSettings('schedules'), onBack: navigation.back })
+      return h(WorkspaceActions, { client, wide, onAutomation: () => actions.openSettings('automation'), onBack: navigation.back })
     },
   }
   const fiber = ctx.plugin({

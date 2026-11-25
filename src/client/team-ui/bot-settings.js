@@ -264,7 +264,7 @@ export function BotSettingsForm({ bot, roster, actions, run }) {
     section ? h(Card, { title: section.name },
       h('button', { className: 'bt-set-row bt-bs-row', type: 'button', onClick: () => actions.openSectionContext(section.id) },
         h('span', { className: 'bt-bs-label' }, t('Section description and memory')), h(ChevronRightIcon))) : null,
-    h(BotSchedules, { bot, roster, actions }),
+    h(BotSchedules, { bot, actions }),
     h(Card, { title: t('Main Bot') },
       onlyMain
         ? h('div', { className: 'bt-set-row bt-bs-row' },

@@ -3,7 +3,6 @@ import { TaskBoard, button, empty, row } from './controls.js'
 import { pendingRequests } from './model.js'
 import { UsageLimits } from './usage-limits.js'
 import { AutomationAccess } from './automation-access.js'
-import { NativeRoutines } from './native-routines.js'
 import { Workflows } from './workflows.js'
 import { PeopleAccess } from './people-access.js'
 
@@ -104,18 +103,16 @@ export function TaskSettings({ client, actions, page, focus, readOnly: rosterRea
   return h('div', { className: 'gb-task-settings gb-stack' },
     h('div', { className: 'gb-row gb-task-toolbar' },
       h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: refresh }, '刷新'),
-      !readOnly && h('button', { type: 'button', className: 'bt-send bt-soft-sm', onClick: () => actions.openSettings('automation', { kind: page === 'routines' ? 'task' : 'workflow' }) }, '统一创建自动化')),
+      page === 'tasks' && !readOnly && h('button', { type: 'button', className: 'bt-send bt-soft-sm', onClick: () => actions.openSettings('automation', { kind: 'workflow' }) }, '安排工作流')),
     offline && h('div', { className: 'gb-alert', role: 'status' }, '连接中断，正在重试 · ' + offline),
     error && h('div', { className: 'gb-alert', role: 'alert' }, h('span', null, error.message),
       row(button('重试原请求', error.retry), button('关闭', clearError))),
     !workspace ? empty('正在读取 Bot 团队…')
-      : page === 'routines' ? h(NativeRoutines, { team: workspace, members: bots, client, run, readOnly,
-        onTask: showTask, onWorkflowRun: (workflowId, workflowRunId) => actions.openSettings('tasks', { workflowId, workflowRunId }) })
       : page === 'limits' ? !readOnly && h(UsageLimits, { client, bots, models: data.dshModels ?? [] })
       : h('div', { className: 'gb-stack' },
         h(TaskBoard, { workspace, bots, tasks: data.tasks, run, pending, readOnly, focusTask: focus, openBot }),
         h(Workflows, { workspace, bots, tasks: data.tasks, client, refresh, readOnly,
           focusWorkflowId: focus?.workflowId, focusRunId: focus?.workflowRunId, onTask: showTask }),
-        !readOnly && h(AutomationAccess, { client, team: workspace, members: bots }),
+        !readOnly && h(AutomationAccess, { client, team: workspace }),
         !readOnly && h(PeopleAccess, { client, team: workspace })))
 }

@@ -5,8 +5,8 @@ import { WorkspaceInbox } from './workspace-inbox.js'
 import { t } from './team-ui/i18n.js'
 import actionsStyle from './workspace-actions.css'
 
-export function WorkspaceActions({ wide, client, onSchedules, onBack }) {
-  const schedules = t('Scheduled messages')
+export function WorkspaceActions({ wide, client, onAutomation, onBack }) {
+  const automation = t('Automation')
   return h('nav', {
     className: 'gb-workspace-actions',
     'aria-label': 'Godbot 工作区',
@@ -15,11 +15,11 @@ export function WorkspaceActions({ wide, client, onSchedules, onBack }) {
     h('style', null, actionsStyle),
     h('button', {
       type: 'button',
-      className: 'gb-workspace-action gb-schedule-shortcut',
-      title: schedules,
-      'aria-label': schedules,
+      className: 'gb-workspace-action gb-automation-shortcut',
+      title: automation,
+      'aria-label': automation,
       'aria-haspopup': 'dialog',
-      onClick: onSchedules,
+      onClick: onAutomation,
     }, h(Icon, { name: 'clock', size: 17 })),
     h(RemoteComputersButton, { client }),
     h(WorkspaceInbox, { client }),

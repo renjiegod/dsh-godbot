@@ -23,7 +23,7 @@ export async function ciTeam(host, candidate) {
   const extra = async name => host.bot('create-bot', { name, model, workDir: await mkdtemp(join(host.root, 'bot-')) })
   const { page } = host
   await openTaskBoard(host)
-  const summary = page.locator('summary').filter({ hasText: 'CI 与 Webhook' })
+  const summary = page.locator('summary').filter({ hasText: 'CI 凭据' })
   await summary.click().catch(async (error) => {
     throw new Error(
       error.message +

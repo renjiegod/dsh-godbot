@@ -25,7 +25,8 @@ const claudeConfigDir = cwd => process.env.CLAUDE_CONFIG_DIR ? resolve(cwd, proc
 const readActions = new Set(['team-workspace.management', 'team-workspace.inbox', 'team-workspace.scheduleList',
   'team-workspace.scheduleHistory', 'team-workspace.templateExport', 'team-workspace.templatePreview', 'team-workspace.templatePlans',
   'provider-usage', 'local-provider-usage', 'provider-accounts', 'sandbox-settings', 'sandbox-setup', 'connector.tools', 'budget.view',
-  'workflow.list', 'automation.routine.list', 'automation.routine.history', 'automation.list', 'automation.people.list'])
+  'workflow.list', 'automation.routine.list', 'automation.routine.history', 'automation.list', 'automation.people.list',
+  'automation.setup.view', 'automation.setup.history'])
 
 export function readOnlyWorkspaceSnapshot(stateDir, runtime) {
   const file = join(stateDir, 'godbot.sqlite3')

@@ -28,8 +28,8 @@ export function commandEntries({ roster, actions }) {
   return {
     contributions: [{
       name: SCHEDULED_TASK,
-      label: () => t('Scheduled task'),
-      description: () => t('Open the scheduled tasks of this chat'),
+      label: () => t('Automation'),
+      description: () => t('Open the automations for this chat'),
       icon: ClockIcon,
       available: session => isBotSurface(session?.sessionId),
       ui: {

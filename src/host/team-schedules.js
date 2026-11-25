@@ -111,6 +111,10 @@ export async function teamScheduleAction(rt, req) {
     switch (req.action) {
       case 'team-workspace.scheduleEdit':
         edit = { action: 'update', patch: patchOf(rt, req) }
+        if (edit.patch.prompt && !edit.patch.prompt.startsWith(checkOnlyScheduleMarker) &&
+            (task.prompt?.startsWith(checkOnlyScheduleMarker) || rt.state.scheduleCheckIns?.[id])) {
+          edit.patch.prompt = checkOnlyScheduleMarker + edit.patch.prompt
+        }
         break
       case 'team-workspace.schedulePause':
       case 'team-workspace.scheduleResume':

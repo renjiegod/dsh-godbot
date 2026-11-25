@@ -54,7 +54,7 @@ const publicHook = ({ id, teamId, label, ownerId, title, criteria, paused, check
   criteria,
   paused,
   ...(checkOnly ? { checkOnly: true } : {}),
-  ...(workflowSnapshot ? { workflowId: workflowSnapshot.id, workflowRevision: workflowSnapshot.revision } : {}),
+  ...(workflowSnapshot ? { workflowId: workflowSnapshot.id, workflowName: workflowSnapshot.name, workflowRevision: workflowSnapshot.revision } : {}),
 })
 
 export class AutomationApi {

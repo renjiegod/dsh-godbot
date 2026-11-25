@@ -11,6 +11,9 @@ const publicSource = ({
   id,
   teamId,
   label,
+  ownerId,
+  checkOnly,
+  workflowSnapshot,
   repo,
   eventType,
   paused,
@@ -19,7 +22,10 @@ const publicSource = ({
   lastChecked,
   issue,
   nextCheck,
-}) => ({ id, teamId, label, repo, eventType, paused, lastId, lastRunId, lastChecked, issue, nextCheck })
+}) => ({
+  id, teamId, label, ownerId, checkOnly, repo, eventType, paused, lastId, lastRunId, lastChecked, issue, nextCheck,
+  ...(workflowSnapshot ? { workflowId: workflowSnapshot.id, workflowName: workflowSnapshot.name, workflowRevision: workflowSnapshot.revision } : {}),
+})
 
 export class GitHubEvents {
   constructor(service, fetchPage = fetch) {
