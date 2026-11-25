@@ -58314,6 +58314,7 @@ body[data-gb-conversation] .gb-chat-title-text {
   white-space: nowrap;
 }
 @container (max-width: 640px) {
+  body[data-gb-conversation] .gb-chat-bar { gap: 2px; }
   body[data-gb-conversation] .gb-chat-title { display: none; }
 }
 
