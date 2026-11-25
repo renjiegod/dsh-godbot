@@ -162,12 +162,18 @@ export function install(rt) {
   }
   const adapter = new RemoteAgentAdapter(rt, find, options)
   let registration
+  let registered
   let closed = false
+  // Every `replace` is announced to every open window, which then reads the model
+  // catalog again: hand the routes over only when they changed.
   const sync = () => {
     if (closed) return
     const routes = entries().map(row => ROUTE_PREFIX + row.id)
+    const key = JSON.stringify([...routes].sort())
+    if (registration && key === registered) return
     if (registration) registration.replace(routes)
     else if (routes.length) registration = rt.ctx.get?.('llm')?.registerAdapter(routes, adapter)
+    if (registration) registered = key
   }
   void rt.load().then(sync).catch(failure => rt.warn('godbot: remote agents: %s', failure.message))
   rt.ctx.effect(() => () => {
