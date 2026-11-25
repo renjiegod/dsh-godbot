@@ -1,5 +1,5 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
-import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { currentPart, latestMemoryChange } from './text.js'
 import { ArrowUpIcon, CloseIcon, ArrowDownIcon, GaugeIcon, GoalIcon, MemoryIcon, SearchIcon } from './icons.js'
@@ -13,6 +13,7 @@ import { GoalIsland, goalView } from './goal.js'
 import { NewSessionButton } from './new-session.js'
 import { FailoverActivity } from './bot-failover.js'
 import { SessionMenu } from './session-menu.js'
+import { conversationTitle, documentTitle } from './bot-sessions.js'
 import { GodbotModal } from '../modal.js'
 import { nativeTabs } from '../native-agent-target.js'
 import { viewBottom } from './motion.js'
@@ -95,7 +96,10 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
   const selectedView = useStore?.(state => state.view)
   const away = useConversationViews?.(views => views.some(view => view.id === selectedView && view.id !== 'chat')) === true
     && typeof selectView === 'function'
-  const title = useSessions(list => list.byId[sessionId]?.displayTitle ?? list.byId[sessionId]?.title ?? '')
+  const title = useSessions((list) => {
+    const row = list.byId[sessionId]
+    return row?.blank === true ? '' : (row?.displayTitle ?? row?.title ?? '')
+  })
   const firstTurns = useSessions((list) => {
     const outline = list.projectionsBySession?.[sessionId]?.values?.turnOutline ?? list.byId[sessionId]?.projectionValues?.turnOutline
     return Array.isArray(outline) ? outline.slice(0, 8).map(entry => entry.turn).join(',') : ''
@@ -137,8 +141,25 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
   const roomWork = room ? JSON.parse(roomWorkKey || '[]') : []
   const view = goal ? goalView(goal, { roster, roomWork }) : null
   const goalShown = room !== undefined && !away && goal !== undefined
+  const showGoal = room !== undefined && !away && (goal !== undefined || goalCompose)
   const detailsOpen = useUi(state => state.details === sessionId)
   const name = bot?.name ?? room?.name ?? ''
+  const conversationTitleValue = useMemo(
+    () => conversationTitle(sessionId, { bot, room, roster, title }),
+    [sessionId, bot, room, roster, title],
+  )
+  const docTitle = useMemo(
+    () => documentTitle({
+      ready: roster?.ready, showGoal, goalTitle: view?.title, conversationTitle: conversationTitleValue, name, title,
+    }),
+    [roster?.ready, showGoal, view?.title, conversationTitleValue, name, title],
+  )
+  useEffect(() => {
+    if (!docTitle) return undefined
+    const prev = document.title
+    document.title = docTitle
+    return () => { document.title = prev }
+  }, [docTitle])
   const useNews = useMemoryNews ?? noNews
   const memoryIds = bot ? [bot.id] : room ? [room.id, ...room.members] : []
   const notice = useMemoryNotice(memoryIds, useNews)
@@ -163,7 +184,6 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
     return () => { delete document.body.dataset.btRoom }
   }, [Boolean(room)])
   const memoryNotice = !away && notice && changed !== null && roster.memory !== false
-  const showGoal = room !== undefined && !away && (goal !== undefined || goalCompose)
   // The goal island pads the transcript so its pod does not cover the first message.
   useEffect(() => {
     if (showGoal) document.body.dataset.btGoal = ''
@@ -203,6 +223,10 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
             ? h(BotHeaderModel, { key: bot.appliedModel ?? bot.model, bot, roster, actions, sessionId })
             : null,
           !away && failover ? h(FailoverActivity, { row: failover, roster, actions }) : null),
+        !away && conversationTitleValue
+          ? h('div', { className: 'gb-chat-title', title: conversationTitleValue },
+            h('span', { className: 'gb-chat-title-text' }, conversationTitleValue))
+          : null,
         !away && h('div', { className: 'gb-chat-tools' },
           // Start a fresh conversation with this Bot.
           bot && currentPart(bot) === sessionId

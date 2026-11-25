@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { botSessions, lastActivity, ownPartIds, sessionLabel, sessionMeta, shortList, useBotSessionRows } from '../../src/client/team-ui/bot-sessions.js'
+import { botSessions, conversationTitle, documentTitle, lastActivity, ownPartIds, sessionLabel, sessionMeta, shortList, useBotSessionRows } from '../../src/client/team-ui/bot-sessions.js'
 
 // The Codex Bot from the report as the host lists it: p4 current and running, p5 a
 // busy-time part nobody talked in, p6 another one still running in the background with
@@ -86,4 +86,36 @@ test('a Bot is as recent as its latest session, whichever one is open', () => {
   const opened = { ...bot, sessionId: 'p1', parts: ['p2', 'p3'], openParts: [...bot.openParts, { sessionId: 'p4', parts: [] }] }
   assert.equal(lastActivity(opened, stamps), 900)
   assert.equal(lastActivity({ id: 'new', createdAt: 42 }, {}), 42, 'a Bot with no session activity yet sorts by when it was made')
+})
+
+test('conversationTitle resolves bot prompts, room topics, and empty states', () => {
+  // Before roster loads, avoid flashing a placeholder or duplicate pill label
+  assert.equal(conversationTitle('p4', { roster: { ready: false }, title: 'Codex' }), '')
+  // Bot with first prompt
+  assert.equal(conversationTitle('p4', { bot, roster }), 'continue working on issues/2020')
+  // Bot without prompt returns numbered session
+  assert.equal(conversationTitle('p2', { bot, roster }), 'Session 3')
+  // Bot with empty new session returns New session
+  const fresh = { ...bot, sessionId: 'p7' }
+  assert.equal(conversationTitle('p7', { bot: fresh, roster: { ...roster, newSessions: { p1: 'empty' } } }), 'New session')
+  // Bot with explicit DSH title distinct from bot name
+  assert.equal(conversationTitle('p2', { bot, roster, title: 'Custom session title' }), 'Custom session title')
+  // Room with custom topic
+  const room = { id: 'r1', name: 'Design' }
+  assert.equal(conversationTitle('r1', { room, title: 'Release Sprint' }), 'Release Sprint')
+  // Room matching group name returns empty so pill isn't duplicated
+  assert.equal(conversationTitle('r1', { room, title: 'Design' }), '')
+  assert.equal(conversationTitle('r1', { room, title: '' }), '')
+  // Standalone chat session puts its title in the pill itself
+  assert.equal(conversationTitle('chat1', { title: 'Bug Investigation' }), '')
+  assert.equal(conversationTitle('chat2', {}), '')
+})
+
+test('documentTitle formats browser titles for goals, bots, rooms, and standalone chats', () => {
+  assert.equal(documentTitle({ ready: false, name: 'Codex', title: 'Ignored' }), '')
+  assert.equal(documentTitle({ ready: true, showGoal: true, goalTitle: 'Ship v1', name: 'Launch' }), 'Ship v1 · Launch')
+  assert.equal(documentTitle({ ready: true, conversationTitle: 'issues/2020', name: 'Codex' }), 'issues/2020 · Codex')
+  assert.equal(documentTitle({ ready: true, conversationTitle: '', name: 'Design', title: 'Design' }), 'Design')
+  assert.equal(documentTitle({ ready: true, conversationTitle: '', name: '', title: 'Bug Investigation' }), 'Bug Investigation')
+  assert.equal(documentTitle({ ready: true, conversationTitle: '', name: '', title: '' }), 'New chat')
 })

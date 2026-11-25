@@ -18954,6 +18954,31 @@ function sessionLabel(entry, { bot, roster, rowTitle }) {
   if (entry.current && roster.newSessions?.[bot.id] === "empty") return t("New session");
   return t("Session {number}", { number: entry.number });
 }
+function conversationTitle(sessionId, { bot, room: room2, roster, title: title2 } = {}) {
+  if (roster?.ready === false) return "";
+  if (bot) {
+    const sessions = botSessions(bot, roster ?? {});
+    const partIndex = (bot.partOrder ?? []).indexOf(sessionId);
+    const entry = sessions.find((e) => e.id === sessionId) ?? {
+      id: sessionId,
+      number: partIndex >= 0 ? partIndex + 1 : 1,
+      current: currentPart(bot) === sessionId,
+      title: roster?.partTitles?.[sessionId] ?? ""
+    };
+    return sessionLabel(entry, { bot, roster: roster ?? {}, rowTitle: title2 });
+  }
+  if (room2) {
+    const clean = typeof title2 === "string" ? title2.trim() : "";
+    return clean !== "" && clean !== room2.name ? clean : "";
+  }
+  return "";
+}
+function documentTitle({ ready, showGoal, goalTitle, conversationTitle: titleValue, name, title: title2 } = {}) {
+  if (ready === false) return "";
+  if (showGoal && goalTitle) return name ? `${goalTitle} · ${name}` : goalTitle;
+  if (titleValue && name && titleValue !== name) return `${titleValue} · ${name}`;
+  return titleValue || name || title2 || t("New chat");
+}
 function sessionMeta(entry, at2) {
   if (entry.waiting) return { tone: "wait", text: t("Waiting for your answer") };
   if (entry.running) return { tone: "run", text: t("Running") };
@@ -50514,7 +50539,10 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
   const roster = useRoster((value) => value);
   const selectedView = useStore?.((state) => state.view);
   const away = useConversationViews?.((views) => views.some((view2) => view2.id === selectedView && view2.id !== "chat")) === true && typeof selectView === "function";
-  const title2 = useSessions((list) => list.byId[sessionId]?.displayTitle ?? list.byId[sessionId]?.title ?? "");
+  const title2 = useSessions((list) => {
+    const row2 = list.byId[sessionId];
+    return row2?.blank === true ? "" : row2?.displayTitle ?? row2?.title ?? "";
+  });
   const firstTurns = useSessions((list) => {
     const outline = list.projectionsBySession?.[sessionId]?.values?.turnOutline ?? list.byId[sessionId]?.projectionValues?.turnOutline;
     return Array.isArray(outline) ? outline.slice(0, 8).map((entry) => entry.turn).join(",") : "";
@@ -50549,8 +50577,32 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
   const roomWork = room2 ? JSON.parse(roomWorkKey || "[]") : [];
   const view = goal ? goalView(goal, { roster, roomWork }) : null;
   const goalShown = room2 !== void 0 && !away && goal !== void 0;
+  const showGoal = room2 !== void 0 && !away && (goal !== void 0 || goalCompose);
   const detailsOpen = useUi((state) => state.details === sessionId);
   const name = bot?.name ?? room2?.name ?? "";
+  const conversationTitleValue = (0, import_react63.useMemo)(
+    () => conversationTitle(sessionId, { bot, room: room2, roster, title: title2 }),
+    [sessionId, bot, room2, roster, title2]
+  );
+  const docTitle = (0, import_react63.useMemo)(
+    () => documentTitle({
+      ready: roster?.ready,
+      showGoal,
+      goalTitle: view?.title,
+      conversationTitle: conversationTitleValue,
+      name,
+      title: title2
+    }),
+    [roster?.ready, showGoal, view?.title, conversationTitleValue, name, title2]
+  );
+  (0, import_react63.useEffect)(() => {
+    if (!docTitle) return void 0;
+    const prev = document.title;
+    document.title = docTitle;
+    return () => {
+      document.title = prev;
+    };
+  }, [docTitle]);
   const useNews = useMemoryNews ?? noNews;
   const memoryIds = bot ? [bot.id] : room2 ? [room2.id, ...room2.members] : [];
   const notice = useMemoryNotice(memoryIds, useNews);
@@ -50573,7 +50625,6 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
     };
   }, [Boolean(room2)]);
   const memoryNotice = !away && notice && changed !== null && roster.memory !== false;
-  const showGoal = room2 !== void 0 && !away && (goal !== void 0 || goalCompose);
   (0, import_react63.useEffect)(() => {
     if (showGoal) document.body.dataset.btGoal = "";
     else delete document.body.dataset.btGoal;
@@ -50623,6 +50674,11 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
         !away && bot && currentPart(bot) === sessionId ? (0, import_react63.createElement)(BotHeaderModel, { key: bot.appliedModel ?? bot.model, bot, roster, actions, sessionId }) : null,
         !away && failover ? (0, import_react63.createElement)(FailoverActivity, { row: failover, roster, actions }) : null
       ),
+      !away && conversationTitleValue ? (0, import_react63.createElement)(
+        "div",
+        { className: "gb-chat-title", title: conversationTitleValue },
+        (0, import_react63.createElement)("span", { className: "gb-chat-title-text" }, conversationTitleValue)
+      ) : null,
       !away && (0, import_react63.createElement)(
         "div",
         { className: "gb-chat-tools" },
@@ -58236,7 +58292,30 @@ body[data-gb-conversation] .bt-head > .gb-chat-bar {
   box-shadow: none;
   backdrop-filter: none;
 }
-body[data-gb-conversation] .gb-chat-bar .gb-chat-tools::before { display: none; }
+body[data-gb-conversation] .gb-chat-bar {
+  gap: 8px;
+}
+body[data-gb-conversation] .gb-chat-bar :is(.gb-chat-tools, .gb-chat-title)::before { display: none; }
+body[data-gb-conversation] .gb-chat-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  padding-inline: 12px;
+}
+body[data-gb-conversation] .gb-chat-title-text {
+  max-width: 100%;
+  padding-inline: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 640px) {
+  body[data-gb-conversation] .gb-chat-title { display: none; }
+}
 
 body[data-gb-conversation] [data-conversation-content] {
   --dsh-chat-content-width: min(var(--gb-conversation-width), 100%);
@@ -69706,7 +69785,9 @@ var controlsStyle = `
   pointer-events: auto;
 }
 .gb-bot-model::before,
-.gb-chat-heading + .gb-chat-tools:not(:empty)::before {
+.gb-chat-heading + .gb-chat-tools:not(:empty)::before,
+.gb-chat-title::before,
+.gb-chat-title + .gb-chat-tools:not(:empty)::before {
   content: '';
   flex: none;
   width: 1px;
@@ -69719,6 +69800,32 @@ var controlsStyle = `
   inset-block-start: 8px;
 }
 .gb-chat-heading + .gb-chat-tools:not(:empty)::before { margin-inline: 3px 1px; }
+.gb-chat-title::before { margin-inline: 3px 0; }
+.gb-chat-title + .gb-chat-tools:not(:empty)::before { margin-inline: 3px 1px; }
+.gb-chat-title {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 6 auto;
+  min-width: 0;
+  max-width: 14rem;
+  height: 100%;
+  pointer-events: auto;
+}
+.gb-chat-title-text {
+  display: block;
+  min-width: 0;
+  padding-inline: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--bt-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 640px) {
+  .gb-chat-title { display: none; }
+}
 .gb-chat-heading > .bt-pill:hover,
 .gb-chat-heading > .bt-pill[aria-expanded=true],
 button.gb-bot-model:hover { background: var(--bt-hover); }

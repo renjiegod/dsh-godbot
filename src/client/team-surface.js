@@ -151,7 +151,9 @@ const controlsStyle = `
   pointer-events: auto;
 }
 .gb-bot-model::before,
-.gb-chat-heading + .gb-chat-tools:not(:empty)::before {
+.gb-chat-heading + .gb-chat-tools:not(:empty)::before,
+.gb-chat-title::before,
+.gb-chat-title + .gb-chat-tools:not(:empty)::before {
   content: '';
   flex: none;
   width: 1px;
@@ -164,6 +166,32 @@ const controlsStyle = `
   inset-block-start: 8px;
 }
 .gb-chat-heading + .gb-chat-tools:not(:empty)::before { margin-inline: 3px 1px; }
+.gb-chat-title::before { margin-inline: 3px 0; }
+.gb-chat-title + .gb-chat-tools:not(:empty)::before { margin-inline: 3px 1px; }
+.gb-chat-title {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 6 auto;
+  min-width: 0;
+  max-width: 14rem;
+  height: 100%;
+  pointer-events: auto;
+}
+.gb-chat-title-text {
+  display: block;
+  min-width: 0;
+  padding-inline: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  color: var(--bt-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 640px) {
+  .gb-chat-title { display: none; }
+}
 .gb-chat-heading > .bt-pill:hover,
 .gb-chat-heading > .bt-pill[aria-expanded=true],
 button.gb-bot-model:hover { background: var(--bt-hover); }

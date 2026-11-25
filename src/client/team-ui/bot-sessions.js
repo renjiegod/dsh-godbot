@@ -70,6 +70,37 @@ export function sessionLabel(entry, { bot, roster, rowTitle }) {
   return t('Session {number}', { number: entry.number })
 }
 
+// Title shown in the top bar for the open conversation: the Bot session's prompt or
+// session label (to pair with the Bot pill), or a group's distinct topic title.
+// Non-team sessions already place their title in the header pill itself.
+export function conversationTitle(sessionId, { bot, room, roster, title } = {}) {
+  if (roster?.ready === false) return ''
+  if (bot) {
+    const sessions = botSessions(bot, roster ?? {})
+    const partIndex = (bot.partOrder ?? []).indexOf(sessionId)
+    const entry = sessions.find(e => e.id === sessionId) ?? {
+      id: sessionId,
+      number: partIndex >= 0 ? partIndex + 1 : 1,
+      current: currentPart(bot) === sessionId,
+      title: roster?.partTitles?.[sessionId] ?? '',
+    }
+    return sessionLabel(entry, { bot, roster: roster ?? {}, rowTitle: title })
+  }
+  if (room) {
+    const clean = typeof title === 'string' ? title.trim() : ''
+    return clean !== '' && clean !== room.name ? clean : ''
+  }
+  return ''
+}
+
+// Browser tab title for the open conversation, keeping the Bot or group name as suffix.
+export function documentTitle({ ready, showGoal, goalTitle, conversationTitle: titleValue, name, title } = {}) {
+  if (ready === false) return ''
+  if (showGoal && goalTitle) return name ? `${goalTitle} · ${name}` : goalTitle
+  if (titleValue && name && titleValue !== name) return `${titleValue} · ${name}`
+  return titleValue || name || title || t('New chat')
+}
+
 // What a row says on its right: a question waiting for the user, a turn running, else
 // how long ago the session was last active.
 export function sessionMeta(entry, at) {

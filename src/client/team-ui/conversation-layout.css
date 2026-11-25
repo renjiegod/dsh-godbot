@@ -26,7 +26,30 @@ body[data-gb-conversation] .bt-head > .gb-chat-bar {
   box-shadow: none;
   backdrop-filter: none;
 }
-body[data-gb-conversation] .gb-chat-bar .gb-chat-tools::before { display: none; }
+body[data-gb-conversation] .gb-chat-bar {
+  gap: 8px;
+}
+body[data-gb-conversation] .gb-chat-bar :is(.gb-chat-tools, .gb-chat-title)::before { display: none; }
+body[data-gb-conversation] .gb-chat-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: none;
+  padding-inline: 12px;
+}
+body[data-gb-conversation] .gb-chat-title-text {
+  max-width: 100%;
+  padding-inline: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@container (max-width: 640px) {
+  body[data-gb-conversation] .gb-chat-title { display: none; }
+}
 
 body[data-gb-conversation] [data-conversation-content] {
   --dsh-chat-content-width: min(var(--gb-conversation-width), 100%);
