@@ -42541,7 +42541,7 @@ function SectionBlock({ section, entries: entries2, rowProps, markedUnread, rena
         { className: "bt-sec-acts" },
         (0, import_react44.createElement)("button", {
           type: "button",
-          className: "bt-sec-act",
+          className: "bt-sec-act bt-sec-act-hover",
           "aria-label": t("Add to {name}", { name: section.name }),
           title: t("Add to {name}", { name: section.name }),
           onClick: (event) => {
@@ -42552,7 +42552,7 @@ function SectionBlock({ section, entries: entries2, rowProps, markedUnread, rena
         }, (0, import_react44.createElement)(PlusIcon)),
         (0, import_react44.createElement)("button", {
           type: "button",
-          className: "bt-sec-act",
+          className: "bt-sec-act bt-sec-act-hover",
           "aria-label": t("{name} actions", { name: section.name }),
           title: t("{name} actions", { name: section.name }),
           onClick: (event) => {
@@ -42560,16 +42560,20 @@ function SectionBlock({ section, entries: entries2, rowProps, markedUnread, rena
             const rect = event.currentTarget.getBoundingClientRect();
             openSecMenu("section", rect.left, rect.bottom + 4);
           }
-        }, (0, import_react44.createElement)(DotsIcon))
+        }, (0, import_react44.createElement)(DotsIcon)),
+        (0, import_react44.createElement)("button", {
+          type: "button",
+          className: "bt-sec-act bt-sec-context",
+          "aria-label": `${contextLabel} · ${section.name}`,
+          title: contextLabel,
+          "aria-haspopup": "dialog",
+          onClick: (event) => {
+            event.stopPropagation();
+            actions.openSectionContext(section.id);
+          }
+        }, (0, import_react44.createElement)(MemoryIcon))
       )
     ),
-    renaming ? null : (0, import_react44.createElement)("button", {
-      type: "button",
-      className: "bt-sec-context",
-      "aria-label": `${contextLabel} · ${section.name}`,
-      "aria-haspopup": "dialog",
-      onClick: () => actions.openSectionContext(section.id)
-    }, (0, import_react44.createElement)(MemoryIcon), (0, import_react44.createElement)("span", null, contextLabel), (0, import_react44.createElement)(ChevronRightIcon)),
     (0, import_react44.createElement)(
       "div",
       {
@@ -43390,8 +43394,8 @@ var SIDEBAR_CSS = `
 .bt-sec-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto}
 .bt-sec-count{font-size:11px;line-height:16px;font-weight:500;color:var(--bt-ink-3);font-variant-numeric:tabular-nums;flex:none}
 .bt-sec-head-wrap:hover .bt-sec-count-hide{display:none}
-.bt-sec-tail{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:none}
-.bt-sec-head-wrap:hover .bt-sec-tail{padding-right:44px}
+.bt-sec-tail{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex:none;padding-right:22px}
+.bt-sec-head-wrap:hover .bt-sec-tail{padding-right:68px}
 .bt-sec-pile{display:inline-flex;align-items:center;animation:bt-sec-pile-in ${SPRING_POP.duration}ms ${SPRING_POP.easing}}
 @keyframes bt-sec-pile-in{from{opacity:0;transform:translateX(6px) scale(.82)}to{opacity:1;transform:none}}
 .bt-sec-pile-item{display:inline-flex;border-radius:50%;corner-shape:round;background:var(--bt-sidebar);box-shadow:0 0 0 1.5px var(--bt-sidebar)}
@@ -43401,19 +43405,14 @@ var SIDEBAR_CSS = `
 .bt-sec-status[data-kind=working]{background:var(--bt-green);box-shadow:0 0 0 2px color-mix(in srgb,var(--bt-green) 22%,transparent)}
 .bt-sec-status[data-kind=alert]{width:12px;height:12px;background:var(--bt-accent);color:var(--bt-accent-ink);font-size:8.5px;line-height:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center}
 .bt-sec-status[data-kind=unread]{background:var(--bt-accent)}
-.bt-sec-acts{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:none;align-items:center;gap:2px}
-.bt-sec-head-wrap:hover .bt-sec-acts,.bt-sec-acts:focus-within{display:inline-flex}
+.bt-sec-acts{position:absolute;right:4px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;gap:2px}
 .bt-sec-act{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:transparent;color:var(--bt-ink-3);cursor:pointer;transition:background-color .12s ease,color .12s ease,transform ${SPRING_TAP.duration}ms ${SPRING_TAP.easing}}
 .bt-sec-act:hover{background:var(--bt-active);color:var(--bt-ink)}
 .bt-sec-act:active{transform:scale(.9)}
 .bt-sec-act:focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}
 .bt-sec-act svg{width:13px;height:13px}
-.bt-sec-context{display:flex;align-items:center;gap:6px;min-height:30px;margin:2px 6px 4px 24px;padding:3px 8px;border:1px solid var(--bt-line-2);border-radius:6px;background:color-mix(in srgb,var(--bt-accent) 12%,var(--bt-card));color:var(--bt-ink);font:inherit;font-size:12px;line-height:16px;font-weight:600;text-align:left;cursor:pointer;transition:background-color .12s ease}
-.bt-sec-context:hover,.bt-sec-context:focus-visible{background:color-mix(in srgb,var(--bt-accent) 20%,var(--bt-card))}
-.bt-sec-context:focus-visible{outline:2px solid var(--bt-accent);outline-offset:1px}
-.bt-sec-context svg{width:16px;height:16px;flex:none}
-.bt-sec-context span{flex:1;min-width:0;overflow-wrap:anywhere}
-.bt-sec-context svg:last-child{width:12px;height:12px;color:var(--bt-ink-2)}
+.bt-sec-acts .bt-sec-act-hover{display:none}
+.bt-sec-head-wrap:hover .bt-sec-act-hover,.bt-sec-acts:focus-within .bt-sec-act-hover{display:inline-flex}
 .bt-sec-edit{display:flex;align-items:center;height:30px;padding:0 4px}
 .bt-sec-edit input{width:100%;height:24px;padding:0 8px;border:0;border-radius:6px;background:var(--bt-card);color:var(--bt-ink);font:inherit;font-size:12px;line-height:16px;font-weight:600;outline:none;box-shadow:inset 0 0 0 1.5px var(--bt-accent)}
 .bt-sec-body{display:grid;grid-template-rows:1fr;transition:grid-template-rows ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
@@ -43440,7 +43439,7 @@ var SIDEBAR_CSS = `
 .bt-menu-color-dot:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 .bt-sec-add-menu{max-width:260px}
 .bt-sec-add-list{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow-y:auto}
-@media (prefers-reduced-motion:reduce){.bt-sec-body,.bt-sec-chev,.bt-sec-act,.bt-sec-context,.bt-rail-folder{transition:none}.bt-sec-pile{animation:none}}
+@media (prefers-reduced-motion:reduce){.bt-sec-body,.bt-sec-chev,.bt-sec-act,.bt-rail-folder{transition:none}.bt-sec-pile{animation:none}}
 `;
 
 // src/client/team-ui/settings-shell.js
