@@ -613,9 +613,20 @@ export function apply(ctx, godbot) {
   const sessionSelection = godbot.sessionSelection({
     current: mainView,
     waitMs: OPENING_WAIT_MS,
-    onEmpty: () => {
-      const main = roster.getSnapshot().mainBotId
-      if (main && godbot.active()) void actions.landOn(main).catch(quietly('recover empty Bot view'))
+    // A chat that was cleared while it opened lands on where its Bot or group goes on
+    // now: the Host can archive the part on screen when the Bot switches parts
+    // elsewhere (a phone, another window). Only a chat with no owner lands on the Main Bot.
+    onEmpty: (target) => {
+      if (!godbot.active()) return
+      const snapshot = roster.getSnapshot()
+      const owner = target === undefined ? undefined : ownerOfSession(target)
+      const bot = owner === undefined ? undefined : snapshot.byId[owner.id]
+      if (bot !== undefined) {
+        void actions.landOn(bot.id, { botId: bot.id, sessionId: target }).catch(quietly('recover empty Bot view'))
+        return
+      }
+      const id = owner?.id ?? snapshot.mainBotId
+      if (id) void actions.landOn(id).catch(quietly('recover empty Bot view'))
     },
   })
   ctx.effect(() => () => sessionSelection.dispose(), 'Godbot session selection')

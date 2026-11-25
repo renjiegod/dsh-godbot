@@ -92,6 +92,29 @@ test('reopening a part reserves its destination while its old conversation is ar
   }
 })
 
+test('a chat cleared while it opens hands its own id to the recovery', async () => {
+  let main = 'first'
+  let expire
+  const empty = []
+  const selection = sessionSelection({
+    current: () => main,
+    onEmpty: target => empty.push(target),
+    waitMs: 5000,
+    schedule(fn) { expire = fn; return fn },
+    cancel() {},
+  })
+  // The user opens an earlier part; the Host then archives it for a switch made elsewhere.
+  selection.open('second', id => { main = id })
+  main = undefined
+  selection.observe(main)
+  expire()
+  assert.deepEqual(empty, ['second'])
+  // A failed switch that left the view empty names the part it asked for too.
+  await assert.rejects(selection.open('third', () => {}, () => Promise.reject(new Error('busy'))), /busy/)
+  assert.deepEqual(empty, ['second', 'third'])
+  selection.dispose()
+})
+
 function browserAt(url, state = null, prior = []) {
   const events = new Map()
   const pages = [

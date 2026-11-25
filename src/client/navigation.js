@@ -39,7 +39,7 @@ export function sessionSelection({ current, onEmpty, waitMs, schedule = setTimeo
       const fail = (error) => {
         if (isCurrent()) {
           endOpening()
-          if (prepare !== undefined && current() == null) onEmpty()
+          if (prepare !== undefined && current() == null) onEmpty(target)
         }
         throw error
       }
@@ -49,7 +49,8 @@ export function sessionSelection({ current, onEmpty, waitMs, schedule = setTimeo
           timer = schedule(() => {
             if (!isCurrent() || !pending) return
             endOpening()
-            if (current() == null) onEmpty()
+            // The chat asked for, or the one it moved on to, is where the view lands.
+            if (current() == null) onEmpty(target)
           }, waitMs)
         }
         try { open(target) } catch (error) { fail(error) }

@@ -58773,9 +58773,20 @@ function apply(ctx, godbot) {
   const sessionSelection2 = godbot.sessionSelection({
     current: mainView,
     waitMs: OPENING_WAIT_MS,
-    onEmpty: () => {
-      const main = roster.getSnapshot().mainBotId;
-      if (main && godbot.active()) void actions.landOn(main).catch(quietly("recover empty Bot view"));
+    // A chat that was cleared while it opened lands on where its Bot or group goes on
+    // now: the Host can archive the part on screen when the Bot switches parts
+    // elsewhere (a phone, another window). Only a chat with no owner lands on the Main Bot.
+    onEmpty: (target) => {
+      if (!godbot.active()) return;
+      const snapshot = roster.getSnapshot();
+      const owner = target === void 0 ? void 0 : ownerOfSession(target);
+      const bot = owner === void 0 ? void 0 : snapshot.byId[owner.id];
+      if (bot !== void 0) {
+        void actions.landOn(bot.id, { botId: bot.id, sessionId: target }).catch(quietly("recover empty Bot view"));
+        return;
+      }
+      const id = owner?.id ?? snapshot.mainBotId;
+      if (id) void actions.landOn(id).catch(quietly("recover empty Bot view"));
     }
   });
   ctx.effect(() => () => sessionSelection2.dispose(), "Godbot session selection");
@@ -68555,7 +68566,7 @@ function sessionSelection({ current: current2, onEmpty, waitMs, schedule = setTi
       const fail2 = (error) => {
         if (isCurrent()) {
           endOpening();
-          if (prepare !== void 0 && current2() == null) onEmpty();
+          if (prepare !== void 0 && current2() == null) onEmpty(target);
         }
         throw error;
       };
@@ -68565,7 +68576,7 @@ function sessionSelection({ current: current2, onEmpty, waitMs, schedule = setTi
           timer = schedule(() => {
             if (!isCurrent() || !pending) return;
             endOpening();
-            if (current2() == null) onEmpty();
+            if (current2() == null) onEmpty(target);
           }, waitMs);
         }
         try {

@@ -118,6 +118,10 @@ export default async function newSession({ makeHost, candidate, note }) {
   const repeated = await Promise.all([reopenFirst(), reopenFirst()])
   assert.deepEqual(repeated.toSorted(), [false, true], 'a repeated request switches to the same session once')
   assert.deepEqual(await partsOf(), { current: first.current, earlier: [second.current] })
+  // The part on screen was archived by a switch made elsewhere: the window stays with
+  // this Bot instead of falling back to the Main Bot.
+  await page.waitForTimeout(6000)
+  assert.equal((await page.locator('.bt-head .bt-pill-name').first().textContent())?.trim(), bot.name, 'the view stays with the Bot whose part moved')
   await openBotChat(host, bot)
   await openPanel()
   await openEarlier(secondSession)
