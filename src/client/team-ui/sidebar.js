@@ -7,7 +7,7 @@ import { inkFill } from './inks.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
 import { lastActivity } from './bot-sessions.js'
-import { PlusIcon, SearchIcon, SidebarIcon, GearIcon, PinMarkIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, ChevronRightIcon, CloseIcon, DotsIcon, FolderIcon } from './icons.js'
+import { PlusIcon, SearchIcon, SidebarIcon, GearIcon, PinMarkIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, ChevronRightIcon, CloseIcon, DotsIcon, FolderIcon, MemoryIcon } from './icons.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
 import { reducedMotion } from './activity-row.js'
@@ -367,6 +367,7 @@ function SectionBlock({ section, entries, rowProps, markedUnread, renaming, drop
     if (!keep || value.trim() === '' || value.trim() === section.name) return
     void Promise.resolve(actions.saveSection({ id: section.id, name: value.trim() })).catch(error => actions.reportError(error, 'section-rename'))
   }
+  const contextLabel = t('Section description and memory')
   return h('div', {
     className: 'bt-sec',
     'data-sec-id': section.id,
@@ -423,6 +424,10 @@ function SectionBlock({ section, entries, rowProps, markedUnread, renaming, drop
               openSecMenu('section', rect.left, rect.bottom + 4)
             },
           }, h(DotsIcon)))),
+  renaming ? null : h('button', {
+    type: 'button', className: 'bt-sec-context', 'aria-label': `${contextLabel} · ${section.name}`, 'aria-haspopup': 'dialog',
+    onClick: () => actions.openSectionContext(section.id),
+  }, h(MemoryIcon), h('span', null, contextLabel), h(ChevronRightIcon)),
   h('div', {
     className: 'bt-sec-body',
     inert: section.collapsed ? true : undefined,
@@ -1267,6 +1272,12 @@ export const SIDEBAR_CSS = `
 .bt-sec-act:active{transform:scale(.9)}
 .bt-sec-act:focus-visible{outline:2px solid var(--bt-accent);outline-offset:-2px}
 .bt-sec-act svg{width:13px;height:13px}
+.bt-sec-context{display:flex;align-items:center;gap:6px;min-height:30px;margin:2px 6px 4px 24px;padding:3px 8px;border:1px solid var(--bt-line-2);border-radius:6px;background:color-mix(in srgb,var(--bt-accent) 12%,var(--bt-card));color:var(--bt-ink);font:inherit;font-size:12px;line-height:16px;font-weight:600;text-align:left;cursor:pointer;transition:background-color .12s ease}
+.bt-sec-context:hover,.bt-sec-context:focus-visible{background:color-mix(in srgb,var(--bt-accent) 20%,var(--bt-card))}
+.bt-sec-context:focus-visible{outline:2px solid var(--bt-accent);outline-offset:1px}
+.bt-sec-context svg{width:16px;height:16px;flex:none}
+.bt-sec-context span{flex:1;min-width:0;overflow-wrap:anywhere}
+.bt-sec-context svg:last-child{width:12px;height:12px;color:var(--bt-ink-2)}
 .bt-sec-edit{display:flex;align-items:center;height:30px;padding:0 4px}
 .bt-sec-edit input{width:100%;height:24px;padding:0 8px;border:0;border-radius:6px;background:var(--bt-card);color:var(--bt-ink);font:inherit;font-size:12px;line-height:16px;font-weight:600;outline:none;box-shadow:inset 0 0 0 1.5px var(--bt-accent)}
 .bt-sec-body{display:grid;grid-template-rows:1fr;transition:grid-template-rows ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
@@ -1293,5 +1304,5 @@ export const SIDEBAR_CSS = `
 .bt-menu-color-dot:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 .bt-sec-add-menu{max-width:260px}
 .bt-sec-add-list{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow-y:auto}
-@media (prefers-reduced-motion:reduce){.bt-sec-body,.bt-sec-chev,.bt-sec-act,.bt-rail-folder{transition:none}.bt-sec-pile{animation:none}}
+@media (prefers-reduced-motion:reduce){.bt-sec-body,.bt-sec-chev,.bt-sec-act,.bt-sec-context,.bt-rail-folder{transition:none}.bt-sec-pile{animation:none}}
 `
