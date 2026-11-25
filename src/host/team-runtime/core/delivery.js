@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { BACKGROUND_NOTE, BACKGROUND_ROLE, HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
 import { headOf, textOf } from './text.js'
+import { conversationHead } from './threads.js'
 
 export function install(rt) {
   const { ctx, state } = rt
@@ -68,6 +69,25 @@ export function install(rt) {
     return [...shown.values()]
   }
 
+  // A dedicated conversation has a lasting origin as long as this peer has only
+  // sent work to it from that one conversation. The current turn still has its own
+  // origin if several of the peer's conversations used the same receiving chat.
+  function conversationOpeningFrom(bot, peer, partId) {
+    const head = conversationHead(bot, partId)
+    if (head === undefined) return undefined
+    let origin
+    let opening
+    for (const record of rt.ledger.records(pairBook(bot.id, peer.id))) {
+      if (record.event !== 'delivered' || typeof record.fromPart !== 'string'
+        || conversationHead(bot, record.sessionId) !== head) continue
+      const source = conversationHead(peer, record.fromPart) ?? record.fromPart
+      if (origin !== undefined && source !== origin) return undefined
+      origin = source
+      if (record.opensConversation === true) opening = record.fromPart
+    }
+    return opening
+  }
+
   // `sessionId` defaults to the recipient's own chat; group turns name its group Session.
   // `deferred`: a request the Bot already read mid-turn, handed back to answer in a
   // turn of its own; its exchange was recorded when it first arrived. `resumed` and
@@ -82,7 +102,8 @@ export function install(rt) {
   // result that came back goes on with. `merged`: a request that takes in an earlier
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
-  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, images = [], files = [], length, work, initiator }) {
+  // `opensConversation` records that a direct request created its own conversation.
+  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, opensConversation = false, images = [], files = [], length, work, initiator }) {
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
     if (to === undefined) throw new Error(`Unknown Bot ${toId}`)
@@ -137,8 +158,12 @@ export function install(rt) {
     else agent.followup(message)
     await ctx.sessions.flush(agent.session)
     if (book !== undefined) {
-      rt.ledger.append(book, { event: 'delivered', id: exchangeId, sessionId: targetSessionId, time: Date.now() })
-      // The message went out either way; a mark that is lost only hides it from the dialog.
+      const direct = role === 'request' && fromPart !== undefined && fromRoomId === undefined && roomId === undefined
+      rt.ledger.append(book, {
+        event: 'delivered', id: exchangeId, sessionId: targetSessionId, time: Date.now(),
+        ...(direct ? { fromPart } : {}), ...(direct && opensConversation ? { opensConversation: true } : {}),
+      })
+      // The message went out either way. A lost mark makes it unavailable to the ledger's readers.
       await rt.ledger.written(book).catch(() => {})
     } else if (recordExchange && EXCHANGE_ROLES.has(role) && !deferred && !resumed && !retried) {
       // A message no Bot of the team sent keeps the record it had before the ledger.
@@ -251,5 +276,5 @@ export function install(rt) {
     return { ...record, ledger: true }
   }
 
-  Object.assign(rt, { resolveAgent, deliver, deliverBackground, exchangeText, attachLong, fileText, exchangesOf, exchangeOf })
+  Object.assign(rt, { resolveAgent, deliver, deliverBackground, exchangeText, attachLong, fileText, exchangesOf, exchangeOf, conversationOpeningFrom })
 }

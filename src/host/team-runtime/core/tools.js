@@ -254,7 +254,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'message_bot',
-    description: 'Send a message to another Bot on the team. Godbot uses a relevant conversation of that Bot or opens a new one, so include the task name or other context. A reply comes back to the conversation you sent from. With reply_to "user" the Bot answers the user in its own chat. Do not message a Bot waiting for your current work: your answer reaches it once you end your turn and everything you handed on is back. In a group chat this calls a member there, as writing "@Name" does. With request_id, repeating the same request returns its first receipt.',
+    description: 'Send a message to another Bot on the team. Updates to the Bot that delegated this work return to its originating conversation. For other work, include the task name so Godbot can reuse a relevant conversation or open a new one. A reply comes back to the conversation you sent from. With reply_to "user" the Bot answers the user in the selected conversation. Do not message a Bot waiting for your current work: your answer reaches it once you end your turn and everything you handed on is back. In a group chat this calls a member there, as writing "@Name" does. With request_id, repeating the same request returns its first receipt.',
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
@@ -266,8 +266,9 @@ export function install(rt) {
       when: {
         type: 'string',
         enum: ['now', 'queue'],
-        description: '"now" (default) can reach the next step of the relevant running task. "queue" starts a separate turn in the selected conversation. With reply_to "user" the message always queues.',
+        description: '"now" (default) can reach the next step of the relevant running task. "queue" starts a separate turn. A message routed back to the handoff origin or sent with reply_to "user" always queues.',
       },
+      new_conversation: { type: 'boolean', description: 'Start a separate conversation for unrelated work. Applies only when messaging from your own chat.' },
       request_id: {
         type: 'string',
         description: `Your own name for this request, up to ${NAME_MAX} characters, so that a repeat of it is not sent twice. Send the same request_id with the same message when you repeat a call: the receipt of the first call comes back and nothing is sent again. A request_id names one request: with other content it is refused.`,
@@ -286,6 +287,7 @@ export function install(rt) {
       if (name.length > NAME_MAX) return `The request_id is ${name.length} characters long; a request name is at most ${NAME_MAX}.`
       const text = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
       const room = rt.roomOf(rt.groupOwners.get(exec.agent?.id)?.roomId)
+      const newConversation = room === undefined && args.new_conversation === true
       // The request the caller named: it is admitted once, and a repeat of it is not sent again.
       const request = name === '' ? undefined : rt.requestIdentity({
         caller: sender.id,
@@ -296,6 +298,7 @@ export function install(rt) {
           message: String(args.message ?? '').replace(/\r\n?/g, '\n').trim(),
           reply_to: args.reply_to === 'user' ? 'user' : 'me',
           when: args.when === 'queue' ? 'queue' : 'now',
+          ...(newConversation ? { new_conversation: true } : {}),
         },
       })
       // What the caller gets for a request that was admitted before.
@@ -332,17 +335,18 @@ export function install(rt) {
         // The part of the sender's own chat this request comes from: its answer goes back
         // to that part's thread.
         const fromPart = callerPart(exec).fromPart
+        const originPart = newConversation ? undefined : rt.botMessageOrigin(sender, target, fromPart)
         const filename = `Message from ${sender.name}.txt`
         const original = await rt.attachLong(text, filename)
         // Nothing went out, so a named request must not take this as a delivered
         // receipt: admitRequest drops the pending record instead, and a retry can send.
         if (original === undefined) { if (request !== undefined) request.unsent = true; return tooLong(text) }
-        const route = { text, fromId: sender.id, fromPart, work, toUser, steer: args.when !== 'queue' && !toUser, signal: exec.signal }
+        const route = { text, fromId: sender.id, fromPart, originPart, newConversation, work, toUser, steer: args.when !== 'queue' && !toUser, signal: exec.signal }
         return rt.routeBotMessage(target, route, async (sessionId, { steer, created }) => {
           const agent = await rt.resolveAgent(sessionId)
           // Only coalesce requests in the selected conversation with a common
-          // origin, work, and audience. A reply must have exactly one destination.
-          const earlier = unreadRequest(agent, sender.id, fromPart, work, toUser)
+          // origin, work, and audience. Keep updates to a handoff origin separate.
+          const earlier = originPart === undefined ? unreadRequest(agent, sender.id, fromPart, work, toUser) : undefined
           const before = earlier === undefined ? undefined : bodyOf(earlier.message)
           const canMerge = before !== undefined && (!earlier.steered || steer) && relatedBotMessages(text, before.text)
           const merged = canMerge ? await rt.attachLong(`${before.text}\n\n${text}`, filename) : undefined
@@ -354,7 +358,12 @@ export function install(rt) {
           if (joins) rt.forgetDelivery?.(exchangeId)
           else if (!toUser) rt.openWork(exchangeId, { from: sender.id, to: target.id, parent: work, ...(fromPart ? { fromPart } : {}) })
           try {
-            await rt.deliver({ fromId: sender.id, toId: target.id, sessionId, ...(fromPart ? { fromPart } : {}), text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length, role: 'request', steer: atNextStep, exchangeId, ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}) })
+            await rt.deliver({
+              fromId: sender.id, toId: target.id, sessionId, ...(fromPart ? { fromPart } : {}),
+              text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length,
+              role: 'request', steer: atNextStep, exchangeId, ...(created ? { opensConversation: true } : {}),
+              ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}),
+            })
           } catch (error) {
             // A queued delivery for an existing Bot can be retried after restart.
             if (!joins && rt.botOf(target.id) === undefined) rt.dropWork(exchangeId)

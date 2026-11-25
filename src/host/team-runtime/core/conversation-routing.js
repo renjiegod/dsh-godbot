@@ -73,6 +73,18 @@ export function install(rt) {
     return sessionId
   })
 
+  rt.botMessageOrigin = (sender, target, fromPart) => {
+    const request = rt.live.get(fromPart)?.info
+    if (request?.kind === SOURCE_KIND && request.role === 'request') {
+      // A new request can use a conversation that opened for a different handoff.
+      // While answering it, only its own sender is the origin.
+      if (request.senderSessionId === target.id && request.senderRoomId === undefined
+        && typeof request.senderPart === 'string') return request.senderPart
+      return undefined
+    }
+    return rt.conversationOpeningFrom(sender, target, fromPart)
+  }
+
   async function recentPrompts(conversation, signal) {
     const prompts = []
     for (const partId of conversation.parts.slice(-2).reverse()) {
@@ -125,7 +137,12 @@ export function install(rt) {
 
   async function route(bot, message, send) {
     message.signal?.throwIfAborted()
-    const match = await choose(bot, message)
+    // A handoff's origin is a destination, even when the update has different words
+    // or is visible to the user. It must get its own turn in that conversation.
+    const linked = message.originPart !== undefined
+    let match
+    if (linked) match = { sessionId: message.originPart, steer: false }
+    else if (!message.newConversation) match = await choose(bot, message)
     message.signal?.throwIfAborted()
     if (rt.botOf(bot.id) !== bot) throw new Error('The receiving Bot no longer exists.')
     if (match !== undefined) {
@@ -133,13 +150,17 @@ export function install(rt) {
       message.signal?.throwIfAborted()
       if (sessionId !== undefined) return send(sessionId, { steer: match.steer, created: false })
     }
-    const current = rt.chatOf(bot.id)
-    // A genuinely unused chat already is a fresh conversation.
-    if (!rt.live.get(current)?.turn && rt.unreadOf(current).length === 0 && await rt.partTalked(current).catch(() => true) === false) {
-      const agent = await rt.resolveAgent(current).catch(() => undefined)
-      if (agent?.status === 'idle' && !rt.openingChat(bot.id) && rt.chatOf(bot.id) === current
-        && (agent.inbox?.nextTurn?.length ?? 0) === 0 && (agent.inbox?.nextStep?.length ?? 0) === 0
-        && await rt.partTalked(current).catch(() => true) === false) return send(current, { steer: false, created: false })
+    if (!linked && !message.newConversation) {
+      const current = rt.chatOf(bot.id)
+      // An unused chat already is a fresh conversation. An empty part in a
+      // conversation with earlier parts can still have its own work.
+      const onlyPart = ownConversations(bot)[0]?.parts.length === 1
+      if (onlyPart && !rt.live.get(current)?.turn && rt.unreadOf(current).length === 0 && await rt.partTalked(current).catch(() => true) === false) {
+        const agent = await rt.resolveAgent(current).catch(() => undefined)
+        if (agent?.status === 'idle' && !rt.openingChat(bot.id) && rt.chatOf(bot.id) === current
+          && (agent.inbox?.nextTurn?.length ?? 0) === 0 && (agent.inbox?.nextStep?.length ?? 0) === 0
+          && await rt.partTalked(current).catch(() => true) === false) return send(current, { steer: false, created: false })
+      }
     }
     message.signal?.throwIfAborted()
     const sessionId = await rt.newBotConversation(bot, message.toUser ? partTitle(message.text) : undefined)
