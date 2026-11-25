@@ -31,6 +31,15 @@
 .gb-pr-toggle{display:flex;gap:10px;align-items:center;padding:11px 13px}
 .gb-sandbox-create{display:grid;gap:12px}
 .gb-sandbox-create .bt-input{width:100%}
+.gb-sandbox-row{align-items:center}
+.gb-sandbox-status{flex:none;max-width:38%;font-size:12px;font-weight:600;line-height:1.4;text-align:end;color:var(--bt-ink-2)}
+.gb-sandbox-status[data-state=running]{color:var(--bt-accent)}
+.gb-sandbox-status:is([data-state=pending],[data-state=starting],[data-state=stopping],[data-state=deleting]){color:var(--bt-warn)}
+.gb-sandbox-status:is([data-state=failed],[data-state=missing]){color:var(--bt-danger)}
+.gb-pr-heading>.gb-sandbox-status{max-width:none}
+.gb-sandbox-fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:6px 12px;margin:0;font-size:12px;overflow-wrap:anywhere}
+.gb-sandbox-fields dt{color:var(--bt-ink-2)}
+.gb-sandbox-fields dd{margin:0}
 .gb-pr-hint{font-size:12px;color:var(--bt-ink-2)}
 .gb-pr-count{font-weight:400;color:var(--bt-ink-2);font-size:12px}
 .gb-providers a{color:var(--bt-accent);text-decoration:underline;text-underline-offset:2px}

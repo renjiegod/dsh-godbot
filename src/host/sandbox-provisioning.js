@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process'
-import { createHash, randomBytes } from 'node:crypto'
-import { accessSync, constants, copyFileSync, createReadStream, existsSync, mkdirSync, mkdtempSync,
+import { createHash } from 'node:crypto'
+import { accessSync, constants, copyFileSync, createReadStream, existsSync, mkdtempSync,
   readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir, release } from 'node:os'
 import { isAbsolute, join, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
-import { checkProvisionedSandbox, owned, registerSandboxAccount, sandboxRegistry, trustedCommand } from './sandbox-accounts.js'
-import { sandboxAccountsEnabled } from './sandbox-settings.js'
+import { checkProvisionedSandbox, registerSandboxAccount, trustedCommand } from './sandbox-accounts.js'
+import { managedAccountRecord, managedHome, managedSandboxId, owned, privateDirectory, sandboxRegistry } from './sandbox-state.js'
 
 const exec = promisify(execFile)
 const limaVersion = '2.3.0'
@@ -17,13 +17,13 @@ const limaArchives = {
   'linux-arm64': ['Linux-aarch64', 33648446, '7e295d243d9b9439fa05628500daff4371a6861cc7e995ac4af4a0781f736cc6'],
   'linux-x64': ['Linux-x86_64', 37520217, 'cc8ba97f1c801b899f7c9eda9919dfc4ce4fa2c140c53e5add15aa2d0a1936f9'],
 }
-const providers = {
+export const sandboxProviders = {
   antigravity: { name: 'Antigravity', bin: 'agy', url: 'https://antigravity.google/cli/install.sh' },
   claude: { name: 'Claude Code', bin: 'claude', url: 'https://claude.ai/install.sh' },
   codex: { name: 'Codex CLI', bin: 'codex', url: 'https://chatgpt.com/codex/install.sh' },
 }
 const guestPath = '/mnt/godbot-workspace'
-const failures = {
+export const provisioningFailures = {
   runtime: '无法下载或校验 Lima。请检查宿主机能否访问 GitHub 后重试。',
   vm: '无法启动 Ubuntu 沙箱。请检查宿主机的虚拟化、网络连接和磁盘空间后重试。',
   keyring: '无法初始化 Antigravity 的沙箱密钥环，请重试。',
@@ -37,13 +37,12 @@ const hostEnv = () => ({ HOME: homedir(), PATH: systemPaths.join(':'), LANG: 'C.
 const linux = process.platform === 'linux'
 const filesystem = linux ? '9p' : 'virtiofs'
 const archiveSpec = limaArchives[process.platform + '-' + process.arch]
-const hostIssues = {
+export const sandboxHostIssues = {
   unsupported: '自动创建沙箱支持 macOS 14 及以上，以及 x86-64 和 ARM64 Linux 宿主机。',
   'linux-root': '请以普通 Linux 用户运行 Godbot 宿主，沙箱虚拟机需要以该用户启动。',
   'linux-tools': '请在 Linux 宿主机安装 QEMU、EFI 固件、OpenSSH、curl 和 tar 后重试。',
   'linux-kvm': 'Godbot 宿主用户无法访问 /dev/kvm。请授权该用户访问 KVM 设备，然后重新启动宿主进程。',
 }
-const managedHome = () => join(homedir(), '.godbot-lima')
 
 function executable(path) {
   try { return trustedCommand([path])[0] } catch { return null }
@@ -67,19 +66,13 @@ function hostIssue() {
   return null
 }
 
-function privateDirectory(path) {
-  mkdirSync(path, { recursive: true, mode: 0o700 })
-  owned(path, true)
-  return path
-}
-
 function contains(root, path) {
   const rel = relative(root, path)
   return rel === '' || (!isAbsolute(rel) && rel !== '..' && !rel.startsWith('..' + sep))
 }
 
-function selectedFolder(path, stateDir) {
-  if (path === undefined || path === '') return null
+export function selectedSandboxFolder(path, stateDir) {
+  if (path === undefined || path === null || path === '') return null
   if (typeof path !== 'string' || !isAbsolute(path) || /[\x00-\x1f\x7f]/u.test(path))
     throw new Error('请选择一个有效的宿主机项目目录。')
   let real
@@ -120,6 +113,25 @@ async function installLima(home, signal) {
   }
   owned(target, true)
   return trustedCommand([command])[0]
+}
+
+function installedLima(home) {
+  const directory = join(home, '_tools', 'lima-' + limaVersion)
+  if (!existsSync(directory)) return null
+  owned(home, true)
+  owned(join(home, '_tools'), true)
+  owned(directory, true)
+  return trustedCommand([join(directory, 'bin', 'limactl')])[0]
+}
+
+function runLima(home, lima, args, timeout, signal) {
+  return exec(lima, ['--tty=false', ...args], { env: { ...hostEnv(), LIMA_HOME: home }, cwd: home,
+    timeout, signal, maxBuffer: 1024 * 1024 })
+}
+
+function guestCommand(ssh, dir, args, timeout, signal) {
+  return exec(ssh[0], [...ssh.slice(1), '-T', '--', ...args], { env: hostEnv(), cwd: dir,
+    timeout, signal, maxBuffer: 256 * 1024 }).then(({ stdout }) => stdout.trim())
 }
 
 function template(hostPath, kind) {
@@ -169,9 +181,9 @@ CODEX_NON_INTERACTIVE=1 bash "$installer"
 "$HOME/.local/bin/$2" --version
 `
 
-async function provisionSandbox(job, folder, update, signal) {
-  const { id, kind } = job
-  const { name, url, bin } = providers[kind]
+async function provisionSandbox(record, update, signal) {
+  const { id, kind, name, folder } = record
+  const { url, bin } = sandboxProviders[kind]
   const home = realpathSync(privateDirectory(managedHome()))
   const lima = await installLima(home, signal)
   signal.throwIfAborted()
@@ -179,25 +191,18 @@ async function provisionSandbox(job, folder, update, signal) {
   const dir = join(files, id)
   const instance = join(home, id)
   if (existsSync(instance)) throw new Error('Sandbox instance already exists')
-  mkdirSync(dir, { mode: 0o700 })
+  privateDirectory(dir)
   const hostPath = folder ?? join(dir, 'workspace')
   const config = join(dir, 'config.yaml')
   const launcher = join(dir, 'ssh.sh')
-  const env = { ...hostEnv(), LIMA_HOME: home }
-  const runLima = (args, timeout, stopSignal) => exec(lima, ['--tty=false', ...args], { env, cwd: home,
-    timeout, signal: stopSignal, maxBuffer: 512 * 1024 })
   const ssh = ['/bin/bash', launcher, join(instance, 'ssh.config'), 'lima-' + id]
-  const guest = async (args, timeout) => {
-    const { stdout } = await exec(ssh[0], [...ssh.slice(1), '-T', '--', ...args], { env: hostEnv(), cwd: dir,
-      timeout, signal, maxBuffer: 256 * 1024 })
-    return stdout.trim()
-  }
+  const guest = (args, timeout) => guestCommand(ssh, dir, args, timeout, signal)
   try {
     update('vm')
     if (!folder) privateDirectory(hostPath)
     writeFileSync(config, JSON.stringify(template(hostPath, kind)), { flag: 'wx', mode: 0o600 })
     copyFileSync(new URL('./sandbox-ssh.sh', import.meta.url), launcher)
-    await runLima(['start', '--name', id, '--timeout=8m', config], 500_000, signal)
+    await runLima(home, lima, ['start', '--name', id, '--timeout=8m', config], 500_000, signal)
     update('checking')
     const { uid, machineId, home: guestHome, source } = JSON.parse(await guest(
       ['/usr/bin/python3', '-I', '-c', inspectGuest, guestPath, filesystem], 12_000))
@@ -211,13 +216,13 @@ async function provisionSandbox(job, folder, update, signal) {
 
     update('checking')
     const account = {
-      id, name: name + ' · ' + id.slice(3), uid, machineId, ssh,
+      id, name, uid, machineId, ssh,
       start: ['/usr/bin/env', 'LIMA_HOME=' + home, lima, '--tty=false', 'start', '--timeout=100s', id],
       programs: { [kind]: join(guestHome, '.local/bin', bin) },
       workspaces: [{ hostPath, guestPath, readOnly: false, filesystem, source }],
     }
     await checkProvisionedSandbox(account, kind)
-    await runLima(['stop', id], 45_000, signal)
+    await runLima(home, lima, ['stop', id], 45_000, signal)
     signal.throwIfAborted()
     update('registering')
     registerSandboxAccount(account)
@@ -225,7 +230,7 @@ async function provisionSandbox(job, folder, update, signal) {
   } catch (cause) {
     // Only this request's newly created VM can be discarded.
     if (existsSync(instance)) {
-      try { await runLima(['delete', '--force', id], 35_000) }
+      try { await runLima(home, lima, ['delete', '--force', id], 35_000) }
       catch { throw new Error('sandbox cleanup failed', { cause }) }
     }
     rmSync(config, { force: true })
@@ -270,45 +275,103 @@ test "$(secret-tool lookup godbot setup)" = ready
 secret-tool clear godbot setup
 `
 
-export class SandboxSetup {
-  constructor(stateDir, onCreated) {
-    this.stateDir = stateDir
-    this.onCreated = onCreated
+const inspectIdleGuest = `
+import os, pathlib, subprocess, sys
+if str(os.getuid()) != sys.argv[1] or pathlib.Path('/etc/machine-id').read_text().strip() != sys.argv[2]:
+    sys.exit('unexpected sandbox identity')
+env = os.environ.copy()
+env.update(XDG_RUNTIME_DIR='/run/user/' + sys.argv[1],
+           DBUS_SESSION_BUS_ADDRESS='unix:path=/run/user/' + sys.argv[1] + '/bus')
+units = subprocess.check_output(['systemctl', '--user', 'list-units', '--no-legend', '--plain', '--no-pager',
+                                 '--state=running,activating,deactivating', 'godbot-agent-*.service'], env=env)
+print('busy' if units.strip() else 'idle')
+`
+
+function ownedInstance(record, account) {
+  const { id } = record
+  if (!managedSandboxId.test(id) || (account && !managedAccountRecord(account)))
+    throw new Error('沙箱未由 Godbot 管理。')
+  const home = managedHome()
+  const dir = join(home, '_godbot', id)
+  const instance = join(home, id)
+  try { owned(instance, true) }
+  catch (error) {
+    if (error.code === 'ENOENT') return null
+    throw error
+  }
+  owned(dir, true)
+  owned(join(dir, 'config.yaml'))
+  owned(join(dir, 'ssh.sh'))
+  const lima = installedLima(home)
+  if (!lima) throw new Error('缺少沙箱运行时。')
+  return { home, dir, lima, instance }
+}
+
+export class LimaSandboxRuntime {
+  issue() { return hostIssue() }
+
+  async list() {
+    const home = managedHome()
+    const lima = installedLima(home)
+    if (!lima) return null
+    this.listing ??= runLima(home, lima, ['list', '--json'], 8_000).then(({ stdout }) => {
+      const rows = stdout.trim() ? stdout.trim().split('\n').map(line => JSON.parse(line)) : []
+      return new Map(rows.filter(row => managedSandboxId.test(row.name)).map(row => [row.name, row.status]))
+    }).finally(() => { this.listing = undefined })
+    return this.listing
   }
 
-  view() {
-    const issue = hostIssue()
-    return { available: issue === null, issue, job: this.job ?? null }
+  provision(record, update, signal) { return provisionSandbox(record, update, signal) }
+
+  async start(record, account, signal) {
+    const vm = ownedInstance(record, account)
+    if (!vm) throw new Error('找不到沙箱实例。')
+    const { home, dir, lima } = vm
+    await runLima(home, lima, ['start', '--timeout=100s', record.id], 120_000, signal)
+    const workspace = account.workspaces[0]
+    const info = JSON.parse(await guestCommand(account.ssh, dir,
+      ['/usr/bin/python3', '-I', '-c', inspectGuest, workspace.guestPath, workspace.filesystem], 12_000, signal))
+    if (info.uid !== account.uid || info.machineId !== account.machineId || info.source !== workspace.source)
+      throw new Error('沙箱身份或项目挂载与登记信息不符。')
+    await checkProvisionedSandbox(account, record.kind)
   }
 
-  create({ kind, folder }) {
-    if (this.pending) throw new Error('沙箱正在创建，请等待完成。')
-    if (typeof kind !== 'string' || !Object.hasOwn(providers, kind)) throw new Error('此提供商不支持自动创建沙箱。')
-    const issue = hostIssue()
-    if (issue) throw new Error(hostIssues[issue])
-    if (!sandboxAccountsEnabled(this.stateDir)) throw new Error('请先启用沙箱多账号。')
-    const path = selectedFolder(folder, this.stateDir)
-    const id = 'gb-' + randomBytes(6).toString('hex')
-    const update = phase => { this.job = { id, kind, status: 'running', phase } }
-    update('runtime')
-    const controller = this.controller = new AbortController()
-    this.pending = provisionSandbox(this.job, path, update, controller.signal).then(async account => {
-      try {
-        await this.onCreated(kind, account.id)
-        this.job = { id, kind, status: 'ready' }
-      } catch {
-        this.job = { id, kind, status: 'ready', error: '环境已登记，可返回提供商列表手动添加此账号。' }
-      }
-    }, cause => {
-      const error = failures[this.job.phase]
-      this.job = { id, kind, status: 'failed', error: cause.message === 'sandbox cleanup failed'
-        ? error + ' 此次创建的 VM 清理失败，实例 ID 为 ' + id + '。' : error }
-    }).finally(() => { this.controller = undefined; this.pending = undefined })
-    return this.view()
+  async stop(record, account, signal) {
+    const vm = ownedInstance(record, account)
+    if (!vm) throw new Error('找不到沙箱实例。')
+    await this.stopInstance(record, account, vm, signal)
   }
 
-  async close() {
-    this.controller?.abort()
-    await this.pending
+  async stopInstance(record, account, { home, dir, lima }, signal) {
+    if ((await this.list())?.get(record.id) === 'Stopped') return
+    const idle = await guestCommand(account.ssh, dir,
+      ['/usr/bin/python3', '-I', '-c', inspectIdleGuest, String(account.uid), account.machineId], 12_000, signal)
+    if (idle !== 'idle') throw new Error('沙箱中还有运行中的 Agent。')
+    await runLima(home, lima, ['stop', record.id], 45_000, signal)
+  }
+
+  async removeInstance(record, account, signal) {
+    const vm = ownedInstance(record, account)
+    if (!vm) return
+    if (!account && record.registered) throw new Error('无法确认已登记沙箱的身份。')
+    const { home, lima, instance } = vm
+    if (account) await this.stopInstance(record, account, vm, signal)
+    await runLima(home, lima, ['delete', ...(account ? [] : ['--force']), record.id], 45_000, signal)
+    if (existsSync(instance)) throw new Error('沙箱实例仍存在。')
+  }
+
+  clearProvisioningFiles(id) {
+    if (!managedSandboxId.test(id)) throw new Error('无效的沙箱实例。')
+    const home = managedHome()
+    const parent = join(home, '_godbot')
+    const dir = join(parent, id)
+    if (!existsSync(dir)) return
+    owned(home, true)
+    owned(parent, true)
+    owned(dir, true)
+    rmSync(join(dir, 'config.yaml'), { force: true })
+    rmSync(join(dir, 'ssh.sh'), { force: true })
+    // Keep both user-selected and automatically created project folders.
+    try { rmdirSync(dir) } catch (error) { if (error.code !== 'ENOTEMPTY') throw error }
   }
 }

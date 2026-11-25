@@ -93,9 +93,12 @@ export default async function run({ makeHost, candidate, note, scratch }) {
   assert.equal((await catalog()).enabled,false)
   await switcher().click()
   await until(async () => (await catalog()).enabled,'sandbox opt-in')
-  await sandboxPage.locator('[data-sandbox-id="test-alpha"]').waitFor()
   const setup = await owner({ action:'sandbox-setup' })
-  if (setup.available) assert.equal(await sandboxPage.locator('[name=sandboxProvider]').inputValue(),'codex')
+  if (setup.available) {
+    assert.equal(await sandboxPage.locator('[name=sandboxProvider]').inputValue(),'codex')
+    await sandboxPage.getByRole('button', { name:'返回沙箱列表' }).click()
+  }
+  await sandboxPage.locator('[data-sandbox-id="test-alpha"]').getByText('外部管理').waitFor()
   assert.equal(setup.job,null,'opening settings and enabling accounts does not create a sandbox')
   await host.capture('sandbox-settings-entry')
   await sandboxPage.getByRole('button', { name:'返回提供商账号' }).click()

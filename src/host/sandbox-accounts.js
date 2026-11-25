@@ -1,10 +1,13 @@
 import { execFile, spawn } from 'node:child_process'
 import { createHash, randomUUID } from 'node:crypto'
-import { accessSync, constants, linkSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { accessSync, constants, linkSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, delimiter, isAbsolute, join, normalize, relative, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { usageProbeSources } from './provider-usage-sources.js'
+import { assertSandboxCanBind, claimSandboxUse, managedAccountRecord, owned, sandboxRegistry } from './sandbox-state.js'
+
+export { owned, sandboxRegistry } from './sandbox-state.js'
 
 const exec = promisify(execFile)
 const kinds = new Set(['antigravity', 'claude', 'codex'])
@@ -15,19 +18,11 @@ let guestProgram
 let guestMcp
 const identityProgram = new URL('./provider-accounts-probe.py', import.meta.url)
 
-export const sandboxRegistry = () => process.env.GODBOT_SANDBOX_ACCOUNTS_DIR || join(homedir(), '.local/share/dsh-godbot/sandbox-accounts')
 const fault = message => new Error('Sandbox account: ' + message)
 const childEnv = () => ({
   HOME: homedir(), PATH: ['/usr/bin', '/bin', '/usr/sbin', '/sbin', '/usr/local/bin'].join(delimiter),
   LANG: 'C.UTF-8', TERM: 'xterm-256color',
 })
-
-export function owned(path, directory = false) {
-  const stat = lstatSync(path)
-  if ((directory ? !stat.isDirectory() : !stat.isFile()) || stat.uid !== process.getuid() || (stat.mode & 0o022))
-    throw fault('registry entries must be owner-controlled files and directories')
-  return stat
-}
 
 function pathString(value) {
   if (typeof value !== 'string' || !isAbsolute(value) || /[\0\r\n]/u.test(value) || normalize(value) !== value)
@@ -46,7 +41,7 @@ export function trustedCommand(argv) {
   return argv
 }
 
-function readAccount(id) {
+export function readSandboxAccount(id) {
   if (typeof id !== 'string' || !accountName.test(id)) throw fault('invalid account identifier')
   const base = sandboxRegistry()
   owned(base, true)
@@ -82,19 +77,31 @@ function validateAccount(id, data) {
   return data
 }
 
-export function listSandboxAccounts() {
+export function listSandboxManifests() {
   const dir = sandboxRegistry()
   try { owned(dir, true) } catch (error) {
     if (error.code === 'ENOENT') return []
     throw error
   }
-  return readdirSync(dir).filter(name => name.endsWith('.json')).sort().map(name => {
-    const account = readAccount(basename(name, '.json'))
-    return {
-      id: account.id, name: account.name, kinds: Object.keys(account.programs),
-      workspaces: account.workspaces.map(({ hostPath, guestPath, readOnly }) => ({ hostPath, guestPath, readOnly })),
-    }
-  })
+  return readdirSync(dir).filter(name => name.endsWith('.json')).sort().map(name => readSandboxAccount(basename(name, '.json')))
+}
+
+export function sandboxAccountSummary(account) {
+  return {
+    id: account.id, name: account.name, kinds: Object.keys(account.programs),
+    workspaces: account.workspaces.map(({ hostPath, guestPath, readOnly }) => ({ hostPath, guestPath, readOnly })),
+  }
+}
+
+export const listSandboxAccounts = () => listSandboxManifests().map(sandboxAccountSummary)
+
+export function unregisterManagedSandbox(id, expected) {
+  let account
+  try { account = readSandboxAccount(id) }
+  catch (error) { if (error.code === 'ENOENT') return; throw error }
+  if (!expected || account.machineId !== expected.machineId || !managedAccountRecord(account))
+    throw fault('sandbox registration has changed during deletion')
+  rmSync(join(sandboxRegistry(), id + '.json'))
 }
 
 export function registerSandboxAccount(account) {
@@ -112,20 +119,23 @@ export function registerSandboxAccount(account) {
 
 // Identity belongs to a CLI/user/guest, independently of its workspace list or display name.
 export function sandboxProviderBinding(accountId, kind) {
-  const account = readAccount(accountId)
+  const account = readSandboxAccount(accountId)
   if (!Object.hasOwn(account.programs, kind)) throw fault('this CLI is unavailable for the selected account')
   return createHash('sha256').update(JSON.stringify([kind, account.id, account.machineId, account.uid,
     account.ssh, account.programs[kind]])).digest('hex')
 }
 
 async function readProvider(accountId, kind, action, sources) {
-  const account = readAccount(accountId)
+  const account = readSandboxAccount(accountId)
   const { spec } = workspaceFor(account, kind, account.workspaces[0].hostPath)
   guestProgram ??= readFileSync(new URL('../drivers/external/sandbox-guest.py', import.meta.url), 'utf8')
-  await start(account)
-  const output = await run([...account.ssh, '-T', '--', '/usr/bin/python3', '-I', '-c', guestProgram, action,
-    JSON.stringify(spec), kind, ...sources], 45000, 'provider ' + action + ' unavailable')
-  return JSON.parse(output)
+  const release = claimSandboxUse(account)
+  try {
+    await start(account)
+    const output = await run([...account.ssh, '-T', '--', '/usr/bin/python3', '-I', '-c', guestProgram, action,
+      JSON.stringify(spec), kind, ...sources], 45000, 'provider ' + action + ' unavailable')
+    return JSON.parse(output)
+  } finally { release() }
 }
 
 export function checkSandboxProviderIdentity(accountId, kind) {
@@ -160,7 +170,9 @@ function workspaceFor(account, kind, cwd) {
 }
 
 export function getSandboxWorkspace({ accountId, kind, cwd }) {
-  return workspaceFor(readAccount(accountId), kind, cwd).workspace
+  const account = readSandboxAccount(accountId)
+  assertSandboxCanBind(account.id)
+  return workspaceFor(account, kind, cwd).workspace
 }
 
 async function run(argv, timeout, label) {
@@ -249,17 +261,23 @@ async function openTunnel(account, forward) {
 
 /** The service supplies account metadata and session MCP. Agent/tool inputs never become launch settings. */
 export async function resolveSandboxLaunch({ accountId, kind, cwd, mcp }) {
-  const account = readAccount(accountId)
+  const account = readSandboxAccount(accountId)
   const { workspace, spec } = workspaceFor(account, kind, cwd)
   const { forward, server } = bridge(mcp)
   const units = new Set()
   let closed = false
   let closing
   const control = (action, args, timeout) => run([...account.ssh, '-T', '--', ...guestArgs(action, spec, args)], timeout, 'guest ' + action + ' failed')
-  await start(account)
-  await checkGuest(account, spec)
-
-  const tunnel = forward ? await openTunnel(account, forward) : undefined
+  const release = claimSandboxUse(account)
+  let tunnel
+  try {
+    await start(account)
+    await checkGuest(account, spec)
+    if (forward) tunnel = await openTunnel(account, forward)
+  } catch (error) {
+    release()
+    throw error
+  }
 
   function launchArgs(args, terminal) {
     if (closed) throw fault('account execution has closed')
@@ -292,6 +310,7 @@ export async function resolveSandboxLaunch({ accountId, kind, cwd, mcp }) {
         } finally {
           await tunnel?.close()
         }
+        release()
       })().catch(error => { closing = undefined; throw error })
       return closing
     },
