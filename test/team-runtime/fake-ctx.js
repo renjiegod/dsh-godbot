@@ -138,7 +138,7 @@ export function fakeContext({ services = {} } = {}) {
       registerAdapter: (routes, adapter) => {
         ctx.adapters = [...(ctx.adapters ?? []), { routes, adapter }]
         const handle = () => {}
-        handle.replace = (next) => { ctx.adapters.at(-1).routes = next }
+        handle.replace = (next) => { ctx.replaces = (ctx.replaces ?? 0) + 1; ctx.adapters.at(-1).routes = next }
         return handle
       },
     },

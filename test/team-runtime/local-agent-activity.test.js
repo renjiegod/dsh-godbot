@@ -333,3 +333,21 @@ test('Codex Bot leaves its verified godbot MCP receipts to DSH without hiding ot
   assert.deepEqual(trace[2].output, { content: ['Fixture details'] })
   assert.deepEqual(trace[3].output, { message: 'Loopback unavailable' })
 })
+
+test('a scan that finds the same local routes does not announce them again', async t => {
+  const bot = { id: 'bot', model: 'local-antigravity/default' }
+  const ctx = fakeContext()
+  const rt = { ctx, state: { bots: { [bot.id]: bot } }, groupOwners: new Map(), selfOf: () => bot.id, botOf: () => bot, roomOf: () => undefined }
+  install(rt)
+  t.after(() => ctx.dispose())
+  await rt.localAgentsEndpoint('local-agents', {})
+  const before = ctx.replaces ?? 0
+  // Every replace reaches each open window as `llm/adapters-updated` and a catalog read.
+  for (let index = 0; index < 3; index++) await rt.localAgentsEndpoint('local-agents', {})
+  rt.registerSandboxRoutes()
+  assert.equal(ctx.replaces ?? 0, before, 'unchanged routes are not handed over again')
+  rt.state.bots.other = { id: 'other', model: 'local-acp-quiet/default' }
+  rt.registerSandboxRoutes()
+  assert.equal(ctx.replaces, before + 1, 'a new route is handed over once')
+  assert.ok(ctx.adapters[0].routes.includes('local-acp-quiet'))
+})

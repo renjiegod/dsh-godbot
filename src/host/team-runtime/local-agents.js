@@ -845,15 +845,23 @@ export function install(rt) {
   // A route a Bot runs on stays registered when its CLI goes away: the turn then fails
   // with the repair card, and nothing moves the Bot to another run mode by itself.
   const servedRoutes = () => [...new Set([...found.keys(), ...customRouteId(), ...sandboxes.routes().map(row => row.route), ...sandboxes.pendingRoutes, ...usedRefs().map(ref => splitRef(ref)?.provider).filter(isLocalAgentRoute)])]
+  // DSH announces every registration and every `replace` as `llm/adapters-updated`, and
+  // each open window answers it by reading the model catalog and the settings again. A
+  // scan (the Local agents page, the phone, usage) finds the same routes almost always,
+  // so the routes are handed over only when the set differs from the one registered.
+  let registered
   function applyRoutes() {
     if (!supported()) return
     const routes = servedRoutes()
+    const key = JSON.stringify([...routes].sort())
+    if (registration !== undefined && key === registered) return
     // The initial registration needs at least one provider; an empty replace
     // is legal and keeps the adapter registered with zero routes.
     if (registration === undefined) {
       if (routes.length === 0) return
       registration = llm().registerAdapter(routes, adapter)
     } else registration.replace(routes)
+    registered = key
   }
   // Custom agents hold a route whether or not their command resolves yet; a
   // missing one fails at prompt time with a typed error.
