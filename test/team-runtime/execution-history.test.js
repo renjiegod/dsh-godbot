@@ -273,3 +273,20 @@ test('Antigravity details backfill the exact owned ACP call without replacing re
   await assert.rejects(history.read({ ...part, botId: 'other', toolId: 'call_12' }), /私聊/)
   assert.equal(readAntigravityToolResult({ ...binding, cliSessionId: '../other' }, (await detail('call_12')), rt.home), undefined)
 })
+
+test('several turns of one chat read their tool lists in one request', async (t) => {
+  const rt = await fixture(t)
+  const history = new ExecutionHistory(rt)
+  t.after(() => history.close())
+  for (const turn of [1, 2]) {
+    history.observe('part', { type: 'turn/start', data: { turn }, seq: turn * 10, time: 10_000 + turn })
+    history.record('part', { type: 'tool', id: 'shell-' + turn, name: 'Shell', input: { command: 'echo ' + turn }, status: 'completed' })
+    history.observe('part', { type: 'turn/end', data: { turn, reason: { kind: 'completed' } }, seq: turn * 10 + 1, time: 10_100 + turn })
+  }
+  const one = turn => history.read({ botId: 'worker', sessionId: 'part', turn, onlyTools: true })
+  const many = await history.read({ botId: 'worker', sessionId: 'part', turns: [1, 2, 2, 'x'], onlyTools: true })
+  assert.deepEqual(Object.keys(many.byTurn), ['1', '2'])
+  assert.deepEqual(many.byTurn[1], await one(1))
+  assert.deepEqual(many.byTurn[2].events.map(row => row.id), ['shell-2'])
+  await assert.rejects(history.read({ botId: 'other', sessionId: 'part', turns: [1], onlyTools: true }), /私聊/)
+})

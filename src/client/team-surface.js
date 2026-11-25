@@ -224,11 +224,13 @@ button.gb-bot-model:focus-visible,
 }
 `
 
-function useNativeTerminalActive(client, target, running) {
+// Whether a native terminal holds this chat. A host that names its terminals in the team's
+// live state answers here without a request; an older one is asked on a clock.
+function useNativeTerminalActive(client, target, running, known) {
   const { botId, sessionId } = target ?? {}
   const [activePart, setActivePart] = useState()
   useEffect(() => {
-    if (!botId || !sessionId) return
+    if (!botId || !sessionId || known) return
     let timer, mounted = true, busy = false
     async function update() {
       if (busy) return
@@ -246,7 +248,8 @@ function useNativeTerminalActive(client, target, running) {
     document.addEventListener('visibilitychange', wake)
     void update()
     return () => { mounted = false; clearTimeout(timer); document.removeEventListener('visibilitychange', wake) }
-  }, [client, botId, sessionId, running])
+  }, [client, botId, sessionId, running, Boolean(known)])
+  if (known) return target != null && known[sessionId] === true
   return target != null && activePart === sessionId
 }
 
@@ -323,7 +326,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
       return h(BrowserDrawerPane, { client, bot, sessionId: id, roster: state, actions })
     },
     useNativeTerminalActive: (bot, id, state, running) =>
-      useNativeTerminalActive(client, botNativeTarget(bot, id, state), running),
+      useNativeTerminalActive(client, botNativeTarget(bot, id, state), running, state?.nativeTerminals),
     nativeButton(bot, id, state, actions, terminalActive) {
       const target = botNativeTarget(bot, id, state)
       return target && h(NativeAgentButton, { key: 'native:' + id, target, active: terminalActive, actions })

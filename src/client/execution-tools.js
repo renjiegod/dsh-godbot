@@ -15,6 +15,46 @@ export function toolPollDelay(quiet, hidden = typeof document !== 'undefined' &&
   return 700 * 2 ** Math.min(Math.max(quiet, 0), 2)
 }
 
+// The turns one render draws read their tool lists together: one request per chat. A
+// host that answers without `byTurn` predates it; that client then reads turn by turn.
+const batches = new WeakMap()
+function readTools(client, botId, sessionId, turn) {
+  let state = batches.get(client)
+  if (!state) batches.set(client, state = { many: true, pending: new Map() })
+  const single = () => client.dispatch({ action: 'execution.history', botId, sessionId, turn, onlyTools: true })
+  if (!state.many) return single()
+  const key = JSON.stringify([botId, sessionId])
+  let batch = state.pending.get(key)
+  if (!batch) {
+    state.pending.set(key, batch = new Map())
+    setTimeout(() => {
+      state.pending.delete(key)
+      const waiting = [...batch.entries()]
+      const each = ([at, entry]) => client.dispatch({ action: 'execution.history', botId, sessionId, turn: at, onlyTools: true })
+        .then(entry.resolve, entry.reject)
+      if (waiting.length === 1) return each(waiting[0])
+      client.dispatch({ action: 'execution.history', botId, sessionId, turns: waiting.map(([at]) => at), onlyTools: true }).then((data) => {
+        if (!data || typeof data.byTurn !== 'object' || data.byTurn === null) {
+          state.many = false
+          waiting.forEach(each)
+          return
+        }
+        for (const [at, entry] of waiting) {
+          if (Object.hasOwn(data.byTurn, at)) entry.resolve(data.byTurn[at])
+          else each([at, entry])
+        }
+      }, error => { for (const [, entry] of waiting) entry.reject(error) })
+    }, 0)
+  }
+  let entry = batch.get(turn)
+  if (!entry) {
+    entry = {}
+    entry.promise = new Promise((resolve, reject) => Object.assign(entry, { resolve, reject }))
+    batch.set(turn, entry)
+  }
+  return entry.promise
+}
+
 // The shared tool list of one turn: one host read per turn however many cells draw it,
 // polled while the turn runs.
 export function executionTools(client, botId, sessionId, turn) {
@@ -28,7 +68,7 @@ export function executionTools(client, botId, sessionId, turn) {
     if (loading) return
     loading = true
     try {
-      const data = await client.dispatch({ action: 'execution.history', botId, sessionId, turn, onlyTools: true })
+      const data = await readTools(client, botId, sessionId, turn)
       failures = 0
       const next = data.events ?? emptyTools
       // An empty answer can come before the host has recorded a turn that just

@@ -224,6 +224,7 @@ export function apply(ctx, godbot) {
     // Connector, capability and phone states change without a new revision.
     const live = {}
     if (value.partsRunning !== undefined && JSON.stringify(value.partsRunning) !== JSON.stringify(current.partsRunning ?? {})) live.partsRunning = value.partsRunning
+    if (value.nativeTerminals !== undefined && JSON.stringify(value.nativeTerminals) !== JSON.stringify(current.nativeTerminals ?? null)) live.nativeTerminals = value.nativeTerminals
     if (value.newSessions !== undefined && JSON.stringify(value.newSessions) !== JSON.stringify(current.newSessions ?? {})) live.newSessions = value.newSessions
     if (value.emptyParts !== undefined && JSON.stringify(value.emptyParts) !== JSON.stringify(current.emptyParts ?? {})) live.emptyParts = value.emptyParts
     if (value.partTitles !== undefined && JSON.stringify(value.partTitles) !== JSON.stringify(current.partTitles ?? {})) live.partTitles = value.partTitles
@@ -330,6 +331,7 @@ export function apply(ctx, godbot) {
       try {
         const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(30_000)])
         const value = await call('update-check', { fresh: false }, signal, { quiet: true }).catch(() => null)
+        if (value) checkedAt = Date.now()
         if (!lifetime.signal.aborted && !again && value) takeUpdate(value)
       } finally {
         running = false
@@ -340,7 +342,10 @@ export function apply(ctx, godbot) {
         }
       }
     }
-    const wake = () => { if (!document.hidden) void loop() }
+    // Coming back to the tab asks again only when the last answer is a minute old: the
+    // clock already reads every 15 s while the window shows.
+    let checkedAt = 0
+    const wake = () => { if (!document.hidden && Date.now() - checkedAt > 60_000) void loop() }
     wakeUpdate = loop
     document.addEventListener('visibilitychange', wake)
     window.addEventListener('online', wake)

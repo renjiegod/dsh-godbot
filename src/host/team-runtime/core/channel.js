@@ -183,6 +183,8 @@ export function install(rt) {
       .filter((sessionId, index, list) => sessionId !== undefined && list.indexOf(sessionId) === index)
       .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined || rt.localAgentBackground?.(sessionId) === true)
       .map(sessionId => [sessionId, true])),
+    // The chats a native terminal holds now; the chat header's native Agent mark reads it.
+    nativeTerminals: rt.nativeTerminals?.() ?? {},
     // Per Bot, where a New session of its own chat stands: 'opening' while a fresh part
     // is on its way, 'empty' while nobody has talked in the current part, so a New
     // session would add nothing. `emptyParts`: its earlier parts nobody talked in, and

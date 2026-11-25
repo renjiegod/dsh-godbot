@@ -19,6 +19,19 @@ export class BotTerminals {
     return { active: !!info && !info.exit, closing: info?.closing === true }
   }
 
+  // The chats whose native terminal runs now, for the team's live state: a window then
+  // knows without asking each chat's status on every switch.
+  activeChats() {
+    const active = {}
+    for (const [key, entry] of this.byChat) {
+      const info = this.pty.info(entry.id)
+      if (!info || info.exit) continue
+      const [, sessionId] = JSON.parse(key)
+      if (typeof sessionId === 'string') active[sessionId] = true
+    }
+    return active
+  }
+
   async open(request = {}) {
     const { memberId, botId, sessionId, agent, cols, rows, restart, terminalId } = request
     if (memberId != null || typeof botId !== 'string' || !botId || typeof sessionId !== 'string' || !sessionId || this.stopping)

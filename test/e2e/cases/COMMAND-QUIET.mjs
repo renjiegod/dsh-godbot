@@ -3,10 +3,11 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { until } from '../host.mjs'
 import { openBotChat, openFullTeam } from '../native-ui.mjs'
 
-// The DSH commands stay refused in a Bot's chat, and saving the team does not make every
-// open window ask for the command list again. The shield used to lift and re-register
-// each shadow on every save: one `commands/change` per command, chat and save, each
-// answered by the browser with a `commands/list` request.
+// The DSH commands stay refused in a Bot's chat, saving the team does not make every
+// open window ask for the command list again, and a switch asks only what it draws.
+// The shield used to lift and re-register each shadow on every save: one
+// `commands/change` per command, chat and save, each answered by the browser with a
+// `commands/list` request.
 export default async function COMMAND_QUIET({ makeHost, candidate, note }) {
   const a = await makeHost()
   await a.install(candidate)
@@ -47,4 +48,26 @@ export default async function COMMAND_QUIET({ makeHost, candidate, note }) {
   assert.ok(lists <= 2, `saving the team asked for the command list ${lists} times`)
   const after = await a.rpc('commands/list', { agentId: chats[1] })
   assert.ok(after.every(row => /Not available in a Bot chat/u.test(row.description)), 'the shadows stay after the saves')
+
+  // Switching between two Bot chats asks only for what the new chat draws: no fresh model
+  // catalog for a Bot that has its model, and no native terminal status of its own.
+  const asked = []
+  const record = (request) => {
+    const url = request.url()
+    if (!url.includes('/api/')) return
+    let endpoint = url.replace(/^.*\/api\//u, '').split('?')[0]
+    try { const body = JSON.parse(request.postData() ?? 'null'); endpoint = body?.endpoint ?? body?.method ?? endpoint } catch { /* not JSON */ }
+    asked.push(endpoint)
+  }
+  a.page.on('request', record)
+  for (const bot of [bots[1], bots[0], bots[1]]) {
+    await openBotChat(a, bot)
+    await delay(1200)
+  }
+  a.page.off('request', record)
+  const counts = Object.fromEntries([...new Set(asked)].map(name => [name, asked.filter(each => each === name).length]))
+  note('switch-requests', { switches: 3, counts })
+  assert.equal(counts.models ?? 0, 0, 'switching asks for no model catalog')
+  assert.equal(counts['godbot/terminalStatus'] ?? 0, 0, 'switching asks for no native terminal status')
+  assert.equal(typeof (await a.bot('state')).nativeTerminals, 'object', 'the team state names the native terminals')
 }

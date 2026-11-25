@@ -2,10 +2,17 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { SETTLED_TOOL_TURNS, executionTools } from '../../src/client/execution-tools.js'
 
-const settle = () => new Promise(resolve => setImmediate(resolve))
-const client = (answer) => {
+// Reads of one render go out together on the next timer tick.
+const settle = () => new Promise(resolve => setTimeout(resolve, 5))
+// A host that reads several turns at once unless `single` says it predates that.
+const client = (answer, { single = false } = {}) => {
   const reads = []
-  return { reads, dispatch: async (request) => { reads.push(request.turn); return answer(request) } }
+  return { reads, dispatch: async (request) => {
+    if (request.turns === undefined) { reads.push(request.turn); return answer(request) }
+    reads.push('turns:' + request.turns.join(','))
+    if (single) return answer({ ...request, turn: undefined })
+    return { byTurn: Object.fromEntries(request.turns.map(turn => [turn, answer({ ...request, turn })])) }
+  } }
 }
 
 test('going back to a chat draws its settled turns without asking the host again', async () => {
@@ -37,7 +44,7 @@ test('a running turn and an empty answer are read again on the next visit', asyn
   executionTools(host, 'b1', 'chat-1', 2).subscribe(() => {})()
   await settle()
   leave()
-  assert.deepEqual(host.reads, [1, 2, 1, 2])
+  assert.deepEqual(host.reads, ['turns:1,2', 'turns:1,2'])
   assert.equal(one.read()[0].status, 'completed')
 })
 
@@ -80,4 +87,20 @@ test('a running turn that answers the same again draws nothing new and is read m
   assert.equal(draws, 2)
   assert.equal(store.read()[0].status, 'completed')
   leave()
+})
+
+test('the turns one render draws are read in one request, or one by one from an older host', async () => {
+  for (const single of [false, true]) {
+    const host = client(({ turn }) => (turn === undefined ? { running: false, events: [] } : { running: false, events: [{ id: `call-${turn}` }] }), { single })
+    const stores = [1, 2, 3].map(turn => executionTools(host, 'b9', 'chat-' + single, turn))
+    const leaves = stores.map(store => store.subscribe(() => {}))
+    await settle()
+    assert.deepEqual(stores.map(store => store.read()[0]?.id), ['call-1', 'call-2', 'call-3'])
+    assert.deepEqual(host.reads, single ? ['turns:1,2,3', 1, 2, 3] : ['turns:1,2,3'])
+    leaves.forEach(leave => leave())
+    const again = [4, 5].map(turn => executionTools(host, 'b9', 'chat-' + single, turn).subscribe(() => {}))
+    await settle()
+    assert.deepEqual(host.reads.slice(single ? 4 : 1), single ? [4, 5] : ['turns:4,5'], 'an older host is not asked for several again')
+    again.forEach(leave => leave())
+  }
 })

@@ -351,7 +351,17 @@ export class ExecutionHistory {
     return turns
   }
 
-  async read({ botId, sessionId, turn, toolId, beforeTurn, onlyTools } = {}) {
+  async read({ botId, sessionId, turn, turns: several, toolId, beforeTurn, onlyTools } = {}) {
+    // The tool lists of several turns of one chat, for a chat drawn for the first time:
+    // one request instead of one per turn on screen.
+    if (Array.isArray(several) && onlyTools === true && toolId === undefined) {
+      const byTurn = {}
+      for (const each of several.filter(Number.isSafeInteger).slice(0, 200)) {
+        if (Object.hasOwn(byTurn, each)) continue
+        byTurn[each] = await this.read({ botId, sessionId, turn: each, onlyTools: true })
+      }
+      return { byTurn }
+    }
     const allowed = () => !this.closed && typeof botId === 'string' && typeof sessionId === 'string' &&
       this.rt.botOf(botId) && this.ownerOf(sessionId) === botId
     if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')

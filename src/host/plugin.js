@@ -112,6 +112,9 @@ export async function apply(ctx, config = {}) {
       await scope.ready()
       return handler(scope.existing().service, body)
     }
+    runtime.nativeTerminals = () => {
+      try { return scope.existing().terminals.activeChats() } catch { return {} }
+    }
     runtime.localAgentUsage = withService(localAgentUsageView)
     runtime.localAgentQuota = withService(localAgentQuota)
     child.effect(() => () => {

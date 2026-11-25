@@ -558,14 +558,17 @@ export function ModelChoiceDock({ sessionId, useRoster, actions }) {
   const [busy, setBusy] = useState('')
   const [error, setError] = useState('')
   const shown = Boolean(bot) && currentPart(bot) === sessionId && roster.ready
-  useEffect(() => { if (shown) void actions.refreshModels?.() }, [shown, sessionId])
-  if (!bot || currentPart(bot) !== sessionId || !roster.ready) return null
+  const models = shown ? modelsFor(roster.models) : []
+  const lost = shown && bot.model ? !models.some(model => model.ref === bot.model) : false
+  // Only a chat that may need a pick asks the providers again: every Bot chat used to,
+  // which cost a fresh catalog and a team read on each switch.
+  const asks = shown && !isLocalRoute(bot.model) && (!bot.model || lost)
+  useEffect(() => { if (asks) void actions.refreshModels?.() }, [asks, sessionId])
+  if (!shown) return null
   // A local agent that is gone gets the repair card; picking a model here would change what it runs on.
   if (isLocalRoute(bot.model)) return null
-  const models = modelsFor(roster.models)
   // A model whose provider has no API key fails every turn, so it is no choice.
   const usable = models.filter(model => !model.needsKey)
-  const lost = bot.model ? !models.some(model => model.ref === bot.model) : false
   // An unknown catalog (none listed) cannot tell a lost model from a slow provider.
   if (bot.model && (!lost || models.length === 0)) return null
   // The missing key is taken here, through the host.

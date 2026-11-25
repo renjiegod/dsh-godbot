@@ -35453,14 +35453,15 @@ function ModelChoiceDock({ sessionId, useRoster, actions }) {
   const [busy, setBusy] = (0, import_react25.useState)("");
   const [error, setError] = (0, import_react25.useState)("");
   const shown = Boolean(bot) && currentPart(bot) === sessionId && roster.ready;
+  const models = shown ? modelsFor(roster.models) : [];
+  const lost = shown && bot.model ? !models.some((model) => model.ref === bot.model) : false;
+  const asks = shown && !isLocalRoute(bot.model) && (!bot.model || lost);
   (0, import_react25.useEffect)(() => {
-    if (shown) void actions.refreshModels?.();
-  }, [shown, sessionId]);
-  if (!bot || currentPart(bot) !== sessionId || !roster.ready) return null;
+    if (asks) void actions.refreshModels?.();
+  }, [asks, sessionId]);
+  if (!shown) return null;
   if (isLocalRoute(bot.model)) return null;
-  const models = modelsFor(roster.models);
   const usable = models.filter((model) => !model.needsKey);
-  const lost = bot.model ? !models.some((model) => model.ref === bot.model) : false;
   if (bot.model && (!lost || models.length === 0)) return null;
   const keyFor = usable.length === 0 && actions.setProviderKey ? models.find((model) => model.needsKey) : void 0;
   const manage = manageModels(actions);
@@ -58375,6 +58376,7 @@ function apply(ctx, godbot) {
     const current2 = roster.getSnapshot();
     const live2 = {};
     if (value.partsRunning !== void 0 && JSON.stringify(value.partsRunning) !== JSON.stringify(current2.partsRunning ?? {})) live2.partsRunning = value.partsRunning;
+    if (value.nativeTerminals !== void 0 && JSON.stringify(value.nativeTerminals) !== JSON.stringify(current2.nativeTerminals ?? null)) live2.nativeTerminals = value.nativeTerminals;
     if (value.newSessions !== void 0 && JSON.stringify(value.newSessions) !== JSON.stringify(current2.newSessions ?? {})) live2.newSessions = value.newSessions;
     if (value.emptyParts !== void 0 && JSON.stringify(value.emptyParts) !== JSON.stringify(current2.emptyParts ?? {})) live2.emptyParts = value.emptyParts;
     if (value.partTitles !== void 0 && JSON.stringify(value.partTitles) !== JSON.stringify(current2.partTitles ?? {})) live2.partTitles = value.partTitles;
@@ -58484,6 +58486,7 @@ function apply(ctx, godbot) {
       try {
         const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(3e4)]);
         const value = await call("update-check", { fresh: false }, signal, { quiet: true }).catch(() => null);
+        if (value) checkedAt = Date.now();
         if (!lifetime.signal.aborted && !again && value) takeUpdate(value);
       } finally {
         running = false;
@@ -58494,8 +58497,9 @@ function apply(ctx, godbot) {
         }
       }
     };
+    let checkedAt = 0;
     const wake = () => {
-      if (!document.hidden) void loop();
+      if (!document.hidden && Date.now() - checkedAt > 6e4) void loop();
     };
     wakeUpdate = loop;
     document.addEventListener("visibilitychange", wake);
@@ -62515,6 +62519,44 @@ function toolPollDelay(quiet, hidden = typeof document !== "undefined" && docume
   if (hidden) return 5e3;
   return 700 * 2 ** Math.min(Math.max(quiet, 0), 2);
 }
+var batches = /* @__PURE__ */ new WeakMap();
+function readTools(client, botId, sessionId, turn) {
+  let state = batches.get(client);
+  if (!state) batches.set(client, state = { many: true, pending: /* @__PURE__ */ new Map() });
+  const single = () => client.dispatch({ action: "execution.history", botId, sessionId, turn, onlyTools: true });
+  if (!state.many) return single();
+  const key = JSON.stringify([botId, sessionId]);
+  let batch = state.pending.get(key);
+  if (!batch) {
+    state.pending.set(key, batch = /* @__PURE__ */ new Map());
+    setTimeout(() => {
+      state.pending.delete(key);
+      const waiting2 = [...batch.entries()];
+      const each = ([at2, entry2]) => client.dispatch({ action: "execution.history", botId, sessionId, turn: at2, onlyTools: true }).then(entry2.resolve, entry2.reject);
+      if (waiting2.length === 1) return each(waiting2[0]);
+      client.dispatch({ action: "execution.history", botId, sessionId, turns: waiting2.map(([at2]) => at2), onlyTools: true }).then((data) => {
+        if (!data || typeof data.byTurn !== "object" || data.byTurn === null) {
+          state.many = false;
+          waiting2.forEach(each);
+          return;
+        }
+        for (const [at2, entry2] of waiting2) {
+          if (Object.hasOwn(data.byTurn, at2)) entry2.resolve(data.byTurn[at2]);
+          else each([at2, entry2]);
+        }
+      }, (error) => {
+        for (const [, entry2] of waiting2) entry2.reject(error);
+      });
+    }, 0);
+  }
+  let entry = batch.get(turn);
+  if (!entry) {
+    entry = {};
+    entry.promise = new Promise((resolve2, reject) => Object.assign(entry, { resolve: resolve2, reject }));
+    batch.set(turn, entry);
+  }
+  return entry.promise;
+}
 function executionTools(client, botId, sessionId, turn) {
   const key = JSON.stringify([botId, sessionId, turn]);
   let turns = toolStores.get(client);
@@ -62526,7 +62568,7 @@ function executionTools(client, botId, sessionId, turn) {
     if (loading) return;
     loading = true;
     try {
-      const data = await client.dispatch({ action: "execution.history", botId, sessionId, turn, onlyTools: true });
+      const data = await readTools(client, botId, sessionId, turn);
       failures = 0;
       const next = data.events ?? emptyTools;
       settled = data.running !== true && next.length > 0;
@@ -70101,11 +70143,11 @@ button.gb-bot-model:focus-visible,
   box-shadow: 0 0 0 1.5px var(--bt-card);
 }
 `;
-function useNativeTerminalActive(client, target, running) {
+function useNativeTerminalActive(client, target, running, known) {
   const { botId, sessionId } = target ?? {};
   const [activePart, setActivePart] = (0, import_react122.useState)();
   (0, import_react122.useEffect)(() => {
-    if (!botId || !sessionId) return;
+    if (!botId || !sessionId || known) return;
     let timer, mounted = true, busy = false;
     async function update() {
       if (busy) return;
@@ -70129,7 +70171,8 @@ function useNativeTerminalActive(client, target, running) {
       clearTimeout(timer);
       document.removeEventListener("visibilitychange", wake);
     };
-  }, [client, botId, sessionId, running]);
+  }, [client, botId, sessionId, running, Boolean(known)]);
+  if (known) return target != null && known[sessionId] === true;
   return target != null && activePart === sessionId;
 }
 function NativeAgentButton({ target, active, actions }) {
@@ -70198,7 +70241,7 @@ function mountProduct(ctx, client, navigation, target, ready) {
     browserDrawerPane(bot, id, state, actions) {
       return (0, import_react122.createElement)(BrowserDrawerPane, { client, bot, sessionId: id, roster: state, actions });
     },
-    useNativeTerminalActive: (bot, id, state, running) => useNativeTerminalActive(client, botNativeTarget(bot, id, state), running),
+    useNativeTerminalActive: (bot, id, state, running) => useNativeTerminalActive(client, botNativeTarget(bot, id, state), running, state?.nativeTerminals),
     nativeButton(bot, id, state, actions, terminalActive) {
       const target2 = botNativeTarget(bot, id, state);
       return target2 && (0, import_react122.createElement)(NativeAgentButton, { key: "native:" + id, target: target2, active: terminalActive, actions });
