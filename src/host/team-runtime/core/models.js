@@ -336,9 +336,25 @@ export function install(rt) {
   // Recheck group Sessions after every restart: Bot-level applied fields cannot
   // prove that an older group Session received the member's thinking level.
   const sessionSelections = new Map()
+  // Each pass through the controller writes the profile default twice (DSH's save and
+  // the write-back), and every write makes each open window read the model catalog and
+  // the settings again. Opening or switching a Bot's part re-selects every live part of
+  // its chat and its group Sessions, which are nearly always on the route already: a
+  // Session whose live Agent shows the very same selection is left as it is.
+  const alreadyOn = (sessionId, wanted) => {
+    let current
+    try { current = serviceOf(ctx, 'agents')?.get?.(sessionId)?.model?.current?.() } catch { return false }
+    return current?.provider !== undefined && sameSelection(
+      { provider: current.provider, model: current.model, reasoningEffort: current.reasoningEffort ?? undefined }, wanted)
+  }
   function selectSessionModel(sessionId, { provider, model, reasoningEffort }) {
     const run = selecting.then(async () => {
       if (llm() === undefined) return
+      const wanted = { provider, model, ...(reasoningEffort === undefined ? {} : { reasoningEffort }) }
+      if (alreadyOn(sessionId, { provider, model, reasoningEffort })) {
+        sessionSelections.set(sessionId, { provider, model, reasoningEffort })
+        return { selected: wanted }
+      }
       const defaults = ctx.get?.('agentDefaultModel')
       const before = defaults?.currentSelection?.()
       const result = await ctx.sessionController.selectModel({
