@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { until } from '../host.mjs'
 import { openBotChat, openFullTeam } from '../native-ui.mjs'
 
-// The DSH commands stay refused in a Bot's chat, saving the team does not make every
+// Bot chats use their own /goal and refuse the other DSH commands. Saving the team does not make every
 // open window ask for the command list again, and a switch asks only what it draws.
 // The shield used to lift and re-register each shadow on every save: one
 // `commands/change` per command, chat and save, each answered by the browser with a
@@ -21,14 +21,17 @@ export default async function COMMAND_QUIET({ makeHost, candidate, note }) {
   }
   await openBotChat(a, bots[0])
   const chats = await Promise.all(bots.map(async bot => (await a.bot('chat', { botId: bot.id })).sessionId))
-  // Each chat's agent carries the shadows: the rows read as refused there.
+  const expected = row => row.name === 'goal'
+    ? /Set or view this Bot conversation/u.test(row.description)
+    : /Not available in a Bot chat/u.test(row.description)
+  // Each chat's agent carries one goal action and stable refusals for the other commands.
   await until(async () => {
     for (const agentId of chats) {
       const rows = await a.rpc('commands/list', { agentId })
-      if (rows.length === 0 || !rows.every(row => /Not available in a Bot chat/u.test(row.description))) return false
+      if (!rows.some(row => row.name === 'goal') || !rows.every(expected)) return false
     }
     return true
-  }, 'every DSH command refused in both Bot chats')
+  }, 'the Bot goal and stable command refusals in both chats')
   const rows = await a.rpc('commands/list', { agentId: chats[0] })
   note('shadowed', { commands: rows.length })
 
@@ -47,7 +50,7 @@ export default async function COMMAND_QUIET({ makeHost, candidate, note }) {
   note('command-list-requests', { saves: 6, requests: lists, before: 6 * chats.length * rows.length * 2 })
   assert.ok(lists <= 2, `saving the team asked for the command list ${lists} times`)
   const after = await a.rpc('commands/list', { agentId: chats[1] })
-  assert.ok(after.every(row => /Not available in a Bot chat/u.test(row.description)), 'the shadows stay after the saves')
+  assert.ok(after.every(expected), 'the shadows stay after the saves')
 
   // Switching between two Bot chats asks only for what the new chat draws: no fresh model
   // catalog for a Bot that has its model, and no native terminal status of its own.
