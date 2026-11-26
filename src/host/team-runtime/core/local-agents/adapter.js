@@ -608,6 +608,9 @@ export class LocalAgentAdapter extends LlmAdapter {
     const preset = this.deps.presetFor(sessionId)
     const live = await this.liveFor(options, preset)
     options.signal?.throwIfAborted()
+    if (live.spec.kind === 'codex' && live.cliSessionId && this.deps.rt?.runningBotGoal?.(sessionId)) {
+      await live.engine.assertNoNativeGoal(live.cliSessionId, options.signal)
+    }
 
     // What the request carries past the last handed message. When the marker is
     // gone the CLI session is stale or new: it gets a replay instead of a delta.

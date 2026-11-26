@@ -40,6 +40,7 @@ export function teamSlashSource(roster, actions, client) {
     entry = { key: here.key, expires: Infinity }
     catalogs.set(here.botId, entry)
     entry.ready = Promise.resolve().then(() => client.slashCommands({ botId: here.botId })).then(commands => {
+      commands = commands.filter(command => command.name !== 'goal')
       entry.commands = commands
       entry.expires = Date.now() + cacheMs
       return commands
@@ -87,9 +88,10 @@ export function teamSlashSource(roster, actions, client) {
   }
 
   const commandFor = (commands, token) => commands?.find(command => '/' + command.name === token)
+  const usesHostGoal = (session, token) => token === '/goal' && roster.getSnapshot().byId?.[session.sessionId] !== undefined
   async function resolve(session, token, signal) {
     const here = target(session)
-    if (!here || !token?.startsWith('/') || token.length < 2) return
+    if (!here || !token?.startsWith('/') || token.length < 2 || usesHostGoal(session, token)) return
     const commands = await catalog(here).ready
     signal?.throwIfAborted()
     checkCurrent(session, here)
@@ -99,6 +101,7 @@ export function teamSlashSource(roster, actions, client) {
 
   return {
     trigger: '/', name: 'godbot-native-agent', order: -100, showGroupTitle: false,
+    usesHostGoal,
     accepts: session => !!target(session),
     async candidates(session, { position, query, signal }) {
       const here = target(session)
@@ -189,6 +192,7 @@ export function bindTeamSlashSource(controller, source, sessionId) {
   })
   const key = (action, composing) => {
     if (!composing && prior?.open && prior.hit?.position === 'leading' && (action === 'enter' || action === 'tab')) {
+      if (action === 'enter' && !userSelected && source.usesHostGoal(session, '/' + prior.hit.query)) return 'pass'
       const native = prior.groups.find(item => item.source === source.name)
       if (!userSelected && native?.status === 'pending' && source.accepts(session)) return 'consumed'
       if (action === 'enter' && prior.highlight?.source === source.name &&

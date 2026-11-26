@@ -28,6 +28,7 @@ import * as chatIndex from './core/chat-index.js'
 import * as groups from './core/groups.js'
 import * as ledger from './core/ledger.js'
 import * as goals from './core/goals.js'
+import * as botGoals from './core/bot-goals.js'
 import * as agentCommands from './core/agent-commands.js'
 import * as tasks from './core/tasks.js'
 import * as approvals from './core/approvals.js'
@@ -74,7 +75,7 @@ export { name, inject } from './core/entry.js'
 // call before the hooks of tools do, so a closed call never reaches a card they show.
 const memory = sandboxPrivacy.sandboxAwareObserver(memoryObserver)
 const learning = sandboxPrivacy.sandboxAwareObserver(learningObserver)
-const MODULES = [diagnostics, store, ledger, models, sandboxPrivacy, providers, permissions, governance, turns, failover, steer, handoffs, requests, delivery, conversationRouting, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, goals, agentCommands, tasks, approvals, resume, memory, parts, changes, images, avatarLibrary, secrets, connectors, capabilities, components, learning, schedules, browser, browserPlugins, computer, usage, update, dshUpdate, thinking, mobile, feed, phone, im, channel, remote, officeSkills, goalSkills, executionHistory, localAgents, remoteAgents, roomRouting]
+const MODULES = [diagnostics, store, ledger, models, sandboxPrivacy, providers, permissions, governance, turns, failover, steer, handoffs, requests, delivery, conversationRouting, roster, folders, privacy, agents, prompt, timeContext, tools, chatIndex, groups, goals, agentCommands, tasks, approvals, resume, memory, parts, botGoals, changes, images, avatarLibrary, secrets, connectors, capabilities, components, learning, schedules, browser, browserPlugins, computer, usage, update, dshUpdate, thinking, mobile, feed, phone, im, channel, remote, officeSkills, goalSkills, executionHistory, localAgents, remoteAgents, roomRouting]
 
 export function apply(ctx, config = {}) {
   createRuntime(ctx, config)

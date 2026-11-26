@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { HISTORY_TIMEOUT_MS, MESSAGE_INLINE_MAX, SOURCE_KIND, STEER_CUT } from './constants.js'
+import { HISTORY_TIMEOUT_MS, MESSAGE_INLINE_MAX, SOURCE_KIND, STEER_CUT, isBotGoalSource } from './constants.js'
 import { answerSender, cutOffText, failureLine, turnFailure } from './turns.js'
 import { textOf } from './text.js'
 import { conversationHead } from './threads.js'
@@ -237,6 +237,11 @@ export function install(rt) {
         break
       }
       case 'user/message': {
+        if (isBotGoalSource(event.data?.source)) {
+          // The Bot goal owns recovery of this attempt and checks the durable log.
+          update(id, () => undefined)
+          break
+        }
         if (event.data?.source?.kind !== SOURCE_KIND) break
         // turns.js, installed earlier, has already claimed the turn's trigger.
         const info = rt.live.get(id)?.info

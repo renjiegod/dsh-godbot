@@ -46,6 +46,7 @@ export const CAPABILITIES = [
   'local-agent-usage',
   'unified-automation',
   'stop-chat',
+  'bot-goals',
   'row-meta',
   'chat-steps',
   'chat-inline-tools',

@@ -19,7 +19,7 @@ import { readComponentReceipt } from '../shared/component-receipt.js'
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { openTurnAt } from './btw.js'
-import { BACKGROUND_ROLE, HANDOFF_ACK, HISTORY_TIMEOUT_MS, REPLY_KIND, SOURCE_KIND } from './constants.js'
+import { BACKGROUND_ROLE, BOT_GOAL_ROLE, HANDOFF_ACK, HISTORY_TIMEOUT_MS, REPLY_KIND, SOURCE_KIND } from './constants.js'
 import { assembleLlmStream } from './models.js'
 import { parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
 import { CHECKPOINT_PROMPT, STEWARD_SYSTEM, checkpointCount, checkpointTail, checkpointTailNote, checkpointText, linesFor, parseDecision, stewardRequest } from './steward.js'
@@ -159,7 +159,7 @@ export function historyEntry(event, group) {
   const skipped = (ours && (source.handoff === true || source.role === 'kickoff' || source.role === 'goal')) || (!group && text.startsWith('[Group chat'))
   // What the Bot said by itself after a background task stays; the note that opened
   // that turn is no message.
-  if (ours && source.role === BACKGROUND_ROLE) return { answer: false, who: 'bot', text: '', keepAnswers: true }
+  if (ours && [BACKGROUND_ROLE, BOT_GOAL_ROLE].includes(source.role)) return { answer: false, who: 'bot', text: '', keepAnswers: true }
   // A turn that went on after a handoff did real work, so its answers stay.
   return { answer: false, who: ours ? 'bot' : 'user', text: skipped ? '' : text, keepAnswers: !skipped || (ours && source.resume === true) }
 }
@@ -2318,10 +2318,10 @@ export function install(rt) {
     if (bot === undefined || rt.chatOf(botId) !== agent.id || rt.openingChat(botId) || partSelections.has(botId)) return false
     const parts = currentConversationParts(bot, agent.id)
     const making = (async () => {
-      if (!await conversationTalked(parts).catch(() => true)) return false
+      if (!rt.activeBotGoal?.(agent.id) && !await conversationTalked(parts).catch(() => true)) return false
       // The read took a moment: the part may have moved on, or started moving, meanwhile.
       if (rt.botOf(botId) !== bot || rt.chatOf(botId) !== agent.id || switches.has(agent.id)) return false
-      if (agent.status === 'idle' && !cliWorks(agent.id)) {
+      if (agent.status === 'idle' && !cliWorks(agent.id) && !rt.activeBotGoal?.(agent.id)) {
         startSwitch(agent, { manual: true })
         return true
       }
@@ -2458,7 +2458,7 @@ export function install(rt) {
     // and its tasks, cards and schedules stay with it. So does a part whose CLI still
     // works with no turn running: archived, the reply the CLI gives when its background
     // task ends would have nowhere to show. Only an idle part is archived.
-    if (switches.has(current) || rt.live.get(current)?.turn !== undefined || cliWorks(current)) {
+    if (switches.has(current) || rt.live.get(current)?.turn !== undefined || cliWorks(current) || rt.activeBotGoal?.(current)) {
       openEarlierBeside(bot, partId)
       rt.chatOwners.set(partId, botId)
       rt.pastOwners.delete(partId)

@@ -2,6 +2,7 @@
 // The Codex app-server engine: `codex app-server --listen stdio://`, one
 // JSON-RPC process per route that multiplexes threads. Godbot Sessions map to
 // threads; turns stream item notifications back.
+import { LlmError } from '@deepseek-ai/dsh-llm'
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
 import { codexInputModalities } from '../../../../drivers/external/codex.js'
 import { cleanEnv, findEngineExecutable, spawnAgent, terminateChild } from '../../../../drivers/external/discover.js'
@@ -241,6 +242,21 @@ export class CodexEngine {
     if (peer === undefined) return
     const own = await this.ownInstructions(peer, thread.cwd)
     await peer.request('thread/inject_items', { threadId: thread.threadId, items: [{ type: 'developerMessage', text: withOwnInstructions(text, own) }] }, { timeout: 15_000 }).catch(() => {})
+  }
+
+  async assertNoNativeGoal(threadId, signal) {
+    const peer = await this.ensure()
+    let goal
+    try {
+      goal = (await peer.request('thread/goal/get', { threadId }, { signal, timeout: 15_000 }))?.goal
+    } catch (error) {
+      // Older CLIs and profiles with native goals disabled can still run host goal turns.
+      if (error.code === -32601 || /goals feature is disabled/iu.test(error.message)) return
+      throw error
+    }
+    if (goal && !['paused', 'complete', 'budgetLimited'].includes(goal.status)) {
+      throw new LlmError('Pause or finish the Codex thread’s native goal first.', 'BOT_GOAL_NATIVE_ACTIVE')
+    }
   }
 
   async prompt(thread, blocks, { signal, effort }) {

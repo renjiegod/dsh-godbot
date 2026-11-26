@@ -1515,8 +1515,8 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-part-fresh{max-width:28rem;margin:0 auto 12px;font-size:12.5px;line-height:18px;text-align:center;color:var(--bt-ink-2)}
 .bt-part-start>.bt-part-line:first-child{margin-top:17px}
 /* The dock wrapper also holds the context meter, so it stays hidden until a side question is in it. */
-[data-composer-dock]:has(.bt-btw){display:flex!important;flex-direction:column;align-items:center;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
-[data-composer-dock]:has(.bt-btw)>:not([data-slot="conversation.composer.dock"]){display:none!important}
+[data-composer-dock]:has(:is(.bt-btw,.bt-bot-goal)){display:flex!important;flex-direction:column;align-items:center;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
+[data-composer-dock]:has(:is(.bt-btw,.bt-bot-goal))>:not([data-slot="conversation.composer.dock"]){display:none!important}
 .bt-btw-dock,.bt-btw-stack{display:flex;flex-direction:column;gap:6px;width:100%;max-width:var(--dsh-composer-card-max-width,748px)}
 .bt-btw{box-sizing:border-box;width:100%;margin:6px auto;padding:8px 12px;border:1px solid var(--bt-line);border-radius:12px;background:var(--bt-card);color:var(--bt-ink)}
 .bt-btw-dock .bt-btw,.bt-btw-stack .bt-btw{margin:0}

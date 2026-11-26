@@ -152,6 +152,14 @@ async function runPrompt(session, prompt, requestId) {
     update(sessionId, { sessionUpdate: 'usage_update', used: session.used, size: WINDOW, _meta: { ...meta, 'cognition.ai/subagent_context': { parentAgentId: 'root' } } })
     reply(requestId, { stopReason: 'end_turn', usage: { totalTokens: session.used, inputTokens: session.used - 30, outputTokens: 30, cachedReadTokens: 9_000 } })
   }
+  const goalAttempt = /Objective: Verify the ACP goal fixture\.[\s\S]*?attempt_id "([^"]+)"/u.exec(text)?.[1]
+  if (goalAttempt) {
+    const result = await mcpCall(session.mcp, 'report_bot_goal', {
+      attempt_id: goalAttempt, status: 'complete', summary: 'ACP goal completed.', evidence: 'ACP goal bridge verified.',
+    })
+    finish((result.content ?? []).map(block => block.text).join(' '))
+    return
+  }
   const dir = process.env.GODBOT_E2E_GATE_DIR
   const trace = agyModes && dir && text.match(/GODBOT-ACP-EXECUTION-TRACE ([a-f\d-]+)/u)
   if (trace) {

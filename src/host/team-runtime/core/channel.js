@@ -142,6 +142,7 @@ export function install(rt) {
     // Deleted private Bots whose folder, memory and chats stay closed to the others.
     privateArchives: rt.archivesView(),
     exchangeTurns: state.exchangeTurns,
+    botGoals: rt.botGoalsView?.() ?? {},
     questions: state.questions,
     views: state.views ?? {},
     closedCards: state.closedCards ?? {},
@@ -210,7 +211,7 @@ export function install(rt) {
     newSessions: Object.fromEntries(Object.values(state.bots).flatMap((bot) => {
       if (rt.openingChat?.(bot.id)) return [[bot.id, 'opening']]
       const parts = currentConversationParts(bot, rt.chatOf(bot.id))
-      const empty = parts.every(sessionId => rt.partEmpty?.(sessionId))
+      const empty = !rt.activeBotGoal?.(rt.chatOf(bot.id)) && parts.every(sessionId => rt.partEmpty?.(sessionId))
       return empty ? [[bot.id, 'empty']] : []
     })),
     emptyParts: Object.fromEntries(Object.values(state.bots).flatMap((bot) => {
@@ -261,7 +262,7 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'chat-tool', 'turn-process', 'run-stats', 'room-progress', 'group-rows', 'group-rows-many', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'update-settings', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'browser-frame', 'hello', 'notices', 'avatar', 'room-chat', 'usage-summary', 'image', 'markdown-image', 'file-download', 'changes-check', 'changes-summary', 'changes-diff'])
+  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'bot-goal-get', 'chat-tool', 'turn-process', 'run-stats', 'room-progress', 'group-rows', 'group-rows-many', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'update-settings', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'browser-frame', 'hello', 'notices', 'avatar', 'room-chat', 'usage-summary', 'image', 'markdown-image', 'file-download', 'changes-check', 'changes-summary', 'changes-diff'])
 
   // One group_relay call's rows in the group's book, from `from` up to `to` or the next anchor.
   function groupRowsOf(roomId, { from: start, to: end, anchor }) {
@@ -676,8 +677,19 @@ export function install(rt) {
           await rt.save()
           return ok(view())
         }
+        case 'bot-goal-get': {
+          if (!profileOwner) return fail('A profile owner must read the Bot goal.', 'bot/refused')
+          await rt.load()
+          return ok(rt.botGoalRead(String(body.botId ?? ''), String(body.sessionId ?? '')))
+        }
+        case 'bot-goal-control':
+          if (!profileOwner) return fail('A profile owner must control the Bot goal.', 'bot/refused')
+          return ok(await rt.botGoalControl(String(body.botId ?? ''), String(body.sessionId ?? ''), body))
+        case 'bot-goal-command':
+          if (!profileOwner) return fail('A profile owner must control the Bot goal.', 'bot/refused')
+          return ok(await rt.botGoalCommand(String(body.botId ?? ''), String(body.sessionId ?? ''), body.input, body.requestId))
         case 'stop-chat':
-          return ok(await rt.stopChat(String(body.botId ?? '')))
+          return ok(await rt.stopChat(String(body.botId ?? ''), body.sessionId))
         case 'dismiss-question':
           await rt.load()
           if (rt.own(state.questions, body.sessionId) !== undefined) {

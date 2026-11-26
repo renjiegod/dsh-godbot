@@ -82,6 +82,9 @@ export class RemoteAgentAdapter extends LlmAdapter {
       return
     }
     const sessionId = opts.sessionId
+    if (this.rt.runningBotGoal?.(sessionId)) {
+      throw new LlmError('This remote agent cannot confirm goal progress or cancellation.', 'BOT_GOAL_REMOTE_UNSUPPORTED')
+    }
     const bot = this.rt.botOf(this.rt.selfOf(sessionId))
     if (!bot || ![bot.model, bot.appliedModel].includes(opts.provider + '/' + MODEL) || opts.purpose !== undefined || opts.system !== undefined) {
       throw error('请从选择了该远程 Agent 的 Bot 会话运行')

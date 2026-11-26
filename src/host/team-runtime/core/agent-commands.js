@@ -1,5 +1,5 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
-// The DSH slash commands do not run in a Bot's chat or in a group chat.
+// Scope DSH slash commands to their owner. Bot chats own their /goal command.
 //
 // DSH's command registry has no "remove for this Session" call: it offers register,
 // list, find and execute only. An agent-scoped registration, though, shadows the global
@@ -35,6 +35,7 @@ export function install(rt) {
     || Object.values(rt.state?.rooms ?? {}).some(room => rt.sessionOfRoom?.(room) === sessionId)
   const covered = sessionId => rt.chatOwners?.has?.(sessionId) === true || roomChat(sessionId) || botChat(sessionId)
   const isGroup = sessionId => roomChat(sessionId)
+  const godbotGoal = (sessionId, entry) => entry.name === 'goal' && entry.definitionId === '@deepseek-ai/dsh-command-goal' && !isGroup(sessionId) && rt.botGoalCommand !== undefined
   const refusal = (sessionId, name) => {
     const where = isGroup(sessionId) ? 'a group chat' : "a Bot's chat"
     const goal = name === 'goal' && isGroup(sessionId) ? ' Use the group Goal in the group details panel instead.' : ''
@@ -72,7 +73,7 @@ export function install(rt) {
       liftAll(shield)
       return
     }
-    const description = rowCopy(shield.sessionId)
+    const defaultDescription = rowCopy(shield.sessionId)
     const listed = new Set()
     // `list(agent)` is the merged view: a name this shield already shadows shows the
     // shadow, so the command under it reads as unchanged. A name it does not shadow yet,
@@ -80,6 +81,7 @@ export function install(rt) {
     // host's own and gets a shadow. A command the host withdraws later keeps its
     // refusing row in these chats until the agent and its shield go away.
     for (const definition of commands.list(shield.agent)) {
+      const description = godbotGoal(shield.sessionId, definition) ? 'Set or view this Bot conversation’s goal' : defaultDescription
       listed.add(definition.name)
       const held = shield.shadows.get(definition.name)
       if (ours(held, definition)) {
@@ -110,16 +112,28 @@ export function install(rt) {
     // Keep the host descriptor's identity and input hint: the client uses them to
     // claim a typed line with arguments and to keep the row's first-party face.
     // Dropping them would leave `/name args` as a plain prompt.
+    const goal = godbotGoal(shield.sessionId, definition)
+    const input = goal ? { hint: '[<objective>|edit <objective>|pause|resume|stop]' } : definition.input
     const entry = {
       name: definition.name,
       description,
       ...(definition.definitionId === undefined ? {} : { definitionId: definition.definitionId }),
-      ...(definition.input === undefined ? {} : { input: definition.input }),
+      ...(input === undefined ? {} : { input }),
     }
     try {
       const off = shield.commands.register({
         ...entry,
-        handler: () => ({ kind: 'error', text: refusal(shield.sessionId, definition.name) }),
+        handler(invocation) {
+          if (!goal || !godbotGoal(shield.sessionId, definition)) return { kind: 'error', text: refusal(shield.sessionId, definition.name) }
+          const botId = rt.chatOwners.get(shield.sessionId)
+          if (botId === undefined) return { kind: 'error', text: 'Open a Bot conversation to use /goal.' }
+          return rt.botGoalCommand(botId, shield.sessionId, invocation.rawInput, invocation.requestId).then(
+            result => ({ kind: 'success', text: result === null
+              ? 'Use /goal <objective> or the Goal button to start a Bot goal.'
+              : ['Bot goal · ' + result.status, result.objective, result.reason].filter(Boolean).join('\n') }),
+            error => ({ kind: 'error', text: error.message }),
+          )
+        },
       })
       shield.refused.delete(definition.name)
       if (typeof off === 'function') shield.shadows.set(definition.name, { ...entry, lift: off })

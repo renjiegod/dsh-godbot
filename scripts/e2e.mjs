@@ -28,11 +28,11 @@ if (values.help) {
   }
   const release = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'BOT-FAILOVER-SECTIONS', 'COMMAND-QUIET', 'NEW-SESSION', 'DRAFT-ATTACHMENTS', 'BACKGROUND-REPLY', 'BOT-MESSAGE-ROUTING', 'BOT-HANDOFF-ROUTING', 'CONVERSATION-TOOLS', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5', 'E8', 'E12', 'E13', 'E15', 'E16', 'E17', 'LOCAL-SIGNIN', 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS', 'BUNDLED-COMPUTER-HOST']
   const all = ['WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'BOT-FAILOVER-SECTIONS', 'COMMAND-QUIET', 'NEW-SESSION', 'DRAFT-ATTACHMENTS', 'BACKGROUND-REPLY', 'BOT-MESSAGE-ROUTING', 'BOT-HANDOFF-ROUTING', 'CONVERSATION-TOOLS', 'LOCAL-SIGNIN', ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]), 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS', 'BUNDLED-COMPUTER-HOST']
-  release.push('TURN-OUTCOMES', 'NEW-SESSION-HANDOFF')
-  all.push('TURN-OUTCOMES', 'NEW-SESSION-HANDOFF')
+  release.push('TURN-OUTCOMES', 'NEW-SESSION-HANDOFF', 'BOT-GOALS')
+  all.push('TURN-OUTCOMES', 'NEW-SESSION-HANDOFF', 'BOT-GOALS')
   const connectorCases = ['L-CLAUDE', 'L-CODEX']
   const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
-  const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK', 'PHONE-AUTOMATION']
+  const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK', 'PHONE-AUTOMATION', 'PHONE-BOT-GOALS']
   const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX', 'SANDBOX-SETUP']
   const suites = { release, all, 'live-connectors': connectorCases, 'live-routines': Object.keys(routineFiles) }
   if ((values.case && ![...all, ...live, ...androidCases].includes(values.case)) || (values.suite && !Object.hasOwn(suites, values.suite))) throw new Error('Unknown case or suite')
@@ -50,12 +50,9 @@ if (values.help) {
   try {
     const candidate = values.artifact ? await inspectArchive(values.artifact) : await buildArchive(scratch)
     report.archive = { sha256: candidate.sha256, buildId: candidate.buildId, version: candidate.version }
-    let previous
-    if (cases.includes('E12')) {
-      if (values.previous) previous = await inspectArchive(values.previous)
-      else if (hasRevision(upgradeBaseline)) previous = await buildArchive(scratch, upgradeBaseline)
-      if (previous) report.previous = { sha256: previous.sha256, buildId: previous.buildId, version: previous.version }
-    }
+    let previous = values.previous ? await inspectArchive(values.previous) : undefined
+    if (!previous && cases.includes('E12') && hasRevision(upgradeBaseline)) previous = await buildArchive(scratch, upgradeBaseline)
+    if (previous) report.previous = { sha256: previous.sha256, buildId: previous.buildId, version: previous.version }
     const launch = await openBrowser()
     browser = launch.browser
     report.browser = { engine: browser.browserType().name(), version: browser.version(), source: launch.source }

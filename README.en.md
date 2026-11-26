@@ -47,6 +47,7 @@ Install the Claude Code, Codex, or Antigravity CLI under the same OS user that r
 
 | Goal | In Godbot |
 | --- | --- |
+| Run a Bot goal | Type `/goal <objective>` or choose **Goal** in a Bot chat. The Bot works toward the finish condition and reports progress and evidence in that conversation. You can pause, resume, stop, and set turn or active-time limits. |
 | Take over an agent | Open **Native Agent** in a Bot’s chat. Switch between conversation and terminal in the same native session, then hand it back to Bot chat. |
 | Coordinate a team | Create Bots and groups, give each Bot a model, permissions, and working folder, and assign tasks with acceptance criteria. Review their evidence in the task board. |
 | Repeat a workflow | Connect Bot tasks, branch on review outcomes, and schedule a pinned workflow version or trigger it through CI, the CLI, or MCP. |

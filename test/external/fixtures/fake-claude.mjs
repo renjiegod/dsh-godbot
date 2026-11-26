@@ -68,6 +68,18 @@ process.stdin.on('data', (chunk) => {
     }
     const images = blocks.filter(block => block.type === 'image').map(block => ({ mediaType: block.source.media_type, data: block.source.data }))
     const text = blocks.filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
+    const goalAttempt = /Objective: Verify the Claude goal fixture\.[\s\S]*?attempt_id "([^"]+)"/u.exec(text)?.[1]
+    if (goalAttempt) {
+      const bridge = JSON.parse(process.argv[process.argv.indexOf('--mcp-config') + 1]).mcpServers.godbot
+      void import('../../e2e/fixtures/ticket-client.mjs').then(async ({ rpc }) => {
+        const result = await rpc(bridge, 'tools/call', { name: 'report_bot_goal',
+          arguments: { attempt_id: goalAttempt, status: 'complete', summary: 'Claude goal completed.', evidence: 'Claude goal bridge verified.' } })
+        const reply = (result.content ?? []).map(block => block.text).join(' ')
+        send({ type: 'assistant', message: { content: [{ type: 'text', text: reply }] } })
+        send({ type: 'result', subtype: 'success', session_id: sessionId, result: reply })
+      })
+      continue
+    }
     if (text.includes('raw-shell-receipts')) {
       const id = 'raw-bash-receipt'
       send({ type: 'assistant', message: { content: [{ type: 'tool_use', id, name: 'Bash', input: { command: 'fixture shell command' } }] } })

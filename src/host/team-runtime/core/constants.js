@@ -45,6 +45,8 @@ export const SOURCE_KIND = 'bot'
 // answers that turn with the CLI's own words; the note never reaches the CLI, and is
 // there for whoever reads the conversation back (a replay, a handoff).
 export const BACKGROUND_ROLE = 'background'
+export const BOT_GOAL_ROLE = 'bot-goal'
+export const isBotGoalSource = source => source?.kind === SOURCE_KIND && source.role === BOT_GOAL_ROLE
 export const BACKGROUND_NOTE = '[Background turn · something you left running reported back, and you went on by yourself; what you said follows]'
 // The fixed reply that opens a fresh conversation part; it is never shown or sent on.
 export const HANDOFF_ACK = 'Noted. I have my handoff note and carry on from here.'

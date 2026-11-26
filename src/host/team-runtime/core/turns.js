@@ -401,10 +401,11 @@ export function install(rt) {
 
   // The phone's Stop for a Bot's own-chat turn: the same cancel the group's
   // member stop uses — end the running turn and any subagents it spawned.
-  async function stopChat(botId) {
+  async function stopChat(botId, part) {
     await rt.load()
-    const sessionId = rt.chatOf(botId)
-    if (sessionId === undefined) return false
+    const sessionId = part ?? rt.chatOf(botId)
+    if (sessionId === undefined || rt.chatOwners.get(sessionId) !== botId) return false
+    await rt.pauseBotGoalForStop?.(sessionId)
     const handoffStopped = await rt.cancelFailover?.(botId, sessionId)
     const turnRunning = live.get(sessionId)?.turn !== undefined
     const subRunning = hasSubagents?.(sessionId) === true
