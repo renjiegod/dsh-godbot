@@ -2,6 +2,16 @@
 // transports use the same protocol and verify the setting the CLI applied.
 import { randomUUID } from 'node:crypto'
 import { effortOptions, requireEffort } from './effort.js'
+
+const CONTROL_TIMEOUT_MS = 3000
+const INITIALIZE_TIMEOUT_MS = 10_000
+
+class ClaudeControlTimeout extends Error {
+  constructor(subtype, timeoutMs) {
+    super(`Claude Code ${subtype} timed out after ${timeoutMs / 1000} seconds. Retry once Claude Code is ready.`)
+  }
+}
+
 export async function describeClaude(session) {
   await session.readMetadata()
   await session.readApplied()
@@ -36,6 +46,14 @@ export async function configureClaude(session, { model, effort }) {
       ? current.models.find((m) => m.id === 'default')
       : (current.models.find((m) => m.id === (model ?? session.model)) ??
         current.models.find((m) => m.resolvedModel === (model ?? session.model)))
+  if (effort != null) {
+    if (session.metadataTimeout) throw session.metadataTimeout
+    requireAppliedSettings(session)
+    if (chosen?.efforts === undefined) {
+      session.metadata = undefined
+      throw new Error('Claude Code did not report the thinking levels for the selected model. Retry the turn.')
+    }
+  }
   requireEffort(chosen?.efforts, effort)
   const switching =
     model !== undefined && (model === null || (chosen?.resolvedModel ?? chosen?.id) !== session.model)
@@ -47,7 +65,8 @@ export async function configureClaude(session, { model, effort }) {
     if (model === null) session.defaultModel = reply.model
   }
   if (effort !== undefined || (switching && session.canReadApplied)) {
-    await session.readApplied()
+    if (switching) await session.readApplied()
+    requireAppliedSettings(session)
     const desired = effort ?? null
     // This SDK control changes the session flag overlay only. Persisting
     // settings via update_settings would change the user's own CLI defaults.
@@ -55,7 +74,7 @@ export async function configureClaude(session, { model, effort }) {
     if (session.ultracodeRequested === true) settings.ultracode = true
     await session.control({ subtype: 'apply_flag_settings', settings })
     await session.readApplied()
-    if (!session.canReadApplied) throw new Error('Claude did not report the applied effort')
+    requireAppliedSettings(session)
     if (desired !== null && session.currentEffort !== desired)
       throw new Error('Claude applied a different effort (model, environment or organization constraint)')
     if (desired === null) {
@@ -74,10 +93,16 @@ export async function configureClaude(session, { model, effort }) {
           settings: { ...settings, effortLevel: baseline },
         })
         await session.readApplied()
+        requireAppliedSettings(session)
       }
       session.nativeDefaults.set(session.model, session.currentEffort)
     }
   }
+}
+
+function requireAppliedSettings(session) {
+  if (!session.canReadApplied)
+    throw session.settingsTimeout ?? new Error('Claude Code did not report the applied model and thinking level')
 }
 
 export class ClaudeControlSession {
@@ -90,7 +115,9 @@ export class ClaudeControlSession {
     const pending = (this.controlRequests ??= new Map())
     result.controlType = request.subtype
     pending.set(id, result)
-    const timer = setTimeout(() => result.reject(new Error('Claude control request timed out')), 3000)
+    // A new process can still be loading its project settings and MCP servers.
+    const timeoutMs = request.subtype === 'initialize' ? INITIALIZE_TIMEOUT_MS : CONTROL_TIMEOUT_MS
+    const timer = setTimeout(() => result.reject(new ClaudeControlTimeout(request.subtype, timeoutMs)), timeoutMs)
     try {
       const [response] = await Promise.all([
         result.promise,
@@ -108,14 +135,15 @@ export class ClaudeControlSession {
       .then((reply) => {
         // The native reply also contains account and local-directory fields.
         // Only session settings and user-visible command metadata are retained.
-        this.modelOptions = (reply?.models ?? []).flatMap((item) =>
+        const models = Array.isArray(reply?.models) ? reply.models : []
+        this.modelOptions = models.flatMap((item) =>
           item?.value
             ? [
                 {
                   id: item.value,
                   name: item.displayName ?? item.value,
                   ...(item.resolvedModel ? { resolvedModel: item.resolvedModel } : {}),
-                  ...(item.supportsEffort !== undefined || Array.isArray(item.supportedEffortLevels)
+                  ...(item.supportsEffort === false || Array.isArray(item.supportedEffortLevels)
                     ? {
                         efforts: effortOptions(
                           item.supportsEffort === false ? [] : (item.supportedEffortLevels ?? []),
@@ -136,17 +164,23 @@ export class ClaudeControlSession {
               description: c.description ?? '',
               ...(c.argumentHint ? { argumentHint: c.argumentHint } : {}),
             }))
+        this.metadataTimeout = undefined
+        if (!this.modelOptions.length) this.metadata = undefined
       })
-      .catch(() => {})
+      .catch((error) => {
+        this.metadata = undefined
+        this.metadataTimeout = error instanceof ClaudeControlTimeout ? error : undefined
+      })
     return this.metadata
   }
 
   async readApplied() {
-    if (this.canReadApplied === false) return
+    let timeout
     const applied = await this.control({ subtype: 'get_settings' }).catch((error) => {
-      if (/unsupported|not found|unknown|timed out/i.test(error.message)) return undefined
-      throw error
+      if (error instanceof ClaudeControlTimeout) timeout = error
+      else if (!/unsupported|not found|unknown/i.test(error.message)) throw error
     })
+    this.settingsTimeout = timeout
     this.canReadApplied = typeof applied?.model === 'string' && Object.hasOwn(applied, 'effort')
     if (!this.canReadApplied) return
     this.model = applied.model

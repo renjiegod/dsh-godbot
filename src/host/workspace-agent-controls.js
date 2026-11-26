@@ -51,7 +51,12 @@ class WorkspaceClaudeEngine extends ClaudeEngine {
     const id = randomUUID()
     try {
       const session = await this.open(id, { cwd })
-      const metadata = await describeClaude(this.controls.get(session))
+      const control = this.controls.get(session)
+      const metadata = await describeClaude(control)
+      // The adapter caches a successful probe for the route. A slow startup
+      // must leave that cache empty so the next model lookup can probe again.
+      const timeout = control.metadataTimeout ?? control.settingsTimeout
+      if (timeout) throw timeout
       const reasoning = (levels) =>
         metadata.canConfigureEffort && levels?.length ? { efforts: levels } : undefined
       this.defaultReasoning = reasoning(metadata.efforts)
