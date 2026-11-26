@@ -16,6 +16,12 @@ export function sessionFloor(parts, at) {
   return 0
 }
 
+export function currentConversationParts(bot, sessionId) {
+  const segments = bot.segments ?? []
+  const floor = sessionFloor(segments, segments.length)
+  return [...segments.slice(floor).map(segment => segment.sessionId), sessionId]
+}
+
 // Each live thread can also hold archived conversations behind a New session or
 // session-selection boundary. Only the contiguous parts share a conversation.
 export function ownConversations(bot) {

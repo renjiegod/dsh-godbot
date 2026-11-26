@@ -6,7 +6,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { install as installBtw } from './btw.js'
 import { install as installSide } from './side.js'
 import { handoffReply, questionReply, viewReply } from './parts.js'
-import { ownChatParts, threadCurrentOfPart } from './threads.js'
+import { currentConversationParts, ownChatParts, threadCurrentOfPart } from './threads.js'
 import { validateViewAnswer } from 'deep-view/core'
 import { COLORS, EXTRA_COLORS, HISTORY_TIMEOUT_MS, ROUTE } from './constants.js'
 import { dshRestart } from './dsh-restart.js'
@@ -205,14 +205,13 @@ export function install(rt) {
       .map(sessionId => [sessionId, true])),
     // The chats a native terminal holds now; the chat header's native Agent mark reads it.
     nativeTerminals: rt.nativeTerminals?.() ?? {},
-    // Per Bot, where a New session of its own chat stands: 'opening' while a fresh part
-    // is on its way, 'empty' while nobody has talked in the current part, so a New
-    // session would add nothing. `emptyParts`: its earlier parts nobody talked in, and
-    // the parts opened while it was busy that nobody talked in, which the session list
-    // leaves out.
+    // A chat can carry on across an automatic handoff. Only an unused conversation
+    // is empty for New session, while the session list still filters individual parts.
     newSessions: Object.fromEntries(Object.values(state.bots).flatMap((bot) => {
       if (rt.openingChat?.(bot.id)) return [[bot.id, 'opening']]
-      return rt.partEmpty?.(rt.chatOf(bot.id)) ? [[bot.id, 'empty']] : []
+      const parts = currentConversationParts(bot, rt.chatOf(bot.id))
+      const empty = parts.every(sessionId => rt.partEmpty?.(sessionId))
+      return empty ? [[bot.id, 'empty']] : []
     })),
     emptyParts: Object.fromEntries(Object.values(state.bots).flatMap((bot) => {
       const parts = ownChatParts(bot).filter(sessionId => sessionId !== rt.chatOf(bot.id))

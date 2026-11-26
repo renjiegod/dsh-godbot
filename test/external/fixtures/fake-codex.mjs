@@ -176,6 +176,13 @@ function runTurn(thread, turnId, text, effort, images = []) {
     notice('turn/completed', { threadId: thread.id, turn: { id: turnId, status: 'completed' } })
     return
   }
+  if (text.startsWith('You are now writing a handoff note to yourself.')) {
+    const note = (text.match(/^## .+$/gm) ?? []).map(heading => heading + '\n- (none)').join('\n\n')
+    notice('item/completed', { threadId: thread.id, turnId, item: { id: 'handoff-note', type: 'agentMessage', text: note } })
+    thread.turn = undefined
+    notice('turn/completed', { threadId: thread.id, turn: { id: turnId, status: 'completed' } })
+    return
+  }
   // What the thread was opened with, for a test that checks the fields.
   // A turn that stays open until a steer lands on it.
   if (text.includes('hold')) return

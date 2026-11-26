@@ -29,7 +29,7 @@ import { pageThinkingMs } from './thinking.js'
 import { mobileToolRows, openChatPage, withInterruptedAttempts, withLiveAttempt } from '../mobile-tool-timeline.js'
 import { turnOutcome } from '../shared/turn-outcome.js'
 import { viaOf } from '../shared/im-platforms.js'
-import { addBackgroundConversation, conversationHead, earlierPlace, focusOpenPart, isOpenPart, openEarlierBeside, openEarlierOfThread, ownChatSessions, pushThreadPart, reopenBackgroundConversation, sessionFloor, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
+import { addBackgroundConversation, conversationHead, currentConversationParts, earlierPlace, focusOpenPart, isOpenPart, openEarlierBeside, openEarlierOfThread, ownChatSessions, pushThreadPart, reopenBackgroundConversation, sessionFloor, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
 import { firstPrompt, partTitle } from './part-titles.js'
 import { checkShownView, normalizeView, readViewReply, viewCardText, viewReply, viewReplyText } from 'deep-view/core'
 
@@ -2128,8 +2128,7 @@ export function install(rt) {
 
   // Whether anyone has talked in a part yet: the user, another Bot, or an answer to a
   // card. Godbot's handoff package (and the fixed line that acknowledges it), a setup
-  // kickoff and DSH's context notes are not talk, so a part with only those in it is
-  // still the fresh conversation a New session gives. Each part is read from its record
+  // kickoff and DSH's context notes are not talk. Each part is read from its record
   // once, then kept by session/event; a part made here starts out with no talk.
   const talked = new Map()
   const talkReads = new Map()
@@ -2172,6 +2171,12 @@ export function install(rt) {
       talkReads.set(sessionId, reading)
     }
     return reading
+  }
+  async function conversationTalked(parts) {
+    for (const sessionId of parts.toReversed()) {
+      if (await partTalked(sessionId)) return true
+    }
+    return false
   }
   ctx.on('session/event', (session, event) => {
     if (isTalk(event) && (talked.has(session.id) || talkReads.has(session.id))) talked.set(session.id, true)
@@ -2295,15 +2300,9 @@ export function install(rt) {
     if (own) untitled.add(sessionId)
   }
 
-  // "New session" in a Bot's chat. An idle Bot moves on to a fresh part at once: it opens
-  // with the handoff package, put together without the model (the earlier note and the
-  // latest messages). While the Bot is working the fresh part opens with nothing carried
-  // over, and the part it replaces keeps running in the background. A part whose CLI
-  // still works on its own (background tasks, or a reply of its own not shown yet) counts
-  // as working: moving on would close that CLI and end its tasks. A part nobody has
-  // talked in is already a fresh conversation, and a fresh part on its way will be one:
-  // neither gets another empty part, with another handoff, stacked on top of it, and the
-  // answer is false.
+  // "New session" starts a fresh conversation. If the old part is working, its turn
+  // or CLI tasks continue in the background. A conversation with no messages in any
+  // of its parts is already fresh, so another New session returns false.
   const newParts = new Map()
   const partSelections = new Map()
   // A New session the user is waiting for: one being made, or the current part of the
@@ -2315,17 +2314,17 @@ export function install(rt) {
     const place = placeOf(sessionId)
     if (place?.botId === undefined || place.roomId !== undefined) throw Object.assign(new Error('Only a Bot\'s own chat can start a fresh part'), { code: 'bot/invalid' })
     const { botId } = place
-    if (rt.openingChat(botId) || partSelections.has(botId)) return false
+    const bot = rt.botOf(botId)
+    if (bot === undefined || rt.chatOf(botId) !== agent.id || rt.openingChat(botId) || partSelections.has(botId)) return false
+    const parts = currentConversationParts(bot, agent.id)
     const making = (async () => {
-      if (!await partTalked(agent.id).catch(() => true)) return false
+      if (!await conversationTalked(parts).catch(() => true)) return false
       // The read took a moment: the part may have moved on, or started moving, meanwhile.
-      if (rt.chatOf(botId) !== agent.id || switches.has(agent.id)) return false
+      if (rt.botOf(botId) !== bot || rt.chatOf(botId) !== agent.id || switches.has(agent.id)) return false
       if (agent.status === 'idle' && !cliWorks(agent.id)) {
         startSwitch(agent, { manual: true })
         return true
       }
-      const bot = rt.botOf(botId)
-      if (bot === undefined) throw Object.assign(new Error('The Bot is working; wait for it to finish or stop it first'), { code: 'bot/busy' })
       await openPartNow(bot, agent)
       return true
     })()
