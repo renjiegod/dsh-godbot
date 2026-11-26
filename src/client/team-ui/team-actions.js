@@ -24,7 +24,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
   const openSideChat = (sessionId, chatId) => {
     ui.set(state => ({ ...state, details: sessionId, view: 'side', side: chatId ?? null, renaming: false, tab: null, panelYield: yieldTo(state, 'side') }))
   }
-  // `id` opens one Bot (page 'bots') or one group chat (page 'groups').
+  // `id` can identify a detail page or the Bot that opened the capability library.
   const openSettings = (page = 'general', id = null) => {
     if (page === 'schedules') {
       page = 'automation'

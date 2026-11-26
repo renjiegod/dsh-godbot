@@ -835,6 +835,10 @@ var JA = {
   "Disabled": "無効",
   "Capabilities": "機能",
   "Shared capabilities": "共有機能",
+  "Add a skill or MCP server, then enable it for this Bot.": "スキルまたは MCP サーバーを追加して、この Bot で有効にしてください。",
+  "Managed by the agent": "エージェントが管理",
+  "Configure skills and MCP servers in the agent environment for this Bot.": "この Bot のエージェント環境でスキルと MCP サーバーを設定してください。",
+  "Back to Bot settings": "Bot 設定に戻る",
   "Add capability": "機能を追加",
   "No capabilities saved": "保存された機能はありません",
   "Type": "種類",
@@ -3301,6 +3305,10 @@ var KO = {
   Disabled: "사용 안 함",
   Capabilities: "기능",
   "Shared capabilities": "공유 기능",
+  "Add a skill or MCP server, then enable it for this Bot.": "스킬이나 MCP 서버를 추가한 다음 이 Bot에서 켜세요.",
+  "Managed by the agent": "에이전트에서 관리",
+  "Configure skills and MCP servers in the agent environment for this Bot.": "이 Bot의 에이전트 환경에서 스킬과 MCP 서버를 설정하세요.",
+  "Back to Bot settings": "Bot 설정으로 돌아가기",
   "Add capability": "기능 추가",
   "No capabilities saved": "저장된 기능 없음",
   Type: "유형",
@@ -5810,6 +5818,10 @@ var ES = {
   Disabled: "Desactivado",
   Capabilities: "Capacidades",
   "Shared capabilities": "Capacidades compartidas",
+  "Add a skill or MCP server, then enable it for this Bot.": "Añade una habilidad o un servidor MCP y actívalo para este Bot.",
+  "Managed by the agent": "Gestionado por el agente",
+  "Configure skills and MCP servers in the agent environment for this Bot.": "Configura las habilidades y los servidores MCP en el entorno del agente de este Bot.",
+  "Back to Bot settings": "Volver a los ajustes del Bot",
   "Add capability": "Añadir capacidad",
   "No capabilities saved": "No hay capacidades guardadas",
   Type: "Tipo",
@@ -8317,6 +8329,10 @@ var FR = {
   "Disabled": "Désactivé",
   "Capabilities": "Capacités",
   "Shared capabilities": "Capacités partagées",
+  "Add a skill or MCP server, then enable it for this Bot.": "Ajoutez une compétence ou un serveur MCP, puis activez-le pour ce Bot.",
+  "Managed by the agent": "Géré par l’agent",
+  "Configure skills and MCP servers in the agent environment for this Bot.": "Configurez les compétences et les serveurs MCP dans l’environnement de l’agent de ce Bot.",
+  "Back to Bot settings": "Retour aux réglages du Bot",
   "Add capability": "Ajouter une capacité",
   "No capabilities saved": "Aucune capacité enregistrée",
   "Type": "Type",
@@ -10783,6 +10799,10 @@ var DE = {
   Disabled: "Deaktiviert",
   Capabilities: "Fähigkeiten",
   "Shared capabilities": "Geteilte Fähigkeiten",
+  "Add a skill or MCP server, then enable it for this Bot.": "Füge einen Skill oder MCP-Server hinzu und aktiviere ihn dann für diesen Bot.",
+  "Managed by the agent": "Vom Agenten verwaltet",
+  "Configure skills and MCP servers in the agent environment for this Bot.": "Konfiguriere Skills und MCP-Server in der Agentenumgebung dieses Bots.",
+  "Back to Bot settings": "Zurück zu den Bot-Einstellungen",
   "Add capability": "Fähigkeit hinzufügen",
   "No capabilities saved": "Noch keine Fähigkeiten gespeichert",
   Type: "Typ",
@@ -13412,6 +13432,10 @@ var ZH = {
   Disabled: "已停用",
   Capabilities: "能力",
   "Shared capabilities": "共享能力",
+  "Add a skill or MCP server, then enable it for this Bot.": "添加技能或 MCP 服务后，可在这里为此 Bot 启用。",
+  "Managed by the agent": "由 Agent 管理",
+  "Configure skills and MCP servers in the agent environment for this Bot.": "在此 Bot 的 Agent 运行环境中配置技能和 MCP 服务。",
+  "Back to Bot settings": "返回 Bot 设置",
   "Add capability": "添加能力",
   "No capabilities saved": "还没有保存能力",
   Type: "类型",
@@ -36730,13 +36754,40 @@ function CapabilitiesPage({ roster, actions, run: run2 }) {
   );
 }
 function BotCapabilitiesCard({ bot, roster, actions, run: run2, Card: Card3, SwitchRow: SwitchRow2 }) {
+  const route = routeOf(bot.appliedModel ?? bot.model ?? bot.engine);
+  if (isLocalRoute(route) || route.startsWith("ag-ui-")) {
+    return (0, import_react30.createElement)(
+      Card3,
+      { title: t("Capabilities") },
+      (0, import_react30.createElement)(
+        "div",
+        { className: "bt-set-row bt-bs-row" },
+        (0, import_react30.createElement)(
+          "span",
+          { className: "bt-set-copy" },
+          (0, import_react30.createElement)("span", { className: "bt-bs-label" }, t("Managed by the agent")),
+          (0, import_react30.createElement)("span", { className: "bt-set-hint" }, t("Configure skills and MCP servers in the agent environment for this Bot."))
+        )
+      )
+    );
+  }
   const items = [...roster.capabilities ?? []].sort((a, b2) => Number(b2.kind === "pack") - Number(a.kind === "pack") || a.name.localeCompare(b2.name));
   const attached = new Set(bot.capabilities ?? []);
   const statuses3 = roster.capabilityStatuses?.[bot.id] ?? {};
-  if (items.length === 0) return null;
   return (0, import_react30.createElement)(
     Card3,
     { title: t("Capabilities") },
+    (0, import_react30.createElement)(
+      "button",
+      { type: "button", className: "bt-set-row bt-bs-row", onClick: () => actions.openSettings("capabilities", bot.id) },
+      (0, import_react30.createElement)(
+        "span",
+        { className: "bt-set-copy" },
+        (0, import_react30.createElement)("span", { className: "bt-bs-label" }, t("Shared capabilities")),
+        items.length === 0 ? (0, import_react30.createElement)("span", { className: "bt-set-hint" }, t("Add a skill or MCP server, then enable it for this Bot.")) : null
+      ),
+      (0, import_react30.createElement)(ChevronRightIcon)
+    ),
     items.map((item) => (0, import_react30.createElement)(SwitchRow2, {
       key: item.name,
       label: item.name,
@@ -37853,6 +37904,7 @@ function BotSettingsForm({ bot, roster, actions, run: run2 }) {
         (0, import_react33.createElement)(FolderMenu, { value: bot.workDir, actions, run: run2, onPick: (workDir) => save({ workDir }) })
       )
     ),
+    (0, import_react33.createElement)(BotCapabilitiesCard, { bot, roster, actions, run: run2, Card: Card2, SwitchRow }),
     (0, import_react33.createElement)(
       Card2,
       { title: t("Privacy") },
@@ -37873,7 +37925,6 @@ function BotSettingsForm({ bot, roster, actions, run: run2 }) {
         (0, import_react33.createElement)(InlineText, { label: t("Instructions"), value: bot.instructions, multiline: true, placeholder: t("What this Bot is responsible for…"), onSave: (instructions) => save({ instructions }) })
       )
     ),
-    (0, import_react33.createElement)(BotCapabilitiesCard, { bot, roster, actions, run: run2, Card: Card2, SwitchRow }),
     (0, import_react33.createElement)(BotComputerCard, { bot, roster, actions, run: run2, Card: Card2, Row }),
     roster.memory === false ? null : (0, import_react33.createElement)(MemoryCard, { bot, actions }),
     section ? (0, import_react33.createElement)(
@@ -49273,6 +49324,7 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false,
   });
   const bot = page === "bots" && id ? roster.byId[id] : void 0;
   const room2 = page === "groups" && id ? roster.roomsById[id] : void 0;
+  const capabilityBot = page === "capabilities" && id ? roster.byId[id] : void 0;
   const pages = SETTINGS_PAGES.filter(([key]) => key !== "models" || actions.providers !== void 0);
   const extra = dshPages(dsh);
   const section = page === "dsh" ? extra.find((row2) => row2.id === id) : void 0;
@@ -49282,7 +49334,7 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false,
   const usageFocus = shown === "usage" && id !== "limits" ? id : null;
   const usageShown = shown === "usage" && !usageLimits;
   const label = section ? section.label : advanced ? t("Advanced settings") : usageLimits ? t("Usage limits and fallback models") : t(pages.find(([key]) => key === shown)[1]);
-  const back2 = bot ? t("Back to Bots") : room2 ? t("Back to group chats") : usageFocus || usageLimits ? t("All usage") : advanced ? t("Back to models") : null;
+  const back2 = capabilityBot ? t("Back to Bot settings") : bot ? t("Back to Bots") : room2 ? t("Back to group chats") : usageFocus || usageLimits ? t("All usage") : advanced ? t("Back to models") : null;
   const nav = useGlide(section ? `dsh:${section.id}` : shown, { axis: "y" });
   const localAgentUsage = shown === "local-agents" && id === "usage";
   const agentPage = shown === "local-agents" || shown === "sandboxes";
@@ -49334,7 +49386,7 @@ function SettingsDialog({ page, id, roster, actions, useUpdate, leaving = false,
         (0, import_react57.createElement)(
           "div",
           { className: "bt-settings-head" },
-          back2 ? (0, import_react57.createElement)("button", { type: "button", className: "bt-icon-btn", "aria-label": back2, title: back2, onClick: () => actions.openSettings(shown) }, (0, import_react57.createElement)(ChevronLeftIcon)) : null,
+          back2 ? (0, import_react57.createElement)("button", { type: "button", className: "bt-icon-btn", "aria-label": back2, title: back2, onClick: () => capabilityBot ? actions.openSettings("bots", capabilityBot.id) : actions.openSettings(shown) }, (0, import_react57.createElement)(ChevronLeftIcon)) : null,
           (0, import_react57.createElement)("h2", { key: bot?.id ?? room2?.id ?? section?.id ?? (advanced ? "advanced" : usageLimits ? "limits" : shown) }, bot?.name ?? room2?.name ?? label),
           (0, import_react57.createElement)(
             "div",

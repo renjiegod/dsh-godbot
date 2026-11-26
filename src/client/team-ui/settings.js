@@ -324,6 +324,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
   // A Bot or group deleted while its form is open leaves its page on the list.
   const bot = page === 'bots' && id ? roster.byId[id] : undefined
   const room = page === 'groups' && id ? roster.roomsById[id] : undefined
+  const capabilityBot = page === 'capabilities' && id ? roster.byId[id] : undefined
   const pages = SETTINGS_PAGES.filter(([key]) => key !== 'models' || actions.providers !== undefined)
   const extra = dshPages(dsh)
   // A DSH page is `dsh` with its section id; one no longer registered falls back to General.
@@ -336,7 +337,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
   const usageShown = shown === 'usage' && !usageLimits
   const label = section ? section.label : advanced ? t('Advanced settings')
     : usageLimits ? t('Usage limits and fallback models') : t(pages.find(([key]) => key === shown)[1])
-  const back = bot ? t('Back to Bots') : room ? t('Back to group chats') : usageFocus || usageLimits ? t('All usage') : advanced ? t('Back to models') : null
+  const back = capabilityBot ? t('Back to Bot settings') : bot ? t('Back to Bots') : room ? t('Back to group chats') : usageFocus || usageLimits ? t('All usage') : advanced ? t('Back to models') : null
   const nav = useGlide(section ? `dsh:${section.id}` : shown, { axis: 'y' })
   // A page enters from the right when it is one level in, from the left when it comes
   // back out, and from below beside it. Usage keeps its own entrance and its data
@@ -375,7 +376,7 @@ export function SettingsDialog({ page, id, roster, actions, useUpdate, leaving =
         pages.filter(([key]) => LAST_PAGES.has(key)).map(([key, text]) => pageButton(key, text))),
       h('div', { className: 'bt-settings-main' },
         h('div', { className: 'bt-settings-head' },
-          back ? h('button', { type: 'button', className: 'bt-icon-btn', 'aria-label': back, title: back, onClick: () => actions.openSettings(shown) }, h(ChevronLeftIcon)) : null,
+          back ? h('button', { type: 'button', className: 'bt-icon-btn', 'aria-label': back, title: back, onClick: () => capabilityBot ? actions.openSettings('bots', capabilityBot.id) : actions.openSettings(shown) }, h(ChevronLeftIcon)) : null,
           h('h2', { key: bot?.id ?? room?.id ?? section?.id ?? (advanced ? 'advanced' : usageLimits ? 'limits' : shown) }, bot?.name ?? room?.name ?? label),
           h('div', { className: 'bt-settings-actions' },
             usageShown && !usageFocus ? h('button', {

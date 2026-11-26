@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { until } from '../host.mjs'
-import { openFullTeam } from '../native-ui.mjs'
+import { openFullTeam, openSettingsPage } from '../native-ui.mjs'
 import { openProviderSettingsFromTeam } from '../provider-settings.mjs'
 import { member } from '../tickets.mjs'
 
@@ -65,6 +65,11 @@ else import(${fixture('fake-gemini-login.mjs')}).catch(e => { console.error(e); 
   assert.ok(!(await items()).some(item => item.kind === 'bot' && /Failed to authenticate/u.test(item.text ?? '')), 'the CLI\'s error is not the Bot\'s reply')
 
   const { page } = host
+  await openSettingsPage(host, /^(Bot|Bots)$/u)
+  const settings = page.getByRole('dialog', { name: '设置', exact: true })
+  await settings.locator('button.bt-set-row').getByText(bot.name, { exact: true }).click()
+  await settings.getByText('在此 Bot 的 Agent 运行环境中配置技能和 MCP 服务。', { exact: true }).waitFor()
+  await settings.getByRole('button', { name: '关闭设置', exact: true }).click()
   await page.locator('.bt-row[data-bot-id="' + bot.id + '"]').click()
   const card = page.locator('.bt-fail').filter({ has: page.locator('[data-fix="local-sign-in"]') }).last()
   await card.waitFor()

@@ -1,5 +1,6 @@
 import { createElement as h, Fragment, useEffect, useState } from 'react'
-import { PlusIcon } from './icons.js'
+import { ChevronRightIcon, PlusIcon } from './icons.js'
+import { isLocalRoute, routeOf } from './agent-routes.js'
 import { t } from './i18n.js'
 
 const blank = () => ({ name: '', kind: 'mcp', description: '', transport: 'stdio', command: '', argsText: '', envText: '{}', url: '', headersText: '{}', content: '', items: [] })
@@ -155,11 +156,23 @@ export function CapabilitiesPage({ roster, actions, run }) {
 }
 
 export function BotCapabilitiesCard({ bot, roster, actions, run, Card, SwitchRow }) {
+  const route = routeOf(bot.appliedModel ?? bot.model ?? bot.engine)
+  if (isLocalRoute(route) || route.startsWith('ag-ui-')) {
+    return h(Card, { title: t('Capabilities') },
+      h('div', { className: 'bt-set-row bt-bs-row' },
+        h('span', { className: 'bt-set-copy' },
+          h('span', { className: 'bt-bs-label' }, t('Managed by the agent')),
+          h('span', { className: 'bt-set-hint' }, t('Configure skills and MCP servers in the agent environment for this Bot.')))))
+  }
   const items = [...(roster.capabilities ?? [])].sort((a, b) => Number(b.kind === 'pack') - Number(a.kind === 'pack') || a.name.localeCompare(b.name))
   const attached = new Set(bot.capabilities ?? [])
   const statuses = roster.capabilityStatuses?.[bot.id] ?? {}
-  if (items.length === 0) return null
   return h(Card, { title: t('Capabilities') },
+    h('button', { type: 'button', className: 'bt-set-row bt-bs-row', onClick: () => actions.openSettings('capabilities', bot.id) },
+      h('span', { className: 'bt-set-copy' },
+        h('span', { className: 'bt-bs-label' }, t('Shared capabilities')),
+        items.length === 0 ? h('span', { className: 'bt-set-hint' }, t('Add a skill or MCP server, then enable it for this Bot.')) : null),
+      h(ChevronRightIcon)),
     items.map(item => h(SwitchRow, {
       key: item.name,
       label: item.name,
