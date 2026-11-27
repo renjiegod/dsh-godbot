@@ -59,6 +59,9 @@ export default async function check({ makeHost, candidate, previous, reportDir, 
     await ui.waitFor((n) => n.some((v) => v.cls.endsWith('EditText')), 'paired chat', { timeout: 65000 })
     await tap('open team list', 'Open team list', '打开团队列表')
     await tap('open native board', 'Work board', '工作看板')
+    const status = /type=statusBars frame=\[\d+,\d+\]\[\d+,(\d+)\]/.exec(ui.shell('dumpsys window'))
+    const heading = await ui.waitFor((n) => ui.find(n, 'Work board', '工作看板'), 'accessible page heading')
+    assert.ok(status && heading.bounds.y1 >= Number(status[1]), 'work board header clears the system status bar')
     if (scenario === 'PHONE-WORK-BOARD-SCALE') return await phoneScale({ ui, host, tap, note })
     const title = 'Cross client board acceptance',
       page = host.page
@@ -80,6 +83,8 @@ export default async function check({ makeHost, candidate, previous, reportDir, 
       'Web draft persisted',
     )
     await tap('read Web draft on Android', new RegExp(draft.id + '.*Cross client'))
+    const detailHeading = await ui.waitFor((n) => ui.find(n, draft.id), 'accessible card heading')
+    assert.ok(detailHeading.bounds.y1 >= Number(status[1]), 'detail header clears the system status bar')
     await tap('open Android assignment', 'Assign to Bot', '派给 Bot')
     await tap('confirm Android assignment', 'Confirm', '确认')
     const read = () => channel(host, 'board-item', { id: draft.id })

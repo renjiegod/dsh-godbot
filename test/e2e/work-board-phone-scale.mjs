@@ -5,7 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { channel } from './cases/WORK-BOARD.mjs'
 
 const percentile = (times) => Math.round([...times].sort((a, b) => a - b)[Math.ceil(times.length * 0.95) - 1])
-// Accessiblity first identifies the real card. Pixel matching then timestamps when
+// Accessibility first identifies the real card. Pixel matching then timestamps when
 // it is painted; repeatedly asking UIAutomator for its tree includes its idle timeout.
 function painted(ui, bounds) {
   const buffer = ui.adb(['exec-out', 'screencap'], { binary: true }),
@@ -74,15 +74,42 @@ export async function phoneScale({ ui, host, tap, note }) {
     await waitPaint(ui, next ? alpha.bounds : ocean.bounds, next ? hash1 : hash2)
     sync.push(performance.now() - start)
   }
+  await host.page
+    .getByRole('button', { name: /^(Work board|工作看板)$/ })
+    .first()
+    .click()
+  const webCard = host.page.locator('[data-work-id="' + item.id + '"] strong')
+  await webCard.waitFor()
+  ui.tap(await find(second))
+  const reverse = []
+  for (let n = 0; n < 30; n++) {
+    const title = 'Mobile update ' + n
+    await tap('edit this draft on Android', 'Edit draft', '编辑待办')
+    const titleInput = await ui.waitFor(
+      (nodes) => ui.field(nodes, 'Title', '标题') ?? nodes.find((v) => v.cls.endsWith('EditText')),
+      'draft title field',
+    )
+    ui.tap(titleInput)
+    ui.clearFocused()
+    ui.typeText(title)
+    await ui.hideKeyboard()
+    const confirm = await ui.waitFor((nodes) => ui.find(nodes, 'Confirm', '确认'), 'phone confirmation')
+    const start = performance.now()
+    ui.tap(confirm)
+    await webCard.filter({ hasText: new RegExp('^' + title + '$') }).waitFor()
+    reverse.push(performance.now() - start)
+  }
   const result = {
     samples: 30,
     history: 10000,
     active: 100,
     androidPaintP95: percentile(paints),
     webToAndroidP95: percentile(sync),
+    androidToWebP95: percentile(reverse),
     device: ui.shell('getprop ro.product.model').trim(),
   }
   note('android-board-scale', result)
   assert.ok(result.androidPaintP95 <= 2000, 'Android first paint: ' + result.androidPaintP95)
   assert.ok(result.webToAndroidP95 <= 2000, 'Web to Android: ' + result.webToAndroidP95)
+  assert.ok(result.androidToWebP95 <= 2000, 'Android to Web: ' + result.androidToWebP95)
 }
