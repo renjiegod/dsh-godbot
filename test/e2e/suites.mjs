@@ -18,7 +18,7 @@ export const all = [
 
 export const connectorCases = ['L-CLAUDE', 'L-CODEX']
 export const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
-export const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK', 'PHONE-AUTOMATION', 'PHONE-BOT-GOALS']
+export const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK', 'PHONE-AUTOMATION', 'PHONE-BOT-GOALS', 'PHONE-MODEL-OPTIONS']
 export const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX', 'SANDBOX-SETUP']
 export const suites = { release, all, 'live-connectors': connectorCases, 'live-routines': Object.keys(routineFiles) }
 
