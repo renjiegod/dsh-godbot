@@ -455,7 +455,18 @@ export function install(rt) {
       blocked(row, 'NO_REPLY')
       return
     }
-    await rt.finishRecoveredInbox?.(row.attempt.sessionId, rt.relayMessage(args).source, text)
+    try {
+      await rt.finishRecoveredInbox?.(row.attempt.sessionId, rt.relayMessage(args).source, text)
+    } catch (error) {
+      if (current(row) && row.state === 'accepted') {
+        // The engine already did the work. Retry preparing its reply without
+        // putting the original input back in the queue.
+        row.check = Date.now() + checkEvery
+        schedule(row.check)
+        later()
+      }
+      throw error
+    }
   }
 
   function launch(map, key, row, work) {

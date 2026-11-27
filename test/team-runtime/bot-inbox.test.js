@@ -4,6 +4,60 @@ import { test } from 'node:test'
 import { install } from '../../src/host/team-runtime/core/inbox.js'
 import { SOURCE_KIND } from '../../src/host/team-runtime/core/constants.js'
 
+test('an accepted delivery retries recovery when preparing its reply fails', async t => {
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 })
+  const args = {
+    exchangeId: 'request', role: 'request', fromId: 'sender', toId: 'recipient',
+    fromPart: 'sender', sessionId: 'recipient', text: 'Check inventory',
+  }
+  const row = {
+    id: args.exchangeId, conversation: 'recipient', sequence: 1, args,
+    state: 'accepted', acceptedAt: 900, attempt: { token: 'input', sessionId: 'recipient', turn: 1 },
+  }
+  const source = { kind: SOURCE_KIND, exchangeId: args.exchangeId, inboxAttempt: row.attempt.token, senderPart: 'sender' }
+  const events = [
+    { type: 'turn/start', data: { turn: 1 } },
+    { type: 'user/message', data: { source } },
+    { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: 'Inventory checked' }] } } },
+    { type: 'turn/end', data: { reason: { kind: 'completed' } } },
+  ]
+  const bots = { sender: { id: 'sender' }, recipient: { id: 'recipient' } }
+  const warnings = []
+  let recoveries = 0
+  const rt = {
+    state: { botInbox: { [row.id]: row } }, live: new Map(),
+    ctx: { on() {}, effect: effect => t.after(effect()), get: () => new Map() },
+    own: (table, key) => Object.hasOwn(table, key) ? table[key] : undefined,
+    load: async () => {}, save: async () => {}, readOnly: () => undefined,
+    warn: (...args) => warnings.push(args),
+    chatOf: id => id, botOf: id => bots[id], closeWork() {}, exchangesOf: () => [],
+    isBotSession: id => Object.hasOwn(bots, id), resolveAgent: async () => ({ status: 'running' }),
+    async *eventsBackwards() { yield* events.toReversed() },
+    relayMessage: () => ({ source }),
+    async finishRecoveredInbox(sessionId, target, text) {
+      if (++recoveries === 1) throw new Error('Reply attachment store is temporarily unavailable')
+      await rt.inboxReply(row.id, sessionId, target, text)
+    },
+  }
+  install(rt)
+  await rt.bootBotInbox()
+  const advance = async ms => {
+    t.mock.timers.tick(ms)
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  await advance(0)
+  assert.equal(recoveries, 1)
+  assert.equal(warnings.length, 1)
+  assert.equal(row.state, 'accepted')
+  await advance(5000)
+  assert.equal(recoveries, 2)
+  assert.equal(row.state, 'replied')
+  await advance(30_000)
+  assert.equal(recoveries, 2)
+  const replies = rt.inboxExchanges('sender', 'recipient').filter(item => item.replyTo === row.id)
+  assert.deepEqual(replies.map(item => item.text), ['Inventory checked'])
+})
+
 test('a claim rejected before engine acceptance keeps its position and merges unread updates', async t => {
   const handlers = new Map()
   const bots = { sender: { id: 'sender' }, recipient: { id: 'recipient' } }
