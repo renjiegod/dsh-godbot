@@ -1,5 +1,6 @@
 import { createElement as h, Fragment, useCallback, useEffect, useRef, useState } from 'react'
-import { accountConsumption, localTime, quotaKind, quotaPercent, quotaWindowLabel, usageCount, usagePeriods, usageProviders } from './provider-usage-model.js'
+import { accountConsumption, accountText, botAgentRows, botModelRows, localTime, quotaKind, quotaPercent, quotaWindowLabel, usageCount, usagePeriods, usageProviders } from './provider-usage-model.js'
+import style from './provider-agents.css'
 
 const activeSources = { 'claude-usage':'Claude Code /usage', 'codex-app-server':'Codex app-server',
   'antigravity-statusline':'Antigravity 状态栏', 'gemini-cli-model':'Gemini CLI /model' }
@@ -9,7 +10,8 @@ const reasonLabels = { 'not-authenticated':'请先登录当前账号，再刷新
   'source-unavailable':'暂时无法从该账号读取额度。', unsupported:'此提供商未开放可读取的官方额度接口。',
   'identity-changed':'登录身份已变化，请刷新当前账号的额度。',expired:'上次额度读数已过期，请刷新。' }
 
-export function useLocalConsumption(call, enabled) {
+// `botId` reads that Bot's own calls only; without it, every local agent's.
+export function useLocalConsumption(call, enabled, botId) {
   const [usage,setUsage] = useState(null)
   const [error,setError] = useState('')
   const [loading,setLoading] = useState(false)
@@ -20,7 +22,7 @@ export function useLocalConsumption(call, enabled) {
     try {
       const deadline = Date.now() + 60000
       while (id === ticket.current) {
-        const result = await call('local-agent-usage', { refreshHistory })
+        const result = await call('local-agent-usage', botId === undefined ? { refreshHistory } : { refreshHistory, botId })
         if (id !== ticket.current) break
         setUsage(result); setError('')
         if (!refreshHistory || !result.historyScanning || Date.now() >= deadline) break
@@ -29,7 +31,7 @@ export function useLocalConsumption(call, enabled) {
     } catch (cause) {
       if (id === ticket.current) setError(cause?.message ?? String(cause))
     } finally { if (id === ticket.current) setLoading(false) }
-  },[call])
+  },[call,botId])
   useEffect(() => {
     if (!enabled) return
     void refresh()
@@ -196,6 +198,49 @@ export function UsageOverview({rows,usage,period,setPeriod,select,client,readOnl
     })) : !usage.error && h('p',{className:'gb-pr-muted',role:'status'},data?'暂无本地 Agent。':'正在读取统计…'),
     data?.asOf && h('small',{className:'gb-pr-muted'},'更新于 '+localTime(data.asOf)),
     h(QuotaComparison,{rows,client,readOnly}))
+}
+
+// One Bot's own local agent usage, for its conversation header: the agent and account
+// it runs on now, the tokens its own calls spent (its chat, its group chats, their
+// earlier parts), and that account's official quota. Other Bots stay out of it.
+export function BotAgentUsage({client,call,AgentLogo,botId,readOnly,openAll}) {
+  const [period,setPeriod] = useState('week')
+  const usage = useLocalConsumption(call,true,botId)
+  const data = usage.usage
+  const agent = data?.agent
+  const totals = data?.totals?.[period]
+  const agents = botAgentRows(data,period)
+  const models = botModelRows(data,period)
+  const account = agent && accountText(agent.accountId,agent.accountName)
+  return h('div',{className:'gb-providers gb-bot-usage','data-godbot-bot-usage':botId},
+    h('style',null,style),
+    agent ? h('div',{className:'gb-pr-title','data-bot-agent':agent.route},
+      h(AgentLogo,{route:agent.route,name:agent.name,size:32}),
+      h('span',{className:'gb-pr-copy'},h('strong',null,agent.name),
+        h('small',{'data-bot-agent-account':agent.accountId ?? 'local'},['当前运行账号',account,!agent.available && '当前不可用'].filter(Boolean).join(' · '))))
+      : data && h('p',{className:'gb-pr-muted',role:'status'},'这个 Bot 当前没有使用本地 Agent，下面是它之前用本地 Agent 的记录。'),
+    h('section',{className:'gb-pr-section','data-bot-usage-totals':true},
+      h('div',{className:'gb-pr-heading'},h('h3',null,'这个 Bot 的会话用量'),
+        h('button',{type:'button',className:'bt-soft bt-soft-sm','data-usage-action':'refresh',onClick:()=>usage.refresh(!readOnly),disabled:usage.loading},'刷新统计')),
+      h(PeriodSwitch,{period,setPeriod}),
+      usage.error && h('small',{className:'bt-error',role:'alert'},usage.error),
+      data?.historyScanning && h('small',{className:'gb-pr-muted',role:'status'},'正在读取历史会话，当前显示已收录的记录。'),
+      data?.ledgerStatus==='unavailable' && h('small',{className:'gb-pr-muted',role:'status'},'团队用量账本暂不可读，以下为当前可取得的记录。'),
+      data ? h('div',{className:'bt-set-card gb-pr-box'},
+        h('div',{className:'gb-bot-usage-total','data-bot-usage-total':period},h(Count,{totals})),
+        h(Breakdown,{totals}),h(Coverage,{totals}),
+        agents.length > 1 && h('details',null,h('summary',null,'按 Agent 和账号查看'),
+          h('ul',{className:'gb-pr-model-totals'},agents.map(row=>h('li',{key:row.key,'data-bot-usage-agent':row.route},
+            h('span',null,row.name+' · '+row.account),h(Count,{totals:row.totals}))))),
+        models.length > 0 && h('details',null,h('summary',null,'按模型查看'),
+          h('ul',{className:'gb-pr-model-totals'},models.map(row=>h('li',{key:row.key},h('span',null,row.label),h(Count,{totals:row.totals}))))),
+        h(DailyHistory,{history:data.history}))
+        : !usage.error && h('p',{className:'gb-pr-muted',role:'status'},'正在读取统计…'),
+      data?.asOf && h('small',{className:'gb-pr-muted'},'包括它的私聊、群聊和更早的会话段，不含其他 Bot。更新于 '+localTime(data.asOf))),
+    agent?.quotaSupported && h('section',{className:'gb-pr-section','data-bot-quota':true},
+      h(OfficialQuota,{key:agent.route+':'+(agent.accountId ?? ''),client,kind:quotaKind(agent.route),id:agent.accountId,disabled:!agent.available,readOnly}),
+      h('small',{className:'gb-pr-muted'},'额度属于'+account+'，用同一账号的其他 Bot 也会消耗。')),
+    openAll && h('button',{type:'button',className:'gb-pr-back gb-bot-usage-all','data-usage-action':'all',onClick:openAll},'查看全部本地 Agent 用量',h('span',{'aria-hidden':true},' ›')))
 }
 
 export function ProviderUsageSummary({provider,period,setPeriod,usageError,history=false,accountList=[]}) {

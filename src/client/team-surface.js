@@ -15,6 +15,7 @@ import { installStyles } from './team-ui/styles.js'
 import { SandboxBinding } from './sandbox-settings.js'
 import { SandboxSetupPage } from './sandbox-setup-page.js'
 import { ProviderAgentsPage } from './provider-agents.js'
+import { BotAgentUsage } from './provider-agents-usage.js'
 import { useProviderChoices } from './provider-agents-hook.js'
 import { sandboxSettingsStyle } from './bot-settings-style.js'
 import { AgentSetup } from './agent-setup.js'
@@ -375,6 +376,8 @@ function mountProduct(ctx, client, navigation, target, ready) {
       client, call, builtins, AgentLogo, AgentForm, readOnly,
       SignIn: readOnly ? undefined : LocalSignInPanel, ...props,
     }),
+    // One Bot's own local agent usage, for its conversation header.
+    botAgentUsage: props => h(BotAgentUsage, { client, call, AgentLogo, ...props }),
     sandboxSettings: props => h(SandboxSetupPage, { client, builtins, ...props }),
     taskSettings: (page, focus, actions, readOnly) => h(TaskSettings, { client, actions, page, focus, readOnly }),
     automations: () => client.dispatch({ action: 'automation.setup.view' }),

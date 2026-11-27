@@ -42,9 +42,14 @@ function readLedger(file, since, now) {
     db = new DatabaseSync(file, { readOnly: true })
     if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='calls'").get())
       return { status: 'not-created', rows: [] }
-    const rows = db.prepare(`SELECT key AS id, time, provider, model, input, output,
-        cache_read AS cacheRead, cache_write AS cacheWrite FROM calls
-        WHERE provider LIKE 'local-%' AND time BETWEEN ? AND ?`).all(since, now)
+    // The Session a call served, and the owner the journal recorded for it, name the
+    // Bot it belongs to. A ledger written before those columns still counts.
+    const session = db.prepare("SELECT 1 FROM pragma_table_info('calls') WHERE name='session'").get() !== undefined
+    const owners = session && db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='owners'").get() !== undefined
+    const rows = db.prepare(`SELECT c.key AS id, c.time, c.provider, c.model, c.input, c.output,
+        c.cache_read AS cacheRead, c.cache_write AS cacheWrite${session ? ', c.session' : ''}${owners ? ', o.owner' : ''}
+        FROM calls c${owners ? ' LEFT JOIN owners o ON o.session = c.session' : ''}
+        WHERE c.provider LIKE 'local-%' AND c.time BETWEEN ? AND ?`).all(since, now)
     return { status: 'ready', rows }
   } catch {
     return { status: 'unavailable', rows: [] }
@@ -68,6 +73,16 @@ function measuredRows(service, since, now) {
   return { rows, ledgerStatus: ledger.status }
 }
 
+// The Bot a call belongs to. The live team decides first, as on the Usage page: its own
+// chat and earlier parts, and its Sessions in group chats. The owner journaled with the
+// call covers Sessions the team no longer lists, such as forks.
+function ownerOf(rt, row) {
+  const key = typeof row.id === 'string' ? row.id : ''
+  const session = typeof row.session === 'string' && row.session !== '' ? row.session
+    : key.includes('#') ? key.slice(0, key.indexOf('#')) : undefined
+  return (session === undefined ? undefined : rt?.selfOf?.(session)) ?? (typeof row.owner === 'string' && row.owner !== '' ? row.owner : undefined)
+}
+
 function publicProvider(provider) {
   const accounts = [...provider.accounts.values()].sort((a, b) =>
     a.attribution.localeCompare(b.attribution) || (a.accountId ?? '').localeCompare(b.accountId ?? ''))
@@ -80,7 +95,8 @@ function publicProvider(provider) {
   }
 }
 
-export function localProviderUsage(service, now = Date.now()) {
+// `botId` keeps only that Bot's calls; without it every local agent call counts.
+export function localProviderUsage(service, now = Date.now(), { botId } = {}) {
   const stamp = new Date(now)
   const today = Date.UTC(stamp.getUTCFullYear(), stamp.getUTCMonth(), stamp.getUTCDate())
   const from = { today, week: now - 7 * dayMs, month: Date.UTC(stamp.getUTCFullYear(), stamp.getUTCMonth(), 1) }
@@ -91,7 +107,9 @@ export function localProviderUsage(service, now = Date.now()) {
   const { rows, ledgerStatus } = measuredRows(service, Math.min(...Object.values(from)), now)
   const providers = new Map()
   const combined = periods()
+  const days = history()
   for (const row of rows.values()) {
+    if (botId !== undefined && ownerOf(service.runtime, row) !== botId) continue
     const identity = identify(row)
     if (!identity) continue
     const { route, accountId, attribution } = identity
@@ -114,19 +132,21 @@ export function localProviderUsage(service, now = Date.now()) {
       const index = Math.floor((row.time - historyStart) / dayMs)
       add(provider.history[index], row)
       add(account.history[index], row)
+      add(days[index], row)
     }
   }
   return {
     asOf: iso(now), ledgerStatus,
     periods: Object.fromEntries(Object.entries(from).map(([key, start]) => [key, { start: iso(start), end: iso(now) }])),
     totals: combined,
+    history: days,
     providers: [...providers.values()].sort((a, b) => a.route.localeCompare(b.route)).map(publicProvider),
   }
 }
 
 // An explicit refresh indexes previous DSH logs through the workspace's existing
 // Usage page reader. Its bounded wait reports when that scan is still running.
-export async function refreshLocalProviderUsage(service) {
+export async function refreshLocalProviderUsage(service, options) {
   let scanning = false
   let failed = false
   try {
@@ -135,11 +155,59 @@ export async function refreshLocalProviderUsage(service) {
   } catch {
     failed = true
   }
-  const result = localProviderUsage(service)
+  const result = localProviderUsage(service, Date.now(), options)
   return { ...result, historyScanning: scanning, ...(failed ? { ledgerStatus: 'unavailable' } : {}) }
 }
 
-export async function localAgentUsageView(service, { refreshHistory } = {}) {
+// An account's display name: the owner's own name for it, else the sandbox's. The host
+// CLI's account has none unless the owner named it. No sign-in identity leaves the host.
+const accountName = (account, accountId) =>
+  account?.customName ?? (accountId === null ? null : account?.slotName ?? accountId)
+
+// One Bot's page: its own local agent calls, wherever it made them, and the agent and
+// account it runs on now. Other Bots' calls stay out, even on the same account.
+async function botLocalAgentUsage(service, { refreshHistory, botId }) {
+  const rt = service.runtime
+  await rt.load?.()
+  const bot = rt.botOf?.(botId)
+  if (bot === undefined) throw Object.assign(new Error('Unknown Bot'), { code: 'bot/not-found' })
+  const [catalog, usage] = await Promise.all([
+    rt.localAgentUsageCatalog(),
+    refreshHistory === true ? refreshLocalProviderUsage(service, { botId: bot.id }) : localProviderUsage(service, Date.now(), { botId: bot.id }),
+  ])
+  const listed = new Map(catalog.map(agent => [agent.route, agent]))
+  const environments = new Map((service.providerAccounts?.view().providers ?? []).map(row => [row.kind, row.accounts]))
+  const accountOf = (route, accountId) => environments.get(quotaKind(route))?.find(row => row.id === accountId)
+  // The agent the Bot runs on now, and its account.
+  const provider = rt.localAgentBadge?.(bot.model ?? bot.appliedModel)
+  let agent = null
+  if (provider !== undefined) {
+    const sandbox = sandboxRouteInfo(provider)
+    const route = sandbox?.base ?? provider
+    const accountId = sandbox?.accountId ?? null
+    const account = accountOf(route, accountId)
+    agent = {
+      route, name: listed.get(route)?.name ?? route, accountId, accountName: accountName(account, accountId),
+      available: account === undefined ? accountId === null && listed.get(route)?.installed === true : !account.removed && account.available !== false,
+      quotaSupported: quotaKind(route) !== undefined,
+    }
+  }
+  return {
+    ...usage,
+    bot: { id: bot.id, name: bot.name },
+    agent,
+    providers: usage.providers.map(row => ({
+      ...row, name: listed.get(row.route)?.name ?? row.route, ...(listed.has(row.route) ? {} : { archived: true }),
+      accounts: row.accounts.map(account => ({ ...account, name: accountName(accountOf(row.route, account.accountId), account.accountId) })),
+    })),
+  }
+}
+
+export async function localAgentUsageView(service, { refreshHistory, botId } = {}) {
+  if (botId !== undefined && botId !== null) {
+    if (typeof botId !== 'string' || botId === '') throw Object.assign(new Error('Unknown Bot'), { code: 'bot/invalid' })
+    return botLocalAgentUsage(service, { refreshHistory, botId })
+  }
   const [catalog, usage] = await Promise.all([
     service.runtime.localAgentUsageCatalog(),
     refreshHistory === true ? refreshLocalProviderUsage(service) : localProviderUsage(service),

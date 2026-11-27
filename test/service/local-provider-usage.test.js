@@ -130,3 +130,92 @@ test('an unreadable donor ledger reports partial coverage, while local receipts 
   assert.deepEqual(view.providers.map(p=>p.route),['local-acp','local-antigravity','local-claude-code','local-codex-cli'])
   assert.ok(view.providers.every(p=>p.periods.today.reports===1))
 })
+
+// Two Bots on Claude Code: Ada on a sandbox account, Bo on the host CLI. A group's own
+// Session belongs to the group. Ada's fork is known only to the journal.
+function seedTwoBots(service, store, ledger, at) {
+  const sessions = { 'chat-a': 'bot-a', 'group-a': 'bot-a', 'part-a': 'bot-a', 'chat-b': 'bot-b' }
+  const bots = { 'bot-a': { id: 'bot-a', name: 'Ada', model: 'local-sandbox-claude-work/default' },
+    'bot-b': { id: 'bot-b', name: 'Bo', model: 'local-claude-code/default' }, 'bot-api': { id: 'bot-api', name: 'Api', model: 'openai/gpt' } }
+  Object.assign(service.runtime, {
+    selfOf: id => sessions[id],
+    botOf: id => bots[id],
+    localAgentBadge: ref => (ref?.startsWith('local-') ? ref.split('/')[0] : undefined),
+    localAgentUsageCatalog: async () => [
+      { route: 'local-claude-code', name: 'Claude Code', installed: true },
+      { route: 'local-codex-cli', name: 'Codex CLI', installed: false },
+    ],
+  })
+  service.providerAccounts = { view: () => ({ providers: [{ kind: 'claude', accounts: [
+    { id: null, local: true, available: true, customName: null, slotName: '本机默认', identity: { email: 'host@example.test' } },
+    { id: 'work', available: true, customName: 'Work Claude', slotName: 'Slot W', identity: { email: 'owner@example.test' }, workspaces: [{ hostPath: '/private' }] },
+  ] }] }) }
+  const db = new DatabaseSync(ledger)
+  db.exec(`CREATE TABLE calls (key TEXT PRIMARY KEY, session TEXT NOT NULL, time INTEGER NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL, kind TEXT NOT NULL, live INTEGER NOT NULL, input INTEGER NOT NULL, cache_read INTEGER NOT NULL, cache_write INTEGER NOT NULL, output INTEGER NOT NULL);
+    CREATE TABLE owners (session TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL);`)
+  const call = db.prepare('INSERT INTO calls VALUES (?,?,?,?,?,?,?,?,?,?,?)')
+  call.run('chat-a#1:1:0', 'chat-a', at, 'local-sandbox-claude-work', 'opus', 'turn', 0, 100, 0, 0, 10)
+  call.run('group-a#1:1:0', 'group-a', at, 'local-claude-code', 'sonnet', 'turn', 0, 20, 0, 0, 2)
+  call.run('part-a#1:1:0', 'part-a', at - day, 'local-claude-code', 'sonnet', 'turn', 0, 30, 0, 0, 0)
+  call.run('fork-a#1:1:0', 'fork-a', at, 'local-claude-code', 'sonnet', 'turn', 0, 5, 0, 0, 0)
+  call.run('live:compact', 'chat-a', at, 'local-sandbox-claude-work', 'opus', 'compaction', 1, 3, 0, 0, 0)
+  call.run('chat-a#9:1:0', 'chat-a', at, 'openai', 'gpt', 'turn', 0, 4000, 0, 0, 0)
+  call.run('chat-b#1:1:0', 'chat-b', at, 'local-claude-code', 'sonnet', 'turn', 0, 7000, 0, 0, 0)
+  call.run('room#1:1:0', 'room', at, 'local-claude-code', 'sonnet', 'turn', 0, 900, 0, 0, 0)
+  const owner = db.prepare('INSERT INTO owners VALUES (?,?,?)')
+  owner.run('fork-a', 'bot-a', 'Ada')
+  owner.run('room', 'room:r1', 'Room')
+  // A journaled owner never outranks the live team.
+  owner.run('chat-b', 'bot-a', 'Ada')
+  db.close()
+  store.put('usageReceipts', { id: 'chat-a#2:1:0', owner: 'bot-a', provider: 'local-sandbox-claude-work', model: 'opus', input: 50, output: 5, time: at })
+  store.put('usageReceipts', { id: 'chat-b#2:1:0', owner: 'bot-b', provider: 'local-claude-code', model: 'sonnet', input: 800, time: at })
+  store.put('localUsageGaps', { id: 'chat-a#3:1:0', provider: 'local-sandbox-claude-work', model: 'opus', missing: true, time: at })
+  store.put('localUsageGaps', { id: 'chat-b#3:1:0', provider: 'local-claude-code', model: 'sonnet', missing: true, time: at })
+}
+
+test('a Bot\'s usage counts its own chat, group chats, earlier parts and forks, and no other Bot or group', async t => {
+  const { service, store, ledger } = await fixture(t)
+  seedTwoBots(service, store, ledger, now)
+  const ada = localProviderUsage(service, now, { botId: 'bot-a' })
+  assert.equal(ada.totals.today.tokens, 110 + 22 + 5 + 3 + 55)
+  assert.equal(ada.totals.week.tokens, 110 + 22 + 30 + 5 + 3 + 55)
+  assert.equal(ada.totals.today.unreported, 1)
+  assert.deepEqual(ada.providers.map(p => p.route), ['local-claude-code'])
+  const claude = route(ada, 'local-claude-code')
+  assert.equal(account(claude, 'sandbox', 'work').periods.today.tokens, 110 + 3 + 55)
+  assert.equal(account(claude, 'host').periods.week.tokens, 22 + 30 + 5)
+  assert.deepEqual(ada.history.slice(-2).map(row => row.tokens), [30, 195])
+  const bo = localProviderUsage(service, now, { botId: 'bot-b' })
+  assert.equal(bo.totals.today.tokens, 7800)
+  assert.equal(bo.totals.today.unreported, 1)
+  const everyone = localProviderUsage(service, now)
+  assert.equal(everyone.totals.week.tokens, 225 + 7800 + 900)
+  assert.equal(everyone.history.at(-1).tokens, 195 + 7800 + 900)
+})
+
+test('a Bot\'s view names the agent and account it runs on and shares no sign-in identity', async t => {
+  const { service, store, ledger } = await fixture(t)
+  seedTwoBots(service, store, ledger, Date.now())
+  const ada = await localAgentUsageView(service, { botId: 'bot-a' })
+  assert.deepEqual(ada.bot, { id: 'bot-a', name: 'Ada' })
+  assert.deepEqual(ada.agent, { route: 'local-claude-code', name: 'Claude Code', accountId: 'work', accountName: 'Work Claude',
+    available: true, quotaSupported: true })
+  assert.deepEqual(ada.providers.map(p => [p.route, p.name, p.archived]), [['local-claude-code', 'Claude Code', undefined]])
+  assert.deepEqual(route(ada, 'local-claude-code').accounts.map(a => [a.attribution, a.accountId, a.name]),
+    [['host', null, null], ['sandbox', 'work', 'Work Claude']])
+  assert.equal(ada.totals.today.tokens, 195)
+  assert.doesNotMatch(JSON.stringify(ada), /example\.test|\/private|configuredAccounts/u)
+  const bo = await localAgentUsageView(service, { botId: 'bot-b' })
+  assert.deepEqual(bo.agent, { route: 'local-claude-code', name: 'Claude Code', accountId: null, accountName: null,
+    available: true, quotaSupported: true })
+  assert.equal(bo.totals.today.tokens, 7800)
+  const api = await localAgentUsageView(service, { botId: 'bot-api' })
+  assert.equal(api.agent, null)
+  assert.deepEqual(api.providers, [])
+  await assert.rejects(localAgentUsageView(service, { botId: 'gone' }), { code: 'bot/not-found' })
+  await assert.rejects(localAgentUsageView(service, { botId: 7 }), { code: 'bot/invalid' })
+  const all = await localAgentUsageView(service)
+  assert.equal(all.bot, undefined)
+  assert.equal(all.totals.today.tokens, 195 + 7800 + 900)
+})

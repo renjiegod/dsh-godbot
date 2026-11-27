@@ -193,7 +193,7 @@ function ProviderList({ rows, AgentLogo, select, focusRoute }) {
   }))
 }
 
-export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentForm, readOnly, SignIn, initialSection = 'providers', initialRoute = '', usageOnly = false, openSandboxSettings }) {
+export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentForm, readOnly, SignIn, initialSection = 'providers', initialRoute = '', openSandboxSettings }) {
   const [view, setView] = useState(null)
   const [catalog, setCatalog] = useState(null)
   const [route, setRoute] = useState(initialRoute)
@@ -202,7 +202,7 @@ export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentFor
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [section,setSection] = useState(usageOnly ? 'usage' : initialSection)
+  const [section,setSection] = useState(initialSection)
   const [period,setPeriod] = useState('week')
   const localUsage = useLocalConsumption(call, section === 'usage' || Boolean(route))
   const focusRoute = useRef(null)
@@ -264,7 +264,7 @@ export function ProviderAgentsPage({ client, call, builtins, AgentLogo, AgentFor
   return h('div', { className:'gb-providers','data-godbot-provider-agents':true },
     h('style', null, style),
     error && h('div', { role:'alert', className:'bt-error' }, error, ' ', h(Button, { onClick:() => load(), disabled:loading }, '重试')),
-    !current && !usageOnly && h('div',{className:'gb-pr-periods',role:'group','aria-label':'本地 Agent 视图'},
+    !current && h('div',{className:'gb-pr-periods',role:'group','aria-label':'本地 Agent 视图'},
       ['providers','usage'].map(id=>h('button',{key:id,type:'button','data-agent-action':id,'aria-pressed':section===id,onClick:()=>setSection(id)},id==='usage'?'用量':'提供商'))),
     current ? h(ProviderDetail, { key:route,row:current, AgentLogo,AgentForm, back,section,change,customAction,busy:busy || loading,readOnly,refresh,SignIn,
       enabled:catalog?.enabled,client,consumption,period,setPeriod,usageError:localUsage.error,openSandboxSettings }) :

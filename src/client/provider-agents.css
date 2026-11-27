@@ -87,3 +87,7 @@
 .gb-pr-days{list-style:none;margin:6px 0;padding:0;font-variant-numeric:tabular-nums}
 .gb-pr-days li{display:grid;grid-template-columns:5ch minmax(12px,1fr) auto;align-items:center;gap:8px;font-size:12px}
 .gb-pr-days progress{width:100%;height:5px;accent-color:var(--bt-accent)}
+.gb-bot-usage{gap:16px}
+.gb-bot-usage-total{font-size:20px;font-weight:600;line-height:1.3;font-variant-numeric:tabular-nums}
+.gb-bot-usage-total .gb-pr-muted{font-size:14px;font-weight:400}
+.gb-bot-usage-all{font-size:13px}
