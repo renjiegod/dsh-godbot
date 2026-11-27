@@ -100,9 +100,14 @@ async function verifyBotModelHeader(host, godbot, note) {
   assert.ok(model && peerModel, 'both fixture models are available')
   const { efforts, defaultEffort } = await host.bot('efforts', { ref })
   assert.ok(efforts.length > 1, 'fixture model offers multiple reasoning levels')
-  const defaultLabel = efforts.find(effort => effort.id === defaultEffort)?.name ?? /^(Default|默认)$/u
+  // The test browser uses zh-CN. Standard effort IDs are displayed in that
+  // language even when the provider's catalog names them in English.
+  const labels = { none: '关', minimal: '最低', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最高', ultra: '极限' }
+  const labelOf = effort => effort && (labels[effort.id] ?? effort.name ?? effort.id)
+  const defaultLabel = labelOf(efforts.find(effort => effort.id === defaultEffort)) ?? '默认'
   const useEnd = efforts.at(-1).id !== defaultEffort
   const explicit = useEnd ? efforts.at(-1) : efforts[0]
+  const explicitLabel = labelOf(explicit)
   assert.notEqual(explicit.id, defaultEffort, 'fixture has an alternative reasoning level')
 
   const badge = page.locator('.bt-head [data-gb-bot-model]')
@@ -134,7 +139,7 @@ async function verifyBotModelHeader(host, godbot, note) {
   const drawer = page.locator('.bt-drawer-model').filter({ has: page.getByRole('slider') })
   await drawer.locator('.bt-model-trigger').waitFor()
   await drawer.getByRole('slider').press(useEnd ? 'End' : 'Home')
-  await showsLevel(explicit.name)
+  await showsLevel(explicitLabel)
   await drawer.locator('.bt-effort-reset').click()
   await showsLevel(defaultLabel)
   await page.locator('.bt-head .bt-pill').click()
@@ -146,7 +151,7 @@ async function verifyBotModelHeader(host, godbot, note) {
   await page.locator(`[data-bot-id="${peer.id}"]`).click()
   await page.locator('.bt-head .bt-pill-name').getByText(peer.name, { exact: true }).waitFor()
   await showsModel(peerModel.name)
-  await showsLevel(explicit.name)
+  await showsLevel(explicitLabel)
   await host.capture('bot-model-header')
   await page.locator(`[data-room-id="${room.id}"]`).click()
   await page.locator('.bt-head .bt-pill-name').getByText(room.name, { exact: true }).waitFor()
