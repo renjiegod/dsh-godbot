@@ -101,3 +101,27 @@ test('a slower native catalog wins initial keyboard focus without replacing an e
   assert.deepEqual(current.highlight, { source: 'dsh', index: 1 })
   close()
 })
+
+test('a bare slash pins the DSH goal row above the native commands and picks DSH’s own claim', async () => {
+  const bot = { id: 'first', sessionId: 'part-two', model: 'local-claude-code/sonnet', workDir: '/one' }
+  const snapshot = { byId: { first: bot, 'part-two': bot }, roomsById: {} }
+  const source = teamSlashSource({ getSnapshot: () => snapshot }, {}, {
+    slashCommands: async () => [{ name: 'verify', description: 'Try your change', kind: 'prompt' }],
+  }, { goalFace: () => ({ label: 'Goal', description: 'Set a goal', icon: 'file' }) })
+  const goal = { name: 'goal', token: '/目标 ', hint: 'Describe the goal', submit: async () => ({ kind: 'success' }) }
+  const asked = []
+  const controller = { adjudicate() {}, resolveClaim: async (token) => { asked.push(token); return token === '/goal' ? goal : undefined } }
+  const session = { sessionId: bot.sessionId }
+  const names = async query => (await source.candidates(session, { query, position: 'leading' })).map(row => row.name)
+  // Without a bound composer there is no DSH claim to hand out, so no row is pinned.
+  assert.deepEqual(await names(''), ['/verify'])
+  const close = bindTeamSlashSource(controller, source, session.sessionId)
+  const rows = await source.candidates(session, { query: '', position: 'leading' })
+  assert.deepEqual(rows.map(row => [row.name, row.label, row.section]), [['goal', 'Goal', undefined], ['/verify', undefined, 'Claude Code']])
+  assert.equal(source.onPick({ session, candidate: rows[0] }).claim, goal)
+  assert.deepEqual(asked, ['/goal'], 'the native source leaves /goal to DSH')
+  // A typed query finds DSH's own row instead; only a bare `/` pins it.
+  assert.deepEqual(await names('ver'), ['/verify'])
+  close()
+  assert.deepEqual(await names(''), ['/verify'])
+})

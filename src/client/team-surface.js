@@ -10,7 +10,8 @@ import { AgentForm } from './team-ui/agent-form.js'
 import { LocalSignInPanel } from './team-ui/local-sign-in.js'
 import { call } from './team-ui/api.js'
 import { ENGINES } from '../host/team-runtime/core/local-agents/engines.js'
-import { ChatsIcon, TerminalIcon } from './team-ui/icons.js'
+import { ChatsIcon, GoalIcon, TerminalIcon } from './team-ui/icons.js'
+import { language, t } from './team-ui/i18n.js'
 import { installStyles } from './team-ui/styles.js'
 import { SandboxBinding } from './sandbox-settings.js'
 import { SandboxSetupPage } from './sandbox-setup-page.js'
@@ -412,7 +413,12 @@ function mountProduct(ctx, client, navigation, target, ready) {
     connectorTools: bot => h(ConnectorToolsPanel, { key: 'connector-tools-' + bot.id, client, bot, sessionId: bot.sessionId ?? bot.id }),
     startCli: (props) => h(AgentSetup, { ...props, key: props.bot.id }),
     installSlash(triggers, roster, actions, controllerOf) {
-      const source = teamSlashSource(roster, actions, client)
+      const source = teamSlashSource(roster, actions, client, {
+        goalFace: () => ({
+          label: t('Goal'), description: t('Set a goal. The Bot keeps working until it is done'), icon: GoalIcon,
+          token: language().toLowerCase().startsWith('zh') ? '目标' : 'goal',
+        }),
+      })
       const unregister = triggers.registerSource(source)
       actions.bindGodbotSlash = (sessionId) => bindTeamSlashSource(controllerOf(sessionId), source, sessionId)
       return () => {

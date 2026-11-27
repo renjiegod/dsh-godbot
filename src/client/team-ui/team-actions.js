@@ -213,6 +213,8 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
     newPart: botId => after(call('bot-new-part', { botId })),
     stopChat: (botId, sessionId) => after(call('stop-chat', { botId, sessionId })),
     controlBotGoal: body => after(call('bot-goal-control', body)),
+    composeBotGoal: sessionId => ui.set(state => ({ ...state, botGoalCompose: sessionId })),
+    closeBotGoalCompose: () => ui.set(state => (state.botGoalCompose ? { ...state, botGoalCompose: null } : state)),
     stopRoomWork: roomId => after(call('stop-room-work', { roomId })),
     goalDraft: (roomId, text) => after(call('goal-draft', { roomId, text })),
     goalControl: (roomId, goalId, action, stopWork) => after(call('goal-control', { roomId, goalId, action, ...(stopWork ? { stopWork: true } : {}) })),

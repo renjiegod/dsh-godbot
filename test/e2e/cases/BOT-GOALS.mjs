@@ -53,6 +53,7 @@ export default async function botGoals({ makeHost, candidate, previous, note }) 
     if (!prompt) return 'Fixture ready.'
     const id = /attempt_id "([^"]+)"/u.exec(prompt.text)?.[1]
     assert.ok(id, 'a real goal turn reaches the provider')
+    assert.match(prompt.text, /^Goal turn \d+\. /mu, 'a goal turn carries no turn budget')
     const shown = blocks.find(block => block.type === 'tool_use' && block.name === 'report_bot_goal' && block.input.attempt_id === id)
     if (shown) return 'Checkpoint delivered.'
     assert.ok(tools?.some(tool => tool.name === 'report_bot_goal'), 'the route has the goal report tool')
@@ -79,8 +80,12 @@ export default async function botGoals({ makeHost, candidate, previous, note }) 
   assert.equal(running.activity, 'running')
   assert.equal(running.objective, objective)
   assert.equal(running.turns, 1)
+  // The goal shows as a chip in the composer, and its panel shows the turn it is on.
   const card = host.page.locator('[data-godbot-bot-goal]')
   await card.getByText(objective, { exact: true }).waitFor()
+  await card.locator('button.bt-goal-chip').click()
+  await host.page.locator('.bt-goal-pop').getByText(/^(Turn 1|第 1 轮)$/u).waitFor()
+  await host.page.keyboard.press('Escape')
 
   try {
     assert.equal(await host.bot('bot-new-part', { botId: bot.id }), true)
@@ -160,7 +165,25 @@ export default async function botGoals({ makeHost, candidate, previous, note }) 
     const native = await host.bot('create-bot', { name: engine + ' Goal Tester', model })
     const context = { botId: native.id, sessionId: native.sessionId ?? native.id }
     await until(async () => (await host.bot('chat', { botId: native.id })).items.some(item => item.kind === 'bot'), engine + ' setup turn')
-    await host.bot('bot-goal-control', { ...context, action: 'start', objective: 'Verify the ' + engine + ' goal fixture.' })
+    const nativeObjective = 'Verify the ' + engine + ' goal fixture.'
+    if (engine === 'Claude') {
+      // A bare `/` in a native CLI Bot's chat lists the goal above the CLI's own commands,
+      // and picking it puts DSH's goal chip in the composer.
+      await openBotChat(host, native)
+      const box = host.page.locator('[data-composer-card] [role=textbox]')
+      await box.click()
+      await box.pressSequentially('/')
+      const first = host.page.locator('[role=listbox] [role=option]').first()
+      await until(async () => /^(目标|Goal)\s/u.test(await first.innerText().catch(() => '')), 'the goal row leads the Claude Code commands')
+      await host.page.keyboard.press('Enter')
+      await host.page.locator('[data-composer-card] [data-composer-command="goal"]').waitFor()
+      await box.pressSequentially(nativeObjective)
+      await host.page.keyboard.press('Enter')
+      await until(async () => (await host.bot('bot-goal-get', context)).goal?.objective === nativeObjective, 'the pinned row starts the Claude goal')
+      note('goal-slash-pinned', { engine, firstRow: true })
+    } else {
+      await host.bot('bot-goal-control', { ...context, action: 'start', objective: nativeObjective })
+    }
     const completed = await until(async () => {
       const result = (await host.bot('bot-goal-get', context)).goal
       if (result?.status === 'blocked') throw new Error(engine + ': ' + result.reason)

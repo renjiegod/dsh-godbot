@@ -78,11 +78,14 @@ export default async function phoneBotGoals({ makeHost, candidate, reportDir, sc
     }
 
     await openBotChat(host, bot)
-    const webGoal = host.page.locator('[data-godbot-bot-goal]')
-    const webOpen = () => webGoal.getByRole('button', { name: /^(Goal|目标)$/u }).click()
-    await webOpen()
-    await webGoal.getByRole('textbox', { name: /^(Objective|目标)$/u }).fill(objective)
-    await webGoal.getByRole('button', { name: /^(Start goal|开始目标)$/u }).click()
+    // The Web goal lives in the composer: "+" → Set a goal opens its form, the chip beside
+    // the "+" opens its panel.
+    const webPanel = host.page.locator('.bt-goal-pop')
+    const webOpen = () => host.page.locator('[data-godbot-bot-goal] button.bt-goal-chip').click()
+    await host.page.locator('[data-composer-card] button.bt-plus').click()
+    await host.page.getByRole('menuitem', { name: /^(Set a goal|设定目标)$/u }).click()
+    await webPanel.getByRole('textbox', { name: /^(Goal|目标)$/u }).fill(objective)
+    await webPanel.getByRole('button', { name: /^(Start goal|开始目标)$/u }).click()
     await until(() => attempts.size === 1, 'Web start reaches the first Bot turn')
     await tap('open the same goal on Android', 'Goal', '目标')
     await ui.waitFor(nodes => ui.find(nodes, objective), 'Android reads the Web goal')
@@ -96,7 +99,7 @@ export default async function phoneBotGoals({ makeHost, candidate, reportDir, sc
     assert.equal((await read()).status, 'paused')
     assert.equal(attempts.size, 1)
     await webOpen()
-    await webGoal.getByRole('button', { name: /^(Resume goal|继续目标)$/u }).click()
+    await webPanel.getByRole('button', { name: /^(Resume|继续)$/u }).click()
     const complete = await until(async () => {
       const goal = await read()
       return goal?.status === 'completed' && goal

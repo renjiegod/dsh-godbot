@@ -3,6 +3,7 @@ import { createElement as h, Fragment, useEffect, useLayoutEffect, useMemo, useR
 import { createPortal } from 'react-dom'
 import { ChatsIcon, ClockIcon, GoalIcon, MicIcon, PaperclipIcon, PeopleIcon, PlusIcon, WaveIcon } from './icons.js'
 import { canSetGoal } from './goal.js'
+import { canStartBotGoal } from './bot-goal.js'
 import { BotMark } from './mark.js'
 import { stepMenuFocus, useLinger, useViewport, viewBottom } from './motion.js'
 import { t } from './i18n.js'
@@ -115,10 +116,10 @@ export function menuIcons(roster) {
 }
 
 // The composer's "+" in a Bot's chat or a group chat: add files, reference another
-// chat, or set a scheduled task for this chat. It stands in for the shell's command
-// menu, whose plan, permission, model and compact rows reach past what Godbot keeps
-// for its Bots; "/" still opens that menu. Files go through the shell's own file
-// input beside it.
+// chat, set a goal, or set a scheduled task for this chat. It stands in for the
+// shell's command menu, whose plan, permission, model and compact rows reach past what
+// Godbot keeps for its Bots; "/" still opens that menu. Files go through the shell's
+// own file input beside it.
 export function ComposerPlus({ sessionId, inputActions, useInput, useRoster, actions }) {
   useLayoutEffect(() => actions.bindGodbotSlash?.(sessionId), [sessionId, actions])
   const roster = useRoster(value => value)
@@ -209,10 +210,13 @@ export function ComposerPlus({ sessionId, inputActions, useInput, useRoster, act
   }
   const canReference = typeof inputActions?.captureInsertion === 'function' && actions.canReferenceChat()
   const room = roster.roomsById?.[sessionId]
+  // A group's goal opens in its header; a Bot conversation's goal beside this "+".
   const goal = () => {
     setOpen(null)
-    actions.composeGoal(room.id)
+    if (room) actions.composeGoal(room.id)
+    else actions.composeBotGoal(sessionId)
   }
+  const canGoal = room ? canSetGoal(room, roster) : canStartBotGoal(roster, sessionId)
   return h(Fragment, null,
     h('button', {
       ref: button, type: 'button', className: 'bt-plus', 'aria-label': t('Add'), title: t('Add'),
@@ -224,6 +228,6 @@ export function ComposerPlus({ sessionId, inputActions, useInput, useRoster, act
     },
     shown.files ? h('button', { type: 'button', role: 'menuitem', onClick: attach }, h(PaperclipIcon), h('span', { className: 'bt-menu-label' }, t('Add files'))) : null,
     canReference ? h('button', { type: 'button', role: 'menuitem', onMouseDown: keepComposerFocus, onClick: reference }, h(ChatsIcon), h('span', { className: 'bt-menu-label' }, t('Reference a chat'))) : null,
-    canSetGoal(room, roster) ? h('button', { type: 'button', role: 'menuitem', onClick: goal }, h(GoalIcon), h('span', { className: 'bt-menu-label' }, t('Set a goal'))) : null,
+    canGoal ? h('button', { type: 'button', role: 'menuitem', onClick: goal }, h(GoalIcon), h('span', { className: 'bt-menu-label' }, t('Set a goal'))) : null,
     h('button', { type: 'button', role: 'menuitem', onClick: schedule }, h(ClockIcon), h('span', { className: 'bt-menu-label' }, t('Scheduled task')))), document.body) : null)
 }

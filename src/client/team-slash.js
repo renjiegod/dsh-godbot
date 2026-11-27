@@ -11,12 +11,19 @@ const agents = new Map([
 const settings = new Set(['model', 'effort', 'permissions'])
 const cacheMs = 30_000
 const bindings = new WeakMap()
+// The pinned Bot goal row's pick payload.
+const GOAL_ROW = 'godbot:bot-goal'
 
-export function teamSlashSource(roster, actions, client) {
+// `goalFace()` gives the pinned goal row its localized title, description, glyph and the
+// spelling DSH's own menu pick puts on the chip (`目标` in Chinese).
+export function teamSlashSource(roster, actions, client, { goalFace } = {}) {
   const catalogs = new Map()
   let storage
   try { storage = globalThis.sessionStorage } catch { /* In-memory retries still work. */ }
   const pending = pendingRequests(storage)
+  // Each composer's trigger controller, bound below, and the /goal claim it resolved.
+  const controllers = new Map()
+  const goalClaims = new Map()
 
   function target(session) {
     const state = roster.getSnapshot()
@@ -87,6 +94,22 @@ export function teamSlashSource(roster, actions, client) {
     }
   }
 
+  // DSH lists its /goal row with its own commands, below every native command of this
+  // Bot. A bare `/` pins it first, and picking it hands out DSH's own claim, so the chip,
+  // hint and Host command are the ones the DSH row gives.
+  async function goalRow(session, signal) {
+    const controller = controllers.get(session.sessionId)
+    const face = controller && goalFace?.()
+    const { token = 'goal', ...row } = face ?? {}
+    const claim = face ? await controller.resolveClaim('/' + token, signal).catch(() => undefined) : undefined
+    if (claim === undefined) {
+      goalClaims.delete(session.sessionId)
+      return undefined
+    }
+    goalClaims.set(session.sessionId, claim)
+    return { ...row, name: 'goal', value: GOAL_ROW }
+  }
+
   const commandFor = (commands, token) => commands?.find(command => '/' + command.name === token)
   const usesHostGoal = (session, token) => token === '/goal' && roster.getSnapshot().byId?.[session.sessionId] !== undefined
   async function resolve(session, token, signal) {
@@ -103,10 +126,18 @@ export function teamSlashSource(roster, actions, client) {
     trigger: '/', name: 'godbot-native-agent', order: -100, showGroupTitle: false,
     usesHostGoal,
     accepts: session => !!target(session),
+    attach(sessionId, controller) {
+      controllers.set(sessionId, controller)
+      return () => {
+        if (controllers.get(sessionId) !== controller) return
+        controllers.delete(sessionId)
+        goalClaims.delete(sessionId)
+      }
+    },
     async candidates(session, { position, query, signal }) {
       const here = target(session)
       if (!here || position !== 'leading') return []
-      const commands = await catalog(here).ready
+      const [commands, goal] = await Promise.all([catalog(here).ready, query === '' ? goalRow(session, signal) : undefined])
       signal?.throwIfAborted()
       if (target(session)?.key !== here.key) return []
       const needle = query.toLowerCase()
@@ -115,7 +146,7 @@ export function teamSlashSource(roster, actions, client) {
         const rank = ({ name }) => name.toLowerCase() === needle ? 0 : name.toLowerCase().startsWith(needle) ? 1 : 2
         rows.sort((left, right) => rank(left) - rank(right))
       }
-      return rows.map(command => {
+      const native = rows.map(command => {
         const handling = command.kind !== 'terminal' ? '' : settings.has(command.name)
           ? 'Bot 设置' : command.name === 'status' ? '会话状态' : 'CLI 终端'
         return {
@@ -124,9 +155,14 @@ export function teamSlashSource(roster, actions, client) {
           hint: command.inputHint,
         }
       })
+      return goal ? [goal, ...native] : native
     },
     onPick({ action, session, candidate }) {
       if (action === 'drill') return
+      if (candidate.value === GOAL_ROW) {
+        const claim = goalClaims.get(session.sessionId)
+        return claim ? { claim } : undefined
+      }
       const here = target(session)
       if (!here || candidate.value !== here.key) return
       const entry = catalogs.get(here.botId)
@@ -161,6 +197,7 @@ export function bindTeamSlashSource(controller, source, sessionId) {
     return binding.release
   }
   const session = { sessionId }
+  const detach = source.attach?.(sessionId, controller)
   const previousEnter = controller.adjudicate
   const previousRestore = controller.resolveClaim
   const previousKey = controller.arbitrate
@@ -206,6 +243,7 @@ export function bindTeamSlashSource(controller, source, sessionId) {
     release() {
       if (--current.count > 0) return
       offMenu?.()
+      detach?.()
       if (controller.adjudicate === enter) controller.adjudicate = previousEnter
       if (controller.resolveClaim === restore) controller.resolveClaim = previousRestore
       if (controller.arbitrate === key) controller.arbitrate = previousKey

@@ -22,6 +22,19 @@
 // The whole shield is one module and one switch: `config.commandShield: false` in the
 // host config turns it off, and removing this module (and its MODULES entry in index.js)
 // removes it entirely — expected when DSH enables session-scoped trigger sources upstream.
+import { parseBotGoal } from './bot-goals.js'
+
+// What `/goal` did, for the command's result row in the chat.
+const GOAL_DONE = { start: 'Goal started', edit: 'Goal updated', pause: 'Goal paused', resume: 'Goal resumed', stop: 'Goal ended' }
+const GOAL_STATUS = { active: 'in progress', paused: 'paused', blocked: 'needs you', completed: 'reached', stopped: 'ended' }
+function goalResult(input, goal) {
+  if (goal === null) return 'No goal yet. Use /goal <objective> to start one.'
+  let action
+  try { action = parseBotGoal(input).action } catch { /* the command already ran */ }
+  const head = GOAL_DONE[action] ?? 'Goal ' + (GOAL_STATUS[goal.status] ?? goal.status)
+  return [head, goal.objective, goal.reason].filter(Boolean).join('\n')
+}
+
 export function install(rt) {
   if (rt.config?.commandShield === false) return
   const { ctx } = rt
@@ -128,9 +141,7 @@ export function install(rt) {
           const botId = rt.chatOwners.get(shield.sessionId)
           if (botId === undefined) return { kind: 'error', text: 'Open a Bot conversation to use /goal.' }
           return rt.botGoalCommand(botId, shield.sessionId, invocation.rawInput, invocation.requestId).then(
-            result => ({ kind: 'success', text: result === null
-              ? 'Use /goal <objective> or the Goal button to start a Bot goal.'
-              : ['Bot goal · ' + result.status, result.objective, result.reason].filter(Boolean).join('\n') }),
+            result => ({ kind: 'success', text: goalResult(invocation.rawInput, result) }),
             error => ({ kind: 'error', text: error.message }),
           )
         },

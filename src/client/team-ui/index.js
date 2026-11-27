@@ -65,7 +65,7 @@ import { MEMBER_WORK_CSS } from './member-work.js'
 import { TASK_CSS } from './task-board.js'
 import { IM_CSS } from './im-page.js'
 import { GOAL_CSS } from './goal.js'
-import { BOT_GOAL_CSS, BotGoalDock } from './bot-goal.js'
+import { BOT_GOAL_CSS, BotGoalChip } from './bot-goal.js'
 import { BotMention, USER_MESSAGE_CSS, UserMessageCell, canDrawUserMessages, installUserBubble } from './user-message.js'
 import { BOT_MENTION_ID, installBotMentionRule } from './user-text-rule.js'
 import { QueueDock, QUEUE_CSS } from './queue-dock.js'
@@ -1467,10 +1467,11 @@ export function apply(ctx, godbot) {
     () => shadow('conversation.input.model', { priority: BOT_PRIORITY }, Nothing),
     () => shadow('conversation.composer.dock', { id: 'activity', order: 0, priority: BOT_PRIORITY }, Nothing),
     () => shadow('conversation.composer.dock', { id: 'usage', order: 1, priority: BOT_PRIORITY }, Nothing),
-    () => shadow('conversation.composer.dock', { id: 'bot-goal', order: 3, priority: BOT_PRIORITY, inject: face }, BotGoalDock),
     () => shadow('conversation.composer.dock', { id: 'btw', order: 2, priority: BOT_PRIORITY, inject: face }, BtwDock),
     () => shadow('conversation.input.left', { id: 'bot-paste', order: -110, inject: face }, PasteGuard),
     () => shadow('conversation.input.left', { id: 'bot-plus', order: -100, inject: face }, ComposerPlus),
+    // A Bot conversation's goal sits beside the "+": `/goal` starts one, the chip shows it.
+    () => shadow('conversation.input.left', { id: 'bot-goal', order: -95, inject: face }, BotGoalChip),
     () => shadow('conversation.input.right', { id: 'bot-voice', order: 100, inject: face }, ComposerVoice),
     () => shadow('conversation.composer', {
       priority: BOT_PRIORITY,

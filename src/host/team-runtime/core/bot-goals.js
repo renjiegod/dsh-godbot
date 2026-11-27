@@ -7,7 +7,6 @@ import { turnOf } from './resume.js'
 import { output } from './tools.js'
 import { turnOutcome } from '../shared/turn-outcome.js'
 
-const MINUTE = 60_000
 const FINISHED = new Set(['completed', 'stopped'])
 const CONTEXT_SOURCES = new Set(['runtime-context', 'skill-catalog', 'time-context', 'godbot-time-context', 'ds-bot-time-context'])
 const competing = message => !isBotGoalSource(message.source) && !CONTEXT_SOURCES.has(message.source?.kind)
@@ -31,24 +30,21 @@ function textField(value, label, max, required = false) {
   return value.trim()
 }
 
-function limit(value, label, max) {
-  if (!Number.isInteger(value) || value < 1 || value > max) throw error(`${label} must be between 1 and ${max}.`, 'bot/invalid')
-  return value
-}
-
+// A goal runs until the agent reports it complete or blocked, or the user pauses or
+// stops it. It has no turn or time budget; older clients may still send `maxTurns`
+// and `maxMinutes`, which are ignored.
 function spec(body, prior = {}) {
-  const { objective, acceptance, maxTurns, maxMinutes } = body
+  const { objective, acceptance } = body
   return {
     objective: textField(objective ?? prior.objective, 'Objective', 4000, true),
     acceptance: textField(acceptance ?? prior.acceptance ?? '', 'Done when', 2000),
-    maxTurns: limit(maxTurns ?? prior.maxTurns ?? 8, 'Goal turns', 64),
-    maxMinutes: limit(maxMinutes ?? prior.maxMinutes ?? 30, 'Active minutes', 240),
   }
 }
 
+// Goals saved before the limits were removed keep these fields until they are rewritten.
+const withoutLimits = ({ maxTurns, maxMinutes, usedMs, ...goal }) => goal
+
 const sameCheckpoint = (a, b) => a?.status === b.status && a.summary === b.summary && a.next === b.next && a.evidence === b.evidence
-const age = (attempt, now) => attempt?.startedAt === undefined ? 0
-  : Math.max(0, (attempt.waitingSince ?? now) - attempt.startedAt - (attempt.waitedMs ?? 0))
 
 function promptOf(goal, attempt) {
   return [
@@ -58,7 +54,7 @@ function promptOf(goal, attempt) {
     goal.checkpoint ? `Last checkpoint: ${goal.checkpoint.summary}` : '',
     goal.checkpoint?.evidence ? `Prior evidence: ${goal.checkpoint.evidence}` : '',
     goal.checkpoint?.next ? `Next step: ${goal.checkpoint.next}` : '',
-    `Goal turn ${goal.turns + 1} of ${goal.maxTurns}. Work on a concrete step and inspect existing results before repeating actions.`,
+    `Goal turn ${goal.turns + 1}. Work on a concrete step and inspect existing results before repeating actions.`,
     `Before finishing this turn, use report_bot_goal with attempt_id "${attempt.id}". Report progress with a concrete next step, blocked with the input you need, or complete with evidence that the finish condition was met. Report only the work you verified. Ask for approval through the normal tools when required.`,
   ].filter(Boolean).join('\n')
 }
@@ -116,11 +112,11 @@ export function install(rt) {
   }
 
   function view(goal, row = headOf(goal)) {
-    const { id, botId, anchor, objective, acceptance, maxTurns, maxMinutes, status, turns, checkpoint, reason, revision, usedMs, attempt, history } = goal
+    const { id, botId, anchor, objective, acceptance, status, turns, checkpoint, reason, revision, attempt, history } = goal
     const part = attempt?.sessionId ?? row?.sessionId
     const waiting = status === 'active' && (rt.waitsForApproval?.(part) || rt.own(state.questions, part))
     const activity = waiting ? 'waiting' : attempt?.startedAt !== undefined ? 'running' : status === 'active' ? 'queued' : null
-    return { id, botId, conversationId: anchor, sessionId: row?.sessionId, objective, acceptance, maxTurns, maxMinutes, status, activity, turns, checkpoint, reason: reason ?? (activity === 'queued' ? waitingReasons.get(goal.id) : undefined), revision, usedMs, history }
+    return { id, botId, conversationId: anchor, sessionId: row?.sessionId, objective, acceptance, status, activity, turns, checkpoint, reason: reason ?? (activity === 'queued' ? waitingReasons.get(goal.id) : undefined), revision, history }
   }
 
   function read(botId, sessionId) {
@@ -143,11 +139,11 @@ export function install(rt) {
       if (action === 'start') {
         if (prior && (!FINISHED.has(prior.status) || prior.attempt)) throw error('This conversation already has an unfinished goal.')
         const history = prior ? [...(prior.history ?? []), { id: prior.id, objective: prior.objective, status: prior.status, checkpoint: prior.checkpoint }].slice(-5) : []
-        return { id: randomUUID(), botId, anchor, ...spec(body), receipts, status: 'active', turns: 0, usedMs: 0, stalled: 0, plan: 1, history }
+        return { id: randomUUID(), botId, anchor, ...spec(body), receipts, status: 'active', turns: 0, stalled: 0, plan: 1, history }
       }
       if (!prior || (body.goalId !== undefined && body.goalId !== prior.id)) throw error('This conversation has no matching goal.', 'bot/stale')
       if (FINISHED.has(prior.status)) throw error('This goal has ended. Start a new goal to continue.')
-      const row = { ...prior, receipts }
+      const row = { ...withoutLimits(prior), receipts }
       switch (action) {
         case 'edit': {
           const updated = spec(body, prior)
@@ -158,9 +154,6 @@ export function install(rt) {
         case 'stop': return { ...row, status: 'stopped', reason: undefined }
         case 'resume':
           if (prior.attempt) throw error('Wait for the previous goal turn to settle before resuming.')
-          if (prior.turns >= prior.maxTurns || prior.usedMs >= prior.maxMinutes * MINUTE) {
-            throw error('Increase the goal limit before resuming.')
-          }
           return { ...row, status: 'active', reason: undefined, stalled: 0 }
         default: throw error('Unknown goal action.', 'bot/invalid')
       }
@@ -210,19 +203,17 @@ export function install(rt) {
       ? { ...prior, attempt: undefined, ...(blocker && prior.status === 'active' ? { status: 'blocked', reason: blocker } : {}) } : prior)
   }
 
-  async function finish(goal, attempt, reason, endedAt) {
+  async function finish(goal, attempt, reason) {
     const result = turnOutcome(reason)
     return change(goal.anchor, prior => {
       if (prior?.attempt?.id !== attempt.id) return prior
       const pending = prior.attempt
       const report = pending.plan === prior.plan && result?.status === 'completed' ? pending.report : undefined
-      const usedMs = prior.usedMs + age(pending, endedAt ?? Date.now())
-      const next = { ...prior, attempt: undefined, usedMs }
+      const next = { ...withoutLimits(prior), attempt: undefined }
       if (prior.status === 'stopped') return next
       if (report !== undefined) next.checkpoint = report
       if (report?.status === 'complete') return { ...next, status: 'completed', reason: undefined }
       if (prior.status !== 'active') return next
-      if (pending.expired === true) return { ...next, status: 'blocked', reason: 'Active time limit reached.' }
       if (result?.status === 'stopped') return { ...next, status: 'paused' }
       if (result?.status !== 'completed') {
         const detail = reason?.error?.code === 'BOT_GOAL_NATIVE_ACTIVE'
@@ -259,8 +250,7 @@ export function install(rt) {
       if (turn !== undefined) admitted.set(attempt.sessionId, { id: attempt.id, turn: turn.turn })
       return
     }
-    const endedAt = turn && events.findLast(event => event.type === 'turn/end' && event.data?.turn === turn.turn)?.time
-    await finish(goal, attempt, turn?.reason, endedAt)
+    await finish(goal, attempt, turn?.reason)
   }
 
   async function drive(goal) {
@@ -269,16 +259,9 @@ export function install(rt) {
       await reconcile(goal, await rt.resolveAgent(attempt.sessionId).catch(() => undefined), attempt)
       const current = byAnchor(goal.anchor)
       const pending = current?.attempt
-      if (pending?.id !== attempt.id || cancelling.has(attempt.id)) return
-      const expired = pending.startedAt !== undefined && current.usedMs + age(pending, Date.now()) >= current.maxMinutes * MINUTE
-      if (!expired && current.status !== 'stopped') return
+      if (pending?.id !== attempt.id || cancelling.has(attempt.id) || current.status !== 'stopped') return
       cancelling.add(attempt.id)
-      try {
-        if (expired && !pending.expired) {
-          await change(goal.anchor, prior => prior?.attempt?.id === attempt.id ? { ...prior, attempt: { ...prior.attempt, expired: true } } : prior)
-        }
-        await cancel(pending)
-      } finally { cancelling.delete(attempt.id) }
+      try { await cancel(pending) } finally { cancelling.delete(attempt.id) }
       return
     }
     if (goal.status !== 'active') return
@@ -286,10 +269,6 @@ export function install(rt) {
     const sessionId = row?.sessionId
     if (!open(row)) {
       await change(goal.anchor, prior => prior === goal ? { ...goal, status: 'paused', reason: 'This conversation is archived or the Bot was removed.' } : prior)
-      return
-    }
-    if (goal.turns >= goal.maxTurns || goal.usedMs >= goal.maxMinutes * MINUTE) {
-      await change(goal.anchor, prior => prior === goal ? { ...goal, status: 'blocked', reason: 'Goal limit reached. Increase it to continue.' } : prior)
       return
     }
     if (!eligible(goal, row, sessionId)) return waitingReasons.set(goal.id, 'Waiting for this conversation to become available.')
@@ -350,8 +329,6 @@ export function install(rt) {
     const valid = () => {
       const current = goal && byAnchor(goal.anchor)
       return matches && current?.attempt?.id === attempt.id && current.plan === attempt.plan
-        && (current.attempt.startedAt !== undefined || current.turns < current.maxTurns)
-        && current.usedMs < current.maxMinutes * MINUTE
         && !payload.signal.aborted && eligible(current, headOf(current), agent.id)
     }
     const reject = async messages => {
@@ -390,24 +367,9 @@ export function install(rt) {
     if (event.type !== 'turn/end') return
     const entry = admitted.get(id)
     if (entry?.id !== attempt.id || entry.turn !== event.data?.turn) return
-    void ctx.sessions.flush(session).then(() => finish(goal, attempt, event.data.reason, event.time)).catch(warn).finally(() => {
+    void ctx.sessions.flush(session).then(() => finish(goal, attempt, event.data.reason)).catch(warn).finally(() => {
       if (admitted.get(id) === entry) admitted.delete(id)
     })
-  })
-
-  rt.onApproval?.((_kind, entry) => {
-    const goal = ongoing(entry.sessionId)
-    if (goal?.attempt?.startedAt === undefined) return
-    const id = goal.attempt.id
-    void change(goal.anchor, prior => {
-      const attempt = prior?.attempt
-      if (attempt?.id !== id) return prior
-      const waiting = rt.waitsForApproval(entry.sessionId)
-      if (waiting === (attempt.waitingSince !== undefined)) return prior
-      const now = Date.now()
-      const clock = waiting ? { waitingSince: now } : { waitingSince: undefined, waitedMs: (attempt.waitedMs ?? 0) + now - attempt.waitingSince }
-      return { ...prior, attempt: { ...attempt, ...clock } }
-    }).catch(warn)
   })
 
   rt.teamTools.push(defineTool({
