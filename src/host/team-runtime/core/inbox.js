@@ -455,7 +455,18 @@ export function install(rt) {
       blocked(row, 'NO_REPLY')
       return
     }
-    await rt.finishRecoveredInbox?.(row.attempt.sessionId, rt.relayMessage(args).source, text)
+    try {
+      await rt.finishRecoveredInbox?.(row.attempt.sessionId, rt.relayMessage(args).source, text)
+    } catch (error) {
+      if (current(row) && row.state === 'accepted') {
+        // The engine already did the work. Retry preparing its reply without
+        // putting the original input back in the queue.
+        row.check = Date.now() + checkEvery
+        schedule(row.check)
+        later()
+      }
+      throw error
+    }
   }
 
   function launch(map, key, row, work) {
@@ -576,7 +587,8 @@ export function install(rt) {
     if (event.type !== 'turn/end') return
     const reason = event.data?.reason
     const cancelled = reason?.kind === 'aborted' && (reason.reason?.kind === 'user' || reason.reason?.reason === 'godbot/stopped')
-    if (cancelled && rt.chatOwners.has(id)) rt.stopBotInbox(rt.chatOwners.get(id), id)
+    // A cancellation can target one board run or goal. The actions that stop
+    // an entire conversation clear its durable queue explicitly.
     for (const row of rows()) {
       if (!active(row, id, event.data.turn) || terminal.has(row.state) || row.done) continue
       if (cancelled) { stop(row); later(); continue }
