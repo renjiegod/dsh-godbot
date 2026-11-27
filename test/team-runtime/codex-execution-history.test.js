@@ -81,3 +81,20 @@ test('Codex history declines an unexpected thread identity or working directory'
   assert.deepEqual(await movedCwd.adapter.readCodexExecutionHistory(binding), [])
   assert.equal(movedCwd.requests.length, 2)
 })
+
+test('Codex delivery reconciliation requires the message marker in the exact native turn', async () => {
+  const input = text => ({ type: 'userMessage', content: [{ type: 'text', text }] })
+  const mock = fixture((_method, params) => ({ thread: {
+    id: binding.cliSessionId, cwd: binding.cwd,
+    turns: params.includeTurns ? [
+      { id: 'other', status: 'completed', items: [input('[Godbot message ID: delivery-1]'), output] },
+      { id: 'wanted', status: 'completed', items: [output, input('Request\n[Godbot message ID: delivery-10]'),
+        input('Update\n[Godbot message ID: delivery-2]'), { ...output, text: 'The answer after the update.' }] },
+    ] : [],
+  } }))
+  const exact = { ...binding, turnId: 'wanted' }
+  assert.equal(await mock.adapter.readCodexInboxDelivery(exact, 'delivery-1'), undefined)
+  assert.deepEqual(await mock.adapter.readCodexInboxDelivery(exact, 'delivery-2'), {
+    turnId: 'wanted', status: 'completed', text: 'The answer after the update.',
+  })
+})

@@ -8,6 +8,10 @@ import { useEscape } from './overlay-hooks.js'
 import { layoutOf } from './themes.js'
 import { t } from './i18n.js'
 
+const deliveryLabels = {
+  queued: 'Queued', accepted: 'Engine accepted', blocked: 'Delivery blocked', replied: 'Replied', stopped: 'Stopped',
+}
+
 const SHEET_EXIT_MS = 220
 
 export function ExchangeDialog({ pair, paneLeft, roster, actions }) {
@@ -68,7 +72,12 @@ export function ExchangeDialog({ pair, paneLeft, roster, actions }) {
                 showDay ? h('time', { className: 'bt-time' }, dayLabel(entry.time)) : null,
                 h('div', { className: 'bt-group-msg' },
                   h('span', { className: 'bt-group-name', style: flat ? undefined : { color: inkText(colorOf(bot)) } }, flat ? lead : null, bot.name),
-                  h(Bubbles, { texts: [stripLongNote(entry.text)], roster, selfId: bot.id, actions, whole, lead: flat ? null : lead })))
+                  h(Bubbles, { texts: [stripLongNote(entry.text)], roster, selfId: bot.id, actions, whole, lead: flat ? null : lead }),
+                  entry.delivery && deliveryLabels[entry.delivery.state] ? h('div', {
+                    className: 'bt-group-name', 'data-delivery-state': entry.delivery.state,
+                    style: { color: 'var(--bt-ink-3)' },
+                  }, t(deliveryLabels[entry.delivery.state]), entry.delivery.reason ? ` · ${entry.delivery.reason}` : '') : null))
+
             })),
       h('div', { className: 'bt-dialog-foot' }, h('button', { type: 'button', className: 'bt-soft', onClick: close }, t('Close Chat')))))
 }

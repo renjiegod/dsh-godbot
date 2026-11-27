@@ -14457,6 +14457,9 @@ var ZH = {
   "{count} matches": "{count} 条结果",
   "Showing the {count} newest": "只显示最新 {count} 条",
   // Bot exchange
+  "Queued": "已入队",
+  "Engine accepted": "引擎已接收",
+  "Delivery blocked": "投递受阻",
   "Bot exchange": "Bot 间对话",
   "Bot exchange transcript": "Bot 间对话记录",
   "No messages yet": "还没有消息",
@@ -54128,6 +54131,13 @@ ${listed}`, { axis: "y", ...QUICK_EDGES });
 
 // src/client/team-ui/exchange.js
 var import_react76 = require("react");
+var deliveryLabels = {
+  queued: "Queued",
+  accepted: "Engine accepted",
+  blocked: "Delivery blocked",
+  replied: "Replied",
+  stopped: "Stopped"
+};
 var SHEET_EXIT_MS = 220;
 function ExchangeDialog({ pair, paneLeft, roster, actions }) {
   const [entries2, setEntries] = (0, import_react76.useState)(null);
@@ -54204,7 +54214,12 @@ function ExchangeDialog({ pair, paneLeft, roster, actions }) {
               "div",
               { className: "bt-group-msg" },
               (0, import_react76.createElement)("span", { className: "bt-group-name", style: flat ? void 0 : { color: inkText(colorOf(bot)) } }, flat ? lead : null, bot.name),
-              (0, import_react76.createElement)(Bubbles, { texts: [stripLongNote(entry.text)], roster, selfId: bot.id, actions, whole, lead: flat ? null : lead })
+              (0, import_react76.createElement)(Bubbles, { texts: [stripLongNote(entry.text)], roster, selfId: bot.id, actions, whole, lead: flat ? null : lead }),
+              entry.delivery && deliveryLabels[entry.delivery.state] ? (0, import_react76.createElement)("div", {
+                className: "bt-group-name",
+                "data-delivery-state": entry.delivery.state,
+                style: { color: "var(--bt-ink-3)" }
+              }, t(deliveryLabels[entry.delivery.state]), entry.delivery.reason ? ` · ${entry.delivery.reason}` : "") : null
             )
           );
         })

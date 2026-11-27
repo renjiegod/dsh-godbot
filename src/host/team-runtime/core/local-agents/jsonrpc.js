@@ -4,6 +4,8 @@
 // Codex app-server engines.
 import { randomUUID } from 'node:crypto'
 
+const unknownDelivery = error => Object.assign(new Error(error?.message ?? 'No engine receipt', { cause: error }), { deliveryUnknown: true })
+
 // One wire message is one JSON value on one line.
 export class JsonRpcPeer {
   constructor(write) {
@@ -17,7 +19,7 @@ export class JsonRpcPeer {
 
   // The process ended: every request still waiting fails.
   close(error = new Error('the connection closed')) {
-    for (const [, call] of this.pending) call.reject(error)
+    for (const [, call] of this.pending) call.reject(call.trackDelivery ? unknownDelivery(error) : error)
     this.pending.clear()
     this.closed?.()
   }
@@ -48,18 +50,22 @@ export class JsonRpcPeer {
     try { this.notificationHandler?.(message.method, message.params, message) } catch { /* one bad notice is dropped */ }
   }
 
-  request(method, params, { signal, timeout = 120_000 } = {}) {
+  request(method, params, { signal, timeout = 120_000, trackDelivery = false } = {}) {
     if (signal?.aborted) return Promise.reject(signal.reason ?? new Error('aborted'))
     const id = ++this.nextId
     return new Promise((resolve, reject) => {
       let timer
       const call = {
+        trackDelivery,
         resolve: (value) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); resolve(value) },
         reject: (error) => { clearTimeout(timer); signal?.removeEventListener('abort', onAbort); reject(error) },
       }
-      const onAbort = () => call.reject(signal.reason ?? new Error('aborted'))
+      const uncertain = error => trackDelivery ? unknownDelivery(error) : error
+      const onAbort = () => {
+        if (this.pending.delete(id)) call.reject(uncertain(signal.reason ?? new Error('aborted')))
+      }
       this.pending.set(id, call)
-      if (timeout > 0) timer = setTimeout(() => { if (this.pending.delete(id)) call.reject(new Error(`${method} timed out`)) }, timeout)
+      if (timeout > 0) timer = setTimeout(() => { if (this.pending.delete(id)) call.reject(uncertain(new Error(`${method} timed out`))) }, timeout)
       if (signal !== undefined) signal.addEventListener('abort', onAbort, { once: true })
       try {
         this.write({ jsonrpc: '2.0', id, method, ...(params === undefined ? {} : { params }) })

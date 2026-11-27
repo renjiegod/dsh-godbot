@@ -181,7 +181,7 @@ export function install(rt) {
 
   ctx.on('llm/stream', (options, next) => {
     const turn = turns.get(options.sessionId)
-    if (!turn || closed || options[INTERNAL_ROUTE] || options.purpose != null || rt.ownRequest?.(options) || rt.runningBotGoal?.(options.sessionId) ||
+    if (!turn || closed || rt.inboxOwnsTurn?.(options.sessionId, rt.live.get(options.sessionId)?.turn) || options[INTERNAL_ROUTE] || options.purpose != null || rt.ownRequest?.(options) || rt.runningBotGoal?.(options.sessionId) ||
         rt.botOf(turn.bot.id) !== turn.bot || !allowed(turn.bot, options.sessionId) || teamSlashMessage(options.messages)) return next()
     const policy = turn.policy ?? turn.job?.row.policy
     return policy ? stream(turn, policy, options, next) : next()

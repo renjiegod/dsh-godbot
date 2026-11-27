@@ -49,6 +49,7 @@ export const CAPABILITIES = [
   'work-board-discussion-v1',
   'stop-chat',
   'bot-goals',
+  'bot-deliveries',
   'row-meta',
   'chat-steps',
   'chat-inline-tools',

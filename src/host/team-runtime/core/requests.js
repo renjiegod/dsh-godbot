@@ -5,22 +5,20 @@
 // whose answer was lost could be sent again, and the work would be done twice. A caller
 // that names its request (`request_id`) gets that guarantee: the name belongs to the
 // caller and to the conversation the request was made from, what the request stands for
-// is remembered with a fingerprint of what was asked, and the receipt of the first call
-// is given back instead of a second delivery. The receipt is written before the message
+// is remembered with a fingerprint of what was asked, and the existing receipt
+// is read back instead of a second delivery. The receipt is written before the message
 // goes out, so a restart cannot turn a lost answer into a second delivery either; when
 // the outcome of an admission is not known, the request is not sent again.
 //
 // Accepted identities stay with the team: expiring one would permit an old retry to
 // repeat side effects. Removing receipts needs a separate, explicit retention policy.
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 
 // A request name this long is a mistake, not an identity.
 export const NAME_MAX = 200
 
 export function install(rt) {
   const { state } = rt
-  // This run's name: a receipt left pending by another run has an unknown outcome.
-  const run = randomUUID()
   const receipts = () => (state.requests ??= {})
   // Requests being admitted now, so that two at once admit one.
   const inflight = new Map()
@@ -41,6 +39,11 @@ export function install(rt) {
   // conflict, or an outcome that is not known. Undefined when it was never admitted.
   const verdict = (request, record) => {
     if (record.fingerprint !== request.print) return { status: 'conflict' }
+    if (record.deliveryId !== undefined && rt.inboxHas?.(record.deliveryId)) {
+      // The association and admission share one state.json write. It also
+      // recovers a receipt when the sender's original call never returned.
+      return { status: 'replay', receipt: rt.inboxReceipt(record.deliveryId, record.deliveryReceipt) }
+    }
     if (record.outcome === 'delivered') {
       // The receipt is gone, but the name stays taken: it is not used again by accident.
       return record.receipt === undefined ? { status: 'expired' } : { status: 'replay', receipt: record.receipt }
@@ -53,43 +56,24 @@ export function install(rt) {
   // What is known about a request that was admitted before. Undefined when the request
   // was never admitted.
   const known = async (request) => {
+    const before = rt.own(receipts(), request.key)
+    if (before === undefined) return
+    if (before.fingerprint !== request.print) return { status: 'conflict' }
+    await inflight.get(request.key)?.catch(() => {})
     const record = rt.own(receipts(), request.key)
-    if (record === undefined) return undefined
-    const seen = verdict(request, record)
-    if (seen !== undefined) return seen
-    // Admitted, not settled: the call is still going in this run, or another run left it
-    // in the air, and then its outcome is not known.
-    if (record.run !== run) return { status: 'uncertain' }
-    const promise = inflight.get(request.key)
-    if (promise === undefined) return { status: 'uncertain' }
-    await promise.catch(() => {})
-    const settled = rt.own(receipts(), request.key)
-    if (settled === undefined) return undefined
-    return verdict(request, settled) ?? { status: 'uncertain' }
+    if (record === undefined) return
+    return verdict(request, record) ?? { status: 'uncertain' }
   }
 
-  // Admits the request once and runs it. `work` sends the message and gives the receipt
-  // the caller gets. The receipt is written before the message goes out, so that a restart
-  // knows the request was admitted.
+  // Test and reserve the identity without yielding so concurrent calls admit once.
   const admit = async (request, work) => {
-    // The receipt is looked for and written without an await in between, so that two
-    // calls at once cannot both admit the same request.
-    const record = rt.own(receipts(), request.key)
-    if (record !== undefined) {
-      const seen = verdict(request, record)
-      if (seen !== undefined) return seen
-      if (record.run !== run) return { status: 'uncertain' }
-      const promise = inflight.get(request.key)
-      if (promise === undefined) return { status: 'uncertain' }
-      await promise.catch(() => {})
-      // The attempt that was going on gave up before it sent anything (its receipt could
-      // not be saved), so the request is free to be admitted again.
-      if (rt.own(receipts(), request.key) === undefined) return admit(request, work)
-      return known(request)
+    if (rt.own(receipts(), request.key) !== undefined) {
+      const seen = await known(request)
+      return seen ?? admit(request, work)
     }
     // A receipt that cannot be saved cannot stop a second delivery later.
     if (rt.readOnly() !== undefined) return { status: 'readonly' }
-    const fresh = { fingerprint: request.print, outcome: 'pending', at: Date.now(), run }
+    const fresh = { fingerprint: request.print, outcome: 'pending', at: Date.now() }
     receipts()[request.key] = fresh
     const promise = (async () => {
       try {
@@ -138,5 +122,14 @@ export function install(rt) {
     }
   }
 
-  Object.assign(rt, { requestIdentity: identity, knownRequest: known, admitRequest: admit })
+  const bindInboxRequest = (request, id, receipt) => {
+    if (!request) return
+    const record = rt.own(receipts(), request.key)
+    if (!record) return
+    record.deliveryId = id
+    record.deliveryReceipt = receipt
+    return () => { delete record.deliveryId; delete record.deliveryReceipt }
+  }
+
+  Object.assign(rt, { requestIdentity: identity, knownRequest: known, admitRequest: admit, bindInboxRequest })
 }

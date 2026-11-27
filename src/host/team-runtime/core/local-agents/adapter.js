@@ -14,6 +14,7 @@ import { withoutNativeContext } from './native-context.js'
 import { nativeOptions } from './model-options.js'
 import { QUOTA_TEXT, SIGN_IN_TEXT } from '../../../../drivers/external/agent-errors.js'
 import { NATIVE_INTERRUPTED } from '../../shared/turn-outcome.js'
+import { INBOX_DELIVERY, inboxMarker } from '../../shared/inbox-delivery.js'
 
 export const DEFAULT_CONTEXT_WINDOW = 200_000
 // The replay window when a CLI session is new or its resume failed.
@@ -628,6 +629,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     // What the request carries past the last handed message. When the marker is
     // gone the CLI session is stale or new: it gets a replay instead of a delta.
     const messages = options.messages ?? []
+    const delivery = options[INBOX_DELIVERY]
     const at = live.handed === undefined ? -1 : messages.findIndex(message => message.id === live.handed)
     let fresh = live.handed === undefined || at === -1
     const cwd = live.cwd ?? await this.deps.cwdFor(sessionId)
@@ -658,14 +660,15 @@ export class LocalAgentAdapter extends LlmAdapter {
       .filter(message => message.role === 'user' && message.source?.kind === 'runtime-context')
       .map(message => textOf(message.content)).filter(text => text !== '').join('\n')
     // A message that opened a turn to show what the CLI said by itself is not input either.
-    const users = delta.filter(message => message.role === 'user' && message.source?.kind !== 'runtime-context' && !isBackgroundTrigger(message))
+    const users = delta.filter(message => message.role === 'user'
+      && (!message.source?.inboxAttempt || message.source.inboxAttempt === delivery?.token) && message.source?.kind !== 'runtime-context' && !isBackgroundTrigger(message))
     // The first open bridged call that is not an approval may take the user's
     // next message as its answer; the rest of the input is new.
     const openCall = [...live.pending.entries()].find(([, entry]) => entry.name !== APPROVE_TOOL)
     const remaining = []
     let answered = openCall === undefined
     for (const message of users) {
-      if (!answered && openCall !== undefined) {
+      if (!answered && openCall !== undefined && !message.source?.inboxAttempt) {
         const [id, pending] = openCall
         live.pending.delete(id)
         const answer = textOf(message.content)
@@ -772,8 +775,12 @@ export class LocalAgentAdapter extends LlmAdapter {
     // appended system prompt, the thread's developer instructions): only a new ACP
     // session reads them at the head of the replay.
     const replayHead = live.spec.kind === 'acp' && newSession ? system : ''
+    // A replay re-establishes context on a new CLI thread. A previously
+    // accepted Bot task is already in its native history and must not reopen.
+    const replay = fresh ? messages.filter(message => !message.source?.inboxAttempt
+      || message.source.inboxAttempt === delivery?.token) : undefined
     let promptBlocks = fresh
-      ? await renderReplay(withoutNativeContext(messages, shown), replayHead, resolveImage)
+      ? await renderReplay(withoutNativeContext(replay, shown), replayHead, resolveImage)
       : await renderDelta(contextText, remaining, resolveImage)
     let sentInstructions = live.spec.kind !== 'acp' && newSession && instructions !== undefined
     // A new CLI session gets its instructions in the open args or the replay;
@@ -806,14 +813,14 @@ export class LocalAgentAdapter extends LlmAdapter {
       this.discardTurnOutput(live)
       if (sentInstructions) live.promptHash = promptHash
       promptBlocks = []
-      await this.startTurn(live, blocks, options.signal, options.reasoningEffort)
+      await this.startTurn(live, blocks, options.signal, options.reasoningEffort, delivery)
     } else if (settledText !== '') {
       // The turn still looks alive; if it ends without reading the answer, the drain
       // starts the turn that carries it.
       live.continuation = settledText
     }
     if (promptBlocks.length > 0) {
-      await this.sendInput(live, promptBlocks, options.signal, options.reasoningEffort, settledText)
+      await this.sendInput(live, promptBlocks, options.signal, options.reasoningEffort, settledText, delivery)
       if (sentInstructions) live.promptHash = promptHash
       // ACP only counts instructions once they reach the agent with a prompt.
       if (live.spec.kind === 'acp' && (newSession || sentInstructions)) live.promptHash = promptHash
@@ -842,7 +849,7 @@ export class LocalAgentAdapter extends LlmAdapter {
       this.rollbackUnread(live, sessionId)
       // The saved conversation is gone: start over in a new one with the
       // history, once, so the user sees the answer instead of this failure.
-      if (live.resumeLost === true && options[RESUME_RETRIED] !== true) {
+      if (!delivery && live.resumeLost === true && options[RESUME_RETRIED] !== true) {
         live.resumeLost = false
         yield* this.stream({ ...options, [RESUME_RETRIED]: true })
         return
@@ -861,7 +868,7 @@ export class LocalAgentAdapter extends LlmAdapter {
   // started, or the prompt is away. The caller waits for it before reading the CLI,
   // so a steer that fails after the finished turn's `done` arrived still gets a turn
   // of its own instead of being read as this turn's end (#1513).
-  sendInput(live, input, signal, effort, settled) {
+  sendInput(live, input, signal, effort, settled, delivery) {
     const blocks = typeof input === 'string' ? [{ type: 'text', text: input }] : input
     const steerInput = typeof input === 'string' ? input : blocks
     live.mute = false
@@ -871,6 +878,11 @@ export class LocalAgentAdapter extends LlmAdapter {
       ? blocks
       : mergeTextBlocks([{ type: 'text', text: settled }, ...blocks])
     if (live.state !== 'idle') {
+      if (delivery && live.spec.kind === 'codex') {
+        const error = new LlmError('Codex is still finishing a native turn', 'LOCAL_AGENT_BUSY')
+        delivery.refused(error)
+        return Promise.reject(error)
+      }
       if (live.spec.kind === 'acp') { live.queue.push(blocks); return Promise.resolve() }
       // Steering lands on a turn that is still running. When the CLI finished the
       // turn behind a card — the usual case for an answer that arrives late — the
@@ -899,8 +911,8 @@ export class LocalAgentAdapter extends LlmAdapter {
     // turn left behind would otherwise be read as this turn's reply, and its end as
     // this turn's end.
     this.discardTurnOutput(live)
-    this.startTurn(live, blocks, signal, effort)
-    return Promise.resolve()
+    const started = this.startTurn(live, blocks, signal, effort, delivery)
+    return delivery && live.spec.kind === 'codex' ? started : Promise.resolve()
   }
 
   discardTurnOutput(live) {
@@ -932,8 +944,9 @@ export class LocalAgentAdapter extends LlmAdapter {
   }
 
   // Codex resolves on acceptance; ACP resolves only when the entire turn ends.
-  startTurn(live, input, signal, effort) {
-    const blocks = typeof input === 'string' ? [{ type: 'text', text: input }] : input
+  startTurn(live, input, signal, effort, delivery) {
+    let blocks = typeof input === 'string' ? [{ type: 'text', text: input }] : input
+    const tracked = live.spec.kind === 'codex' ? delivery : undefined
     live.state = 'running'
     // The turn an engine names is the one this stream reads: a finished turn's late
     // events carry another id and are dropped instead of answering this one (#1513).
@@ -942,21 +955,66 @@ export class LocalAgentAdapter extends LlmAdapter {
     const unnamed = {}
     live.turnTag = live.spec.kind === 'claude' ? unnamed : undefined
     try {
-      const begin = options => live.engine.prompt(live.engineSession, blocks, { signal, effort, ...(options === undefined ? {} : { options }) })
+      const begin = async options => {
+        if (tracked) {
+          await tracked.starting(this.inboxBinding(live))
+          signal?.throwIfAborted()
+          blocks = mergeTextBlocks([...blocks, { type: 'text', text: inboxMarker(tracked.id) }])
+        }
+        return live.engine.prompt(live.engineSession, blocks, {
+          signal, effort, ...(options === undefined ? {} : { options }), ...(tracked ? { trackDelivery: true } : {}),
+        })
+      }
       const options = this.turnOptions(live)
       const started = (options instanceof Promise ? options.then(begin) : Promise.resolve(begin(options)))
         .then((turnId) => {
-          if (live.spec.kind === 'codex' && turnId !== undefined) live.turnTag = turnId
+          if (live.spec.kind === 'codex' && turnId !== undefined) {
+            live.turnTag = turnId
+            tracked?.accepted({ turnId })
+          }
           else if (live.turnTag === unnamed) live.turnTag = turnId
         })
         .catch((error) => {
           if (live.turnTag === unnamed) live.turnTag = undefined
+          tracked?.refused(error)
           live.push({ type: 'error', error })
         })
       return live.spec.kind === 'acp' ? Promise.resolve() : started
     } catch (error) {
+      tracked?.refused(error)
       live.push({ type: 'error', error })
       return Promise.resolve()
+    }
+  }
+
+  inboxBinding(live, turnId) {
+    return { route: live.route, cliSessionId: live.engineSession?.threadId, cwd: live.cwd,
+      ...(this.deps.exposedRoute ? { accountRoute: this.deps.exposedRoute } : {}),
+      ...(turnId ? { turnId } : {}) }
+  }
+
+  inboxBusy(sessionId) {
+    const live = this.live.get(sessionId)
+    return live?.spec.kind === 'codex' && live.state !== 'idle' && live.engine.canSteer(live.engineSession)
+  }
+
+  inboxTarget(sessionId) {
+    const live = this.live.get(sessionId)
+    const thread = live?.engineSession
+    const turnId = thread?.turnId
+    const ready = () => live?.spec.kind === 'codex' && this.live.get(sessionId) === live && !live.dead
+      && live.state === 'running' && !live.mute && live.showing === undefined && live.pending.size === 0
+      && typeof turnId === 'string' && live.turnTag === turnId && thread.turnId === turnId && !thread.dead
+    if (!ready()) return
+    return {
+      binding: this.inboxBinding(live, turnId),
+      async send(id, message) {
+        if (!ready()) return false
+        await live.engine.steer(thread, [{ type: 'text', text: textOf(message.content) + '\n\n' + inboxMarker(id) }], {
+          expectedTurnId: turnId, trackDelivery: true,
+        })
+        return true
+      },
     }
   }
 

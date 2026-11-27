@@ -20,7 +20,7 @@
 // `--keep-loaded` resumes as Codex 0.172 does: a thread/resume of a thread the process
 // still has loaded keeps the settings and MCP servers it was loaded with, and only a
 // thread/unsubscribe lets go of it, so the next resume loads it with what it asks for.
-import { appendFileSync, existsSync } from 'node:fs'
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -43,6 +43,28 @@ const unknownField = (params, known) => {
   return extra.length === 0 ? undefined : `unknown field ${extra.join(', ')}`
 }
 const threads = new Map()
+const inboxDir = process.env.FAKE_CODEX_INBOX_DIR
+const inboxFlag = name => inboxDir && existsSync(join(inboxDir, name))
+const inboxHistory = (id) => {
+  try { return JSON.parse(readFileSync(join(inboxDir, id + '.json'), 'utf8')) } catch { return undefined }
+}
+function inboxSave(thread, turn) {
+  if (!inboxDir) return
+  const history = inboxHistory(thread.id) ?? { id: thread.id, cwd: thread.params?.cwd, turns: [] }
+  history.turns = [...history.turns.filter(row => row.id !== turn.id), turn]
+  writeFileSync(join(inboxDir, thread.id + '.json'), JSON.stringify(history))
+}
+function inboxFinish(thread, turn, text) {
+  if (thread.turn !== turn.id) return
+  const item = { type: 'agentMessage', id: randomUUID(), text }
+  notice('item/completed', { threadId: thread.id, turnId: turn.id, item })
+  turn.items.push(item)
+  turn.status = 'completed'
+  thread.turn = undefined
+  inboxSave(thread, turn)
+  notice('turn/completed', { threadId: thread.id, turn })
+}
+const inboxInput = blocks => ({ type: 'userMessage', id: randomUUID(), content: blocks })
 let nextId = 0
 const requests = new Map()
 
@@ -286,7 +308,7 @@ process.stdin.on('data', (chunk) => {
             supportedReasoningEfforts: [
               { reasoningEffort: 'low', description: 'Fast responses' },
               { reasoningEffort: 'medium', description: 'Balanced speed and depth' },
-              { reasoningEffort: 'high', description: 'Deep reasoning' },
+              ...(!inboxFlag('no-high') ? [{ reasoningEffort: 'high', description: 'Deep reasoning' }] : []),
             ],
             // Codex 0.172's tiers: Godbot shows them as the model's speeds.
             serviceTiers: [
@@ -302,7 +324,7 @@ process.stdin.on('data', (chunk) => {
         record('thread/start', params)
         const extra = unknownField(params, THREAD_START)
         if (extra !== undefined) { replyError(id, extra); break }
-        const thread = { id: process.env.GODBOT_E2E_GATE_DIR ? randomUUID() : `thr-${++nextId}`, params, loaded: true }
+        const thread = { id: inboxDir || process.env.GODBOT_E2E_GATE_DIR ? randomUUID() : `thr-${++nextId}`, params, loaded: true }
         threads.set(thread.id, thread)
         reply(id, { thread: { id: thread.id },sandbox:{type:params.sandbox === 'read-only'?'readOnly':'workspaceWrite'},approvalPolicy:params.approvalPolicy,model:params.model ?? 'gpt-5.1-codex', reasoningEffort:params.model==='gpt-next'?'low':'high' })
         break
@@ -324,6 +346,13 @@ process.stdin.on('data', (chunk) => {
         record('config/read', params)
         reply(id, { config: { developer_instructions: process.env.FAKE_CODEX_DEVELOPER_INSTRUCTIONS ?? null } })
         break
+      case 'thread/read': {
+        if (!inboxDir) { fail(id, 'method not found: thread/read'); break }
+        const history = inboxHistory(params.threadId)
+        if (!history) { replyError(id, 'missing history'); break }
+        reply(id, { thread: { ...history, ...(params.includeTurns ? {} : { turns: [] }) } })
+        break
+      }
       case 'thread/inject_items': record('thread/inject_items', params); reply(id, {}); break
       case 'turn/start': {
         record('turn/start', params)
@@ -332,10 +361,21 @@ process.stdin.on('data', (chunk) => {
         if (badImage !== undefined) { replyError(id, 'Invalid image input: missing url or fileId'); break }
         const images = input.filter(item => item.type === 'image').map(item => ({ type: item.type, url: item.url }))
         const thread = threads.get(params.threadId)
-        const turnId = `turn-${++nextId}`
+        const turnId = inboxDir ? randomUUID() : `turn-${++nextId}`
         if (thread !== undefined) thread.turn = turnId
         reply(id, { turn: { id: turnId } })
         const text = input.filter(item => item.type === 'text').map(item => item.text ?? '').join('\n')
+        if (inboxDir && thread) {
+          const turn = { id: turnId, status: 'inProgress', items: [inboxInput(input)] }
+          thread.inboxTurn = turn
+          inboxSave(thread, turn)
+          record('inbox/input', { threadId: thread.id, turnId, input })
+          if (text.includes('[Godbot message ID:') || text.includes('inbox competing input')) {
+            setImmediate(() => inboxFinish(thread, turn, 'Native fixture finished ' + (text.match(/OPS-\d+/gu)?.at(-1) ?? 'the input') + '.'))
+            break
+          }
+          if (text.includes('inbox hold')) break
+        }
         setImmediate(() => runTurn(thread ?? { id: params.threadId }, turnId, text, params.effort, images))
         break
       }
@@ -361,6 +401,29 @@ process.stdin.on('data', (chunk) => {
         if (typeof params.expectedTurnId !== 'string') { replyError(id, 'missing field expectedTurnId'); break }
         if (thread?.turn === undefined || thread.turn !== params.expectedTurnId) { replyError(id, `no live turn ${params.expectedTurnId}`); break }
         const text = (params.input ?? []).map(item => item.text ?? '').join('\n')
+        if (inboxDir && text.includes('[Godbot message ID:')) {
+          const turn = thread.inboxTurn
+          if (text.includes('INBOX-REJECT')) {
+            replyError(id, `no live turn ${params.expectedTurnId}`)
+            inboxFinish(thread, turn, 'The previous native turn finished.')
+            break
+          }
+          turn.items.push(inboxInput(params.input))
+          inboxSave(thread, turn)
+          record('inbox/input', { threadId: thread.id, turnId: turn.id, input: params.input })
+          const result = 'Native fixture applied the steering update.'
+          if (text.includes('INBOX-LOST-ACK')) {
+            // Native history has the input and the answer, but the RPC response is lost.
+            inboxFinish(thread, turn, result)
+            break
+          }
+          reply(id, {})
+          void (async () => {
+            for (let remaining = 200; remaining > 0 && !inboxFlag('finish-now'); remaining--) await delay(50)
+            inboxFinish(thread, turn, result)
+          })()
+          break
+        }
         // A late notice for an earlier turn: the turn this thread runs now stays live.
         if (text.startsWith('emit-stale ')) {
           notice('turn/completed', { threadId: thread.id, turn: { id: text.slice('emit-stale '.length), status: 'completed' } })

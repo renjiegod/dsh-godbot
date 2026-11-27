@@ -21,7 +21,7 @@ export function install(rt) {
   const { ctx, home, statePath } = rt
 
   /** @type {{version:1, workspaceId?:string, mainBotIds:string[], bots:Record<string,any>, privateArchives:any[], rooms:Record<string,any>, agents:Record<string,any>, sections:any[], capabilities:{items:Record<string,any>}, exchanges:any[], exchangeTurns:Record<string,number[]>, revision:number}} */
-  const state = { version: 1, mainBotIds: [], bots: {}, privateArchives: [], rooms: {}, agents: {}, sections: [], capabilities: { items: {} }, exchanges: [], exchangeTurns: {}, works: {}, requests: {}, questions: {}, views: {}, botGoals: {}, closedCards: {}, prefs: {}, switching: {}, revision: 0 }
+  const state = { version: 1, mainBotIds: [], bots: {}, privateArchives: [], rooms: {}, agents: {}, sections: [], capabilities: { items: {} }, exchanges: [], exchangeTurns: {}, works: {}, requests: {}, botInbox: {}, questions: {}, views: {}, botGoals: {}, closedCards: {}, prefs: {}, switching: {}, revision: 0 }
   let loaded = null
   let storeReady = false
   let writing = Promise.resolve()
@@ -213,6 +213,7 @@ export function install(rt) {
       migrated = true
     }
     if (state.works === null || typeof state.works !== 'object' || Array.isArray(state.works)) state.works = {}
+    if (state.botInbox === null || typeof state.botInbox !== 'object' || Array.isArray(state.botInbox)) state.botInbox = {}
     if (state.requests === null || typeof state.requests !== 'object' || Array.isArray(state.requests)) state.requests = {}
     // Group call batches (groups.js); a batch that is not whole is dropped.
     if (state.roomBatches === null || typeof state.roomBatches !== 'object' || Array.isArray(state.roomBatches)) state.roomBatches = {}

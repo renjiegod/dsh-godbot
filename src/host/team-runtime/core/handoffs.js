@@ -110,11 +110,11 @@ export function install(rt) {
   // child, is the sub-work, so a child that is continued hands up a result per run.
   // `fromPart`: the part of the sender's own chat it wrote from, which its answer goes
   // back to when that is a background part.
-  function openWork(id, { from, to, parent, fromRoom, room, name, child, fromPart }) {
+  function openWork(id, { from, to, parent, fromRoom, room, name, child, fromPart }, { save: persist = true } = {}) {
     const above = parent === undefined ? undefined : works()[parent]
     works()[id] = { ...(from ? { from } : {}), ...(to ? { to } : {}), ...(room ? { room } : {}), ...(above ? { parent } : {}), ...(fromRoom ? { fromRoom } : {}), ...(fromPart ? { fromPart } : {}), ...(name ? { name } : {}), ...(child ? { child } : {}), open: [], results: [], at: Date.now() }
     if (above !== undefined) above.open.push(id)
-    save()
+    if (persist) save()
   }
 
   // The answer to work `id` is on its way, with `result` from `name`. Returns the work

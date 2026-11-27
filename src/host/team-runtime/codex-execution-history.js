@@ -1,6 +1,8 @@
 import { realpath } from 'node:fs/promises'
 import { isAbsolute, resolve } from 'node:path'
 
+import { inboxMarker } from './shared/inbox-delivery.js'
+
 const turnPageSize = 16
 const maxPages = 3
 
@@ -53,7 +55,7 @@ function turnOf(turn, toolOf) {
 
 // Read exactly the caller's saved Codex thread. This never loads or subscribes
 // to that conversation, so fetching history cannot take over a live terminal.
-export async function readBoundCodexHistory(peer, { cwd, cliSessionId: threadId } = {}, { signal, toolOf }) {
+async function boundTurns(peer, { cwd, cliSessionId: threadId } = {}, signal) {
   if (typeof cwd !== 'string' || !isAbsolute(cwd) || typeof threadId !== 'string' || !threadId) return []
   const opts = { signal, timeout: 3000 }
   try {
@@ -82,8 +84,27 @@ export async function readBoundCodexHistory(peer, { cwd, cliSessionId: threadId 
       if (!await matchesThread(detailed, threadId, cwd) || !Array.isArray(detailed.turns)) return []
       turns = detailed.turns.slice(-turnPageSize * maxPages)
     }
-    return turns.map(turn => turnOf(turn, toolOf)).filter(Boolean)
+    return turns
   } catch {
     return []
+  }
+}
+
+export async function readBoundCodexHistory(peer, binding, { signal, toolOf }) {
+  return (await boundTurns(peer, binding, signal)).map(turn => turnOf(turn, toolOf)).filter(Boolean)
+}
+
+export async function readBoundCodexDelivery(peer, binding, id, signal) {
+  const marker = inboxMarker(id)
+  const turns = await boundTurns(peer, binding, signal)
+  for (const turn of turns.toReversed()) {
+    if (binding.turnId && binding.turnId !== turn.id) continue
+    if (!Array.isArray(turn.items) || (turn.itemsView !== undefined && turn.itemsView !== 'full')) continue
+    const at = turn.items.findIndex(item => item?.type === 'userMessage' && item.content?.some(block =>
+      block.type === 'text' && typeof block.text === 'string' && block.text.split(/\r?\n/u).includes(marker)))
+    if (at < 0) continue
+    const text = turn.items.slice(at + 1).filter(item => ['agentMessage', 'agent_message'].includes(item?.type))
+      .map(item => item.text).filter(Boolean).join('\n\n')
+    return { turnId: turn.id, status: turn.status, text }
   }
 }

@@ -14,7 +14,7 @@ import { sandboxTeamEngine } from './sandbox-engines.js'
 import { commandLabel, toolActivity } from './tool-activity.js'
 import { toolReference } from './shared/tool-timeline.js'
 import { skillNameFromPath, toolKind } from './shared/tool-kind.js'
-import { readBoundCodexHistory } from './codex-execution-history.js'
+import { readBoundCodexDelivery, readBoundCodexHistory } from './codex-execution-history.js'
 import { acpToolExitCode, acpToolStatus } from '../../drivers/external/tool-results.js'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import { LoopbackMcp } from '../../team/mcp.js'
@@ -490,11 +490,21 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
       ...[...this.fallbackAdapters.keys()].map(key => this.closeFallbackAgents(key)),
     ])
   }
-  async readCodexExecutionHistory(binding) {
-    if (this.disposed || binding?.route !== 'local-codex-cli' || !binding.cliSessionId || !binding.cwd) return []
+  readCodexExecutionHistory(binding) {
+    return this.withCodexHistory(binding, [], (peer, signal) => readBoundCodexHistory(peer, binding, { signal, toolOf: item => {
+      const tool = codexTool(item)
+      if (!tool) return
+      const status = item.status === 'inProgress' ? 'started' : codexToolStatus('item/completed', item)
+      return codexExecution(item, tool[0], status, tool[2])
+    } }))
+  }
+  readCodexInboxDelivery(binding, id) {
+    return this.withCodexHistory(binding, undefined, (peer, signal) => readBoundCodexDelivery(peer, binding, id, signal))
+  }
+  async withCodexHistory(binding, fallback, read) {
+    if (this.disposed || binding?.route !== 'local-codex-cli' || !binding.cliSessionId || !binding.cwd) return fallback
     const engine = this.engine(binding.route)
-    // Protect the shared app-server from idle close or a concurrent model
-    // probe for the duration of these read-only calls.
+    // Keep the read-only probe from closing a live or newly opened thread.
     const request = { engine, controller: new AbortController(), done: Promise.withResolvers() }
     this.sideRequests.add(request)
     const signal = AbortSignal.any([request.controller.signal, AbortSignal.timeout(4000)])
@@ -505,14 +515,9 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     })
     try {
       const peer = await Promise.race([engine.ensure(), aborted])
-      return await readBoundCodexHistory(peer, binding, { signal, toolOf: item => {
-        const tool = codexTool(item)
-        if (!tool) return
-        const status = item.status === 'inProgress' ? 'started' : codexToolStatus('item/completed', item)
-        return codexExecution(item, tool[0], status, tool[2])
-      } })
+      return await read(peer, signal)
     } catch {
-      return []
+      return fallback
     } finally {
       signal.removeEventListener('abort', onAbort)
       if (!this.engineInUse(engine, request)) await engine.close?.().catch(() => {})
@@ -594,9 +599,9 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     }
   }
 
-  sendInput(live, input, signal, effort, settled) {
+  sendInput(live, input, signal, effort, settled, inboxDelivery) {
     const delivery = this.slashInputs.get(signal)
-    if (!delivery) return super.sendInput(live, input, signal, effort, settled)
+    if (!delivery) return super.sendInput(live, input, signal, effort, settled, inboxDelivery)
     // Godbot prepends replay and runtime context, so forwarding that string
     // would make the CLI read a slash command as prose. Codex accepts metadata
     // alongside its ordinary text and retains the entire replay in that case.
@@ -608,7 +613,7 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     }
     if (!command.skillPath && Array.isArray(input) &&
       (input.length !== 1 || input[0]?.text !== command.text)) delivery.refreshInstructions = live
-    return super.sendInput(live, slashInput(command, input), signal, effort, settled)
+    return super.sendInput(live, slashInput(command, input), signal, effort, settled, inboxDelivery)
   }
 
   async listModels(route) {
@@ -1127,6 +1132,24 @@ export function install(rt) {
     engineNameOf: ref => (isLocalAgentRef(ref) ? adapter.providerInfo(splitRef(ref).provider).name : `the model ${ref}`),
     closeLocalAgentSession: (sessionId, reason) => sandboxes.parts.has(String(sessionId)) ? sandboxes.closePart(sessionId, reason) : adapter.closeSession(sessionId, reason),
     readCodexExecutionHistory: binding => adapter.readCodexExecutionHistory(binding),
+    nativeInboxBusy: id => partAdapter(id).inboxBusy(id),
+    isCodexInboxRoute: provider => provider === 'local-codex-cli' || sandboxRouteInfo(provider)?.base === 'local-codex-cli',
+    refreshInboxEfforts: async provider => {
+      if (!isLocalAgentRoute(provider)) return
+      adapter.dropModelCache(provider)
+      if (sandboxRouteInfo(provider)) return localAgentModels(provider)
+      await adapter.probeModels(provider)
+    },
+    codexInboxTarget: id => partAdapter(id).inboxTarget(id),
+    readCodexInboxDelivery(id, binding, messageId) {
+      // A native history lookup is pinned to the original account's adapter.
+      const part = sandboxes.parts.get(id)
+      if (binding.accountRoute) {
+        if (part?.route !== binding.accountRoute) return
+        return part.adapter.readCodexInboxDelivery(binding, messageId)
+      }
+      if (!isSandboxPart(id)) return adapter.readCodexInboxDelivery(binding, messageId)
+    },
     // The parts module's view of a CLI session's context, and the requests it makes of
     // the CLI when the conversation grows long: condense, write the handoff note, and
     // answer the context steward when the team has no model of its own.

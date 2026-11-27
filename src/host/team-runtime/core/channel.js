@@ -262,7 +262,7 @@ export function install(rt) {
   }
   // What a host that only reads the team may still answer.
   // Updates change the dsh profile, not the team, so a reading host may run them too.
-  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'bot-goal-get', 'chat-tool', 'turn-process', 'run-stats', 'room-progress', 'group-rows', 'group-rows-many', 'exchange', 'exchange-text', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'update-settings', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'browser-frame', 'hello', 'notices', 'avatar', 'room-chat', 'usage-summary', 'image', 'markdown-image', 'file-download', 'changes-check', 'changes-summary', 'changes-diff'])
+  const READS = new Set(['secret-store', 'secret-unlock', 'state', 'models', 'efforts', 'providers', 'provider-models', 'earlier', 'chat', 'bot-goal-get', 'chat-tool', 'turn-process', 'run-stats', 'room-progress', 'group-rows', 'group-rows-many', 'exchange', 'exchange-text', 'bot-deliveries', 'file-text', 'usage', 'schedules', 'memory-view', 'browser-wait', 'browser-result', 'diagnostics', 'diagnostics-log', 'diagnostics-clear', 'update-check', 'update-install', 'update-settings', 'dsh-update-install', 'repo-stars', 'approval-answer', 'thinking', 'avatar-library', 'computer-system-status', 'computer-shot', 'local-agents', 'local-agent-models', 'browser-frame', 'hello', 'notices', 'avatar', 'room-chat', 'usage-summary', 'image', 'markdown-image', 'file-download', 'changes-check', 'changes-summary', 'changes-diff'])
 
   // One group_relay call's rows in the group's book, from `from` up to `to` or the next anchor.
   function groupRowsOf(roomId, { from: start, to: end, anchor }) {
@@ -421,6 +421,13 @@ export function install(rt) {
           await rt.load()
           await setPrefs(body)
           return ok(state.prefs)
+        case 'bot-deliveries': {
+          await rt.load()
+          const bot = rt.botOf(body.botId)
+          const sessionId = body.sessionId ?? (bot && rt.chatOf(bot.id))
+          if (!bot || !ownChatParts(bot).includes(sessionId)) return fail('Unknown Bot conversation', 'bot/stale')
+          return ok(rt.inboxForChat(bot.id, sessionId))
+        }
         case 'exchange': {
           await rt.load()
           return ok(rt.exchangesOf(body.a, body.b))

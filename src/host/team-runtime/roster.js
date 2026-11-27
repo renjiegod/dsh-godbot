@@ -575,6 +575,7 @@ export function install(rt) {
     // A new model lifted what blocked the Bot; a new thinking level alone fixes nothing.
     // releaseKickoff itself leaves when the Bot still lacks a model or holds no greeting.
     if (modelChanged && bot.blocked === undefined) await releaseKickoff(bot)
+    if (modelChanged || moved) rt.wakeBotInbox?.(bot.id)
     return bot
   }
 

@@ -167,7 +167,10 @@ export function install(rt) {
   // The thinking levels a model serves: `{efforts: [{id, name, description?}],
   // defaultEffort?}`, or undefined when it has none or the provider cannot say.
   async function reasoningOf(ref) {
-    const cached = reasoningCache.get(ref)
+    // A CLI's first look may report no metadata before its model catalog has
+    // been read. Settings and inbox recovery both need the current cache.
+    const local = rt.isLocalAgentRef?.(ref) === true
+    const cached = local ? undefined : reasoningCache.get(ref)
     if (cached !== undefined && Date.now() - cached.at < CATALOG_TTL_MS) return cached.value
     const route = splitRef(ref)
     const service = llm()
@@ -177,7 +180,7 @@ export function install(rt) {
       efforts: (info.reasoning.efforts ?? []).map(effort => ({ id: effort.id, name: effort.name ?? effort.id, ...(effort.description ? { description: effort.description } : {}) })),
       ...(info.reasoning.defaultEffort === undefined ? {} : { defaultEffort: info.reasoning.defaultEffort }),
     }
-    reasoningCache.set(ref, { at: Date.now(), value })
+    if (!local) reasoningCache.set(ref, { at: Date.now(), value })
     return value
   }
 

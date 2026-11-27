@@ -22,6 +22,20 @@ import { conversationHead } from './threads.js'
 // Long enough for DSH to finish opening its workspaces after a start.
 export const RESUME_DELAY_MS = 3000
 
+// Read the full session history before deciding whether an exchange can run
+// again. A failed or interrupted read leaves the outcome unknown.
+export async function readDeliveryEvents(rt, sessionId) {
+  const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
+  const events = []
+  try {
+    for await (const event of rt.eventsBackwards(sessionId, signal, Infinity)) events.push(event)
+    signal.throwIfAborted()
+    return events.reverse()
+  } catch {
+    return undefined
+  }
+}
+
 export const resumeText = record => [
   'DeepSeek Harness restarted while you were working on this, so your last turn stopped before it finished.',
   record.approval ? `You were waiting for the user's approval to run ${record.approval.tool || 'a tool'}${record.approval.reason ? ` (${record.approval.reason})` : ''}; that request is gone, so ask again if you still need it.` : '',
@@ -201,7 +215,12 @@ export function install(rt) {
   }
 
   // What a Session was sent and no turn has read yet.
-  rt.unreadOf = sessionId => (queued[sessionId] ?? []).map(item => item.args)
+  rt.legacyBotDeliveries = () => interrupted.queued
+  rt.hasLegacyBotReply = exchangeId => Object.values(queued).some(list => list.some(item => item.args.replyTo === exchangeId))
+  rt.unreadOf = sessionId => [
+    ...(queued[sessionId] ?? []).map(item => item.args).filter(args => !rt.inboxHas?.(args.exchangeId)),
+    ...(rt.pendingBotDeliveries?.(sessionId) ?? []),
+  ]
   rt.forgetDelivery = forgetQueued
 
   // A message is done with once a turn takes it up, or once it leaves the inbox untaken
@@ -265,7 +284,7 @@ export function install(rt) {
 
   async function resumeTurn(sessionId, record) {
     const bot = rt.botOf(record.botId)
-    if (bot === undefined) return
+    if (bot === undefined || rt.inboxHas?.(record.trigger?.exchangeId)) return
     const text = resumeText(record)
     if (record.roomId !== undefined) {
       const room = rt.roomOf(record.roomId)
@@ -317,7 +336,7 @@ export function install(rt) {
   // up, so a send that fails here, or a Session that cannot be opened, leaves them
   // for the next start instead of losing them.
   async function resendQueued(sessionId, list) {
-    const fresh = list.filter(item => item?.args?.exchangeId !== undefined
+    const fresh = list.filter(item => item?.args?.exchangeId !== undefined && !rt.inboxHas?.(item.args.exchangeId)
       && rt.botOf(item.args.toId) !== undefined && taken?.has(item.args.exchangeId) !== true)
     const inboxes = new Map()
     for (const { args } of fresh) {
@@ -345,23 +364,14 @@ export function install(rt) {
     }
   }
 
-  // A Session's durable log, as DSH keeps it: what happened there, and what it said.
-  // Undefined when this DSH cannot read it, or when the Session is gone.
-  async function logOf(sessionId) {
-    const inspect = ctx.sessionController?.inspect
-    if (typeof inspect !== 'function') return undefined
-    const seen = await inspect(sessionId, AbortSignal.timeout(HISTORY_TIMEOUT_MS)).catch(() => undefined)
-    return Array.isArray(seen?.events) ? seen.events : undefined
-  }
-
   // A turn that ended while Godbot was not watching it: its answer may exist and never
   // have gone to the Bot that waits for it. The Session's durable log says what it did;
   // the work it was for is settled once, the way a finished turn settles it.
   async function reconcileEnded(sessionId, record, ended) {
     const trigger = record.trigger
-    if (trigger === undefined) return
+    if (trigger === undefined || rt.inboxHas?.(trigger.exchangeId)) return
     if (trigger.exchangeId && rt.failoverHandoff?.(sessionId, trigger.exchangeId)) {
-      const events = await logOf(sessionId)
+      const events = await readDeliveryEvents(rt, sessionId)
       const turn = events && turnOf(events, trigger.exchangeId)
       if (turn?.reason && !['blocked', 'interrupted'].includes(turn.reason.kind))
         rt.reconcileFailover?.(sessionId, trigger.exchangeId, turn.reason, turn.texts.join('\n\n'))
@@ -375,7 +385,7 @@ export function install(rt) {
         update(sessionId, () => record)
         return
       }
-      const events = await logOf(sessionId)
+      const events = await readDeliveryEvents(rt, sessionId)
       const turn = events && turnOf(events, exchangeId ?? workId)
       if (turn) rt.reconcileWorkBoardComment?.(workId, sessionId, turn)
       return
@@ -389,7 +399,7 @@ export function install(rt) {
       update(sessionId, () => record)
       return
     }
-    const events = await logOf(sessionId)
+    const events = await readDeliveryEvents(rt, sessionId)
     if (events === undefined) {
       // The record of that work cannot be read: whether it answered cannot be
       // established. The sender is told that, and the work is not run again.
@@ -418,7 +428,7 @@ export function install(rt) {
     // The answer would have gone to the part of the asking Bot's chat the request came
     // from, which is not its foreground chat when that part is a background one.
     const where = back ?? conversationHead(rt.botOf(sender), asker.senderPart) ?? asker.senderPart ?? rt.chatOf(sender)
-    const sent = await logOf(where)
+    const sent = await readDeliveryEvents(rt, where)
     if (sent !== undefined && answeredIn(sent, workId)) {
       rt.closeWork?.(workId, name, rt.answerText(workId, said, name))
       return
@@ -480,6 +490,7 @@ export function install(rt) {
   async function resumeAll() {
     await rt.load()
     if (rt.readOnly() !== undefined) return
+    await rt.bootBotInbox?.()
     const { turns: noted, queued: dropped } = interrupted
     interrupted = { turns: {}, queued: {} }
     // Keep the original destination until replay has resolved its conversation
@@ -491,7 +502,7 @@ export function install(rt) {
     for (const [oldId, list] of Object.entries(pending)) {
       if (!Array.isArray(list)) continue
       for (const item of list) {
-        if (item?.args?.exchangeId === undefined || taken?.has(item.args.exchangeId) === true || rt.botOf(item.args.toId) === undefined) continue
+        if (item?.args?.exchangeId === undefined || rt.inboxHas?.(item.args.exchangeId) || taken?.has(item.args.exchangeId) === true || rt.botOf(item.args.toId) === undefined) continue
         queued = { ...queued, [oldId]: [...(queued[oldId] ?? []), item] }
       }
     }

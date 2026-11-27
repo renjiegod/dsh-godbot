@@ -58,6 +58,11 @@ export const failureLine = failure => `${failure.code}${failure.status ? ` ${fai
 // for closes, and the answer goes up to the Bot that asked. `id` is the Session the
 // answer comes from; `source` is the trigger the turn answered.
 export function answerSender(rt, id, source, text, long) {
+  if (rt.inboxHas?.(source.exchangeId)) {
+    void rt.inboxReply(source.exchangeId, id, source, text, long)
+      .catch(error => rt.warn('godbot: Bot inbox reply failed: %s', error?.code ?? error?.name))
+    return
+  }
   const back = rt.roomOf(source.senderRoomId)?.sessions?.[source.senderSessionId]
   const destination = back !== undefined ? { sessionId: back } : { replyPart: source.senderPart ?? null }
   const name = rt.botOf(rt.selfOf(id))?.name ?? 'The other Bot'
@@ -405,11 +410,12 @@ export function install(rt) {
     await rt.load()
     const sessionId = part ?? rt.chatOf(botId)
     if (sessionId === undefined || rt.chatOwners.get(sessionId) !== botId) return false
+    const inboxStopped = rt.stopBotInbox?.(botId, sessionId)
     await rt.pauseBotGoalForStop?.(sessionId)
     const handoffStopped = await rt.cancelFailover?.(botId, sessionId)
     const turnRunning = live.get(sessionId)?.turn !== undefined
     const subRunning = hasSubagents?.(sessionId) === true
-    if (!turnRunning && !subRunning) return handoffStopped === true
+    if (!turnRunning && !subRunning) return handoffStopped === true || inboxStopped === true
     await stopSubagents(sessionId)
     if (turnRunning) {
       const agent = await rt.resolveAgent(sessionId).catch(() => undefined)
@@ -863,7 +869,10 @@ export function install(rt) {
     const lifted = Object.values(state.bots ?? {}).filter(bot => bot.blocked !== undefined && fixes(bot.blocked))
     if (lifted.length === 0) return
     const blocks = new Map(lifted.map(bot => [bot, bot.blocked]))
-    for (const bot of lifted) delete bot.blocked
+    for (const bot of lifted) {
+      delete bot.blocked
+      rt.wakeBotInbox?.(bot.id)
+    }
     void rt.save().catch(() => {})
     for (const bot of lifted) {
       const { code, answering } = blocks.get(bot)
@@ -1063,7 +1072,8 @@ export function install(rt) {
           stoppedSubagentParents.delete(id)
         }
         // A result that came back counts as taken once a turn reads it.
-        if (source?.kind === SOURCE_KIND && source.work !== undefined && source.replyTo !== undefined) rt.takenWork?.(source.work, source.replyTo)
+        if (source?.kind === SOURCE_KIND && source.work !== undefined && source.replyTo !== undefined
+          && !source.inboxAttempt) rt.takenWork?.(source.work, source.replyTo)
         // A message that shares a step with a bare handoff package is what the turn
         // answers, so the turn is not a hidden acknowledgement.
         const bare = info => info?.handoff === true && info.resume !== true
@@ -1405,6 +1415,13 @@ export function install(rt) {
         // anything handed on for it is still out, the answer waits; then it goes up with
         // what came back. A failed or stopped turn answers at once.
         const finish = (source, reply) => {
+          if (rt.inboxHas?.(source.exchangeId)) {
+            if (!rt.inboxCanAnswer(source.exchangeId) || reason?.kind !== 'completed') return
+            if (answersUser(source)) {
+              rt.finishInboxVisible(source.exchangeId)
+              return
+            }
+          }
           const work = rt.workOf?.(source)
           if (!rt.ownsWork?.(rt.selfOf(id), work)) return answer(source, reply)
           const asker = rt.workAsker(work)
@@ -1438,6 +1455,9 @@ export function install(rt) {
           else if (reason?.kind !== 'aborted') void rt.lateRoomReply?.(id, info ?? {}, groupReply(), { shown, toolCount })
         } else if (!retry && !handedOff && info !== undefined) {
           finish(info, replyText())
+        }
+        if (!retry && !handedOff) {
+          for (const source of rt.inboxSteered?.(id, turn) ?? []) finish(source, replyText())
         }
         for (const request of joined) {
           if (request.info.role === 'room' && stoppedRoomTurns.delete(request.info.exchangeId)) continue
@@ -1539,6 +1559,15 @@ export function install(rt) {
       controller.prompt = admitted
       return () => { if (controller.prompt === admitted) controller.prompt = prompt }
     }, 'godbot: prompt rejection reasons')
+  }
+
+  rt.finishRecoveredInbox = async (sessionId, source, reply) => {
+    const name = rt.botOf(rt.selfOf(sessionId))?.name ?? 'The other Bot'
+    const work = rt.workOf(source)
+    if (rt.waitsWork(work)) { rt.holdWork(work, reply); return }
+    const said = rt.ownsWork(rt.selfOf(sessionId), work) ? rt.answerText(work, reply, name) : reply
+    const long = said.length > MESSAGE_INLINE_MAX ? await rt.attachLong(said, `Answer from ${name}.txt`) : undefined
+    await rt.inboxReply(source.exchangeId, sessionId, source, said, long)
   }
 
   Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteNativeTool, turnWork, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })

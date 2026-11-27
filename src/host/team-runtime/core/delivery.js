@@ -65,7 +65,8 @@ export function install(rt) {
         if (record.delivered === true) shown.set(record.id, record)
       }
     }
-    return [...shown.values()]
+    for (const record of rt.inboxExchanges?.(a, b) ?? []) shown.set(record.id, record)
+    return [...shown.values()].sort((a, b) => a.time - b.time)
   }
 
   // A dedicated conversation has a lasting origin as long as this peer has only
@@ -76,7 +77,7 @@ export function install(rt) {
     if (head === undefined) return undefined
     let origin
     let opening
-    for (const record of rt.ledger.records(pairBook(bot.id, peer.id))) {
+    for (const record of [...rt.ledger.records(pairBook(bot.id, peer.id)), ...(rt.inboxOrigins?.(bot.id, peer.id) ?? [])]) {
       if (record.event !== 'delivered' || typeof record.fromPart !== 'string'
         || conversationHead(bot, record.sessionId) !== head) continue
       const source = conversationHead(peer, record.fromPart) ?? record.fromPart
@@ -85,6 +86,48 @@ export function install(rt) {
       if (record.opensConversation === true) opening = record.fromPart
     }
     return opening
+  }
+
+  function relayMessage({ fromId, fromName: senderName, text, role, replyTo, roomId, audience, note,
+    exchangeId, inboxAttempt, deferred = false, resumed = false, retried = false, resent = false, abandoned = false,
+    askedBy, fromRoomId, fromPart, images = [], files = [], work, initiator, title }) {
+    const from = rt.botOf(fromId)
+    const fromName = senderName ?? from?.name ?? 'You'
+    const room = rt.roomOf(roomId)
+    const asker = work === undefined ? undefined : rt.botOf(state.works?.[work]?.from)?.name
+    // Session events reject `undefined` members, so optional fields are omitted instead.
+    const source = {
+      kind: SOURCE_KIND,
+      form: 'relay',
+      role,
+      exchangeId,
+      ...(inboxAttempt ? { inboxAttempt } : {}),
+      senderName: fromName,
+      ...(work ? { work } : {}),
+      ...(fromId ? { senderSessionId: fromId } : {}),
+      ...(fromPart ? { senderPart: fromPart } : {}),
+      ...(replyTo ? { replyTo } : {}),
+      ...(roomId ? { roomId } : {}),
+      ...(audience === 'user' ? { audience } : {}),
+      ...(deferred ? { deferred: true } : {}),
+      ...(resumed ? { resumed: true } : {}),
+      ...(retried ? { retried: true } : {}),
+      ...(askedBy ? { askedBy } : {}),
+      ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
+      ...(abandoned ? { abandoned: true } : {}),
+      ...(role === 'request' && typeof title === 'string' && title.trim() !== '' ? { title: title.trim() } : {}),
+    }
+    const senderSession = fromPart ?? (fromRoomId ? rt.roomOf(fromRoomId)?.sessions?.[fromId] : undefined) ?? (fromId ? rt.chatOf(fromId) : undefined)
+    const origin = initiator ?? (senderSession ? rt.governance?.delegate(senderSession, fromId) : undefined)
+    if (origin) source.godbotInitiator = origin
+    return createUserMessage({
+      content: [
+        { type: 'text', text: `${headerFor(role, fromName, room?.name, audience, note, deferred, { resumed, retried, resent, abandoned, asker })}\n${text}` },
+        ...images.map(attachment => ({ type: 'image', attachment })),
+        ...files.map(attachment => ({ type: 'file', attachment })),
+      ],
+      source,
+    })
   }
 
   // `sessionId` defaults to the recipient's own chat; group turns name its group Session.
@@ -109,35 +152,7 @@ export function install(rt) {
   // (parts.js promptTitle).
   async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, opensConversation = false, addressed, images = [], files = [], length, work, initiator, title }) {
     const from = rt.botOf(fromId)
-    const to = rt.botOf(toId)
-    if (to === undefined) throw new Error(`Unknown Bot ${toId}`)
-    const fromName = senderName ?? from?.name ?? 'You'
-    const room = rt.roomOf(roomId)
-    const asker = work === undefined ? undefined : rt.botOf(state.works?.[work]?.from)?.name
-    // Session events reject `undefined` members, so optional fields are omitted instead.
-    const source = {
-      kind: SOURCE_KIND,
-      form: 'relay',
-      role,
-      exchangeId,
-      senderName: fromName,
-      ...(work ? { work } : {}),
-      ...(fromId ? { senderSessionId: fromId } : {}),
-      ...(fromPart ? { senderPart: fromPart } : {}),
-      ...(replyTo ? { replyTo } : {}),
-      ...(roomId ? { roomId } : {}),
-      ...(audience === 'user' ? { audience } : {}),
-      ...(deferred ? { deferred: true } : {}),
-      ...(resumed ? { resumed: true } : {}),
-      ...(retried ? { retried: true } : {}),
-      ...(askedBy ? { askedBy } : {}),
-      ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
-      ...(abandoned ? { abandoned: true } : {}),
-      ...(role === 'request' && typeof title === 'string' && title.trim() !== '' ? { title: title.trim() } : {}),
-    }
-    const senderSession = fromPart ?? (fromRoomId ? rt.roomOf(fromRoomId)?.sessions?.[fromId] : undefined) ?? (fromId ? rt.chatOf(fromId) : undefined)
-    const origin = initiator ?? (senderSession ? rt.governance?.delegate(senderSession, fromId) : undefined)
-    if (origin) source.godbotInitiator = origin
+    if (rt.botOf(toId) === undefined) throw new Error(`Unknown Bot ${toId}`)
     const targetSessionId = sessionId ?? rt.chatOf(toId)
     // On disk before it goes out: a message the book could not keep is not sent, so none is
     // delivered with no record of it. A resend keeps the record it has; only a merged request
@@ -155,14 +170,8 @@ export function install(rt) {
     }
     // A steered message cuts into a running turn at its next step; a follow-up
     // queues for the next turn (see turns.js for how each is routed).
-    const message = createUserMessage({
-      content: [
-        { type: 'text', text: `${headerFor(role, fromName, room?.name, audience, note, deferred, { resumed, retried, resent, abandoned, asker })}\n${text}` },
-        ...images.map(attachment => ({ type: 'image', attachment })),
-        ...files.map(attachment => ({ type: 'file', attachment })),
-      ],
-      source,
-    })
+    const message = relayMessage({ fromId, fromName: senderName, text, role, replyTo, roomId, audience, note,
+      exchangeId, deferred, resumed, retried, resent, abandoned, askedBy, fromRoomId, fromPart, images, files, work, initiator, title })
     if (steer) agent.steer(message)
     else agent.followup(message)
     await ctx.sessions.flush(agent.session)
@@ -286,5 +295,5 @@ export function install(rt) {
     return { ...record, ledger: true }
   }
 
-  Object.assign(rt, { resolveAgent, deliver, deliverBackground, exchangeText, attachLong, fileText, exchangesOf, exchangeOf, conversationOpeningFrom })
+  Object.assign(rt, { resolveAgent, deliver, relayMessage, deliverBackground, exchangeText, attachLong, fileText, exchangesOf, exchangeOf, conversationOpeningFrom })
 }

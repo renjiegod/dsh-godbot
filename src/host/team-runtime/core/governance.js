@@ -254,6 +254,18 @@ export function install(rt) {
   rt.governance = {
     handle, registerPrompt, messageSource, current, lastOrigin,
     delegate: (id, botId) => delegatedOrigin(lastOrigin(id), botId),
+    // A native turn cannot be reopened with a narrower preset while it runs.
+    // Queue the relay when its origin could change any execution rule.
+    allowInboxSteer(id, incoming) {
+      const existing = active.get(id)
+      if (!existing || !incoming || Boolean(existing.readOnly) !== Boolean(incoming.readOnly)) return false
+      const root = origin => origin.rootKind ?? origin.kind
+      if (root(existing) !== root(incoming)) return false
+      const applies = (rule, origin) => rule.origin === 'any' || rule.origin === origin.kind
+        || rule.origin === origin.rootKind || rule.origin === 'unattended' && origin.unattended
+      return !rules().some(rule => rule.enabled && (!rule.botId || rule.botId === rt.selfOf(id))
+        && Boolean(applies(rule, existing)) !== Boolean(applies(rule, incoming)))
+    },
     nativePreset(id) {
       const origin = current(id)
       if (origin.readOnly) return 'read-only'

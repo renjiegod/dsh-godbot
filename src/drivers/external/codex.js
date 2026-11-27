@@ -423,7 +423,7 @@ export class CodexEngine {
     await this.peer?.request('thread/inject_items', { threadId: thread.threadId, items: [{ type: 'developerMessage', text }] }, { timeout: 15_000 }).catch(() => {})
   }
 
-  async prompt(thread, blocks, { signal, effort, options }) {
+  async prompt(thread, blocks, { signal, effort, options, trackDelivery = false }) {
     const peer = await this.ensure()
     const command = blocks.find(block => block.type === 'native-command')
     if (command) {
@@ -436,8 +436,10 @@ export class CodexEngine {
       // The app-server takes the level per turn and keeps it for the next ones.
       ...(effort === undefined ? {} : { effort }),
       ...codexTurnOptions(options),
-    }, { signal, timeout: 0 })
+    }, { signal, timeout: trackDelivery ? 15_000 : 0, trackDelivery })
     const turnId = reply?.turn?.id ?? reply?.id
+    if (trackDelivery && typeof turnId !== 'string')
+      throw Object.assign(new Error('Codex response did not identify the accepted turn'), { deliveryUnknown: true })
     // Notifications in the response's stdout batch run before this continuation.
     thread.turnId = thread.completedTurnId === turnId ? undefined : turnId
     return turnId
@@ -478,13 +480,13 @@ export class CodexEngine {
     return true
   }
 
-  async steer(thread, input) {
-    const expectedTurnId = thread?.turnId
-    if (expectedTurnId === undefined) throw new Error('the turn this input steers has already ended')
+  async steer(thread, input, { expectedTurnId = thread?.turnId, trackDelivery = false } = {}) {
+    if (expectedTurnId === undefined || thread.turnId !== expectedTurnId)
+      throw new Error('the turn this input steers has already ended')
     const blocks = Array.isArray(input) ? input : [{ type: 'text', text: input }]
     if (blocks.some(block => block.type === 'native-command')) throw new Error('Codex 原生命令需要单独的回合。')
     if (!this.peer) throw new Error('Codex connection closed')
-    await this.peer.request('turn/steer', { threadId: thread.threadId, expectedTurnId, input: codexInput(blocks) }, { timeout: 15_000 })
+    await this.peer.request('turn/steer', { threadId: thread.threadId, expectedTurnId, input: codexInput(blocks) }, { timeout: 15_000, trackDelivery })
   }
 
   cancel(thread) {
