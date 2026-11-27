@@ -2,6 +2,7 @@
 // pass the whole release suite: scripts/release-candidate.mjs checks a report
 // against this list before it vouches for the archive.
 export const release = [
+  'WORK-BOARD',
   'WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'BOT-FAILOVER-SECTIONS', 'COMMAND-QUIET', 'NEW-SESSION', 'DRAFT-ATTACHMENTS',
   'BACKGROUND-REPLY', 'BOT-MESSAGE-ROUTING', 'BOT-HANDOFF-ROUTING', 'CONVERSATION-TOOLS', 'E0', 'E1', 'E2', 'E4', 'E4-FULL', 'E5',
   'E8', 'E12', 'UPGRADE-PREVIOUS', 'E13', 'E15', 'E16', 'E17', 'LOCAL-SIGNIN', 'UPDATE', 'PHONE', 'PHONE-PAGES', 'REMOTE-COMPUTERS',
@@ -9,6 +10,8 @@ export const release = [
 ]
 
 export const all = [
+  'WORK-BOARD-SCALE',
+  'WORK-BOARD',
   'WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'BOT-FAILOVER-SECTIONS', 'COMMAND-QUIET', 'NEW-SESSION', 'DRAFT-ATTACHMENTS',
   'BACKGROUND-REPLY', 'BOT-MESSAGE-ROUTING', 'BOT-HANDOFF-ROUTING', 'CONVERSATION-TOOLS', 'LOCAL-SIGNIN',
   ...Array.from({ length: 18 }, (_, i) => 'E' + i).filter(id => id !== 'E3').flatMap(id => id === 'E4' ? [id, 'E4-FULL'] : [id]),
@@ -18,7 +21,7 @@ export const all = [
 
 export const connectorCases = ['L-CLAUDE', 'L-CODEX']
 export const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
-export const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK', 'PHONE-AUTOMATION', 'PHONE-BOT-GOALS', 'PHONE-MODEL-OPTIONS']
+export const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK', 'PHONE-AUTOMATION', 'PHONE-BOT-GOALS', 'PHONE-MODEL-OPTIONS', 'PHONE-WORK-BOARD']
 export const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX', 'SANDBOX-SETUP']
 export const suites = { release, all, 'live-connectors': connectorCases, 'live-routines': Object.keys(routineFiles) }
 

@@ -6,7 +6,7 @@ import { TeamTemplates } from './team-templates.js'
 
 const title = '工作台收件箱'
 
-function Inbox({ client, close }) {
+function Inbox({ client, close, onWork }) {
   const mounted = useRef(false)
   const version = useRef(0)
   const [state, setState] = useState(null)
@@ -44,6 +44,7 @@ function Inbox({ client, close }) {
   return h(GodbotModal, { title, close },
     (error || loadError) && h('p', { className: 'gb-modal-note', role: 'alert' }, error || loadError),
     !state && !loadError && h('p', { className: 'gb-modal-note', role: 'status' }, '正在读取…'),
+    onWork && h('button',{type:'button',className:'bt-soft',onClick:()=>{close();onWork()}},'查看需要我处理的工作项'),
     state?.rows.length === 0 && h('p', { className: 'gb-modal-note' },
       h(Icon, { name: 'task', size: 17 }), '当前没有待处理的审批或提问。'),
     state?.rows.map(item => h(Interaction, {
@@ -59,9 +60,9 @@ function Inbox({ client, close }) {
           h('input', { type: 'checkbox', checked: room.enabled, disabled: busy, onChange: e => submit({ action: 'team-workspace.routing', roomId: room.id, enabled: e.target.checked }) }), room.name)))))
 }
 
-export function WorkspaceInbox({ client }) {
+export function WorkspaceInbox({ client, onWork }) {
   const [open, setOpen] = useState(false)
   return h(Fragment, null,
     h('button', { type: 'button', className: 'gb-workspace-action', title, 'aria-label': title, 'aria-haspopup': 'dialog', onClick: () => setOpen(true) }, h(Icon, { name: 'inbox', size: 17 })),
-    open && h(Inbox, { client, close: () => setOpen(false) }))
+    open && h(Inbox, { client, onWork, close: () => setOpen(false) }))
 }

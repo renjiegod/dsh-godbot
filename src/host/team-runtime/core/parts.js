@@ -2116,8 +2116,10 @@ export function install(rt) {
     } catch { /* a tail miss must never take out the other listeners */ }
   })
 
-  async function chatPage(botId, cursor, steps = false, turnStatuses = false) {
-    const parts = partsOf(botId)
+  async function chatPage(botId, cursor, steps = false, turnStatuses = false, partId, anchorSeq) {
+    const available = partId ? partsOfThread(botId,partId) : partsOf(botId)
+    const parts = partId ? available.filter(p=>p.sessionId===partId) : available
+    if (!cursor && Number.isSafeInteger(anchorSeq) && anchorSeq>=0) cursor = {beforeSeq:anchorSeq+1}
     if (parts.length === 0) throw Object.assign(new Error('Unknown Bot'), { code: 'bot/not-found' })
     const index = Number.isInteger(cursor?.part) ? cursor.part : parts.length - 1
     const floor = sessionFloor(parts, parts.length - 1)

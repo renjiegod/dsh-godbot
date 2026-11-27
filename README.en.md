@@ -50,6 +50,7 @@ Install the Claude Code, Codex, or Antigravity CLI under the same OS user that r
 | Run a Bot goal | Type `/goal <objective>` or choose **Goal** in a Bot chat. The Bot works toward the finish condition and reports progress and evidence in that conversation. You can pause, resume, stop, and set turn or active-time limits. |
 | Take over an agent | Open **Native Agent** in a Bot’s chat. Switch between conversation and terminal in the same native session, then hand it back to Bot chat. |
 | Coordinate a team | Create Bots and groups, give each Bot a model, permissions, and working folder, and assign tasks with acceptance criteria. Review their evidence in the task board. |
+| Track work | Open **Work board** in the sidebar or create an item from a conversation message. Save a draft, assign it with acceptance criteria, and review each attempt on the same card. **Needs my action** collects items waiting on you. |
 | Repeat a workflow | Connect Bot tasks, branch on review outcomes, and schedule a pinned workflow version or trigger it through CI, the CLI, or MCP. |
 | Isolate accounts and tools | Set up separate Lima accounts for supported CLIs and give Bots their own browser or container desktop that you can take over. |
 | Share and recover your work | Invite collaborators with resource-level access, review the audit trail, and move workspaces using encrypted backups. |

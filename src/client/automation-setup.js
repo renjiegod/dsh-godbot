@@ -44,7 +44,7 @@ function RunHistory({ client, item, actions }) {
     const timer = setInterval(() => { if (!paging.current && !document.hidden) void read() }, 5000)
     return () => { sequence.current++; clearInterval(timer) }
   }, [read])
-  const showTask = id => actions.openSettings('tasks', { taskId: id })
+  const showTask = id => actions.openWorkBoard({ taskId:id })
   const openChat = id => { actions.closeSettings(); actions.openSession(id) }
   return h('section', { className: 'gb-auto-history', 'aria-label': t('Run history') },
     h('div', { className: 'gb-auto-toolbar' }, h('h4', null, t('Run history')), action('Refresh', () => read(), { disabled: loading })),

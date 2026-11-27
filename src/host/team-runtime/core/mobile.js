@@ -45,6 +45,7 @@ export const CAPABILITIES = [
   'usage-summary',
   'local-agent-usage',
   'unified-automation',
+  'work-board-v1',
   'stop-chat',
   'bot-goals',
   'row-meta',
@@ -327,8 +328,10 @@ export function install(rt) {
   async function roomChat(body) {
     const room = rt.roomOf(String(body.roomId ?? ''))
     if (room === undefined) throw Object.assign(new Error('Unknown group chat'), { code: 'bot/not-found' })
-    const cursor = body.cursor ?? undefined
-    const parts = rt.partsOf(undefined, room.id)
+    const cursor = body.cursor ?? (Number.isSafeInteger(body.anchorSeq) && body.anchorSeq>=0 ? {beforeSeq:body.anchorSeq+1} : undefined)
+    const available = rt.partsOf(undefined, room.id)
+    const parts = typeof body.partId === 'string' ? available.filter(p=>p.sessionId===body.partId) : available
+    if(body.partId && !parts.length) throw Object.assign(new Error('Unknown group chat part'), {code:'bot/not-found'})
     const index = Number.isInteger(cursor?.part) ? cursor.part : parts.length - 1
     if (index < 0 || index >= parts.length) return { roomId: room.id, items: [], cursor: null, running: false, speaking: null }
     const part = parts[index]
@@ -345,7 +348,7 @@ export function install(rt) {
     const events = page.records.map(record => record.event)
     const { items, open } = roomItems(events, range => rt.groupRows?.(room.id, range.from, range.to, range.anchor) ?? [])
     for (const item of items) {
-      if (item.sessionId === undefined && (item.kind === 'bot' || item.kind === 'post')) item.sessionId = part.sessionId
+      if (item.sessionId === undefined && (item.kind === 'bot' || item.kind === 'post' || item.kind === 'user')) item.sessionId = part.sessionId
     }
     if (body.steps === true) await rt.applySteps?.(items, events, part.sessionId, { atTip: !Number.isInteger(cursor?.beforeSeq) && index === parts.length - 1 })
     const running = [...rt.roomProgress.entries()].filter(([, round]) => round.roomId === room.id)

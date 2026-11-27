@@ -5,7 +5,7 @@ import { WorkspaceInbox } from './workspace-inbox.js'
 import { t } from './team-ui/i18n.js'
 import actionsStyle from './workspace-actions.css'
 
-export function WorkspaceActions({ wide, client, onAutomation, onBack }) {
+export function WorkspaceActions({ wide, client, onAutomation, onBack, onWork }) {
   const automation = t('Automation')
   return h('nav', {
     className: 'gb-workspace-actions',
@@ -22,7 +22,7 @@ export function WorkspaceActions({ wide, client, onAutomation, onBack }) {
       onClick: onAutomation,
     }, h(Icon, { name: 'clock', size: 17 })),
     h(RemoteComputersButton, { client }),
-    h(WorkspaceInbox, { client }),
+    h(WorkspaceInbox, { client, onWork }),
     h('button', {
       type: 'button', className: 'gb-workspace-action', title: '返回 dsh', 'aria-label': '返回 dsh', onClick: onBack,
     }, h(Icon, { name: 'back', size: 17 })))

@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { chmodSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import { affectsBoard } from './work-board-index.js'
 
 function acquireHostLease(dir) {
   const path = join(dir, 'godbot-owner.sqlite3')
@@ -97,6 +98,7 @@ export class Store {
   }
   put(collection, row) {
     this.putStatement.run(collection, row.id, JSON.stringify(row))
+    if (this.boardChanged && affectsBoard(collection)) this.boardChanged()
     return this.get(collection, row.id)
   }
   update(collection, id, patch) {
@@ -104,6 +106,7 @@ export class Store {
   }
   remove(collection, id) {
     this.db.prepare('DELETE FROM records WHERE collection=? AND id=?').run(collection, id)
+    if (this.boardChanged && affectsBoard(collection)) this.boardChanged()
   }
   transaction(fn) {
     this.db.exec('BEGIN IMMEDIATE')

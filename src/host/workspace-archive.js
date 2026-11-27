@@ -6,6 +6,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
 import { child, collectAttachments, decode, relocateLog, fileData, includeDescendants, sessionHeader, logLines, logRelative, mapFields, remapper, seal, sessionRefs, sha, tree, unpackTree, unseal } from './backup-files.js'
 
+import { installBoardIndex } from './work-board-index.js'
+
 const managed = new Set(['memory','ledger','handoff-results','avatars','workspace','group-lines','group-logs','skills','usage.sqlite','execution.sqlite'])
 const credentials = new Set(['automationGrants','automationHooks','automationSettings','humanInvites','humanSessions'])
 const format = 'dsh-godbot-workspace/v2'
@@ -54,13 +56,32 @@ function portableRecord(collection, value) {
     return { ...value, status: 'paused', nextAt: null, revision: value.revision + 1 }
   return value
 }
-function nativeDatabase(path, rows) {
+function portableBoard(dir) {
+  const file = join(dir,'godbot.sqlite3')
+  if (!existsSync(file)) return undefined
+  const db = new DatabaseSync(file,{readOnly:true})
+  try {
+    if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_cards'").get()) return undefined
+    return { cards:db.prepare("SELECT number,kind,scope,source_id,origin_key,meta,CASE WHEN kind='draft' THEN summary END AS summary FROM board_cards ORDER BY number").all(),
+      requests:db.prepare('SELECT id,fingerprint,number,outcome FROM board_requests').all() }
+  } finally { db.close() }
+}
+function nativeDatabase(path, rows, board) {
   const db = new DatabaseSync(path)
   try {
     db.exec('CREATE TABLE records(seq INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, UNIQUE(collection,id)); BEGIN')
     const insert = db.prepare('INSERT INTO records(seq,collection,id,data) VALUES(?,?,?,?)')
     for (const r of rows) if (!credentials.has(r.collection)) insert.run(r.seq,r.collection,r.id,JSON.stringify(portableRecord(r.collection,r.value)))
     db.exec('COMMIT')
+    if (board) {
+      installBoardIndex(db)
+      db.exec('BEGIN')
+      const card = db.prepare('INSERT INTO board_cards(number,kind,scope,source_id,origin_key,meta,summary) VALUES(?,?,?,?,?,?,?)')
+      for (const r of board.cards) card.run(r.number,r.kind,r.scope,r.source_id,r.origin_key,r.meta,r.summary)
+      const receipt = db.prepare('INSERT INTO board_requests(id,fingerprint,number,outcome) VALUES(?,?,?,?)')
+      for (const r of board.requests) receipt.run(r.id,r.fingerprint,r.number,r.outcome)
+      db.exec('COMMIT')
+    }
   } finally { db.close() }
 }
 function portableTeamState(original) {
@@ -151,7 +172,7 @@ function backup({ home, dir, profile, out, password }) {
   const scheduleFile = join(home,'storages/schedule.json')
   const schedule = existsSync(scheduleFile) ? json(scheduleFile) : {}
   const schedules = Object.entries(schedule.tables?.tasks ?? {}).filter(([, task]) => refs.has(task.target?.sessionId ?? task.sessionId))
-  const data = { schedules, format, home, dir, teamDirectory: basename(teamHome), profile, state, records, donorFiles, sessions, attachments, workspaces,
+  const data = { schedules, format, home, dir, teamDirectory: basename(teamHome), profile, state, records, board:portableBoard(dir), donorFiles, sessions, attachments, workspaces,
     archived: registry.global.archivedSessionIds.filter(id => refs.has(id)), pinned: registry.global.pinnedSessionIds.filter(id => refs.has(id)) }
   const bytes = seal(data,password)
   writeFileSync(out,bytes,{flag:'wx',mode:0o600,flush:true})
@@ -213,7 +234,7 @@ function restore({ home, dir, file, password, mappings }) {
   const previous = existsSync(journal) ? json(journal) : null
   let begun = false
   try {
-    stage(database, p => nativeDatabase(p,records))
+    stage(database, p => nativeDatabase(p,records,data.board))
     const state = mapFields(portableTeamState(data.state), map)
     stage(teamHome, p => {
       unpackTree(p,data.donorFiles,managed)

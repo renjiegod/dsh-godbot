@@ -842,6 +842,8 @@ export function TeamSidebar(props) {
     top,
     wideContent ? h(UpdateNotice, { wide: true, useUpdate: props.useUpdate, actions, dismissedUpdate, dismissUpdate }) : null,
     actions.godbot.navigation(wideContent, roster, actions),
+    h('button', {type:'button',className:wideContent?'bt-set-row':'bt-round',title:t('Work board'),'aria-label':t('Work board'),
+      onClick:()=>actions.openWorkBoard()}, h('span',{'aria-hidden':true},'▤'),wideContent ? t('Work board') : null),
     wideContent && roster.readOnly ? h('div', { className: 'bt-hint bt-read-only', role: 'status' }, hostText(roster.readOnly)) : null,
     h('div', {
       ref: listRef, className: 'bt-list', role: 'region', 'aria-label': t('Bot list'),

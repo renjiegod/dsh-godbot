@@ -26,6 +26,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
   }
   // `id` can identify a detail page or the Bot that opened the capability library.
   const openSettings = (page = 'general', id = null) => {
+    if(typeof window!=='undefined' && location.hash.startsWith('#/godbot/work')) history.replaceState(history.state,'','#/godbot')
     if (page === 'schedules') {
       page = 'automation'
       if (typeof id === 'string') id = id.startsWith('bot:') || id.startsWith('room:')
@@ -34,9 +35,19 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
       page = 'automation'
       id = null
     }
-    ui.set(state => ({ ...state, settings: { page, id }, menu: null, palette: null, newChat: null }))
+    ui.set(state => ({ ...state, workBoard:null,settings: { page, id }, menu: null, palette: null, newChat: null }))
   }
   return {
+    openWorkBoard: (initial = {}) => {
+      const hash = '#/godbot/work' + (initial.id ? '/' + initial.id : '')
+      if (typeof window !== 'undefined' && location.hash !== hash) history.pushState(history.state, '', hash)
+      ui.set(state => ({ ...state, workBoard: { ...initial, token: Date.now() }, settings: null,
+        menu: null, details: null, sectionContext: null, leftDrawer: false }))
+    },
+    closeWorkBoard: () => {
+      if (typeof window !== 'undefined' && location.hash.startsWith('#/godbot/work')) history.replaceState(history.state, '', '#/godbot')
+      ui.set(state => ({ ...state, workBoard: null }))
+    },
     // The pane starts at the rail's edge, so a floating drawer would stick out from under it.
     openNewChat: (mode, sectionId = null) => { ui.set(state => ({ ...state, newChat: mode, newChatSection: sectionId ?? null, menu: null, palette: null, leftDrawer: false })) },
     openPalette: (query = '') => { ui.set(state => ({ ...state, palette: { query, token: Date.now() }, newChat: null, menu: null })) },

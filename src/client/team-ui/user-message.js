@@ -216,7 +216,11 @@ export function UserMessageCell({ node, sessionId, useRoster, actions, renderMes
   }
   const fold = { data, text, shown, folded, control, onClick: tapTools }
   const stamp = (sentAt || via) ? h('div', { className: 'bt-utime', title: clockLabel(data.time) }, via && h(ViaTag, { via }), sentAt) : null
-  const copy = text === '' ? null : h('div', { className: 'bt-utools', 'data-open': toolsOpen || undefined }, h(CopyButton, { text }))
+  const room = roster.roomsById[sessionId], bot = roster.byId[sessionId]
+  const messageId = data.seq ?? data.id ?? node.key ?? node.id
+  const copy = text === '' ? null : h('div', { className: 'bt-utools', 'data-open': toolsOpen || undefined }, h(CopyButton, { text }),
+    !roster.readOnly && (room || bot) && messageId != null ? h('button',{type:'button',className:'bt-tool',title:t('Create work item from message'),'aria-label':t('Create work item from message'),
+      onClick:()=>actions.openWorkBoard({seed:{title:text.slice(0,160),origin:{sessionId,roomId:room?.id,botId:room?undefined:bot?.id,messageId:String(messageId),turnId:data.turn}}})},'▤') : null)
   const conversation = usesConversationLayout(roster, sessionId)
   return h('div', { ref: row, className: 'bt-umsg', 'data-steering': steering || undefined },
     h('div', { className: 'bt-ustack' },

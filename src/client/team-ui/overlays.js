@@ -17,6 +17,7 @@ import { reducedMotion, useLinger } from './motion.js'
 import { OpeningCover, openingModel } from './opening.js'
 
 // How long a closing dialog or menu stays for its exit (see their [data-leaving] CSS).
+import { WorkBoard } from '../work-board.js'
 const DIALOG_EXIT_MS = 160
 const MENU_EXIT_MS = 120
 
@@ -70,6 +71,7 @@ export function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useA
   // Bot fills the conversation area instead of the chat that was there before.
   const opening = openingModel({ pending: ui.pendingOpen ?? null, current, roster })
   return h(Fragment, null,
+    ui.workBoard ? createPortal(h(WorkBoard, { key:ui.workBoard.token, initial:ui.workBoard, actions, roster, column:layout.column }), document.body) : null,
     h(NotificationWatcher, { key: 'godbot:notifications', useSessions, useSessionStatus, useRoster, useWork, actions }),
     opening ? createPortal(h(OpeningCover, { model: opening, column: layout.column }), document.body) : null,
     pane ? createPortal(h(BotPanel, { pane, leaving: shown === null, room: layout.room, overlay: layout.panel === 'overlay', roster, actions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useBrowserHolds }), document.body) : null,

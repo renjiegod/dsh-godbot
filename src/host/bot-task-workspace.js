@@ -16,7 +16,7 @@ function digest(request) {
   return createHash('sha256').update(canonical).digest('hex')
 }
 
-function pendingFor(rt, delivery) {
+export function pendingFor(rt, delivery) {
   if (!delivery?.sessionId) return []
   const { sessionId } = delivery
   const info = rt.live?.get(sessionId)?.info
@@ -224,14 +224,26 @@ export class BotTaskWorkspace {
     }
     const bot = store.get('members', botId)
     if (!bot || rt.readOnly()) return this.botFailed(next.id, 'failed', unavailable)
-    store.update('botTaskDeliveries', next.id, { state: 'sending', sessionId: bot.sessionId })
+    store.update('botTaskDeliveries', next.id, { state: 'sending', sessionId: task?.boardNumber ? null : bot.sessionId })
     this.active.set(botId, next.id)
     const dispatch = async () => {
+      let sessionId = bot.sessionId
+      if (task?.boardNumber) {
+        const member = rt.botOf(bot.id)
+        const prior = task.boardSessionOwner === bot.id ? task.boardSession : undefined
+        const anchor = prior ?? (task.boardOrigin?.botId === bot.id ? task.boardOrigin.sessionId : undefined)
+        sessionId = (anchor && await rt.openBotConversation(member, anchor))
+          || await rt.newBotConversation(member, 'GB-' + task.boardNumber + ' · ' + task.title)
+        if (!sessionId || this.closing || rt.readOnly() || !store.get('members',bot.id)
+          || store.get('tasks',task.id)?.assignmentId !== next.id) throw new Error('任务会话或负责人已改变。')
+        store.update('tasks', task.id, { boardSession:sessionId, boardSessionOwner:bot.id })
+        store.update('botTaskDeliveries', next.id, {sessionId})
+      }
       rt.openWork(next.id, { to: bot.id })
       const run = task?.runId && store.get('automationRuns', task.runId)
       const initiator = run?.initiator ?? (task?.runId ? runOrigin('unknown', task.runId)
         : original.from && original.from !== 'user' ? delegatedOrigin(undefined, original.from) : runOrigin('person'))
-      await rt.deliver({ role: 'request', fromName: '任务编排', toId: bot.id, sessionId: bot.sessionId, exchangeId: next.id, text: original.text, initiator })
+      await rt.deliver({ role: 'request', fromName: '任务编排', toId: bot.id, sessionId, exchangeId: next.id, text: original.text, initiator })
       if (!this.closing && store.get('botTaskDeliveries', next.id)?.state === 'sending')
         store.update('botTaskDeliveries', next.id, { state: 'sent' })
     }
@@ -249,6 +261,20 @@ export class BotTaskWorkspace {
 
   ownsWork(id) { return !!this.store.get('botTaskDeliveries', id) }
 
+  progress({sessionId, botId, text, blocked}) {
+    writable(this.rt)
+    const info = this.rt.live.get(sessionId)?.info
+    const id = this.rt.workOf(info) ?? info?.exchangeId
+    const delivery = this.store.get('botTaskDeliveries',id)
+    const task = this.store.get('tasks',delivery?.taskId)
+    if (!task || task.assignmentId !== id || task.ownerId !== botId || delivery.sessionId !== sessionId ||
+        !ownedStates.has(delivery.state) || !activeTasks.has(task.status)) throw new Error('当前回合没有可更新的派工。')
+    const line = String(text ?? '').trim().slice(0,500)
+    if (!line) throw new Error('请填写进度或阻塞原因。')
+    this.team.change(task,{boardProgress:{assignmentId:id,text:line,blocked:blocked===true,at:Date.now()}})
+    return 'Progress recorded.'
+  }
+
   botReply(id, text) {
     const delivery = this.store.get('botTaskDeliveries', id)
     if (!delivery || !ownedStates.has(delivery.state)) return
@@ -256,17 +282,25 @@ export class BotTaskWorkspace {
     if (!store.get('members', delivery.botId) || this.rt.readOnly()) return this.botFailed(id, 'unknown', unavailable)
     if (taskBudgetReceipt(store, delivery.sessionId, id)?.status === 'held') return
     if (typeof text !== 'string' || !text.trim()) return this.botFailed(id, 'unknown', 'Bot 没有返回可归属到该任务的结果。')
+    let submitted
     store.transaction(() => {
       const original = store.require('messages', delivery.messageId)
       const task = store.get('tasks', delivery.taskId)
       if (original.kind === 'assignment' && task?.assignmentId === id && activeTasks.has(task.status)) {
-        team.recordReport(task, original, text.trim(), delivery.botId)
+        submitted = team.recordReport(task, original, text.trim(), delivery.botId)
       } else if (original.kind === 'message') {
         team.deliver({ teamId: botWorkspaceId, from: delivery.botId, to: [original.from], kind: 'ack',
           replyTo: original.id, text, exchangeId: original.exchangeId }, { enqueue: false })
       }
-      store.update('botTaskDeliveries', id, { state: 'reported' })
+      const current = this.rt.live?.get(delivery.sessionId)
+      const own = current?.info && (this.rt.workOf(current.info) ?? current.info.exchangeId) === id
+      store.update('botTaskDeliveries', id, { state:'reported', ...(own && current.turn!=null ? {turnId:current.turn} : {}) })
     })
+    const origin=submitted?.boardOrigin
+    if(origin && this.targets(botWorkspaceId).some(t=>t.id===(origin.roomId?'room/'+origin.roomId:'bot/'+origin.botId))) {
+      this.rt.addNotice?.({kind:'done',botId:origin.botId??delivery.botId,roomId:origin.roomId,sessionId:origin.sessionId,
+        workItemId:'GB-'+submitted.boardNumber,text:'GB-'+submitted.boardNumber+' · 待验收'})
+    }
     this.active.delete(delivery.botId)
     this.schedule(delivery.botId)
   }

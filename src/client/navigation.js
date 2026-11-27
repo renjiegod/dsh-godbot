@@ -1,10 +1,11 @@
 import { workspaceHash, managementHash, legacyAgentsHash, providerSettingsHash, sandboxSettingsHash, workspaceHashes } from '../team/workspace-routes.js'
 
+import { isWorkBoardHash } from '../team/workspace-routes.js'
 export { workspaceHash, managementHash }
 export const panelId = 'dsh-godbot'
 const historyKey = 'dshGodbotWorkspace'
 
-const isWorkspaceHash = hash => workspaceHashes.includes(hash)
+const isWorkspaceHash = hash => workspaceHashes.includes(hash) || isWorkBoardHash(hash)
 
 export function mainSession(ctx) {
   return Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find((s) => s?.retainedBy?.mainView > 0)
@@ -163,6 +164,7 @@ export function connectNavigation(ctx, browser, mountBot) {
       leave(panel, true)
     } else if (!active) previousPanel = panel
   }
+  let boardLocation = false
   function onLocation() {
     if (disposed) return
     const { hash } = browser.location
@@ -170,8 +172,10 @@ export function connectNavigation(ctx, browser, mountBot) {
       if (!active) previous = browser.history.state?.[historyKey] ?? place(false)
       const settings = hash === managementHash ? 'tasks' : hash === providerSettingsHash ? 'local-agents'
         : hash === sandboxSettingsHash ? 'sandboxes' : null
-      if (settings || hash === legacyAgentsHash || !browser.history.state?.[historyKey]) saveRoute(false)
-      show(true, settings ? { settings } : undefined)
+      const board = isWorkBoardHash(hash)
+      if (!board && (settings || hash === legacyAgentsHash || !browser.history.state?.[historyKey])) saveRoute(false)
+      show(true, board ? { workBoard:{id:hash.split('/')[3]} } : settings ? { settings } : boardLocation ? {} : undefined)
+      boardLocation = board
     } else if (active) leave(previous?.panel, true)
   }
   const unsubscribe = layout.panelInfo.subscribe(onPanel)

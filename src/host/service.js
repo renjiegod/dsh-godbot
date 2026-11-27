@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { readHistoricalClaudeUsage } from './claude-report-history.js'
 import { readClaudeStats } from './claude-stats.js'
 import { Store } from './store.js'
+import { WorkBoard } from './work-board.js'
 import { BotTaskWorkspace, botWorkspaceId, botWorkspaceSnapshot } from './bot-task-workspace.js'
 import { getSandboxWorkspace, resolveSandboxLaunch } from './sandbox-accounts.js'
 import { sandboxAccountsEnabled, sandboxSettings, setSandboxEnabled } from './sandbox-settings.js'
@@ -54,6 +55,7 @@ export class GodbotService {
       this.store = this.botTasks.store
       this.team = this.botTasks.team
       this.automation = new AutomationApi(this, config.automation)
+      this.board = new WorkBoard(this)
       this.automationSetup = new AutomationSetup(this)
       this.routines = new NativeRoutines(this)
       this.budgets = new UsagePolicy(this)
@@ -71,6 +73,7 @@ export class GodbotService {
         bindings: id => Object.values(runtime.state.bots).filter(bot => bot.accountProfileId === id).length,
       })
     } catch (error) {
+      this.board?.close()
       this.botTasks?.dispose()
       this.database.close()
       throw error
@@ -96,6 +99,7 @@ export class GodbotService {
       if (failed) throw failed.reason
     } finally {
       this.automation.full.detach?.()
+      this.board.close()
       this.botTasks.dispose()
       this.budgets.close()
       this.database.close()

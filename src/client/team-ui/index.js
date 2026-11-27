@@ -766,6 +766,7 @@ export function apply(ctx, godbot) {
     // or the click appears to do nothing.
     isAgentSession: id => isAgentSessionId(id),
     openSession: (id) => {
+      if(ui.getSnapshot().workBoard)actions.closeWorkBoard()
       // A DSH Agent Session id lands on the plain surface, not the Bot skin.
       if (isAgentSessionId(id)) return actions.openAgentSession(id)
       ui.set(state => (state.newChat || state.exchange || state.menu || state.palette || state.groupSearch ? { ...state, newChat: null, exchange: null, menu: null, palette: null, groupSearch: null } : state))
@@ -774,6 +775,13 @@ export function apply(ctx, godbot) {
     },
     // The conversation replacements withdraw for a plain Session; set the surface
     // before the navigation so the Bot skin never flashes.
+    openWorkSession: (anchor) => {
+      actions.closeWorkBoard()
+      if (anchor.botId && anchor.sessionId) return actions.openPart(anchor.botId,anchor.sessionId)
+      const sessionId = anchor.sessionId ?? partFor(anchor.roomId)
+      setPlain(false)
+      sessionSelection.open(sessionId,show)
+    },
     openAgentSession: (sessionId) => {
       ui.set(state => ({ ...state, newChat: null, exchange: null, menu: null, palette: null, groupSearch: null, details: null, view: 'details', renaming: false, tab: null }))
       setPlain(true)

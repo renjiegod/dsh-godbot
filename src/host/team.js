@@ -78,6 +78,7 @@ export class TeamActions {
         ownerId: owner.id,
         requesterId: actor?.id ?? 'user',
         title: required(req.title, 'Task title'),
+        ...(Number.isSafeInteger(req.boardNumber) ? { boardNumber: req.boardNumber, boardOrigin: req.boardOrigin } : {}),
         criteria: required(req.criteria, 'Acceptance criteria'),
         dependsOn,
         status: 'waiting',
@@ -105,7 +106,7 @@ export class TeamActions {
   }
 
   change(task, patch) {
-    return this.store.update('tasks', task.id, { ...patch, revision: task.revision + 1 })
+    return this.store.update('tasks', task.id, { ...patch, updatedAt: now(), revision: task.revision + 1 })
   }
 
   assignment(task) { return this.store.get('messages', task.assignmentId) }
@@ -150,6 +151,7 @@ export class TeamActions {
     const id = randomUUID()
     const text =
       `Task ${task.id}: ${task.title}\nAssignment: ${id}\nAcceptance criteria: ${task.criteria}\n` +
+      (task.boardNumber ? `Work board: GB-${task.boardNumber}. Use work_progress to report current progress or a blocker.\n` : '') +
       (task.rework ? `Rework: ${task.rework}\n` : '') +
       (evidence ? `Accepted prerequisite results:\n${evidence}\n` : '') +
       (task.externalEvent ? `External event supplied as data for this task (JSON):\n${JSON.stringify(task.externalEvent)}\n` : '') +

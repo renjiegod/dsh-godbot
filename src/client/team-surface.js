@@ -332,6 +332,7 @@ export function mountTeamSurface(ctx, client, navigation, target) {
 function mountProduct(ctx, client, navigation, target, ready) {
   const landing = botHome(typeof target === 'string' ? target : undefined, readLast())
   let initialSettings = target?.settings
+  let initialBoard = target?.workBoard
   let active = true,
     roster
   const idOf = (session) => roster?.byId[session]?.id ?? roster?.roomsById[session]?.id
@@ -401,6 +402,11 @@ function mountProduct(ctx, client, navigation, target, ready) {
       return actions.updateBot(bot.id, { model:target,changeEngine:true,...avatarAfter(bot,target) })
     },
     openInitialSettings(actions) {
+      if (initialBoard) {
+        const board = initialBoard
+        initialBoard = null
+        actions.openWorkBoard(board)
+      }
       if (!initialSettings) return
       const page = initialSettings
       initialSettings = null
@@ -435,7 +441,8 @@ function mountProduct(ctx, client, navigation, target, ready) {
     },
     navigation(wide, latest, actions) {
       roster = latest
-      return h(WorkspaceActions, { client, wide, onAutomation: () => actions.openSettings('automation'), onBack: navigation.back })
+      return h(WorkspaceActions, { client, wide, onAutomation: () => actions.openSettings('automation'), onBack: navigation.back,
+        onWork:()=>actions.openWorkBoard({filters:{tab:'mine'}}) })
     },
   }
   const fiber = ctx.plugin({

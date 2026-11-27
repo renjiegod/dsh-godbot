@@ -83,6 +83,17 @@ export function install(rt) {
     return task
   }
   const owner = task => rt.botOf(task.botId)
+  const touch = room => { room.workBoardTasksRevision = (room.workBoardTasksRevision ?? 0) + 1 }
+
+  rt.teamTools.push(defineTool({
+    name: 'work_progress', description: 'Report a short progress update or blocker for the formal assignment executing in this Bot turn.',
+    parameters: { text: { type:'string', required:true, description:'Progress or reason for a blocker' },
+      blocked: { type:'boolean', description:'Whether work is blocked' } }, output,
+    async execute(args, exec) {
+      const sessionId = exec.agent?.id
+      return rt.workBoardProgress({ sessionId, botId:rt.selfOf(sessionId), text:args.text, blocked:args.blocked })
+    },
+  }))
 
   // What the tool answers with: the current board, not only the task it touched.
   const ledger = (room, self) => {
@@ -133,6 +144,7 @@ export function install(rt) {
       if (result.error !== undefined) return result.error
       const task = result.task
       const done = task.status === 'done' ? ` Finished: "${task.result}"` : task.status === 'cancelled' ? ' Cancelled.' : ''
+      touch(room)
       await rt.save()
       return `${action === 'open' ? `Opened ${task.id}: ${task.goal}` : `Updated ${task.id} (${task.status}).`}${done}\n\n${ledger(room, self)}`
     },
@@ -147,6 +159,7 @@ export function install(rt) {
       if (task === undefined) return { error: 'No such task.' }
       if (!OPEN_STATUSES.includes(task.status)) return { error: 'That task is already finished.' }
       const noted = note(room, id, text, 'user')
+      if (noted) touch(room)
       return noted === undefined ? { error: 'Write a note first.' } : { task: noted }
     },
     taskCancel: (roomId, id) => {
@@ -157,6 +170,7 @@ export function install(rt) {
       if (!OPEN_STATUSES.includes(task.status)) return { error: 'That task is already finished.' }
       task.status = 'cancelled'
       task.updatedAt = Date.now()
+      touch(room)
       return { task }
     },
   })

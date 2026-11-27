@@ -75,6 +75,7 @@ export function install(rt) {
 
   let liveTimer
   const live = () => {
+    rt.workBoardLive?.()
     if (!listening() || liveTimer !== undefined) return
     liveTimer = setTimeout(() => {
       liveTimer = undefined

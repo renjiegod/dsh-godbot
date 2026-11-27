@@ -7,7 +7,7 @@ const deepLinks = JSON.stringify(workspaceHashes)
 const bootScript = `{
   const routes = ${deepLinks};
   const root = document.documentElement;
-  const sync = () => root.toggleAttribute('data-godbot-boot', routes.includes(location.hash));
+  const sync = () => root.toggleAttribute('data-godbot-boot', routes.includes(location.hash) || /^#\\/godbot\\/work(?:\\/GB-[1-9]\\d*)?$/.test(location.hash));
   sync();
   addEventListener('hashchange', sync);
   addEventListener('godbot-router-ready', () => {

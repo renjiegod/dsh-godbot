@@ -212,7 +212,7 @@ function GroupOverview({ room, roster, actions, usage, useWork, openSettings }) 
       h('div', { className: 'bt-members', role: 'list' }, members.map(member => h(MemberRow, {
         key: member.id, member, entry: entries.find(item => item.id === member.id), room, roster, actions,
       })))),
-    h('div', { key: 'tasks' }, h(TaskBoard, { room, roster, actions })),
+    h('div', { key: 'tasks' }, h('button',{type:'button',className:'bt-soft',onClick:()=>actions.openWorkBoard({filters:{room:room.id}})},t('Show group board')), h(TaskBoard, { room, roster, actions })),
     h('div', { key: 'goal' }, h('div', { className: 'bt-section-title' }, t('Goal')),
       h('div', { className: 'bt-kv' },
         room.goal
@@ -385,6 +385,7 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
       tabs.map(key => h('button', { key, type: 'button', role: 'tab', className: 'bt-tab', 'aria-selected': tab === key, onClick: () => setTab(key) }, t(TAB_LABELS[key])))) : null,
     h('div', { key: `body:${tab}`, className: 'bt-drawer-body', 'data-move': move },
       errorLine,
+      bot && tab === 'details' ? h('button',{type:'button',className:'bt-soft',onClick:()=>actions.openWorkBoard({filters:{owner:bot.id}})},t('View Bot work')) : null,
       room && tab === 'details' ? h(GroupOverview, { room, roster, actions, usage, useWork, openSettings: () => setView('settings') }) : null,
       bot && tab === 'computer' ? h(ComputerDrawerPane, { bot, sessionId, roster, actions, run, hooks: { useComputer } }) : null,
       bot && tab === 'details' ? [

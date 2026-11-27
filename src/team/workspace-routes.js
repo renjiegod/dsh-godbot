@@ -1,4 +1,6 @@
 export const workspaceHash = '#/godbot'
+export const workBoardHash = '#/godbot/work'
+export const isWorkBoardHash = hash => /^#\/godbot\/work(?:\/GB-[1-9]\d*)?$/.test(hash)
 export const managementHash = '#/godbot/teams'
 export const legacyAgentsHash = '#/godbot/agents'
 export const providerSettingsHash = '#/godbot/settings/local-agents'

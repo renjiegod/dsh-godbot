@@ -95,13 +95,14 @@ export function TaskSettings({ client, actions, page, focus, readOnly: rosterRea
   const workspace = data?.workspace
   const bots = data?.bots ?? []
   const readOnly = Boolean(rosterReadOnly || data?.readOnly)
-  const showTask = taskId => actions.openSettings('tasks', { taskId })
+  const showTask = taskId => actions.openWorkBoard({ taskId })
   function openBot(bot) {
     actions.closeSettings()
     actions.openSession(bot.id)
   }
   return h('div', { className: 'gb-task-settings gb-stack' },
     h('div', { className: 'gb-row gb-task-toolbar' },
+      page === 'tasks' && h('button', {type:'button',className:'bt-soft bt-soft-sm',onClick:()=>actions.openWorkBoard(focus?.taskId?{taskId:focus.taskId}:{})}, '打开工作看板'),
       h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: refresh }, '刷新'),
       page === 'tasks' && !readOnly && h('button', { type: 'button', className: 'bt-send bt-soft-sm', onClick: () => actions.openSettings('automation', { kind: 'workflow' }) }, '安排工作流')),
     offline && h('div', { className: 'gb-alert', role: 'status' }, '连接中断，正在重试 · ' + offline),

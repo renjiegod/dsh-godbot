@@ -279,7 +279,7 @@ export class FullTeamRuns {
     return result
   }
 
-  async review(req) {
+  async review(req, onApplied) {
     const run = this.store.require('automationRuns', req.runId)
     if (!run.targetId || run.teamId !== req.teamId) throw unavailable()
     const view = await this.inspect(run, run.id)
@@ -295,6 +295,7 @@ export class FullTeamRuns {
     if (req.decision === 'rework' && this.store.forRun(tasks, run.id).some(running)) throw new AutomationError(409, 'Wait for outstanding work before starting a revision')
     const next = this.store.transaction(() => {
       this.store.put(evidence, record({ runId: run.id, taskId: task.id, kind: 'review', revision: task.evidenceRevision, attempt: run.attempt, decision: req.decision, evidence: feedback }))
+      onApplied?.()
       if (req.decision === 'accept') {
         this.store.update(tasks, task.id, { status: 'completed', reviewedEvidenceRevision: task.evidenceRevision })
         return

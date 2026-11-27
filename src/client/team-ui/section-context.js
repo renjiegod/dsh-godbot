@@ -42,6 +42,7 @@ export function SectionContext({ section, actions, readOnly, memoryEnabled }) {
   }
   return h(GodbotModal, { title: t('Section context for {name}', { name: section.name }), close, closeLabel: t('Close') },
     h('div', { className: 'gb-section-context', 'data-godbot-section-context': section.id },
+      h('button',{type:'button',className:'bt-soft',onClick:()=>actions.openWorkBoard({filters:{section:section.id}})},t('Show section board')),
       h('label', { className: 'gb-section-field' }, t('Section description'),
         h('textarea', { className: 'bt-input bt-input-area', rows: 4, maxLength: 4000, value: description,
           readOnly: readOnly || busy, onChange: event => setDescription(event.target.value) })),

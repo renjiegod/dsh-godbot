@@ -277,6 +277,8 @@ export function install(rt) {
     return { ...view, active, speaking }
   }
 
+  READS.add('board-view')
+  READS.add('board-item')
   async function setPrefs(body) {
     if (body.theme !== undefined) {
       if (typeof body.theme !== 'string' || !/^[a-z][\w-]{0,31}$/.test(body.theme)) throw invalid('Unknown theme')
@@ -440,7 +442,8 @@ export function install(rt) {
         case 'chat':
           await rt.load()
           return ok(await rt.chatPage(String(body.botId ?? ''), body.cursor ?? undefined,
-            body.inlineTools === true ? 'inline' : body.steps === true, body.turnStatuses === true))
+            body.inlineTools === true ? 'inline' : body.steps === true, body.turnStatuses === true,
+            typeof body.partId === 'string' ? body.partId : undefined, body.anchorSeq))
         case 'chat-tool':
           await rt.load()
           return ok(await mobileToolDetail(rt, body))
@@ -756,6 +759,11 @@ export function install(rt) {
         case 'schedule-delete':
           await rt.load()
           return ok(await rt.scheduleEndpoint(endpoint, body))
+        case 'board-view':
+        case 'board-item':
+        case 'board-action':
+          if (!profileOwner) return fail('Work board access requires the profile owner.', 'bot/refused')
+          return ok(await rt.workBoard(endpoint, body))
         case 'automation-view':
         case 'automation-create':
         case 'automation-change':
