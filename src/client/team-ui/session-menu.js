@@ -2,7 +2,7 @@ import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useSt
 import { createPortal } from 'react-dom'
 import { ChatsIcon, CheckIcon } from './icons.js'
 import { stepMenuFocus, useLinger, useViewport, viewBottom } from './motion.js'
-import { sessionLabel, sessionMeta, sessionTime, useBotSessionRows } from './bot-sessions.js'
+import { backgroundRunning, sessionLabel, sessionMeta, sessionTime, useBotSessionRows } from './bot-sessions.js'
 import { CopyIdButton } from './copy-id.js'
 import { t } from './i18n.js'
 
@@ -19,7 +19,7 @@ const MENU_EXIT_MS = 120
 // The list is drawn on <body> at the button, as the other anchored menus are: the top
 // bar's glass is a layer of its own under the transcript. Unlike them it stays open while
 // the transcript scrolls, which it does by itself while a session streams.
-export function SessionMenu({ bot, roster, actions, useSessions }) {
+export function SessionMenu({ bot, roster, actions, useSessions, useWork }) {
   const [open, setOpen] = useState(false)
   const [place, setPlace] = useState(null)
   const [shownPlace, leaving] = useLinger(open ? place : null, MENU_EXIT_MS)
@@ -27,6 +27,8 @@ export function SessionMenu({ bot, roster, actions, useSessions }) {
   const menu = useRef(null)
   const tick = useViewport()
   const entries = useBotSessionRows(bot, roster, useSessions)
+  // The count the sidebar names for this Bot (bot-sessions.js backgroundRunning).
+  const background = useWork ? useWork(work => backgroundRunning(bot, roster, work.turns)) : backgroundRunning(bot, roster, undefined)
   const close = () => setOpen(false)
   useLayoutEffect(() => {
     if (!open || !button.current) return
@@ -57,7 +59,7 @@ export function SessionMenu({ bot, roster, actions, useSessions }) {
   }, [open])
   if (entries.length < 2) return null
   const elsewhere = entries.filter(entry => !entry.current && (entry.running || entry.waiting)).length
-  const label = elsewhere > 0 ? `${t('Switch session')} · ${t('{count} running in the background', { count: elsewhere })}` : t('Switch session')
+  const label = background > 0 ? `${t('Switch session')} · ${t('{count} running in the background', { count: background })}` : t('Switch session')
   const pick = (entry) => {
     close()
     if (entry.current) return

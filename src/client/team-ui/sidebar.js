@@ -6,7 +6,7 @@ import { WorkspaceMark } from './workspace-mark.js'
 import { inkFill } from './inks.js'
 import { isMainOf } from './sources.js'
 import { currentPart, previewOf, relativeShort } from './text.js'
-import { lastActivity } from './bot-sessions.js'
+import { backgroundRunning, lastActivity } from './bot-sessions.js'
 import { PlusIcon, SearchIcon, SidebarIcon, GearIcon, PinMarkIcon, PlugIcon, SwitchIcon, CloudDownloadIcon, ChevronRightIcon, CloseIcon, DotsIcon, FolderIcon, MemoryIcon } from './icons.js'
 import { botState, BotMark, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
@@ -70,8 +70,11 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
   const part = currentPart(bot)
   const preview = useSessions(list => previewOf(list, part, roster.exchangeTurns[part]))
   const running = useSessionStatus(map => map.get(part)?.running === true)
-  // Sessions of its own chat that go on in the background while another one is open.
-  const background = (bot.openParts ?? []).filter(entry => roster.partsRunning?.[entry.sessionId] === true).length
+  // Sessions of its own chat that run with no turn on screen: the ones going on beside
+  // the current one, and the current one while only its background work goes on. The
+  // session list marks the same ones Running (bot-sessions.js).
+  const background = useWork ? useWork(work => backgroundRunning(bot, roster, work.turns))
+    : backgroundRunning(bot, roster, undefined)
   const active = useSessionRetainInfo(part, info => (info?.retainedBy?.mainView ?? 0) > 0)
   const unread = useSessionStatus(map => map.get(part)?.completionUnread === true || map.get(part)?.pendingInteraction !== undefined) || (marked && !active)
   useMarkedUnread(id, active, marked, actions)

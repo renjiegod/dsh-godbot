@@ -8,6 +8,24 @@ import { t } from './i18n.js'
 export const ownPartIds = bot => [currentPart(bot), ...(bot.openParts ?? []).map(part => part.sessionId), ...(bot.parts ?? []), ...(bot.openParts ?? []).flatMap(part => part.parts ?? [])]
   .filter((id, index, list) => typeof id === 'string' && id !== '' && list.indexOf(id) === index)
 
+// Whether a part of a Bot's own chat works with no turn of its own running: work it
+// started goes on by itself (its CLI's background tasks, DSH subagents) and a reply is
+// still to come. The host's `partsRunning` names every part that works, a turn running
+// or not; `turns` (its `work.turns`, from the same answer) names the parts a turn runs
+// in, so the two agree on every poll. A part whose turn runs reads as false here: DSH's
+// own status shows that turn. With no `turns` at all the two cannot be told apart, and
+// the part counts as running a turn.
+export const worksInBackground = (roster, turns, sessionId) => roster.partsRunning?.[sessionId] === true && turns !== undefined && turns[sessionId] === undefined
+
+// How many parts of a Bot's own chat run with no turn on screen: each one going on
+// beside the current part, and the current part itself while only its background work
+// goes on. The sidebar names this count; the session lists mark the same parts Running.
+export function backgroundRunning(bot, roster, turns) {
+  const current = currentPart(bot)
+  const beside = (bot.openParts ?? []).filter(part => part.sessionId !== current && roster.partsRunning?.[part.sessionId] === true).length
+  return beside + (worksInBackground(roster, turns, current) ? 1 : 0)
+}
+
 // When a Bot was last active, for the sidebar's order: the latest activity in any of its
 // sessions (`stamps`: session id → DSH's updatedAt), else when the Bot was made. Opening
 // an older session changes which one is current, not this, so the Bot stays in place.

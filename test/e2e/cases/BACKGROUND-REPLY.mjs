@@ -116,5 +116,27 @@ else import(${JSON.stringify(fixture.href)}).catch(e => { console.error(e); proc
   assert.ok(third.open.includes(second), 'a New session left the session whose task runs going on in the background')
   const again = await until(async () => (await answers(moved)).find(notice => notice.text === AUTONOMOUS), 'the CLI answered once its second task ended', 30_000)
   assert.equal(again.sessionId, second, 'the second answer shows in the session whose CLI gave it')
+
+  // While a task runs after its turn ended, every place that shows the session says it
+  // works: the session list marks it Running, the sidebar counts it among the sessions
+  // running in the background, and the open chat says it works in the background until
+  // the CLI's own answer comes.
+  await until(async () => !(await working(second)), 'the session beside it is done')
+  await row.click()
+  await page.locator('.bt-head .bt-pill-name').filter({ hasText: bot.name }).waitFor()
+  const quiet = (await host.bot('hello', {})).seq
+  await host.bot('send', { sessionId: bot.id, text: 'TASK 20000 status' })
+  await until(async () => (await botTexts()).at(-1) === 'started a background task', bot.name + ' started a long background task')
+  const busy = (await thread()).current
+  await until(() => working(busy), 'the open session reads as working while its task runs')
+  await page.locator('.bt-typing').filter({ hasText: '后台任务运行中' }).waitFor({ timeout: 10_000 })
+  await row.locator('.bt-row-preview').filter({ hasText: '1 个会话在后台运行' }).waitFor({ timeout: 10_000 })
+  await page.locator('.bt-head .bt-smenu-btn').click()
+  await page.locator('.bt-smenu-item[data-current][data-tone="run"]').waitFor()
+  await host.capture('background-work-status')
+  await page.keyboard.press('Escape')
+  const done = await until(async () => (await answers(quiet)).find(notice => notice.text === AUTONOMOUS), 'the CLI answered once its long task ended', 45_000)
+  assert.equal(done.sessionId, busy, 'the answer shows in the session that worked in the background')
+  await page.locator('.bt-typing').filter({ hasText: '后台任务运行中' }).waitFor({ state: 'detached', timeout: 15_000 })
   context.note('background-reply', { botId: bot.id, replies: after.slice(-3), notices: notices.filter(notice => notice.botId === bot.id).length, backgroundSession: second })
 }

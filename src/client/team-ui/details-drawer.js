@@ -21,7 +21,7 @@ import { TaskBoard } from './task-board.js'
 import { BotConnectors } from './connectors.js'
 import { ComputerView, ComputerDrawerPane } from './computer.js'
 import { NewSessionButton } from './new-session.js'
-import { sessionLabel, sessionMeta, sessionTime, useBotSessionRows } from './bot-sessions.js'
+import { sessionLabel, sessionMeta, sessionTime, useBotSessionRows, worksInBackground } from './bot-sessions.js'
 import { CopyIdButton, SessionIdLine } from './copy-id.js'
 import { t } from './i18n.js'
 import { nativeMode } from '../native-agent-target.js'
@@ -321,6 +321,8 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
   const side = move === 'tab' ? undefined : move
   const bot = owner
   const running = useSessionStatus(map => map.get(part)?.running === true)
+  // Its current part works while work it started goes on with no turn running.
+  const background = useWork?.(work => worksInBackground(roster, work.turns, part)) === true
   const doing = useActivity(map => map[bot?.id ?? sessionId])
   const transcript = useSessions(list => transcriptOf(list, part, bot?.name ?? room?.name ?? t('Bot'), roster.exchangeTurns[part]))
   const usage = useSessions(list => usageOf(list, [part, ...(bot?.parts ?? room?.parts ?? [])]))
@@ -376,7 +378,7 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
   const tabs = bot ? ['details', 'browser', 'computer'] : ['details']
   return [h(Fragment, { key: 'top' }, top),
     h('div', { key: 'id', className: 'bt-drawer-id', 'data-move': side },
-      bot ? h(BotAvatar, { bot, size: 64, state: botState(running, doing, roster.questions?.[part] !== undefined), main: isMainBot, badge: false, gaze: true, pokeable: true })
+      bot ? h(BotAvatar, { bot, size: 64, state: botState(running || background, doing, roster.questions?.[part] !== undefined), main: isMainBot, badge: false, gaze: true, pokeable: true })
         : h(MemberPile, { room, roster }),
       editing
         ? h('input', {

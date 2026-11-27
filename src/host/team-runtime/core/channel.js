@@ -196,13 +196,15 @@ export function install(rt) {
     secrets: rt.secretsView(),
     activity: rt.activityView(),
     // Which of a Bot's own chat parts works right now, current or background: a turn
-    // runs in it, or its CLI still works on its own (a background task whose reply is
-    // to come). The session list's Running mark reads this, not a guess from the
-    // transcript.
+    // runs in it, or work it started goes on by itself with no turn running (its CLI's
+    // background tasks, DSH subagents: turns.js backgroundWork), whose reply is still
+    // to come. `work.turns` in the same answer tells the two apart. Every Running mark
+    // reads this — the session lists, the sidebar's count and the chat's own status
+    // line — not a guess from the transcript.
     partsRunning: Object.fromEntries(Object.values(state.bots)
       .flatMap(bot => [rt.chatOf(bot.id), ...(bot.openParts ?? []).map(part => part.sessionId)])
       .filter((sessionId, index, list) => sessionId !== undefined && list.indexOf(sessionId) === index)
-      .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined || rt.localAgentBackground?.(sessionId) === true)
+      .filter(sessionId => rt.live.get(sessionId)?.turn !== undefined || rt.backgroundWork?.(sessionId) === true)
       .map(sessionId => [sessionId, true])),
     // The chats a native terminal holds now; the chat header's native Agent mark reads it.
     nativeTerminals: rt.nativeTerminals?.() ?? {},

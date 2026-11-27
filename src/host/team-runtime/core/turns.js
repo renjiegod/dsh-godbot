@@ -318,6 +318,12 @@ export function install(rt) {
 
   const hasSubagents = id => (subagentsByParent.get(id)?.size ?? 0) > 0
 
+  // Whether work a Session started goes on with no turn of its own running: DSH
+  // subagents it spawned, or its local agent CLI's background tasks and a reply the CLI
+  // gave by itself that the Session has yet to show (local-agents.js). The Session
+  // works, though no turn runs: a reply is still to come.
+  const backgroundWork = id => hasSubagents(id) || rt.localAgentBackground?.(id) === true
+
   const subagentDoingOf = (id) => {
     const active = [...(subagentsByParent.get(id)?.values() ?? [])].at(-1)
     if (active === undefined) return undefined
@@ -1570,5 +1576,5 @@ export function install(rt) {
     await rt.inboxReply(source.exchangeId, sessionId, source, said, long)
   }
 
-  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteNativeTool, turnWork, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, stopSubagents, adoptLiveWork })
+  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteNativeTool, turnWork, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, backgroundWork, stopSubagents, adoptLiveWork })
 }
