@@ -13242,6 +13242,8 @@ var DSH_DE = {
 var NAMESPACE = "godbot";
 var ZH = {
   "Review current evidence": "查看新版证据",
+  "This record identifies the conversation only.": "此记录只保留了会话，缺少原消息定位。",
+  "The linked message is unavailable.": "无法定位原消息或回合，可打开对应会话查看。",
   "Evidence changed from v{old} to v{current}.": "证据已从第 {old} 版更新到第 {current} 版。",
   "Attempt {number}": "第 {number} 次执行",
   "Title": "标题",
@@ -57314,6 +57316,14 @@ function activityByAttempt(events) {
   }
   return [...groups.values()];
 }
+function anchoredItems(items, messageId, turnId) {
+  if (messageId != null) {
+    const key = String(messageId);
+    const seq = /^(?:[a-z]+:)?(\d+)$/i.exec(key)?.[1];
+    return items.filter((i) => i.id != null && String(i.id) === key || seq != null && String(i.seq) === seq);
+  }
+  return turnId == null ? [] : items.filter((i) => i.turn === turnId);
+}
 function useWorkBoard({ call: call3, subscribe: subscribe2, online = true, identity: identity2, filters, selected }) {
   const [view, setView] = (0, import_react85.useState)(null), [item, setItem] = (0, import_react85.useState)(null), [error, setError] = (0, import_react85.useState)(""), [writeError, setWriteError] = (0, import_react85.useState)("");
   const [reachable, setReachable] = (0, import_react85.useState)(false);
@@ -57493,6 +57503,8 @@ function BoardAnchor({ anchor, actions, back: back2 }) {
   const [value, setValue] = (0, import_react86.useState)(null), [error, setError] = (0, import_react86.useState)("");
   (0, import_react86.useEffect)(() => {
     let mounted = true;
+    setValue(null);
+    setError("");
     const match = String(anchor.messageId ?? "").match(/^(?:[a-z]+:)?(\d+)$/i);
     const common = { partId: anchor.sessionId, anchorSeq: match ? Number(match[1]) : void 0, steps: false };
     const request = anchor.roomId ? call("room-chat", { ...common, roomId: anchor.roomId }) : call("chat", { ...common, botId: anchor.botId });
@@ -57509,15 +57521,21 @@ function BoardAnchor({ anchor, actions, back: back2 }) {
     };
   }, [anchor]);
   const lines = (value?.items ?? []).filter((i) => typeof i.text === "string" && i.text.trim());
-  const exact = lines.find((i) => anchor.messageId != null && String(i.seq ?? i.id) === String(anchor.messageId));
-  const pertinent = exact ? [exact] : anchor.turnId != null ? lines.filter((i) => i.turn === anchor.turnId) : [];
+  const pertinent = anchoredItems(lines, anchor.messageId, anchor.turnId);
   return (0, import_react86.createElement)(
     "section",
     null,
     (0, import_react86.createElement)("h2", null, t("Source record")),
     (0, import_react86.createElement)("p", null, anchor.sessionId || anchor.roomId),
     error ? (0, import_react86.createElement)("p", { className: "gb-alert", role: "alert" }, error) : !value ? (0, import_react86.createElement)("p", null, t("Loading…")) : null,
-    ...(pertinent.length ? pertinent : lines.slice(-5)).map((i, n) => (0, import_react86.createElement)("pre", { key: n }, i.text)),
+    value && !pertinent.length ? (0, import_react86.createElement)(
+      "p",
+      { role: "status" },
+      t(
+        anchor.messageId == null && anchor.turnId == null ? "This record identifies the conversation only." : "The linked message is unavailable."
+      )
+    ) : null,
+    ...pertinent.map((i, n) => (0, import_react86.createElement)("pre", { key: n }, i.text)),
     (0, import_react86.createElement)(
       "footer",
       null,

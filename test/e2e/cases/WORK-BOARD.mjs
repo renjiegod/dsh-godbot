@@ -127,6 +127,8 @@ export default async function check({ makeHost, candidate, previous, note }) {
     return d.phase === 'done' && d
   }, 'approved from Web')
   assert.equal(done.events.filter((e) => e.kind === 'report').length, 2)
+  await page.locator('.wb-detail').getByRole('heading', { name: 'Board round trip', exact: true }).waitFor()
+  await page.locator('.wb-detail').screenshot({ path: join(host.reportDir, 'board-accepted.png') })
   await host.capture('web-work-board-evidence')
   await page.goto(host.url + '/#/godbot/work/' + draft.id)
   await page.locator('.wb-detail').getByText('Board round trip', { exact: true }).waitFor()
@@ -224,10 +226,33 @@ export default async function check({ makeHost, candidate, previous, note }) {
   assert.equal(localReport.owner, local.id)
   assert.ok(localReport.evidence)
   assert.notEqual(localReport.execution.sessionId, model.id)
-  const longTitle = 'Long work item '.repeat(11).trim()
+  const lostSource = await channel(host, 'board-action', {
+    op: 'create',
+    title: 'Archived source link',
+    origin: { ...source.origin, messageId: '2147483646' },
+    requestId: 'missing-source',
+  })
+  await page.goto(host.url + '/#/godbot/work/' + lostSource.id)
+  await page
+    .locator('.wb-detail')
+    .getByRole('button', { name: /Open source conversation|打开发起会话/ })
+    .click()
+  await page
+    .locator('.wb-detail')
+    .getByText(/The linked message is unavailable|无法定位原消息或回合/)
+    .waitFor()
+  assert.equal(
+    await page.locator('.wb-detail pre').count(),
+    0,
+    'a missing anchor never quotes an unrelated message',
+  )
+  const longTitle = 'Long work item '.repeat(10) + '1234567890'
+  assert.equal(longTitle.length, 160)
   const longCard = await channel(host, 'board-action', { op: 'create', title: longTitle, requestId: 'long-title' })
   await page.goto(host.url + '/#/godbot/work')
   const cardButton = page.locator('[data-work-id="' + longCard.id + '"]')
+  await cardButton.waitFor()
+  await page.locator('.wb-shell').screenshot({ path: join(host.reportDir, 'board-overview.png') })
   await cardButton.focus()
   await page.keyboard.press('Enter')
   await page.locator('.wb-detail').getByRole('heading', { name: longTitle, exact: true }).waitFor()
@@ -242,6 +267,7 @@ export default async function check({ makeHost, candidate, previous, note }) {
   const sheet = page.locator('.wb-detail')
   assert.ok(await sheet.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), 'long text fits 360 px')
   await host.capture('web-board-dark-long-title')
+  await sheet.screenshot({ path: join(host.reportDir, 'narrow-dark-detail.png') })
   await page.keyboard.press('Escape')
   await page.waitForFunction((id) => document.activeElement?.dataset?.workId === id, longCard.id)
   await page.setViewportSize({ width: 1440, height: 900 })

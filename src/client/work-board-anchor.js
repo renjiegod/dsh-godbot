@@ -1,5 +1,6 @@
 import { createElement as h, useEffect, useState } from 'react'
 import { call } from './team-ui/api.js'
+import { anchoredItems } from '../host/team-runtime/shared/work-board.js'
 import { t } from './team-ui/i18n.js'
 
 // A link into an old part must not follow the owner's currently selected chat.
@@ -8,6 +9,8 @@ export function BoardAnchor({ anchor, actions, back }) {
     [error, setError] = useState('')
   useEffect(() => {
     let mounted = true
+    setValue(null)
+    setError('')
     const match = String(anchor.messageId ?? '').match(/^(?:[a-z]+:)?(\d+)$/i)
     const common = { partId: anchor.sessionId, anchorSeq: match ? Number(match[1]) : undefined, steps: false }
     const request = anchor.roomId
@@ -26,15 +29,25 @@ export function BoardAnchor({ anchor, actions, back }) {
     }
   }, [anchor])
   const lines = (value?.items ?? []).filter((i) => typeof i.text === 'string' && i.text.trim())
-  const exact = lines.find((i) => anchor.messageId != null && String(i.seq ?? i.id) === String(anchor.messageId))
-  const pertinent = exact ? [exact] : anchor.turnId != null ? lines.filter((i) => i.turn === anchor.turnId) : []
+  const pertinent = anchoredItems(lines, anchor.messageId, anchor.turnId)
   return h(
     'section',
     null,
     h('h2', null, t('Source record')),
     h('p', null, anchor.sessionId || anchor.roomId),
     error ? h('p', { className: 'gb-alert', role: 'alert' }, error) : !value ? h('p', null, t('Loading…')) : null,
-    ...(pertinent.length ? pertinent : lines.slice(-5)).map((i, n) => h('pre', { key: n }, i.text)),
+    value && !pertinent.length
+      ? h(
+          'p',
+          { role: 'status' },
+          t(
+            anchor.messageId == null && anchor.turnId == null
+              ? 'This record identifies the conversation only.'
+              : 'The linked message is unavailable.',
+          ),
+        )
+      : null,
+    ...pertinent.map((i, n) => h('pre', { key: n }, i.text)),
     h(
       'footer',
       null,

@@ -130,7 +130,7 @@ export default async function check({ makeHost, candidate, previous, reportDir, 
       'Keep this review comment while I read the revised evidence',
     )
     await editor.getByText('Second Android board evidence.', { exact: true }).waitFor()
-    await editor.getByRole('button', { name: /^(Back|返回)$/ }).click()
+    await editor.getByRole('button', { name: /^(Back|返回|后退)$/ }).click()
     await tap('confirm revised evidence', 'Confirm', '确认')
     await until(async () => (await read()).phase === 'done', 'Android acceptance on host')
     await page
