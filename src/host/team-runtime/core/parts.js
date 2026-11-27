@@ -24,13 +24,13 @@ import { assembleLlmStream } from './models.js'
 import { parseReplies, relayRange, stackReplies } from '../shared/group-replies.js'
 import { CHECKPOINT_PROMPT, STEWARD_SYSTEM, checkpointCount, checkpointTail, checkpointTailNote, checkpointText, linesFor, parseDecision, stewardRequest } from './steward.js'
 import { RESUME_DELAY_MS } from './resume.js'
-import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, splitRef, textOf } from './text.js'
+import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, splitRef, stripLongNote, textOf } from './text.js'
 import { pageThinkingMs } from './thinking.js'
 import { mobileToolRows, openChatPage, withInterruptedAttempts, withLiveAttempt } from '../mobile-tool-timeline.js'
 import { turnOutcome } from '../shared/turn-outcome.js'
 import { viaOf } from '../shared/im-platforms.js'
 import { addBackgroundConversation, conversationHead, currentConversationParts, earlierPlace, focusOpenPart, isOpenPart, openEarlierBeside, openEarlierOfThread, ownChatSessions, pushThreadPart, reopenBackgroundConversation, sessionFloor, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
-import { firstPrompt, partTitle } from './part-titles.js'
+import { firstPrompt, partTitle, requestTitle } from './part-titles.js'
 import { checkShownView, normalizeView, readViewReply, viewCardText, viewReply, viewReplyText } from 'deep-view/core'
 
 // An ask_user card as the user saw it. The user's reply is often just an option label,
@@ -2192,11 +2192,15 @@ export function install(rt) {
     return false
   }
 
-  // A part's name in the session list is the first user request or Bot request for a
-  // user-facing answer. DSH's turn outline says which turn the first message opened,
-  // and a short page at that turn's start holds the whole message. Each part is read
-  // once, a few at a time, then kept; a part read with no message from the user yet, or
-  // made here, takes its name from the first one that lands.
+  // A part's name in the session list is its first request: what the user asked, or
+  // what another Bot asked for, by the title that Bot gave it or else its headline
+  // (part-titles.js requestTitle). A part opens with a few setup events and then the
+  // message that opened it, so a short page from its start names most parts. DSH's
+  // turn outline lists only what the user wrote: for a part whose start holds no
+  // request (one a handoff opened), it says which turn the first message opened, and a
+  // short page at that turn's start holds the whole message. Each part is read once, a
+  // few at a time, then kept; a part read with no request yet, or made here, takes its
+  // name from the first one that lands.
   const titles = new Map()
   const untitled = new Set()
   const titleReads = new Map()
@@ -2204,18 +2208,25 @@ export function install(rt) {
   const titleQueue = []
   let titleReading = 0
   const TITLE_WINDOW = 24
+  const TITLE_HEAD = 64
   const TITLE_READS_AT_ONCE = 2
   const isPrompt = event => {
     if (event?.type !== 'user/message') return false
     const source = event.data?.source
-    return source?.kind === 'user' || (source?.kind === SOURCE_KIND && source.role === 'request' && source.audience === 'user')
+    return source?.kind === 'user' || (source?.kind === SOURCE_KIND && source.role === 'request' && source.handoff !== true)
   }
   const promptTitle = event => {
     const text = textOf(event.data.content)
-    return partTitle(event.data.source.kind === SOURCE_KIND ? text.slice(text.indexOf('\n') + 1) : text)
+    const source = event.data.source
+    return source.kind === SOURCE_KIND ? requestTitle(stripLongNote(text.slice(text.indexOf('\n') + 1)), source.title) : partTitle(text)
   }
   async function readTitle(sessionId) {
     const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
+    const head = await ctx.sessionController.page({
+      address: { kind: 'session', sessionId }, beforeSeq: TITLE_HEAD, maxMessages: TITLE_HEAD,
+    }, signal)
+    const opening = head.records.map(record => record.event).find(isPrompt)
+    if (opening !== undefined) return promptTitle(opening)
     const projected = await ctx.sessionController.projections({ sessionId }, signal)
     const first = firstPrompt(projected?.values?.turnOutline)
     if (first === undefined) return ''

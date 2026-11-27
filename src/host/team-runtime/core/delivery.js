@@ -103,7 +103,9 @@ export function install(rt) {
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
   // `opensConversation` records that a direct request created its own conversation.
-  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, opensConversation = false, images = [], files = [], length, work, initiator }) {
+  // `title`: the name its sender gave a request, which names the conversation it opens
+  // (parts.js promptTitle).
+  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, opensConversation = false, images = [], files = [], length, work, initiator, title }) {
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
     if (to === undefined) throw new Error(`Unknown Bot ${toId}`)
@@ -129,6 +131,7 @@ export function install(rt) {
       ...(askedBy ? { askedBy } : {}),
       ...(fromRoomId ? { senderRoomId: fromRoomId } : {}),
       ...(abandoned ? { abandoned: true } : {}),
+      ...(role === 'request' && typeof title === 'string' && title.trim() !== '' ? { title: title.trim() } : {}),
     }
     const senderSession = fromPart ?? (fromRoomId ? rt.roomOf(fromRoomId)?.sessions?.[fromId] : undefined) ?? (fromId ? rt.chatOf(fromId) : undefined)
     const origin = initiator ?? (senderSession ? rt.governance?.delegate(senderSession, fromId) : undefined)

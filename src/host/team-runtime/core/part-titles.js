@@ -33,6 +33,63 @@ export function partTitle(text) {
   return chars.length > TITLE_MAX ? `${chars.slice(0, TITLE_MAX - 1).join('').trimEnd()}…` : line
 }
 
+// A Bot's request names the conversation it opens by the title its sender gave it, or
+// else by its headline. Bots write long, formal requests whose first sentence says
+// what the work is: the headline is the first line, up to the end of its first
+// sentence, or up to a colon or bar that ends a label ("Release 0.2.31: …"). A cut
+// never falls inside brackets or quotes, and a short opening ("Hi.", "发版请求：")
+// runs on to the next cut. A line that opens with a bracketed name ("【Release
+// coordination】…") is named by it, and a task named as one ("任务「…」", "Task: …")
+// by the name alone.
+const SENTENCE_MIN = 4
+const LABEL_MIN = 10
+const OPENERS = '「『“‘（([【《〈'
+const CLOSERS = '」』”’）)]】》〉'
+const SENTENCE_ENDS = '。！？'
+const LABEL_ENDS = '：｜'
+const LEAD_NAME = /^[【[]([^【】[\]]{2,})[】\]]/u
+// Markdown a Bot may open a line with: a heading, quote or list mark, then a space.
+// "#2094" is an issue, not a heading.
+const LINE_MARKS = /^\s*(?:(?:#{1,6}|[>*•·-])\s+)+/u
+const TASK_NAME = /^(?:任务|Task)\s*(?:[:：]\s*(.+)|「([^」]+)」|“([^”]+)”|"([^"]+)")$/iu
+
+const lengthOf = text => [...text].length
+
+function taskName(head) {
+  const named = TASK_NAME.exec(head)
+  return named === null ? head : (named[1] ?? named[2] ?? named[3] ?? named[4]).trim()
+}
+
+function headline(text) {
+  const line = String(text ?? '').split('\n')
+    .map(row => row.replace(/\*\*|__|`/gu, '').replace(LINE_MARKS, '').trim())
+    .find(row => row !== '') ?? ''
+  const lead = LEAD_NAME.exec(line)
+  if (lead) return lead[1].trim()
+  const chars = [...line]
+  let depth = 0
+  for (let at = 0; at < chars.length; at += 1) {
+    const char = chars[at]
+    if (OPENERS.includes(char)) depth += 1
+    else if (CLOSERS.includes(char) && depth > 0) depth -= 1
+    if (depth > 0) continue
+    // ASCII marks end a sentence or a label only before a space: "v0.2.31", "!157",
+    // "https://" and "09:20" go on.
+    const spaced = at + 1 === chars.length || /\s/u.test(chars[at + 1])
+    const sentence = SENTENCE_ENDS.includes(char) || ('.!?'.includes(char) && spaced)
+    const label = LABEL_ENDS.includes(char) || (':|'.includes(char) && spaced)
+    if (!sentence && !label) continue
+    const head = chars.slice(0, at).join('').trim()
+    if (lengthOf(head) >= (sentence ? SENTENCE_MIN : LABEL_MIN)) return taskName(head)
+  }
+  return taskName(line.replace(/[\s，,、：:；;。．.!！?？]+$/u, ''))
+}
+
+export function requestTitle(text, given) {
+  const named = partTitle(given)
+  return named !== '' ? named : partTitle(headline(text))
+}
+
 // The first prompt in DSH's turn outline: its turn's start, and the outline's own
 // preview of it, which ends in "…" when cut. The outline's wire value is the entry
 // list; its stored state wraps that list in `turns`.

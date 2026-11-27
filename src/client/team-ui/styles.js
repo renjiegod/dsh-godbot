@@ -1502,6 +1502,13 @@ div:has(> nav [class*="_marks"]){display:none!important}
 .bt-agent-session:hover:not(:disabled){background:var(--bt-hover)}
 .bt-agent-session.is-current{background:var(--bt-hover);cursor:default;font-weight:600}
 .bt-agent-session-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.bt-agent-session-row{display:flex;align-items:center;border-top:1px solid var(--bt-line-2)}
+.bt-agent-session-row:first-child{border-top:0}
+.bt-agent-session-row:hover,.bt-agent-session-row.is-current{background:var(--bt-hover)}
+.bt-agent-session-row>.bt-agent-session{flex:1;min-width:0;border-top:0}
+.bt-agent-session-row>.bt-agent-session:hover:not(:disabled),.bt-agent-session-row>.bt-agent-session.is-current{background:none}
+.bt-agent-session-row>.bt-copy-id{margin-inline-end:8px}
+.bt-agent-session-row>.bt-copy-id:hover{background:var(--bt-active)}
 .bt-agent-session-meta{flex:0 0 auto;font-size:12px;font-weight:400;color:var(--bt-ink-3,var(--bt-ink-2))}
 .bt-agent-session-meta[data-tone=wait]{color:var(--bt-warn)}
 .bt-agent-session-run{display:inline-flex;align-items:center;gap:5px;color:var(--bt-ink-2)}
