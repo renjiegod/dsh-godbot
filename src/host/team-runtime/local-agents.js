@@ -731,6 +731,9 @@ export function install(rt) {
       return engine
     },
     usedModels: route => usedRefs().map(ref => splitRef(ref)).filter(used => used?.provider === route).map(used => used.model),
+    // The Bot's own picks for its model's options (speed and the like), read at the
+    // start of every turn, in its own chat and in its groups alike.
+    modelOptions: sessionId => rt.botOf(rt.selfOf(sessionId))?.modelOptions,
     record: sessionId => store().sessions[sessionId],
     saveRecord: (sessionId, record) => {
       store().sessions[sessionId] = record
@@ -984,6 +987,17 @@ export function install(rt) {
     ]
   }
 
+  // The options one model of a local agent offers (core/local-agents/model-options.js),
+  // or undefined for another kind of model. `probe` reads the CLI's catalog when
+  // Godbot has not yet: a pick is checked against what the CLI lists.
+  async function localModelOptions(ref, { probe = false } = {}) {
+    const route = splitRef(ref)
+    if (!route || !isBaseLocalRoute(route.provider) || sandboxRouteInfo(route.provider)) return undefined
+    if (probe && !adapter.modelCache.has(route.provider) && servedRoutes().includes(route.provider))
+      await adapter.probeModels(route.provider).catch(() => {})
+    return adapter.optionsOf(route.provider, route.model)
+  }
+
   // One CLI's models: the first look starts that CLI, later ones read what it said.
   const localAgentModels = async route => {
     const target = sandboxRouteInfo(route)
@@ -1105,6 +1119,7 @@ export function install(rt) {
       }
     },
     validateSandboxPart: (bot, route, part) => sandboxes.validate(bot, route, { part }),
+    localModelOptions,
     isLocalAgentRoute, isLocalAgentRef, engineOf, engineOfBot, localAgentOf, isLocalAgentSession,
     localAgentRoutes: allRoutes, localAgentsEndpoint, localAgentModels, localAgentUsageCatalog, slashCatalog,
     claimAgentTerminal: (botId, part) => claimTeamTerminal(rt, adapter, botId, part, partAdapter(part)),

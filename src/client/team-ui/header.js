@@ -6,6 +6,7 @@ import { ArrowUpIcon, CloseIcon, ArrowDownIcon, GaugeIcon, GoalIcon, MemoryIcon,
 import { botState, BotAvatar, RoomAvatar } from './mark.js'
 import { AgentBadge } from './agent-badge.js'
 import { Caret, modelOf, servedOf, useEfforts } from './model-menu.js'
+import { SpeedMark, effortName, speedOf } from './model-options.js'
 import { isLocalRoute } from './agent-routes.js'
 import { ActivityIndicator } from './activity-row.js'
 import { clockLabel, openingTurn, unseenSince } from './cells.js'
@@ -60,11 +61,17 @@ function BotHeaderModel({ bot, roster, actions, sessionId }) {
   const ref = bot.appliedModel ?? bot.model
   const model = modelOf({ model: ref }, roster)
   const local = isLocalRoute(ref)
-  const reasoning = useEfforts(servedOf(roster, ref), local ? undefined : ref, actions)
+  const served = servedOf(roster, ref)
+  const reasoning = useEfforts(served, local ? undefined : ref, actions)
   const effort = (bot.appliedModel ? bot.appliedEffort : bot.effort) ?? reasoning?.defaultEffort
-  const level = reasoning?.efforts?.find(item => item.id === effort)?.name ?? effort ?? t('Default')
+  const level = effortName(reasoning?.efforts?.find(item => item.id === effort)) ?? effort ?? t('Default')
+  // A faster speed shows as bolts after the level; standard shows nothing.
+  const speed = speedOf(served?.options, bot.modelOptions)
+  const fast = speed !== undefined && speed.bolts > 0
   const name = model && local && ref.endsWith('/default') ? model.provider + ' · ' + t('CLI default') : model?.name
-  const label = name ? [t('Model: {model}', { model: name }), t('Thinking level'), level].join(' · ') : t('Choose a model')
+  const label = name
+    ? [t('Model: {model}', { model: name }), t('Thinking level'), level, ...(fast ? [t('Speed: {speed}', { speed: speed.name })] : [])].join(' · ')
+    : t('Choose a model')
   if (!model && roster.readOnly) return null
   return h(roster.readOnly ? 'span' : 'button', {
     className: 'gb-bot-model', 'data-gb-bot-model': '', title: label,
@@ -72,7 +79,7 @@ function BotHeaderModel({ bot, roster, actions, sessionId }) {
   },
   h('span', { className: 'gb-bot-model-copy' },
     h('span', { className: 'gb-bot-model-name' }, name ?? label),
-    model ? h('span', { className: 'gb-bot-model-effort' }, level) : null),
+    model ? h('span', { className: 'gb-bot-model-effort' }, level, fast ? h(SpeedMark, { speed }) : null) : null),
   !roster.readOnly && h(Caret))
 }
 

@@ -100,6 +100,17 @@ export async function configureClaude(session, { model, effort }) {
   }
 }
 
+// Fast mode through the session's flag overlay, which merges key by key: the
+// thinking level set the same way stays. `null` takes the key out, so the user's own
+// settings decide again (a Claude Code that runs for a host serves fast mode only
+// when its flag settings ask for it).
+export async function configureClaudeSpeed(session, fast) {
+  await session.control({ subtype: 'apply_flag_settings', settings: { fastMode: fast } })
+  await session.readApplied()
+  if (session.canReadApplied && fast !== null && session.fastMode !== fast)
+    throw new Error('Claude Code did not apply the selected speed')
+}
+
 function requireAppliedSettings(session) {
   if (!session.canReadApplied)
     throw session.settingsTimeout ?? new Error('Claude Code did not report the applied model and thinking level')
@@ -142,7 +153,11 @@ export class ClaudeControlSession {
                 {
                   id: item.value,
                   name: item.displayName ?? item.value,
+                  ...(typeof item.description === 'string' && item.description.trim()
+                    ? { description: item.description.trim().slice(0, 240) }
+                    : {}),
                   ...(item.resolvedModel ? { resolvedModel: item.resolvedModel } : {}),
+                  ...(item.supportsFastMode === true ? { supportsFastMode: true } : {}),
                   ...(item.supportsEffort === false || Array.isArray(item.supportedEffortLevels)
                     ? {
                         efforts: effortOptions(
@@ -187,6 +202,7 @@ export class ClaudeControlSession {
     this.currentEffort = applied.effort
     this.ultracodeRequested = applied.ultracodeRequested
     this.configuredEffort = applied.configuredEffort
+    this.fastMode = applied.fastMode
     if (!this.firstRead) {
       this.firstRead = true
       if (!this.resumeId) {
@@ -213,6 +229,8 @@ export class ClaudeControlSession {
                   configuredEffort:
                     response.response.effective?.modelSettings?.[a.model]?.effortLevel ??
                     response.response.effective?.effortLevel,
+                  // Merged settings: the session's flag overlay over the user's own.
+                  fastMode: response.response.effective?.fastMode === true,
                 }
               : undefined,
           )

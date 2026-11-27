@@ -423,7 +423,7 @@ export class CodexEngine {
     await this.peer?.request('thread/inject_items', { threadId: thread.threadId, items: [{ type: 'developerMessage', text }] }, { timeout: 15_000 }).catch(() => {})
   }
 
-  async prompt(thread, blocks, { signal, effort }) {
+  async prompt(thread, blocks, { signal, effort, options }) {
     const peer = await this.ensure()
     const command = blocks.find(block => block.type === 'native-command')
     if (command) {
@@ -435,6 +435,7 @@ export class CodexEngine {
       input: codexInput(blocks),
       // The app-server takes the level per turn and keeps it for the next ones.
       ...(effort === undefined ? {} : { effort }),
+      ...codexTurnOptions(options),
     }, { signal, timeout: 0 })
     const turnId = reply?.turn?.id ?? reply?.id
     // Notifications in the response's stdout batch run before this continuation.
@@ -692,6 +693,13 @@ export class CodexEngine {
     })
     return this.closing
   }
+}
+
+// The service tier also stays on the thread for the turns after this one. A model that
+// has speed options always gets one: the Bot's tier, or null, which hands the thread
+// back to the tier of the user's Codex config. A model without them gets nothing.
+export function codexTurnOptions(options) {
+  return options?.speed === undefined ? {} : { serviceTier: options.speed }
 }
 
 function codexInput(blocks) {

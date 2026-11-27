@@ -319,6 +319,9 @@ class ClaudeSession {
           this.emit({ type: 'error', error: Object.assign(new Error(`${this.engine.engine.name} no longer has this conversation`), { code: 'LOCAL_AGENT_EXIT' }) })
           break
         }
+        // Whether fast mode served the turn, and what kept it off when it did not.
+        if (typeof event.fast_mode_state === 'string')
+          this.emit({ type: 'speed', state: event.fast_mode_state, ...(typeof event.fast_mode_disabled_reason === 'string' ? { reason: event.fast_mode_disabled_reason } : {}) })
         {
           // modelUsage names each model's window; the session's own model decides.
           const models = Object.entries(event.modelUsage ?? {})

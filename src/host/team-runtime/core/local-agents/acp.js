@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
 import { cleanEnv, findEngineExecutable, spawnAgent, terminateChild } from '../../../../drivers/external/discover.js'
 import { acpMode } from './engines.js'
+import { acpConfigId, acpOptions } from './model-options.js'
 
 const CLIENT = { name: 'godbot', version: '1' }
 // Godbot's loopback MCP server, which carries the Bot's team tools.
@@ -437,10 +438,34 @@ export class AcpEngine {
     return this.probedCapabilities.image
   }
 
-  async prompt(session, blocks, { signal, effort } = {}) {
+  // The agent's other config options (model-options.js) as the Bot picked them. The
+  // value the agent opened the session with comes back when the Bot clears its pick;
+  // an option the session no longer lists is left alone, and a refusal does not stop
+  // the turn (as with the thinking level).
+  async applyOptions(session, options) {
+    for (const [id, value] of Object.entries(options ?? {})) {
+      const configId = acpConfigId(id)
+      const listed = configId === undefined ? undefined : (session.configOptions ?? []).find(option => option.id === configId)
+      if (listed === undefined) continue
+      const own = session.ownOptions ??= {}
+      if (!Object.hasOwn(own, configId)) own[configId] = listed.currentValue
+      const target = value === null ? own[configId] : value
+      if (target === undefined || target === listed.currentValue) continue
+      try {
+        const reply = await this.peer?.request('session/set_config_option', { sessionId: session.acpSessionId, configId, value: target }, { timeout: 15_000 })
+        if (Array.isArray(reply?.configOptions)) {
+          session.configOptions = reply.configOptions
+          this.remember(reply)
+        } else listed.currentValue = target
+      } catch { /* the agent keeps its value */ }
+    }
+  }
+
+  async prompt(session, blocks, { signal, effort, options } = {}) {
     const worker = this.workerOf(session)
-    if (worker !== undefined && worker !== this) return worker.prompt(session, blocks, { signal, effort })
+    if (worker !== undefined && worker !== this) return worker.prompt(session, blocks, { signal, effort, options })
     const peer = await this.ensure()
+    await this.applyOptions(session, options)
     if (configOptionsOf(session.configOptions ?? [], 'thought_level') !== undefined || session.defaultEffort !== undefined || session.effort !== undefined) {
       const current = session.effort ?? session.defaultEffort
       const target = effort ?? session.defaultEffort
@@ -559,6 +584,7 @@ export class AcpEngine {
       try {
         const models = await worker.listModels({ cwd: target, mcp })
         capabilities.image = worker.probedCapabilities.image
+        this.defaultOptions = worker.defaultOptions
         return models
       } finally {
         if (live === undefined) await worker.close()
@@ -572,6 +598,8 @@ export class AcpEngine {
     }
     this.remember(probe)
     const models = modelsFromProbe(probe)
+    const options = acpOptions(probe?.configOptions)
+    this.defaultOptions = options.length > 0 ? options : undefined
     capabilities.image = this.peer === peer ? this.connectionImageSupport() : undefined
     return models
   }
@@ -607,15 +635,18 @@ export function modelsFromProbe(probe) {
   const hasVariantMap = (option?.options ?? []).length > 0
     && availableIds.size > 0
     && baseModels.some(base => knownEfforts.some(effortId => availableIds.has(`${base.id}-${effortId}`)))
+  // Session config options belong to the session, not one model: every model has them.
+  const options = acpOptions(probe?.configOptions)
+  const withOptions = model => (options.length > 0 ? { ...model, options } : model)
   return baseModels.map((model) => {
     // Leave defaultEffort unset so a Bot without a chosen level keeps the CLI's default.
     if (hasVariantMap) {
       const efforts = knownEfforts
         .filter(effortId => availableIds.has(`${model.id}-${effortId}`))
         .map(effortId => thoughtById.get(effortId) ?? { id: effortId, name: EFFORT_NAMES[effortId] ?? effortId })
-      return efforts.length > 0 ? { ...model, reasoning: { efforts } } : model
+      return withOptions(efforts.length > 0 ? { ...model, reasoning: { efforts } } : model)
     }
-    return thoughtOptions.length > 0 ? { ...model, reasoning: { efforts: thoughtOptions } } : model
+    return withOptions(thoughtOptions.length > 0 ? { ...model, reasoning: { efforts: thoughtOptions } } : model)
   })
 }
 

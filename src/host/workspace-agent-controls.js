@@ -2,10 +2,11 @@
 // Claude 0.3.8 transport has no settings stream, and advertises four aliases.
 // Attach the same native controls used by a direct Godbot session to its child.
 import { randomUUID } from 'node:crypto'
-import { ClaudeControlSession, configureClaude, describeClaude } from '../drivers/external/claude-settings.js'
+import { ClaudeControlSession, configureClaude, configureClaudeSpeed, describeClaude } from '../drivers/external/claude-settings.js'
 import { attachClaudeBotTimeline } from './claude-bot-timeline.js'
 
 import { ClaudeEngine } from './team-runtime/core/local-agents/claude.js'
+import { claudeSpeedOption } from './team-runtime/core/local-agents/model-options.js'
 
 class TeamClaudeControl extends ClaudeControlSession {
   constructor(session, options) {
@@ -62,18 +63,26 @@ class WorkspaceClaudeEngine extends ClaudeEngine {
       this.defaultReasoning = reasoning(metadata.efforts)
       if (this.defaultReasoning && metadata.currentEffort)
         this.defaultReasoning.defaultEffort = metadata.currentEffort
+      // Claude Code lists its default as a model of its own (`default`).
+      const speed = claudeSpeedOption(metadata.models.find((model) => model.id === 'default'))
+      this.defaultOptions = speed === undefined ? undefined : [speed]
       if (!metadata.models.length) return super.listModels()
-      return metadata.models.map((model) => ({
-        id: model.id,
-        name: model.name,
-        reasoning: reasoning(model.efforts),
-      }))
+      return metadata.models.map((model) => {
+        const option = claudeSpeedOption(model)
+        return {
+          id: model.id,
+          name: model.name,
+          ...(model.description ? { description: model.description } : {}),
+          reasoning: reasoning(model.efforts),
+          ...(option === undefined ? {} : { options: [option] }),
+        }
+      })
     } finally {
       this.forget(id)
     }
   }
 
-  async prompt(session, blocks, { effort, signal } = {}) {
+  async prompt(session, blocks, { effort, signal, options } = {}) {
     const control = this.controls.get(session)
     // A model or permission change reopens Godbot's CLI process. Clear a
     // previous override only on the process to which we actually applied it.
@@ -86,6 +95,13 @@ class WorkspaceClaudeEngine extends ClaudeEngine {
         effort: control.currentEffort,
         defaultEffort: control.nativeDefaults.get(control.model),
       })
+    }
+    // Fast mode follows the Bot's speed on a model that has one (true, false, or null
+    // for the user's own setting), the same way: only a change reaches the CLI.
+    const fast = options?.speed
+    if (fast !== undefined && fast !== (control.lastFast ?? null)) {
+      await configureClaudeSpeed(control, fast)
+      control.lastFast = fast
     }
     signal?.throwIfAborted()
     return super.prompt(session, blocks)

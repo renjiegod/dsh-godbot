@@ -463,7 +463,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'update_bot',
-    description: 'Change a Bot\'s name, role, color, profile picture, model, thinking level, working folder, or instructions. Every Bot may change itself; only a Main Bot may change another Bot.',
+    description: 'Change a Bot\'s name, role, color, profile picture, model, thinking level, speed, working folder, or instructions. Every Bot may change itself; only a Main Bot may change another Bot.',
     parameters: {
       bot: { type: 'string', description: 'Current name of the Bot to change; leave out to change yourself' },
       name: { type: 'string', description: 'New name' },
@@ -473,6 +473,7 @@ export function install(rt) {
       avatar: { ...AVATAR_PARAM, description: `${AVATAR_PARAM.description} An empty string removes the photo and shows the Bot's character again.` },
       model: { type: 'string', description: 'Move the Bot to another model, as provider/model or a model id. It stays on what it runs on: only the user moves a Bot between Godbot models and a local agent CLI, or between two CLIs, in its settings.' },
       effort: { type: 'string', description: 'Thinking level for the Bot\'s model, as list_bot_models shows; an empty string returns to the model\'s default' },
+      speed: { type: 'string', description: 'Speed for a local agent\'s model that offers more than one (standard, fast, ultrafast, as list_bot_models shows). Faster speeds use more of the plan\'s usage. An empty string returns to the agent\'s own setting' },
       work_dir: { ...WORK_DIR_PARAM, description: `${WORK_DIR_PARAM.description}; an empty string returns it to the team workspace` },
       section: { ...SECTION_PARAM, description: `${SECTION_PARAM.description}; an empty string removes the Bot from its section (Main Bot only)` },
     },
@@ -486,7 +487,7 @@ export function install(rt) {
       if (bot === undefined) return `No Bot named ${args.bot}.`
       if (bot.id !== caller.id && !rt.isMain(self)) return 'Only a Main Bot can change another Bot. Leave out bot to change yourself, or ask a Main Bot with message_bot.'
       try {
-        const { name: newName, role, instructions, color, model, effort, section } = args
+        const { name: newName, role, instructions, color, model, effort, speed, section } = args
         let image
         if (args.avatar !== undefined) {
           const input = typeof args.avatar === 'string' ? args.avatar.trim() : args.avatar
@@ -499,7 +500,7 @@ export function install(rt) {
         // does: setting one keeps a custom character, and clearing removes only the image.
         // They are read here, after the waits above, so a change made meanwhile stays.
         const avatar = image === undefined ? undefined : { ...rt.botOf(bot.id)?.avatar, image }
-        const next = await rt.updateBot(bot.id, { name: newName, role, instructions, color, ...(avatar !== undefined ? { avatar } : {}), ...(model ? { model } : {}), ...(effort === undefined ? {} : { effort }), ...(section === undefined ? {} : { section }), ...(moving ? { workDir: workDir ?? '' } : {}) }, self, exec.agent?.id)
+        const next = await rt.updateBot(bot.id, { name: newName, role, instructions, color, ...(avatar !== undefined ? { avatar } : {}), ...(model ? { model } : {}), ...(effort === undefined ? {} : { effort }), ...(speed === undefined ? {} : { modelOptions: { speed: speed === '' ? null : speed } }), ...(section === undefined ? {} : { section }), ...(moving ? { workDir: workDir ?? '' } : {}) }, self, exec.agent?.id)
         if (!moving) return `Updated ${next.name}.`
         const folder = workDir ?? 'the team workspace'
         return bot.id === caller.id ? `Updated ${next.name}. From your next step on, you work in ${folder}.` : `Updated ${next.name}. It now works in ${folder}.`
@@ -553,7 +554,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'list_bot_models',
-    description: 'List the models a Bot can run on, as provider/model refs for create_bot and update_bot. A model in use also lists the thinking levels it serves.',
+    description: 'List the models a Bot can run on, as provider/model refs for create_bot and update_bot. A model in use also lists the thinking levels it serves; a local agent\'s model lists its speeds when it has more than one.',
     parameters: {},
     output,
     async execute() {
@@ -566,7 +567,9 @@ export function install(rt) {
         const levels = entry.reasoning?.efforts?.map(effort => effort.id) ?? []
         const thinking = levels.length > 0 ? `, thinking: ${levels.join(', ')}${entry.reasoning.defaultEffort === undefined ? '' : ` (default: ${entry.reasoning.defaultEffort})`}` : ''
         const local = rt.isLocalAgentRef?.(entry.ref) === true ? `, runs on the local agent ${entry.providerName}` : ''
-        return `- ${entry.ref}${entry.name !== entry.id ? ` (${entry.name})` : ''}${local}${entry.input?.includes('image') ? ', reads images' : ''}${entry.ref === fallback ? ', default' : ''}${thinking}`
+        const speeds = entry.options?.find(option => option.id === 'speed')
+        const speed = speeds ? `, speed: ${speeds.values.map(value => value.id).join(', ')}${speeds.defaultValue === undefined ? '' : ` (default: ${speeds.defaultValue})`}` : ''
+        return `- ${entry.ref}${entry.name !== entry.id ? ` (${entry.name})` : ''}${local}${entry.input?.includes('image') ? ', reads images' : ''}${entry.ref === fallback ? ', default' : ''}${thinking}${speed}`
       }).join('\n')
     },
   }))

@@ -203,7 +203,7 @@ export function install(rt) {
     return holdName('bot', cleanName, () => buildBot(cleanName, options))
   }
 
-  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, workDir, copyOf, pickModel = false, section, sectionId, [importOptions]: imported }) {
+  async function buildBot(cleanName, { role = '', instructions = '', color, brief = '', createdBy, main = false, avatar, model, effort, modelOptions, workDir, copyOf, pickModel = false, section, sectionId, [importOptions]: imported }) {
     const cleanAvatarValue = cleanAvatar(avatar)
     // The model is fixed at creation, so a later change of the DSH default leaves it alone.
     // A preferred account applies only when the owner creates a fresh Bot on that
@@ -226,6 +226,11 @@ export function install(rt) {
     const effortId = modelRef === undefined ? undefined
       : effort === null || effort === '' ? undefined
       : (await rt.resolveEffort(modelRef, effort)) ?? await rt.defaultEffort(modelRef)
+    // Option picks (speed and the like) are checked against the model, as on an update.
+    // A copy keeps only the picks that apply to its model.
+    const optionPicks = modelRef === undefined || modelOptions === undefined || modelOptions === null ? undefined
+      : copyOf ? await rt.keptModelOptions(modelRef, modelOptions)
+      : await rt.resolveModelOptions(modelRef, undefined, modelOptions)
     const importRoute = imported && modelRef ? { ...splitRef(modelRef), ...(effortId ? { reasoningEffort: effortId } : {}) } : undefined
     if (importRoute) await ctx.llm.resolveCallConfig(importRoute)
     const dir = workDir === undefined || workDir === null ? undefined : await rt.cleanWorkDir(workDir)
@@ -256,6 +261,7 @@ export function install(rt) {
         ...(sandboxFields ?? {}),
         ...(importRoute ? { appliedModel: modelRef, ...(effortId ? { appliedEffort: effortId } : {}) } : {}),
         ...(effortId ? { effort: effortId } : {}),
+        ...(optionPicks ? { modelOptions: optionPicks } : {}),
         ...(dir ? { workDir: dir } : {}),
         ...(resolvedSecId ? { sectionId: resolvedSecId } : {}),
         instructions: String(instructions).trim(),
@@ -402,6 +408,7 @@ export function install(rt) {
       // A copy of a Bot on the model's own default stays on it (null marks the
       // explicit Default pick); else the create would inherit the profile level.
       effort: served ? (bot.effort ?? null) : undefined,
+      ...(served && bot.modelOptions ? { modelOptions: { ...bot.modelOptions } } : {}),
       workDir,
       sectionId: bot.sectionId,
       copyOf: bot.id,
@@ -462,6 +469,18 @@ export function install(rt) {
         effortId = await rt.resolveEffort(effortRef, patch.effort)
       }
     }
+    // The other options of the model (speed and the like), by option id: a pick must be
+    // a value that model offers; null clears one, or every one.
+    let modelOptions
+    if (patch.modelOptions !== undefined) {
+      if (patch.modelOptions === null) modelOptions = null
+      else if (typeof patch.modelOptions !== 'object' || Array.isArray(patch.modelOptions)) throw new Error('Model options must be an object')
+      else {
+        const clearing = Object.values(patch.modelOptions).every(value => value === null || value === '')
+        if (effortRef === undefined && !clearing) throw new Error('Pick a model before choosing its options')
+        modelOptions = await rt.resolveModelOptions(effortRef, bot.modelOptions, patch.modelOptions) ?? null
+      }
+    }
     if (!liveBot(id)) throw new Error('Unknown Bot')
     if (patch.name !== undefined) {
       const next = String(patch.name).trim().slice(0, 40)
@@ -506,6 +525,9 @@ export function install(rt) {
       else bot.effort = effortId
       modelChanged = true
     }
+    // Read at the start of every turn: nothing to apply now.
+    if (modelOptions === null) delete bot.modelOptions
+    else if (modelOptions !== undefined) bot.modelOptions = modelOptions
     if (patch.permission !== undefined) await rt.setPermission(bot, patch.permission)
     if (browserGrants !== undefined) {
       if (browserGrants === null) delete bot.browserGrants

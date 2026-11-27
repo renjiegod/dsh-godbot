@@ -6,6 +6,7 @@ import { BlockAssembler, LlmAdapter, LlmError, resolveRetryPolicy } from '@deeps
 import { normalize, splitRef } from './text.js'
 import { serviceOf } from './services.js'
 import { ownChatSessions } from './threads.js'
+import { appliedPicks, patchModelOptions, publicOptions } from './local-agents/model-options.js'
 
 const CATALOG_TTL_MS = 10_000
 const ROUTE_WAIT_MS = 30_000
@@ -199,6 +200,7 @@ export function install(rt) {
           providerName: provider.name ?? provider.id,
           id: model.id,
           name: model.name ?? model.id,
+          ...(typeof model.description === 'string' && model.description ? { description: model.description } : {}),
           ...(model.inputModalities ? { input: [...model.inputModalities] } : {}),
         })
       }
@@ -217,6 +219,12 @@ export function install(rt) {
     await Promise.all(entries.filter(entry => used.has(entry.ref)).map(async (entry) => {
       const reasoning = await reasoningOf(entry.ref)
       if (reasoning !== undefined) entry.reasoning = reasoning
+    }))
+    // A local agent's models carry the other options they offer (speed and the like),
+    // from what the CLI listed when it was last read; nothing here starts a CLI.
+    await Promise.all(entries.filter(entry => isLocal(entry.ref)).map(async (entry) => {
+      const options = publicOptions(await rt.localModelOptions?.(entry.ref))
+      if (options !== undefined) entry.options = options
     }))
     catalogCache = { at: Date.now(), value: entries }
     return answerable(entries)
@@ -536,6 +544,23 @@ export function install(rt) {
     if (bot !== undefined) await applyModel(bot, { force: true })
   }
 
+  // A Bot's picks for its model's options after a patch, checked against what the model
+  // it runs on offers now (the CLI is read first when Godbot has not read it yet).
+  async function resolveModelOptions(ref, current, patch) {
+    const offered = ref === undefined ? undefined : await rt.localModelOptions?.(ref, { probe: true })
+    return patchModelOptions(current, patch, offered)
+  }
+
+  // The options a model offers, as a window shows them; undefined when it has none or
+  // its CLI has not been read (opening the model menu reads it): a look never starts one.
+  const modelOptionsOf = async ref => publicOptions(await rt.localModelOptions?.(ref))
+
+  // The picks that apply to a model, without the rest; undefined when none does.
+  async function keptModelOptions(ref, picks) {
+    const kept = appliedPicks(await rt.localModelOptions?.(ref, { probe: true }), picks)
+    return Object.keys(kept).length > 0 ? kept : undefined
+  }
+
   const lifetime = new AbortController()
   ctx.effect?.(() => () => { closing = true; lifetime.abort() }, 'godbot: auxiliary llm retry')
   const assembleLlm = options => assembleLlmStream(ctx, options, { signal: lifetime.signal, backoff: rt.config?.llmRetryBackoff })
@@ -545,6 +570,7 @@ export function install(rt) {
     hostClosing: () => llm() === undefined,
     catalog, cachedCatalog: () => answerable(catalogCache.value), cachedDefault: () => pickDefault(catalogCache.value),
     defaultRef, defaultModel, defaultBotModel, defaultEffort, isUsable, resolveModel, desiredModel, reasoningOf, resolveEffort, desiredEffort,
+    resolveModelOptions, modelOptionsOf, keptModelOptions,
     selectSessionModel, applyModel, selectRoomSession, syncRoomSessions, waitForModel, syncModels, routeRefused, dropCatalog, assembleLlm,
   })
 }

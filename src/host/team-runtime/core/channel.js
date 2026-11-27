@@ -101,7 +101,7 @@ export function install(rt) {
   }
   // Models come from DSH, not state.json, so a provider added on the Models pages of Settings
   // changes the view without a new revision.
-  const modelsKey = () => `${rt.cachedCatalog().map(entry => JSON.stringify([entry.ref, entry.needsKey === true, entry.reasoning, entry.input])).join(',')}|${rt.cachedDefault() ?? ''}`
+  const modelsKey = () => `${rt.cachedCatalog().map(entry => JSON.stringify([entry.ref, entry.needsKey === true, entry.reasoning, entry.input, entry.options])).join(',')}|${rt.cachedDefault() ?? ''}`
   const view = () => ({
     revision: state.revision,
     workspaceId: state.workspaceId ?? null,
@@ -379,8 +379,12 @@ export function install(rt) {
         case 'models':
           await rt.catalog({ fresh: true })
           return ok({ modelsKey: modelsKey() })
-        case 'efforts':
-          return ok(await rt.reasoningOf(String(body.ref ?? '')) ?? { efforts: [] })
+        // A model's thinking levels, with the other options it offers (speed and the like).
+        case 'efforts': {
+          const ref = String(body.ref ?? '')
+          const [reasoning, options] = await Promise.all([rt.reasoningOf(ref), rt.modelOptionsOf?.(ref)])
+          return ok({ ...(reasoning ?? { efforts: [] }), ...(options === undefined ? {} : { options }) })
+        }
         // A Turn's exact thinking time, from the timed stream in its events; `ms`
         // omitted when the stream carries no reasoning records.
         case 'thinking': {

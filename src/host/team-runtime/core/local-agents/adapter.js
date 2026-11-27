@@ -11,6 +11,7 @@ import { textOf } from '../text.js'
 import { engineOf, cliMode } from './engines.js'
 import { LoopbackMcp } from './mcp.js'
 import { withoutNativeContext } from './native-context.js'
+import { nativeOptions } from './model-options.js'
 import { QUOTA_TEXT, SIGN_IN_TEXT } from '../../../../drivers/external/agent-errors.js'
 import { NATIVE_INTERRUPTED } from '../../shared/turn-outcome.js'
 
@@ -148,10 +149,12 @@ export class LocalAgentAdapter extends LlmAdapter {
     try {
       const models = await engine.listModels({ cwd: this.deps.probeCwd(), mcp: undefined })
       this.modelCache.set(route, (models ?? []).filter(model => model.id !== 'default')
-        .map(({ id, name, reasoning, inputModalities }) => ({
+        .map(({ id, name, description, reasoning, inputModalities, options }) => ({
           provider: route, id, name: name ?? id,
+          ...(description ? { description } : {}),
           ...(reasoning ? { reasoning } : {}),
           ...(inputModalities === undefined ? {} : { inputModalities }),
+          ...(options?.length ? { options } : {}),
         })))
     } catch { /* the menu still has the CLI's default */ }
     if (!this.engineInUse(engine)) await engine.close?.().catch(() => {})
@@ -291,6 +294,12 @@ export class LocalAgentAdapter extends LlmAdapter {
   // window; a compaction makes the last figure stale until the CLI reports again,
   // except where it reported during the compaction itself (Codex).
   observe(live, event) {
+    // Whether the CLI served the turn at the speed asked for (Claude Code's fast mode).
+    if (event?.type === 'speed') {
+      live.speed = { state: event.state, ...(event.reason ? { reason: event.reason } : {}) }
+      this.deps.patchRecord?.(live.sessionId, { speed: live.speed })
+      return true
+    }
     if (event?.type === 'effort') {
       if (event.defaultEffort !== undefined) live.defaultEffort = event.defaultEffort
       live.effort = event.effort
@@ -897,6 +906,27 @@ export class LocalAgentAdapter extends LlmAdapter {
       || (live.showing !== undefined && event.turnId === live.showing.id))
   }
 
+  // The options a model offers (model-options.js), from what its CLI listed. A Bot on
+  // the CLI default runs the model the CLI picks, whose options the engine keeps.
+  optionsOf(route, model) {
+    const listed = this.modelCache.get(route)
+    if (listed === undefined) return undefined
+    if (model === undefined || model === 'default') return this.engines.get(route)?.defaultOptions
+    return listed.find(entry => entry.id === model)?.options
+  }
+
+  // What one turn hands the CLI for the options its model offers: the Bot's picks in
+  // the CLI's own values, null where the Bot has none. A Bot that picked options before
+  // this CLI's catalog was read since the start waits for it, so a pick is never
+  // dropped for want of a catalog; without picks nothing waits.
+  turnOptions(live) {
+    const picks = this.deps.modelOptions?.(live.sessionId)
+    if (this.modelCache.has(live.route) || picks === undefined || Object.keys(picks).length === 0)
+      return nativeOptions(this.optionsOf(live.route, live.model), picks)
+    return this.probeModels(live.route)
+      .then(() => nativeOptions(this.optionsOf(live.route, live.model), picks), () => undefined)
+  }
+
   // Codex resolves on acceptance; ACP resolves only when the entire turn ends.
   startTurn(live, input, signal, effort) {
     const blocks = typeof input === 'string' ? [{ type: 'text', text: input }] : input
@@ -908,7 +938,9 @@ export class LocalAgentAdapter extends LlmAdapter {
     const unnamed = {}
     live.turnTag = live.spec.kind === 'claude' ? unnamed : undefined
     try {
-      const started = Promise.resolve(live.engine.prompt(live.engineSession, blocks, { signal, effort }))
+      const begin = options => live.engine.prompt(live.engineSession, blocks, { signal, effort, ...(options === undefined ? {} : { options }) })
+      const options = this.turnOptions(live)
+      const started = (options instanceof Promise ? options.then(begin) : Promise.resolve(begin(options)))
         .then((turnId) => {
           if (live.spec.kind === 'codex' && turnId !== undefined) live.turnTag = turnId
           else if (live.turnTag === unnamed) live.turnTag = turnId

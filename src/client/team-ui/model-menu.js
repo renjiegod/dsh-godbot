@@ -5,6 +5,7 @@ import { AgentLogo, useLocalAgents } from './agent-cards.js'
 import { avatarAfter, runModeNotes } from './bot-draft.js'
 import { currentPart } from './text.js'
 import { CheckIcon, SlidersIcon } from './icons.js'
+import { ModelOptions, SpeedMark, effortName, hasModelOptions, speedOf } from './model-options.js'
 import { BotMark } from './mark.js'
 import { KeyIcon, MaskedInput } from './secret-card.js'
 import { SPRING_POP, SPRING_SHAPE, SPRING_TAP, spring, stepMenuFocus, useLinger, useViewport, viewBottom } from './motion.js'
@@ -47,25 +48,34 @@ export function modelOf(bot, roster) {
   return { ref, name: served === undefined ? rest.join('/') : nameOf(served), provider: served?.providerName ?? provider, served: served !== undefined }
 }
 
-// The thinking levels of one model, `{efforts, defaultEffort?}` or undefined when it
-// has none. The catalog carries them for models Bots use; any other ref asks the host.
-const effortCache = new Map()
-export function useEfforts(served, ref, actions) {
+// What one model offers besides itself: its thinking levels (`reasoning`,
+// `{efforts, defaultEffort?}`) and its other options (`options`, model-options.js),
+// each undefined when it has none. The catalog carries the levels for models Bots use
+// and a local agent's options; any other ref asks the host once, as before.
+const traitCache = new Map()
+export function useModelTraits(served, ref, actions) {
   const [fetched, setFetched] = useState(undefined)
   useEffect(() => {
     setFetched(undefined)
     if (ref === undefined || served?.reasoning !== undefined || actions?.efforts === undefined) return undefined
     let live = true
-    if (effortCache.has(ref)) setFetched(effortCache.get(ref))
+    if (traitCache.has(ref)) setFetched(traitCache.get(ref))
     else void Promise.resolve(actions.efforts(ref)).then((value) => {
-      const reasoning = value?.efforts ? value : null
-      effortCache.set(ref, reasoning)
-      if (live) setFetched(reasoning)
+      const traits = {
+        reasoning: value?.efforts ? { efforts: value.efforts, ...(value.defaultEffort === undefined ? {} : { defaultEffort: value.defaultEffort }) } : null,
+        options: Array.isArray(value?.options) ? value.options : null,
+      }
+      traitCache.set(ref, traits)
+      if (live) setFetched(traits)
     }).catch(() => {})
     return () => { live = false }
   }, [ref, served?.reasoning !== undefined, actions])
-  return served?.reasoning ?? fetched
+  return {
+    reasoning: served?.reasoning ?? fetched?.reasoning ?? undefined,
+    options: served?.options ?? fetched?.options ?? undefined,
+  }
 }
+export const useEfforts = (served, ref, actions) => useModelTraits(served, ref, actions).reasoning
 
 // The rows of the Thinking section: a Default row that clears the Bot's pick, then every
 // level the model serves.
@@ -73,7 +83,7 @@ export function effortRows(reasoning) {
   if (reasoning?.efforts === undefined || reasoning.efforts.length === 0) return []
   return [
     { effort: undefined, label: t('Default') },
-    ...reasoning.efforts.map(effort => ({ effort: effort.id, label: effort.name })),
+    ...reasoning.efforts.map(effort => ({ effort: effort.id, label: effortName(effort) })),
   ]
 }
 
@@ -85,8 +95,8 @@ export function effortStops(reasoning) {
   if (efforts.length === 0) return []
   const hasDefault = efforts.some(effort => effort.id === reasoning.defaultEffort)
   return hasDefault
-    ? efforts.map(effort => ({ effort: effort.id, label: effort.name }))
-    : [{ effort: undefined, label: t('Default') }, ...efforts.map(effort => ({ effort: effort.id, label: effort.name }))]
+    ? efforts.map(effort => ({ effort: effort.id, label: effortName(effort) }))
+    : [{ effort: undefined, label: t('Default') }, ...efforts.map(effort => ({ effort: effort.id, label: effortName(effort) }))]
 }
 
 const ResetIcon = () => h('svg', { width: 12, height: 12, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true },
@@ -430,27 +440,29 @@ export function useAgentModels(actions) {
 }
 
 // What the model picker reads from the Bot and the roster; the popup and the inline form share it.
-function useModelPicker({ bot, roster, actions, run, onPick, onPickEffort, withEfforts }) {
+function useModelPicker({ bot, roster, actions, run, onPick, onPickEffort, onPickOption, withEfforts }) {
   const [reading, readModels] = useAgentModels(actions)
   const shown = modelOf(bot, roster)
   const current = bot.model ?? bot.appliedModel
   const local = isLocalRoute(current)
   const served = servedOf(roster, current)
-  const reasoning = useEfforts(served, withEfforts ? current : undefined, actions)
+  const { reasoning, options } = useModelTraits(served, withEfforts ? current : undefined, actions)
   // The level the Bot runs on: its pick when the model serves it, else the model's own.
   const picked = reasoning?.efforts?.some(effort => effort.id === bot.effort) ? bot.effort : undefined
   const currentEffort = picked ?? reasoning?.defaultEffort
   const effortLabel = currentEffort === undefined
     ? (reasoning?.efforts?.length > 0 ? t('Default') : undefined)
-    : reasoning.efforts.find(effort => effort.id === currentEffort)?.name ?? currentEffort
+    : effortName(reasoning.efforts.find(effort => effort.id === currentEffort)) ?? currentEffort
+  const speed = withEfforts ? speedOf(options, bot.modelOptions) : undefined
   // Each opening is a new number, so the rows start from the current model again even
   // when the previous menu is still playing its exit animation under a quick reopen.
   const [opening, setOpening] = useState(0)
   const models = modelsFor(roster.models, current)
   return {
-    bot, roster, shown, current, local, reasoning, picked, effortLabel, models, opening, reading, withEfforts,
+    bot, roster, shown, current, local, reasoning, picked, effortLabel, models, opening, reading, withEfforts, options, speed,
     manage: local ? undefined : manageModels(actions),
     hasEfforts: withEfforts && effortStops(reasoning).length > 0,
+    hasOptions: withEfforts && hasModelOptions(options),
     // DSH settings can change the list at any time, so opening asks again.
     opened: () => {
       if (local) readModels(routeOf(current))
@@ -463,21 +475,29 @@ function useModelPicker({ bot, roster, actions, run, onPick, onPickEffort, withE
     },
     // Hands the save back, so the slider can tell when the Bot has caught up with its pick.
     chooseEffort: effort => (onPickEffort ? onPickEffort(effort) : run(actions.updateBot(bot.id, { effort: effort ?? null }))),
+    // One option at a time: null hands it back to the CLI's own setting.
+    chooseOption: (id, value) => (onPickOption ? onPickOption(id, value) : run(actions.updateBot(bot.id, { modelOptions: { [id]: value ?? null } }))),
   }
 }
 
+// The thinking level, then the model's other options.
+const modelTraits = picker => [
+  picker.hasEfforts ? h(EffortBar, { key: 'effort', reasoning: picker.reasoning, current: picker.picked, onPick: picker.chooseEffort }) : null,
+  picker.hasOptions ? h(ModelOptions, { key: 'options', options: picker.options, picks: picker.bot.modelOptions, onPick: picker.chooseOption }) : null,
+]
+
 // The trigger shows the model name over its provider.
 const modelTrigger = (picker, { wide, button, isOpen, onClick }) => {
-  const { shown, models, withEfforts, effortLabel } = picker
+  const { shown, models, withEfforts, effortLabel, speed } = picker
   return h('button', {
     ref: button, type: 'button', className: 'bt-model-trigger', 'data-wide': wide || undefined,
     'aria-haspopup': 'menu', 'aria-expanded': isOpen, 'aria-label': t('Model: {model}', { model: shown?.name ?? t('none') }),
     'data-missing': shown !== undefined && !shown.served && models.length > 0 ? '' : undefined, onClick,
   },
   h('span', { className: 'bt-model-copy' },
-    h('span', { className: 'bt-model-name' }, shown?.name ?? t('Choose a model')),
+    h('span', { className: 'bt-model-name' }, shown?.name ?? t('Choose a model'), shown ? h(SpeedMark, { speed }) : null),
     shown ? h('span', { className: 'bt-model-provider' }, shown.served || models.length === 0
-      ? (!withEfforts || effortLabel === undefined ? shown.provider : `${shown.provider} · ${effortLabel}`)
+      ? [shown.provider, withEfforts ? effortLabel : undefined, speed?.bolts > 0 ? speed.name : undefined].filter(Boolean).join(' · ')
       : t('{provider} · not available', { provider: shown.provider })) : null),
   h(Caret))
 }
@@ -501,10 +521,11 @@ export function ModelMenu(props) {
 }
 
 // A Thinking section at the foot of the menu lists the levels of the shown model when it has them.
-function PopupModelMenu({ bot, roster, actions, run, wide = false, onPick, onPickEffort, withEfforts = true }) {
+function PopupModelMenu({ bot, roster, actions, run, wide = false, onPick, onPickEffort, onPickOption, withEfforts = true }) {
   const { isOpen, shownPlace, leaving, button, menu, open, close } = useAnchoredMenu()
-  const picker = useModelPicker({ bot, roster, actions, run, onPick, onPickEffort, withEfforts })
-  const { manage, hasEfforts } = picker
+  const picker = useModelPicker({ bot, roster, actions, run, onPick, onPickEffort, onPickOption, withEfforts })
+  const { manage, hasEfforts, hasOptions } = picker
+  const hasTraits = hasEfforts || hasOptions
   const toggle = () => {
     if (isOpen) { close(); return }
     picker.opened()
@@ -518,18 +539,18 @@ function PopupModelMenu({ bot, roster, actions, run, wide = false, onPick, onPic
     modelTrigger(picker, { wide, button, isOpen, onClick: toggle }),
     shownPlace ? createPortal(h('div', { ref: menu, className: `bt-menu bt-model-menu${shownPlace.bottom !== undefined ? ' bt-menu-up' : ''}`, role: 'menu', 'aria-label': modelMenuLabel(bot), style: shownPlace, 'data-leaving': leaving || undefined },
       modelScroll(picker, pick),
-      hasEfforts || manage ? h('div', { className: 'bt-model-foot' },
-        hasEfforts ? h(EffortBar, { reasoning: picker.reasoning, current: picker.picked, onPick: picker.chooseEffort }) : null,
-        hasEfforts && manage ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
+      hasTraits || manage ? h('div', { className: 'bt-model-foot' },
+        ...modelTraits(picker),
+        hasTraits && manage ? h('div', { className: 'bt-menu-sep', role: 'separator' }) : null,
         manage ? manageButton(manage, close) : null) : null), document.body) : null)
 }
 
 // The list opens under the trigger and pushes what follows it down; the Thinking slider
 // stays under the trigger, or under the list while it is open.
-function InlineModelMenu({ bot, roster, actions, run, wide = false, onPick, onPickEffort, withEfforts = true }) {
+function InlineModelMenu({ bot, roster, actions, run, wide = false, onPick, onPickEffort, onPickOption, withEfforts = true }) {
   const { isOpen, root, button, menu, open, close } = useInlineMenu()
-  const picker = useModelPicker({ bot, roster, actions, run, onPick, onPickEffort, withEfforts })
-  const { manage, hasEfforts } = picker
+  const picker = useModelPicker({ bot, roster, actions, run, onPick, onPickEffort, onPickOption, withEfforts })
+  const { manage, hasEfforts, hasOptions } = picker
   const toggle = () => {
     if (isOpen) { close(); return }
     picker.opened()
@@ -546,8 +567,8 @@ function InlineModelMenu({ bot, roster, actions, run, wide = false, onPick, onPi
       h('div', { ref: menu, className: 'bt-menu bt-model-menu bt-model-inline-menu', role: 'menu', 'aria-label': modelMenuLabel(bot) },
         modelScroll(picker, pick),
         manage ? h('div', { className: 'bt-model-foot' }, manageButton(manage, close)) : null)),
-    h(Collapse, { open: hasEfforts },
-      hasEfforts ? h('div', { className: 'bt-model-effort' }, h(EffortBar, { reasoning: picker.reasoning, current: picker.picked, onPick: picker.chooseEffort })) : null))
+    h(Collapse, { open: hasEfforts || hasOptions },
+      hasEfforts || hasOptions ? h('div', { className: 'bt-model-effort' }, ...modelTraits(picker)) : null))
 }
 
 // The card a Bot's chat opens on while the Bot has no model, or has one that is no

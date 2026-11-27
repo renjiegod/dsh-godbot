@@ -116,4 +116,11 @@ export const ChatsIcon = lineIcon(['M3.5 5.5A1.5 1.5 0 0 1 5 4h7a1.5 1.5 0 0 1 1
 export const ImIcon = lineIcon(['M6.5 3.5h7A1.5 1.5 0 0 1 15 5v10a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 5 15V5a1.5 1.5 0 0 1 1.5-1.5z', 'M8 15.8h4', 'M8 6.5h4A1 1 0 0 1 13 7.5v2a1 1 0 0 1-1 1h-2.5L8 12v-5.5A1 1 0 0 1 8 6.5z'])
 // Stacked lines with a running start: queued messages.
 export const QueueIcon = lineIcon(['M4 6h12', 'M4 10h12', 'M4 14h8', 'M14 12.5l2 1.5-2 1.5'])
+// A filled bolt for a model's speed: one for a faster tier, two for the fastest.
+export function BoltIcon({ count = 1, size = 12 }) {
+  const bolt = 'M8.6 1.5 3 9.1h4.1L6.3 14.5 12 6.6H7.9z'
+  return h('svg', { className: 'bt-bolt', width: count > 1 ? size * 1.45 : size, height: size, viewBox: count > 1 ? '0 0 22 16' : '0 0 15 16', fill: 'currentColor', 'aria-hidden': true },
+    h('path', { d: bolt }),
+    count > 1 ? h('path', { d: bolt, transform: 'translate(7.5 0)' }) : null)
+}
 export const SETTINGS_ICONS = { general: GearIcon, bots: PeopleIcon, groups: ChatsIcon, im: ImIcon, usage: GaugeIcon }

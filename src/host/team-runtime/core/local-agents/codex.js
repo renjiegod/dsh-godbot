@@ -4,8 +4,9 @@
 // threads; turns stream item notifications back.
 import { LlmError } from '@deepseek-ai/dsh-llm'
 import { JsonRpcPeer, wireProcess, EventQueue } from './jsonrpc.js'
-import { codexInputModalities } from '../../../../drivers/external/codex.js'
+import { codexInputModalities, codexTurnOptions } from '../../../../drivers/external/codex.js'
 import { cleanEnv, findEngineExecutable, spawnAgent, terminateChild } from '../../../../drivers/external/discover.js'
+import { codexSpeedOption } from './model-options.js'
 
 // The name the loopback MCP server is registered under in each thread's config.
 const MCP_SERVER = 'godbot'
@@ -259,13 +260,14 @@ export class CodexEngine {
     }
   }
 
-  async prompt(thread, blocks, { signal, effort }) {
+  async prompt(thread, blocks, { signal, effort, options }) {
     const peer = await this.ensure()
     const reply = await peer.request('turn/start', {
       threadId: thread.threadId,
       input: codexInput(blocks),
       // The app-server takes the level per turn and keeps it for the next ones.
       ...(effort === undefined ? {} : { effort }),
+      ...codexTurnOptions(options),
     }, { signal, timeout: 0 })
     const turnId = reply?.turn?.id ?? reply?.id
     // Notifications in the response's stdout batch run before this continuation.
@@ -332,15 +334,37 @@ export class CodexEngine {
     this.threads.delete(dshSessionId)
   }
 
-  async listModels() {
+  // The user's own Codex config: the tier and model a thread takes when Godbot names
+  // none. A Codex without config/read, or a config it cannot read, says nothing.
+  async ownConfig(peer, cwd) {
+    try {
+      const config = (await peer.request('config/read', { ...(cwd ? { cwd } : {}), includeLayers: false }, { timeout: 15_000 }))?.config
+      return {
+        serviceTier: typeof config?.service_tier === 'string' && config.service_tier ? config.service_tier : undefined,
+        model: typeof config?.model === 'string' && config.model ? config.model : undefined,
+      }
+    } catch {
+      return {}
+    }
+  }
+
+  async listModels({ cwd } = {}) {
     const peer = await this.ensure()
     const reply = await peer.request('model/list', {}, { timeout: 30_000 })
-    return (reply?.data ?? reply?.models ?? []).map((entry) => {
+    const entries = reply?.data ?? reply?.models ?? []
+    // Service tiers are the only per-model option a Codex lists; the config is read
+    // only when some model has one.
+    const tiered = entries.some(entry => codexSpeedOption(entry) !== undefined)
+    const own = tiered ? await this.ownConfig(peer, cwd) : {}
+    const models = entries.map((entry) => {
       const inputModalities = codexInputModalities(entry.inputModalities)?.filter(kind => kind !== 'audio')
+      const speed = codexSpeedOption(entry, own.serviceTier)
       const model = {
         id: String(entry.id ?? entry.model),
         name: String(entry.displayName ?? entry.name ?? entry.id ?? entry.model),
+        ...(typeof entry.description === 'string' && entry.description.trim() ? { description: entry.description.trim().slice(0, 240) } : {}),
         ...(inputModalities === undefined ? {} : { inputModalities }),
+        ...(speed === undefined ? {} : { options: [speed] }),
       }
       // The app-server advertises the levels each model takes. Its default is
       // left out on purpose: DSH would send it on every turn, and the level the
@@ -354,6 +378,12 @@ export class CodexEngine {
       if (efforts.length === 0) return model
       return { ...model, reasoning: { efforts } }
     })
+    // A Bot on the CLI default runs the model the user's config names, else the one
+    // the catalog marks: its options are the default's.
+    const fallback = entries.find(entry => entry.isDefault === true)
+    const base = models.find(model => model.id === own.model) ?? models.find(model => model.id === String(fallback?.id ?? fallback?.model))
+    this.defaultOptions = base?.options
+    return models
   }
 
   async close() {

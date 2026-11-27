@@ -279,6 +279,13 @@ process.stdin.on('data', (chunk) => {
               { reasoningEffort: 'medium', description: 'Balanced speed and depth' },
               { reasoningEffort: 'high', description: 'Deep reasoning' },
             ],
+            // Codex 0.172's tiers: Godbot shows them as the model's speeds.
+            serviceTiers: [
+              { id: 'priority', name: 'Fast', description: '2x speed, increased usage' },
+              { id: 'ultrafast', name: 'Ultrafast', description: 'The fastest available responses for latency-sensitive work.' },
+            ],
+            additionalSpeedTiers: ['fast', 'ultrafast'],
+            defaultServiceTier: null,
           },{id:'gpt-next',displayName:'Next',supportedReasoningEfforts:[{reasoningEffort:'low'},{reasoningEffort:'max'}]}],
         })
         break
