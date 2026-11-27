@@ -40,7 +40,8 @@ export function partTitle(text) {
 // never falls inside brackets or quotes, and a short opening ("Hi.", "发版请求：")
 // runs on to the next cut. A line that opens with a bracketed name ("【Release
 // coordination】…") is named by it, and a task named as one ("任务「…」", "Task: …")
-// by the name alone.
+// by the name alone. A short bracketed tag ("【发布任务】请合并…") is a label like
+// "发版请求：": it runs on, unless the line holds nothing else.
 const SENTENCE_MIN = 4
 const LABEL_MIN = 10
 const OPENERS = '「『“‘（([【《〈'
@@ -65,7 +66,7 @@ function headline(text) {
     .map(row => row.replace(/\*\*|__|`/gu, '').replace(LINE_MARKS, '').trim())
     .find(row => row !== '') ?? ''
   const lead = LEAD_NAME.exec(line)
-  if (lead) return lead[1].trim()
+  if (lead && (lengthOf(lead[1].trim()) >= LABEL_MIN || line.slice(lead[0].length).trim() === '')) return lead[1].trim()
   const chars = [...line]
   let depth = 0
   for (let at = 0; at < chars.length; at += 1) {

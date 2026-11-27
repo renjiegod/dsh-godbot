@@ -80,6 +80,11 @@ test('a label before a colon or bar names the request once it is long enough', (
 
 test('a bracketed name, a task name and Markdown marks give the bare name', () => {
   assert.equal(requestTitle('【Godbot 统一发版协调｜左下角设置直达弹窗】gemini-1 已将 69d8ef3 合入本地 main'), 'Godbot 统一发版协调｜左下角设置直达弹窗')
+  assert.equal(requestTitle('【Godbot 发布请求】\n远端状态如下'), 'Godbot 发布请求')
+  // A short tag is a label, not a name: the line runs on to its first sentence.
+  assert.equal(requestTitle('【发布任务】请合并 show-conversation-title 分支并发布 dsh-godbot 新版本。\n\n1. 远端'), '【发布任务】请合并 show-conversation-title 分支并发布 dsh-godbot 新版本')
+  assert.equal(requestTitle('[Urgent] Please release 0.2.33 today. Then report'), '[Urgent] Please release 0.2.33 today')
+  assert.equal(requestTitle('【发布任务】'), '发布任务')
   assert.equal(requestTitle('任务「Godbot Go 后端方案独立评审」。用户明确要由 godbot-ClaudeCode 分析'), 'Godbot Go 后端方案独立评审')
   assert.equal(requestTitle('任务：统一自动化发布后本地端到端验证。请独立从公开地址安装'), '统一自动化发布后本地端到端验证')
   assert.equal(requestTitle('任务「Godbot Web + Android 回合中断修复发布」已完成。'), '任务「Godbot Web + Android 回合中断修复发布」已完成')
