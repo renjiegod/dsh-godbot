@@ -5,6 +5,12 @@ import { openBotChat, openFullTeam } from '../native-ui.mjs'
 export default async function botMessageRouting({ makeHost, candidate, note }) {
   const host = await makeHost()
   await host.install(candidate)
+  // Copy buttons write here instead of the OS clipboard.
+  await host.page.addInitScript(() => {
+    Object.defineProperty(navigator, 'clipboard', { value: {
+      async writeText(value) { globalThis.copiedText = value },
+    } })
+  })
   await host.start()
   await openFullTeam(host)
 
@@ -13,6 +19,7 @@ export default async function botMessageRouting({ makeHost, candidate, note }) {
   const translation = 'Translate the launch announcement into Japanese'
   const followup = 'Review the Japanese launch announcement translation'
   const inventory = 'Count barcode scanners in the warehouse inventory'
+  const inventoryTitle = 'Warehouse scanner count'
   const inventoryResult = 'There are seventeen barcode scanners.'
   const entry = 'I will read the inventory result in this conversation.'
   const after = 'Outline a weekend cycling itinerary in Taipei'
@@ -27,7 +34,7 @@ export default async function botMessageRouting({ makeHost, candidate, note }) {
     ['Dispatch the translation request', { message: translation, reply_to: 'user' }],
     ['Dispatch the translation followup', { message: followup, reply_to: 'user', when: 'queue' }],
     ['Dispatch the queued translation request', { message: queued, reply_to: 'user', when: 'queue' }],
-    [entry, { message: inventory }],
+    [entry, { message: inventory, title: inventoryTitle }],
   ])
   const recipientName = 'Routing Worker'
   host.model.reply = async body => {
@@ -107,15 +114,35 @@ export default async function botMessageRouting({ makeHost, candidate, note }) {
   assert.equal(continued.sessionId, unrelated.sessionId, 'the queued followup uses the existing background conversation')
   await idle(senderPart)
   assert.equal((await bot(recipient.id)).openParts.length, 2)
+  // A conversation another Bot opened is named by its request, and each row copies its
+  // own session ID for troubleshooting without opening it.
+  await until(async () => (await roster()).partTitles?.[unrelated.sessionId] === translation, 'the request names the conversation it opened')
+  const copied = () => host.page.evaluate(() => globalThis.copiedText)
   await host.page.locator('.bt-head .bt-smenu-btn').click()
-  await host.page.getByRole('menuitemradio', { name: new RegExp(translation, 'u') }).click()
+  const translationItem = host.page.getByRole('menuitemradio', { name: new RegExp(translation, 'u') })
+  await host.page.locator('.bt-smenu-row').filter({ has: translationItem }).locator('.bt-copy-id').click()
+  assert.equal(await copied(), unrelated.sessionId, 'a session row copies its own ID')
+  assert.equal((await bot(recipient.id)).sessionId, foreground, 'copying an ID opens nothing')
+  await host.capture('session-menu-copy-id')
+  await translationItem.click()
   await host.page.getByText('Japanese announcement prepared.', { exact: true }).waitFor()
   assert.equal((await bot(recipient.id)).sessionId, unrelated.sessionId)
   await host.capture('routed-bot-conversation')
+  // The open conversation's title and ID are in the top bar and its details.
+  assert.equal(await host.page.locator('.bt-head .gb-chat-title-text').innerText(), translation)
+  await host.page.locator('.bt-head .gb-chat-title .bt-copy-id').click()
+  assert.equal(await copied(), unrelated.sessionId, 'the top bar copies the open conversation\'s ID')
+  await host.page.locator('.bt-head .bt-pill').click()
+  await until(async () => await host.page.locator('.bt-drawer-sid .bt-sid-value').textContent().catch(() => '') === unrelated.sessionId, 'the details show the conversation ID')
+  await host.page.waitForTimeout(600)
+  await host.capture('conversation-id')
+  await host.page.keyboard.press('Escape')
 
   await send(senderPart, entry)
   const waiting = await modelCall(inventory, '[Message from')
   assert.notEqual(waiting.sessionId, unrelated.sessionId)
+  // A request whose reply goes back to its sender is named too, by the sender's title.
+  await until(async () => (await roster()).partTitles?.[waiting.sessionId] === inventoryTitle, 'the sender\'s title names the conversation it opened')
   await idle(senderPart)
   const newer = await newPart(sender.id)
   await send(newer, after)
@@ -135,6 +162,10 @@ export default async function botMessageRouting({ makeHost, candidate, note }) {
   restartGate.resolve()
   const replay = await modelCall(queued, '[Message from')
   assert.equal(replay.sessionId, unrelated.sessionId, 'the queued request keeps its selected conversation after restart')
+  // Read again after the restart, the conversation keeps the request that opened it as
+  // its name, though the user wrote in it later.
+  await until(async () => (await roster()).partTitles?.[unrelated.sessionId] === translation, 'a Bot-opened conversation keeps its title after a restart')
+  assert.equal((await roster()).partTitles?.[waiting.sessionId], inventoryTitle)
   assert.ok(!JSON.stringify(replay.body.messages).includes(catering))
   note('conversation-routing', { related: related.sessionId, foreground, unrelated: unrelated.sessionId, reply: returned.sessionId, replay: replay.sessionId })
 }

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ChatsIcon, CheckIcon } from './icons.js'
 import { stepMenuFocus, useLinger, useViewport, viewBottom } from './motion.js'
 import { sessionLabel, sessionMeta, sessionTime, useBotSessionRows } from './bot-sessions.js'
+import { CopyIdButton } from './copy-id.js'
 import { t } from './i18n.js'
 
 const MENU_WIDTH = 340
@@ -75,15 +76,19 @@ export function SessionMenu({ bot, roster, actions, useSessions }) {
     h('div', { className: 'bt-smenu-list' }, entries.map(entry => {
       const name = sessionLabel(entry, { bot, roster, rowTitle: entry.rowTitle })
       const meta = sessionMeta(entry, entry.at)
-      return h('button', {
-        key: entry.id, type: 'button', role: 'menuitemradio', 'aria-checked': entry.current,
-        className: 'bt-smenu-item', 'data-tone': meta.tone, 'data-current': entry.current || undefined,
-        title: [name, sessionTime(entry.at)].filter(Boolean).join('\n'),
-        onClick: () => pick(entry),
-      },
-      h('span', { className: 'bt-smenu-mark', 'aria-hidden': true }, entry.current ? h(CheckIcon) : null),
-      h('span', { className: 'bt-smenu-title' }, name),
-      h('span', { className: 'bt-smenu-meta' }, meta.text))
+      // Each row's ID can be copied for troubleshooting; the copy button sits beside
+      // the item, so picking and copying stay apart.
+      return h('div', { key: entry.id, className: 'bt-smenu-row', role: 'none', 'data-current': entry.current || undefined },
+        h('button', {
+          type: 'button', role: 'menuitemradio', 'aria-checked': entry.current,
+          className: 'bt-smenu-item', 'data-tone': meta.tone, 'data-current': entry.current || undefined,
+          title: [name, sessionTime(entry.at)].filter(Boolean).join('\n'),
+          onClick: () => pick(entry),
+        },
+        h('span', { className: 'bt-smenu-mark', 'aria-hidden': true }, entry.current ? h(CheckIcon) : null),
+        h('span', { className: 'bt-smenu-title' }, name),
+        h('span', { className: 'bt-smenu-meta' }, meta.text)),
+        h(CopyIdButton, { id: entry.id }))
     }))), document.body) : null)
 }
 
@@ -93,8 +98,14 @@ export const SESSION_MENU_CSS = `
 .bt-smenu-head{display:flex;align-items:center;gap:6px;flex:none;padding:4px 8px 6px;font-size:12px;line-height:17px;font-weight:600;color:var(--bt-ink-2)}
 .bt-smenu-count{font-weight:400;color:var(--bt-ink-3)}
 .bt-smenu-list{display:flex;flex-direction:column;gap:2px;flex:1 1 auto;min-height:0;overflow-y:auto}
-.bt-menu .bt-smenu-item{gap:8px}
-.bt-menu .bt-smenu-item[data-current]{background:var(--bt-hover);font-weight:600}
+.bt-smenu-row{display:flex;align-items:center;gap:2px;padding-inline-end:4px;border-radius:6px}
+.bt-smenu-row:hover,.bt-smenu-row[data-current]{background:var(--bt-hover)}
+.bt-menu .bt-smenu-item{flex:1;min-width:0;gap:8px}
+.bt-menu .bt-smenu-row>.bt-smenu-item:hover{background:none}
+.bt-menu .bt-smenu-item[data-current]{font-weight:600}
+.bt-menu .bt-smenu-row>.bt-copy-id{width:22px;height:22px;min-height:0;padding:0}
+.bt-menu .bt-smenu-row>.bt-copy-id:hover{background:var(--bt-active)}
+.bt-menu .bt-smenu-row>.bt-copy-id svg{width:14px;height:14px;margin:0}
 .bt-smenu-mark{flex:none;width:14px;height:14px;display:inline-flex;align-items:center;justify-content:center;color:var(--bt-accent)}
 .bt-smenu-mark svg{width:14px;height:14px}
 .bt-smenu-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

@@ -13,6 +13,7 @@ import { GoalIsland, goalView } from './goal.js'
 import { NewSessionButton } from './new-session.js'
 import { FailoverActivity } from './bot-failover.js'
 import { SessionMenu } from './session-menu.js'
+import { CopyIdButton } from './copy-id.js'
 import { conversationTitle, documentTitle } from './bot-sessions.js'
 import { GodbotModal } from '../modal.js'
 import { nativeTabs } from '../native-agent-target.js'
@@ -224,9 +225,11 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
             ? h(BotHeaderModel, { key: bot.appliedModel ?? bot.model, bot, roster, actions, sessionId })
             : null,
           !away && failover ? h(FailoverActivity, { row: failover, roster, actions }) : null),
-        !away && conversationTitleValue
-          ? h('div', { className: 'gb-chat-title', title: conversationTitleValue },
-            h('span', { className: 'gb-chat-title-text' }, conversationTitleValue))
+        // The open conversation's ID, to copy when reporting a problem with it.
+        !away && roster?.ready !== false
+          ? h('div', { className: 'gb-chat-title', title: conversationTitleValue || undefined },
+            conversationTitleValue ? h('span', { className: 'gb-chat-title-text' }, conversationTitleValue) : null,
+            h(CopyIdButton, { id: sessionId }))
           : null,
         !away && h('div', { className: 'gb-chat-tools' },
           // Start a fresh conversation with this Bot.

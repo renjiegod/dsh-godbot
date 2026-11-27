@@ -1,6 +1,6 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 import { SOURCE_KIND } from './constants.js'
-import { partTitle } from './part-titles.js'
+import { requestTitle } from './part-titles.js'
 import { textOf } from './text.js'
 import { ownConversations } from './threads.js'
 
@@ -163,7 +163,8 @@ export function install(rt) {
       }
     }
     message.signal?.throwIfAborted()
-    const sessionId = await rt.newBotConversation(bot, message.toUser ? partTitle(message.text) : undefined)
+    // DSH lists the new conversation under the name the session list gives it.
+    const sessionId = await rt.newBotConversation(bot, requestTitle(message.text, message.title))
     if (sessionId === undefined) throw new Error('The receiving Bot no longer exists.')
     message.signal?.throwIfAborted()
     return send(sessionId, { steer: false, created: true })

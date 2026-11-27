@@ -269,6 +269,10 @@ export function install(rt) {
         description: '"now" (default) can reach the next step of the relevant running task. "queue" starts a separate turn. A message routed back to the handoff origin or sent with reply_to "user" always queues.',
       },
       new_conversation: { type: 'boolean', description: 'Start a separate conversation for unrelated work. Applies only when messaging from your own chat.' },
+      title: {
+        type: 'string',
+        description: 'A short name for the work, a few words in the user\'s language (e.g. "Release Godbot 0.2.31"). When the message opens a conversation for the other Bot, this names it in that Bot\'s session list. Without it the message\'s first sentence names it.',
+      },
       request_id: {
         type: 'string',
         description: `Your own name for this request, up to ${NAME_MAX} characters, so that a repeat of it is not sent twice. Send the same request_id with the same message when you repeat a call: the receipt of the first call comes back and nothing is sent again. A request_id names one request: with other content it is refused.`,
@@ -341,7 +345,8 @@ export function install(rt) {
         // Nothing went out, so a named request must not take this as a delivered
         // receipt: admitRequest drops the pending record instead, and a retry can send.
         if (original === undefined) { if (request !== undefined) request.unsent = true; return tooLong(text) }
-        const route = { text, fromId: sender.id, fromPart, originPart, newConversation, work, toUser, steer: args.when !== 'queue' && !toUser, signal: exec.signal }
+        const title = typeof args.title === 'string' ? args.title.trim() : ''
+        const route = { text, title, fromId: sender.id, fromPart, originPart, newConversation, work, toUser, steer: args.when !== 'queue' && !toUser, signal: exec.signal }
         return rt.routeBotMessage(target, route, async (sessionId, { steer, created }) => {
           const agent = await rt.resolveAgent(sessionId)
           // Only coalesce requests in the selected conversation with a common
@@ -352,6 +357,8 @@ export function install(rt) {
           const merged = canMerge ? await rt.attachLong(`${before.text}\n\n${text}`, filename) : undefined
           const joins = merged !== undefined && agent.inbox?.remove?.(earlier.message.id) === true
           const long = joins ? merged : original
+          // A merged request keeps the name of the one it takes in, which came first.
+          const named = (joins ? earlier.message.source.title : undefined) ?? title
           const working = rt.live.get(sessionId)?.turn !== undefined
           const atNextStep = steer || (joins && earlier.steered)
           const exchangeId = joins ? earlier.message.source.exchangeId : randomUUID()
@@ -361,7 +368,7 @@ export function install(rt) {
             await rt.deliver({
               fromId: sender.id, toId: target.id, sessionId, ...(fromPart ? { fromPart } : {}),
               text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length,
-              role: 'request', steer: atNextStep, exchangeId, ...(created ? { opensConversation: true } : {}),
+              role: 'request', steer: atNextStep, exchangeId, ...(created ? { opensConversation: true } : {}), ...(named ? { title: named } : {}),
               ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}),
             })
           } catch (error) {

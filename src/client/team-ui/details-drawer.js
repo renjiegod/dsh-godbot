@@ -22,6 +22,7 @@ import { BotConnectors } from './connectors.js'
 import { ComputerView, ComputerDrawerPane } from './computer.js'
 import { NewSessionButton } from './new-session.js'
 import { sessionLabel, sessionMeta, sessionTime, useBotSessionRows } from './bot-sessions.js'
+import { CopyIdButton, SessionIdLine } from './copy-id.js'
 import { t } from './i18n.js'
 import { nativeMode } from '../native-agent-target.js'
 
@@ -260,17 +261,19 @@ function BotSessions({ bot, part, run, useSessions, actions, roster }) {
       const label = sessionLabel(entry, { bot, roster, rowTitle: entry.rowTitle })
       const meta = entry.current && !entry.running && !entry.waiting ? { text: t('Current') } : sessionMeta(entry, entry.at)
       const hint = entry.current ? t('Current session') : entry.running ? t('Open this running session') : entry.background ? t('Open this session') : t('Open this earlier session')
-      return h('button', {
-        key: entry.id, type: 'button', disabled: entry.current,
-        'aria-current': entry.current || undefined,
-        className: `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`,
-        title: [label, sessionTime(entry.at), hint].filter(Boolean).join('\n'),
-        onClick: entry.current ? undefined : () => run(actions.openPart(bot.id, entry.id)),
-      },
-        h('span', { className: 'bt-agent-session-name' }, label),
-        h('span', { className: 'bt-agent-session-meta', 'data-tone': meta.tone },
-          meta.tone === 'run' ? h('span', { className: 'bt-agent-session-run', role: 'status' }, h('i', { className: 'bt-session-pulse', 'aria-hidden': true }), meta.text)
-            : meta.text))
+      return h('div', { key: entry.id, className: `bt-agent-session-row${entry.current ? ' is-current' : ''}` },
+        h('button', {
+          type: 'button', disabled: entry.current,
+          'aria-current': entry.current || undefined,
+          className: `bt-agent-session${entry.current ? ' is-current' : ''}${entry.running ? ' is-running' : ''}`,
+          title: [label, sessionTime(entry.at), hint].filter(Boolean).join('\n'),
+          onClick: entry.current ? undefined : () => run(actions.openPart(bot.id, entry.id)),
+        },
+          h('span', { className: 'bt-agent-session-name' }, label),
+          h('span', { className: 'bt-agent-session-meta', 'data-tone': meta.tone },
+            meta.tone === 'run' ? h('span', { className: 'bt-agent-session-run', role: 'status' }, h('i', { className: 'bt-session-pulse', 'aria-hidden': true }), meta.text)
+              : meta.text)),
+        h(CopyIdButton, { id: entry.id }))
     })))
 }
 
@@ -375,7 +378,8 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
         ? (roster.readOnly
             ? (bot.role ? h('span', { className: 'bt-drawer-role' }, bot.role) : null)
             : h(BotLabel, { key: `role:${bot.id}`, bot, actions, run }))
-        : subtitle ? h('span', { className: 'bt-drawer-role' }, subtitle) : null),
+        : subtitle ? h('span', { className: 'bt-drawer-role' }, subtitle) : null,
+      h(SessionIdLine, { id: part, className: 'bt-drawer-sid' })),
     tabs.length > 1 ? h('div', { key: 'tabs', ref: glide.box, className: 'bt-tabs', role: 'tablist', 'data-move': side },
       h('span', { ref: glide.thumb, className: 'bt-thumb', 'aria-hidden': true }),
       tabs.map(key => h('button', { key, type: 'button', role: 'tab', className: 'bt-tab', 'aria-selected': tab === key, onClick: () => setTab(key) }, t(TAB_LABELS[key])))) : null,

@@ -40,6 +40,7 @@ import { CONNECTORS_PAGE_CSS } from './connectors-page.js'
 import { LearningDock, LearningTurnTail, LEARNING_CSS } from './learning-card.js'
 import { MODEL_CSS, ModelChoiceDock, DeepSeekSignIn } from './model-menu.js'
 import { SESSION_MENU_CSS } from './session-menu.js'
+import { COPY_ID_CSS } from './copy-id.js'
 import { BOT_SETTINGS_CSS } from './bot-settings.js'
 import { FAILOVER_CSS } from './bot-failover.js'
 import { SECTION_CONTEXT_CSS } from './section-context.js'
@@ -1370,6 +1371,7 @@ export function apply(ctx, godbot) {
     [WIDGET_CSS, 'widgets'],
     [CHANGES_CSS, 'changes'],
     [HANDOFF_CSS, 'handoff'],
+    [COPY_ID_CSS, 'copy-id'],
     [SIDE_CSS, 'side'],
     [BROWSER_CSS, 'browser'],
   ]

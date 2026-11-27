@@ -39,6 +39,9 @@ export const estimateTokens = (text) => {
 export const clip = (text, max, rest) => (text.length > max ? `${text.slice(0, max)}… (cut; ${rest})` : text)
 // The first `max` UTF-16 units of a text, never half of a character.
 export const headOf = (text, max) => (text.length <= max ? text : text.slice(0, /[\uD800-\uDBFF]/.test(text[max - 1]) ? max - 1 : max))
+// The line a message that went as a file starts with (delivery.js attachLong) is for
+// the model; the words of the message follow it.
+export const stripLongNote = text => text.replace(/^\[A long message: \d+ characters\.[^\]\n]*\]\n/u, '')
 
 export const createClock = (timeZone) => {
   const clockFormat = new Intl.DateTimeFormat('en-CA', {
