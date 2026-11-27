@@ -6,8 +6,10 @@ import { EnvironmentError, until } from '../host.mjs'
 import { openFullTeam } from '../native-ui.mjs'
 import { startRelay } from '../phone-relay.mjs'
 import { channel } from './WORK-BOARD.mjs'
+import { seedHistory } from './WORK-BOARD-SCALE.mjs'
+import { phoneScale } from '../work-board-phone-scale.mjs'
 
-export default async function check({ makeHost, candidate, reportDir, scratch, note }) {
+export default async function check({ makeHost, candidate, previous, reportDir, scratch, note, scenario }) {
   const app = process.env.GODBOT_ANDROID_E2E
   if (!app) throw new EnvironmentError('A test Android checkout is required')
   const ui = await import(pathToFileURL(join(app, 'e2e/adb.mjs')))
@@ -30,6 +32,19 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
       'worker is ready',
     )
     host.model.reply = () => 'First Android board evidence.'
+    if (scenario === 'PHONE-WORK-BOARD-SCALE') {
+      const owners = [(await host.bot('state')).mainBotId, worker.id]
+      while (owners.length < 5)
+        owners.push(
+          (
+            await host.bot('create-bot', {
+              name: 'Scale phone ' + owners.length,
+              model: 'deepseek-official/deepseek-flash',
+            })
+          ).id,
+        )
+      await seedHistory(host, owners)
+    }
     await channel(host, 'phone-set', { server: relay.url, on: true })
     await until(
       async () => (await channel(host, 'phone-set')).status === 'online',
@@ -44,6 +59,7 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     await ui.waitFor((n) => n.some((v) => v.cls.endsWith('EditText')), 'paired chat', { timeout: 65000 })
     await tap('open team list', 'Open team list', '打开团队列表')
     await tap('open native board', 'Work board', '工作看板')
+    if (scenario === 'PHONE-WORK-BOARD-SCALE') return await phoneScale({ ui, host, tap, note })
     const title = 'Cross client board acceptance',
       page = host.page
     await page
@@ -116,6 +132,42 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
       attempt: next.attempt,
       revision: next.evidenceRevision,
       sameConversation: first.execution.sessionId === next.execution.sessionId,
+    })
+    ui.shell('input keyevent 4')
+    const target = new RegExp(draft.id + '.*Cross client')
+    await ui.waitFor((n) => ui.find(n, target), 'the saved card in the native list')
+    await host.stop()
+    await ui.waitFor(
+      (n) => ui.find(n, /Last read|上次读取/) && ui.find(n, target),
+      'cached board while the paired host is offline',
+      { timeout: 75000 },
+    )
+    await tap('try creating while offline', 'New work item', '新建工作项')
+    assert.ok(ui.find(ui.dumpUi().nodes, target), 'offline action kept the cached board open')
+    if (previous) {
+      await host.install(previous)
+      await host.start()
+      await ui.waitFor(
+        (n) => ui.find(n, /Upgrade the paired host|请升级配对宿主/),
+        'old host compatibility notice',
+        { timeout: 90000 },
+      )
+      assert.ok(!ui.find(ui.dumpUi().nodes, target), 'an unsupported host cannot display the previous board')
+      await host.stop()
+      await host.install(candidate)
+    }
+    await host.start()
+    await ui.waitFor(
+      (n) => ui.find(n, target) && !ui.find(n, /Last read|上次读取/),
+      'same paired computer reconnected and read its board',
+      { timeout: 90000 },
+    )
+    assert.equal((await read()).phase, 'done')
+    note('android-board-reconnect', {
+      id: draft.id,
+      cachedOffline: true,
+      oldHostNotice: !!previous,
+      pairingRetained: true,
     })
   } finally {
     try {

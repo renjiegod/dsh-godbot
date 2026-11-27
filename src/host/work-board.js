@@ -315,7 +315,15 @@ export class WorkBoard {
     if (previous) {
       if (previous.fingerprint !== digest) throw new Error('请求编号已用于另一项操作。')
       const item = await this.item({ id: cardId(previous.number) })
-      if (!previous.outcome) throw new Error('上次操作已接收，送达结果待核对。请查看原记录。')
+      if (!previous.outcome) {
+        const row = this.byNumber.get(previous.number)
+        const task = row.kind === 'room' && this.rt.state.rooms?.[row.scope]?.tasks?.[row.source_id]
+        const confirmed =
+          (req.op === 'note' && task?.notes?.some((n) => n.requestId === requestId && n.delivered)) ||
+          (req.op === 'cancel' && task?.boardCancelRequest === requestId)
+        if (!confirmed) throw new Error('上次操作已接收，送达结果待核对。请查看原记录。')
+        this.db.prepare("UPDATE board_requests SET outcome='ok' WHERE id=?").run(requestId)
+      }
       return item
     }
     const access = accessOf(this.rt)
@@ -372,6 +380,7 @@ export class WorkBoard {
         } else {
           const result = this.rt.taskCancel(row.scope, row.source_id)
           if (result.error) throw new Error(result.error)
+          result.task.boardCancelRequest = requestId
           await this.rt.save({ required: true })
         }
         this.db.prepare("UPDATE board_requests SET outcome='ok' WHERE id=?").run(requestId)

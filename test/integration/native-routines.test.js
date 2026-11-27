@@ -11,6 +11,7 @@ import { GodbotService } from '../fixtures/member-service.js'
 import { nextRoutineTime, normalizeRoutineTiming } from '../../src/host/routine-timing.js'
 import { Store } from '../../src/host/store.js'
 import { workspaceCommand } from '../../src/host/workspace-archive.js'
+import { installBoardIndex } from '../../src/host/work-board-index.js'
 
 async function fixture(t) {
   const dir = await mkdtemp(join(tmpdir(), 'godbot-routine-'))
@@ -211,6 +212,10 @@ test('restoring a Bot workspace keeps schedules paused and supports rollback', a
   const schedule = { id: 'board-schedule', teamId: 'godbot-workspace', status: 'active', revision: 1 }
   const store = new Store(source.dir)
   store.put('nativeRoutines', schedule)
+  installBoardIndex(store.db)
+  store.db.prepare("INSERT INTO board_cards(number,kind,scope,source_id,meta,origin_key,summary) VALUES(47,'draft','','draft',?,?,?)")
+    .run(JSON.stringify({title:'Recover the work item',version:3,priority:1}),'message/47',JSON.stringify({phase:'todo',title:'Recover the work item',refs:[]}))
+  store.db.prepare("INSERT INTO board_requests VALUES('retained-request','retained-fingerprint',47,'ok')").run()
   store.close()
   const archive = join(source.dir, 'workspace.enc'), password = join(source.dir, 'pass')
   await writeFile(password, randomUUID())
@@ -220,6 +225,8 @@ test('restoring a Bot workspace keeps schedules paused and supports rollback', a
   await workspaceCommand(args('restore', target.dir))
   const restored = new Store(target.dir)
   try {
+    assert.equal(restored.db.prepare("SELECT number FROM board_cards WHERE origin_key='message/47'").get().number,47)
+    assert.equal(restored.db.prepare("SELECT outcome FROM board_requests WHERE number=47").get().outcome,'ok')
     assert.equal(restored.get('nativeRoutines', schedule.id).status, 'paused')
     assert.equal(restored.get('nativeRoutines', schedule.id).nextAt, null)
   } finally { restored.close() }

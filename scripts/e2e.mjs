@@ -129,6 +129,7 @@ if (values.help) {
       const skip = !existsSync(file) ? { status: 'not-run', reason: 'Scenario has no implementation' }
         : id === 'E12' && !legacy ? { status: 'skipped', reason: 'The 0.1.0 upgrade baseline ' + upgradeBaseline + ' is not in this checkout' }
         : id === 'UPGRADE-PREVIOUS' && !previous ? { status: 'skipped', reason: 'Pass --previous <tgz>, the newest published archive, to run UPGRADE-PREVIOUS' }
+        : id === 'WORK-BOARD-COMPARE' && !previous ? { status: 'skipped', reason: 'Pass --previous <tgz> containing the pre-board build to compare the same profile' }
         : id === 'BUNDLED-COMPUTER-HOST' && (process.platform !== 'darwin' || process.arch !== 'arm64') ? { status: 'skipped', reason: 'The bundled host E2E requires an Apple silicon Mac' }
         : needsRelay(id) && !process.env.GODBOT_RELAY_BIN ? { status: 'skipped', reason: 'Set GODBOT_RELAY_BIN to a godbot-relay binary to run ' + id }
         : null

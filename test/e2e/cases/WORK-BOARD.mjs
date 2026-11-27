@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { performance } from 'node:perf_hooks'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { openBotChat, openFullTeam } from '../native-ui.mjs'
 import { until } from '../host.mjs'
 
@@ -13,6 +15,14 @@ export async function channel(host, endpoint, payload = {}) {
 }
 export default async function check({ makeHost, candidate, previous, note }) {
   const host = await makeHost()
+  const fixture = new URL('../../external/fixtures/fake-claude.mjs', import.meta.url)
+  const cli = [
+    '#!/usr/bin/env node',
+    'if(process.argv.includes("--version"))console.log("2.1.331");',
+    'else if(process.argv.includes("status"))console.log(JSON.stringify({loggedIn:true}));',
+    'else await import(' + JSON.stringify(fixture.href) + ');',
+  ].join('\n')
+  await writeFile(join(host.bin, 'claude'), cli, { mode: 0o700 })
   let oldTask
   if (previous) {
     await host.install(previous)
@@ -126,16 +136,21 @@ export default async function check({ makeHost, candidate, previous, note }) {
       await page.locator('.wb-detail').evaluate((el) => el.getBoundingClientRect().right <= innerWidth + 1),
     )
   }
+  await page.setViewportSize({ width: 1440, height: 900 })
   await host.restart()
   assert.equal((await item(draft.id)).phase, 'done')
-  assert.equal((await host.bot('board-view')).counts.all,(await board()).counts.all,'the authenticated owner RPC and Web read the same board')
+  assert.equal(
+    (await host.bot('board-view')).counts.all,
+    (await board()).counts.all,
+    'the authenticated owner RPC and Web read the same board',
+  )
   await openFullTeam(host)
   await openBotChat(host, model)
   const message = 'Capture this source message in the board'
   await host.bot('send', {
     sessionId: model.id,
     requestId: 'board-source-message',
-    content: [{ type: 'text', text: message }],
+    text: message,
   })
   const bubble = page.locator('.bt-umsg').filter({ hasText: message }).last()
   await bubble.hover()
@@ -159,6 +174,56 @@ export default async function check({ makeHost, candidate, previous, note }) {
     requestId: 'same-message',
   })
   assert.equal(same.id, linked.id)
+  await shell.locator('.wb-detail header button').click()
+  await shell.locator('.wb-detail header button').click()
+  await shell.getByRole('button', { name: /Close work board|关闭工作看板/ }).click()
+  const group = await host.bot('create-room', {
+    name: 'Board group',
+    members: [team.mainBotId, model.id],
+    admin: team.mainBotId,
+  })
+  await page.locator('[data-room-id="' + group.id + '"]').click()
+  const groupText = 'Group work should stay linked to this message'
+  await host.bot('send', { sessionId: group.id, text: groupText })
+  const groupBubble = page.locator('.bt-umsg').filter({ hasText: groupText }).last()
+  await groupBubble.hover()
+  await groupBubble.getByRole('button', { name: /从消息建工作项|Create work item from message/ }).click()
+  await page.locator('.wb-editor button[type=submit]').click()
+  const groupCard = await until(
+    async () => (await board()).columns.flatMap((c) => c.items).find((c) => c.title === groupText),
+    'group message on the same board',
+  )
+  assert.equal((await item(groupCard.id)).origin.roomId, group.id)
+  const local = await host.bot('create-bot', { name: 'Board CLI', model: 'local-claude-code/default' })
+  await until(
+    async () => (await host.bot('chat', { botId: local.id })).items.some((i) => i.kind === 'bot'),
+    'external CLI greeting',
+    60000,
+  )
+  const localDraft = await channel(host, 'board-action', {
+    op: 'create',
+    title: 'CLI board receipt',
+    owner: local.id,
+    criteria: 'Return fixture evidence',
+    requestId: 'cli-draft',
+  })
+  await channel(host, 'board-action', {
+    op: 'dispatch',
+    id: localDraft.id,
+    version: localDraft.version,
+    requestId: 'cli-send',
+  })
+  const localReport = await until(
+    async () => {
+      const d = await item(localDraft.id)
+      return d.phase === 'review' && d
+    },
+    'external CLI assignment receipt',
+    60000,
+  )
+  assert.equal(localReport.owner, local.id)
+  assert.ok(localReport.evidence)
+  assert.notEqual(localReport.execution.sessionId, model.id)
   if (previous) {
     await host.stop()
     await host.install(previous)

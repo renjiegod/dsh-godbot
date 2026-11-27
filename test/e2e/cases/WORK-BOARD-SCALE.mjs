@@ -71,8 +71,52 @@ export default async function check({ makeHost, candidate, note }) {
     coldMs = Math.round(performance.now() - start)
   assert.equal(v.columns.find((c) => c.phase === 'done').total, 10000)
   assert.equal(v.columns.find((c) => c.phase === 'doing').total, 100)
-  const reads = await samples(30),
-    paints = [],
+  let release
+  const gate = new Promise((resolve) => {
+    release = resolve
+  })
+  let concurrent = 0,
+    peak = 0
+  host.model.reply = async (body) => {
+    if (JSON.stringify(body.messages).includes('parallel-scale-check')) {
+      concurrent++
+      peak = Math.max(peak, concurrent)
+      await gate
+      concurrent--
+    }
+    return 'Completed the parallel scale check'
+  }
+  const drafts = await Promise.all(
+    owners.map((owner, i) =>
+      channel(host, 'board-action', {
+        op: 'create',
+        title: 'parallel-scale-check ' + i,
+        criteria: 'return one receipt',
+        owner,
+        requestId: 'worker-draft-' + i,
+      }),
+    ),
+  )
+  await Promise.all(
+    drafts.map((d, i) =>
+      channel(host, 'board-action', {
+        op: 'dispatch',
+        id: d.id,
+        version: d.version,
+        requestId: 'worker-dispatch-' + i,
+      }),
+    ),
+  )
+  let reads
+  try {
+    const deadline = Date.now() + 15000
+    while (peak < 5 && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50))
+    reads = await samples(30)
+  } finally {
+    release()
+  }
+  assert.equal(peak, 5, 'all five fixture Bots were active during the measured board reads')
+  const paints = [],
     rtt = []
   for (let i = 0; i < 30; i++) {
     const round = performance.now()
@@ -106,6 +150,7 @@ export default async function check({ makeHost, candidate, note }) {
     history: 10000,
     active: 100,
     workers: 5,
+    peakSimultaneousModelCalls: peak,
     n: 30,
     baselineRpcP95: p95(baseline),
     coldMs,

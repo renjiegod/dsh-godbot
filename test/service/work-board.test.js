@@ -189,6 +189,7 @@ test('group note retries never notify twice and a partial delivery is visible fo
   const card = (await board.view({})).columns.find((c) => c.phase === 'doing').items[0]
   const input = { op: 'note', id: card.id, version: card.version, requestId: 'note-one', text: 'Please follow up' }
   const receipt = await board.action(input)
+  board.db.prepare("UPDATE board_requests SET outcome=NULL WHERE id=?").run(input.requestId)
   assert.equal((await board.action(input)).events.length, 1)
   assert.equal(sends, 1)
   rt.sendUser = async () => {

@@ -10,6 +10,7 @@ export const release = [
 ]
 
 export const all = [
+  'WORK-BOARD-COMPARE',
   'WORK-BOARD-SCALE',
   'WORK-BOARD',
   'WORKSPACE-CAPABILITIES', 'BOT-MANAGEMENT', 'BOT-FAILOVER-SECTIONS', 'COMMAND-QUIET', 'NEW-SESSION', 'DRAFT-ATTACHMENTS',
@@ -21,7 +22,7 @@ export const all = [
 
 export const connectorCases = ['L-CLAUDE', 'L-CODEX']
 export const routineFiles = { 'L-TEAM-ROUTINES': 'live-team-routines.mjs', 'L-BOT-WORKFLOW': 'live-bot-workflow.mjs' }
-export const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK', 'PHONE-AUTOMATION', 'PHONE-BOT-GOALS', 'PHONE-MODEL-OPTIONS', 'PHONE-WORK-BOARD']
+export const androidCases = ['PHONE-ANDROID', 'PHONE-TOOLS', 'PHONE-MEMBER-WORK', 'PHONE-AUTOMATION', 'PHONE-BOT-GOALS', 'PHONE-MODEL-OPTIONS', 'PHONE-WORK-BOARD', 'PHONE-WORK-BOARD-SCALE']
 export const live = [...connectorCases, ...Object.keys(routineFiles), 'L-SANDBOX', 'SANDBOX-SETUP']
 export const suites = { release, all, 'live-connectors': connectorCases, 'live-routines': Object.keys(routineFiles) }
 

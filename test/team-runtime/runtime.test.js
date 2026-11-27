@@ -66,6 +66,9 @@ test('the managed runtime loads one durable workspace in the owning Godbot profi
   assert.equal(rt.phoneView().server, '')
   rt.localAgentUsage = async () => ({ providers: [] })
   assert.equal((await rt.channelCall('local-agent-usage', { profileOwner: true })).error?.code, 'bot/refused')
+  for(const endpoint of ['board-view','board-item','board-action']){
+    assert.equal((await rt.channelCall(endpoint,{profileOwner:true})).error?.code,'bot/refused')
+  }
   assert.deepEqual((await rt.channelCall('local-agent-usage', {}, undefined, { profileOwner: true })).value, { providers: [] })
 })
 
