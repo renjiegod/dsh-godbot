@@ -1,7 +1,7 @@
 import { chmodSync, mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { dshShellOutcome } from '../../drivers/dsh-tool-receipt.js'
+import { dshShellOutcome, dshShellToolNames } from '../../drivers/dsh-tool-receipt.js'
 import { readAntigravityToolResult } from './antigravity-tool-result.js'
 import { readClaudeExecutionHistory } from './claude-execution-history.js'
 import { bindToolSlots, mirroredTools, readToolActivity, toolSlots } from './shared/tool-timeline.js'
@@ -17,6 +17,24 @@ const pendingClaudeShell = row => row.type === 'tool' && ['Bash', 'PowerShell'].
   row.id?.startsWith('toolu_') && row.parentId === undefined && ['running', 'pending'].includes(row.status)
 const toolDetails = ['input', 'output', 'changes', 'error']
 const persistedFields = ['name', 'activityKind', 'status', 'text', 'layout', 'cwd', 'exitCode', 'durationMs', 'locations', 'parentId', ...toolDetails]
+// A legacy DSH shell result can carry its only exit marker in the output body.
+// All the markers end with ], so only those rows need the full output here.
+const toolListsSql = `
+  SELECT wanted.value AS turn, saved.turn IS NOT NULL AS saved, event.seq,
+    CASE WHEN json_type(event.data, '$.output') IS 'array'
+      AND json_extract(event.data, '$.name') IN (${dshShellToolNames.map(name => `'${name}'`).join(', ')})
+      AND (json_type(event.data, '$.exitCode') IS NOT 'integer'
+        OR json_extract(event.data, '$.exitCode') NOT BETWEEN ${Number.MIN_SAFE_INTEGER} AND ${Number.MAX_SAFE_INTEGER})
+      AND substr(CAST(json_extract(event.data, '$.output[0].text') AS BLOB), -1) = x'5D'
+      THEN event.data
+      ELSE json_remove(event.data, '$.output', '$.changes', '$.error')
+    END AS preview,
+    (${toolDetails.map(field => `json_type(event.data, '$.${field}') IS NOT NULL`).join(' OR ')}) AS has_detail
+  FROM json_each(?) AS wanted
+  LEFT JOIN execution_turns AS saved ON saved.part=? AND saved.turn=wanted.value
+  LEFT JOIN execution_events AS event ON event.part=? AND event.turn=wanted.value AND event.identity LIKE 'tool:%'
+  ORDER BY wanted.value, event.seq
+`
 const now = () => new Date().toISOString()
 const eventTime = event => Number.isFinite(event.time) ? new Date(event.time).toISOString() : now()
 const chronological = (a, b) => b.startedAt.localeCompare(a.startedAt) || (b.nativeOrder ?? 0) - (a.nativeOrder ?? 0) || String(b.turn).localeCompare(String(a.turn))
@@ -95,8 +113,11 @@ function inputTarget(row) {
 // `target` stands apart from `text`: the chat lays a call's summary over the name it
 // read from the call itself, and a guess from the input must not replace that name.
 function summary(row) {
-  if (row.type !== 'tool') return row
-  const preview = { ...row, detailAvailable: toolDetails.some(key => row[key] !== undefined) }
+  return row.type === 'tool' ? toolPreview(row, toolDetails.some(key => row[key] !== undefined)) : row
+}
+
+function toolPreview(row, detailAvailable) {
+  const preview = { ...row, detailAvailable }
   if ((typeof preview.text !== 'string' || preview.text === '') && !Array.isArray(preview.locations)) {
     const target = inputTarget(row)
     if (target) preview.target = target
@@ -361,6 +382,37 @@ export class ExecutionHistory {
     })
   }
 
+  turnRunning(sessionId, turn) {
+    return this.active.get(sessionId) === turn || this.rt.live?.get(sessionId)?.turn === turn
+  }
+
+  async readToolLists(sessionId, turns, assertAllowed) {
+    const db = this.database()
+    this.toolListsQuery ??= db.prepare(toolListsSql)
+    const lists = new Map(turns.map(turn => [turn, { events: [], running: this.turnRunning(sessionId, turn), saved: false }]))
+    for (const { turn, saved, seq, preview, has_detail } of
+      this.toolListsQuery.all(JSON.stringify(turns), sessionId, sessionId)) {
+      const list = lists.get(turn)
+      list.saved = Boolean(saved)
+      if (seq === null) continue
+      const row = { seq, ...JSON.parse(preview) }
+      if (row.type !== 'tool') continue
+      Object.assign(row, dshShellOutcome(row.name, row.status, row.output, row.exitCode))
+      list.events.push(toolPreview(row, Boolean(has_detail)))
+    }
+    const isClaude = this.rt.state.localAgents?.sessions?.[sessionId]?.route === 'local-claude-code'
+    const byTurn = {}
+    for (const [turn, { events, running, saved }] of lists) {
+      // Unindexed DSH history and legacy Claude interruptions use the normal
+      // history path, which checks the conversation again after reading its log.
+      byTurn[turn] = !running && (!saved || isClaude && events.some(pendingClaudeShell))
+        ? await this.readNumberedTurn(sessionId, turn, { onlyTools: true, assertAllowed })
+        : { events, running }
+    }
+    assertAllowed()
+    return byTurn
+  }
+
   // DSH retains the original call/result bodies for its own tools, including
   // archived parts created before the execution database existed.
   async sessionTurns(sessionId, target) {
@@ -400,56 +452,67 @@ export class ExecutionHistory {
     return turns
   }
 
-  async read({ botId, sessionId, turn, turns: several, toolId, beforeTurn, onlyTools } = {}) {
-    // The tool lists of several turns of one chat, for a chat drawn for the first time:
-    // one request instead of one per turn on screen.
-    if (Array.isArray(several) && onlyTools === true && toolId === undefined) {
-      const byTurn = {}
-      for (const each of several.filter(Number.isSafeInteger).slice(0, 200)) {
-        if (Object.hasOwn(byTurn, each)) continue
-        byTurn[each] = await this.read({ botId, sessionId, turn: each, onlyTools: true })
-      }
-      return { byTurn }
-    }
-    const allowed = () => !this.closed && typeof botId === 'string' && typeof sessionId === 'string' &&
-      this.rt.botOf(botId) && this.ownerOf(sessionId) === botId
-    if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
-    if (toolId !== undefined && (turn === undefined || typeof toolId !== 'string' || toolId.length > 400)) throw new Error('工具调用无效。')
+  async readNumberedTurn(sessionId, turn, { toolId, onlyTools, assertAllowed }) {
+    assertAllowed()
     const db = this.database()
-    if (Number.isSafeInteger(turn)) {
-      const running = this.active.get(sessionId) === turn || this.rt.live?.get(sessionId)?.turn === turn
-      let events = this.storedEvents(db, sessionId, turn, toolId, onlyTools)
-      const recovered = !running && events.some(pendingClaudeShell) ? await this.recoverClaudeInterruption(sessionId, turn) : undefined
-      if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
-      if (recovered) events = events.map(row => row.id === recovered.id
-        ? { ...protect(this.rt, mergeEvent(row, recovered)), recoveredInterruption: true } : row)
-      if (!running && !db.prepare('SELECT 1 FROM execution_turns WHERE part=? AND turn=?').get(sessionId, turn)) {
-        const prior = (await this.sessionTurns(sessionId, turn))[0]
-        const native = prior ? matchNative(prior, await this.nativeTurns(sessionId)) : undefined
-        if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
-        events = mergeRows(this.rt, native?.events ?? prior?.events ?? [], toolId)
-      } else if (!onlyTools && !running && events.some(row => row.messageSeq !== undefined) && events.some(row => row.type === 'tool')) {
-        const prior = (await this.sessionTurns(sessionId, turn))[0]
-        if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
-        const layouts = new Map(prior?.events.filter(row => row.layout?.length).map(row => [row.seq, row.layout]))
-        events = events.map(row => layouts.has(row.messageSeq) ? protect(this.rt, mergeEvent(row, {
-          type: 'text', layout: layouts.get(row.messageSeq),
-        })) : row)
-      }
-      const tool = toolId !== undefined && events[0]
-      if (tool && (tool.output == null || (tool.status === 'failed' && tool.error == null))) {
-        const binding = this.rt.state.localAgents?.sessions?.[sessionId]
-        const native = this.readAntigravity(binding, tool)
-        if (native) events[0] = protect(this.rt, mergeEvent(tool, {
-          type: 'tool', id: tool.id, output: tool.output ?? native.output, error: tool.error ?? native.error,
-        }))
-      }
-      return { events: toolId !== undefined ? events : onlyTools
-        ? events.filter(row => row.type === 'tool').map(summary)
-        : orderedRows(events).map(summary), running }
+    const running = this.turnRunning(sessionId, turn)
+    let events = this.storedEvents(db, sessionId, turn, toolId, onlyTools)
+    const recovered = !running && events.some(pendingClaudeShell) ? await this.recoverClaudeInterruption(sessionId, turn) : undefined
+    assertAllowed()
+    if (recovered) events = events.map(row => row.id === recovered.id
+      ? { ...protect(this.rt, mergeEvent(row, recovered)), recoveredInterruption: true } : row)
+    if (!running && !db.prepare('SELECT 1 FROM execution_turns WHERE part=? AND turn=?').get(sessionId, turn)) {
+      const prior = (await this.sessionTurns(sessionId, turn))[0]
+      const native = prior ? matchNative(prior, await this.nativeTurns(sessionId)) : undefined
+      assertAllowed()
+      events = mergeRows(this.rt, native?.events ?? prior?.events ?? [], toolId)
+    } else if (!onlyTools && !running && events.some(row => row.messageSeq !== undefined) && events.some(row => row.type === 'tool')) {
+      const prior = (await this.sessionTurns(sessionId, turn))[0]
+      assertAllowed()
+      const layouts = new Map(prior?.events.filter(row => row.layout?.length).map(row => [row.seq, row.layout]))
+      events = events.map(row => layouts.has(row.messageSeq) ? protect(this.rt, mergeEvent(row, {
+        type: 'text', layout: layouts.get(row.messageSeq),
+      })) : row)
     }
+    const tool = toolId !== undefined && events[0]
+    if (tool && (tool.output == null || (tool.status === 'failed' && tool.error == null))) {
+      const binding = this.rt.state.localAgents?.sessions?.[sessionId]
+      const native = this.readAntigravity(binding, tool)
+      if (native) events[0] = protect(this.rt, mergeEvent(tool, {
+        type: 'tool', id: tool.id, output: tool.output ?? native.output, error: tool.error ?? native.error,
+      }))
+    }
+    return { events: toolId !== undefined ? events : onlyTools
+      ? events.filter(row => row.type === 'tool').map(summary)
+      : orderedRows(events).map(summary), running }
+  }
+
+  async read({ botId, sessionId, turn, turns: several, toolId, beforeTurn, onlyTools } = {}) {
+    const assertAllowed = () => {
+      if (this.closed || typeof botId !== 'string' || typeof sessionId !== 'string' ||
+          !this.rt.botOf(botId) || this.ownerOf(sessionId) !== botId) {
+        throw new Error('请选择该 Bot 的私聊或历史会话。')
+      }
+    }
+    // The chat batches the tool lists of its visible turns into one request.
+    if (onlyTools === true && toolId === undefined) {
+      if (Array.isArray(several)) {
+        const turns = [...new Set(several.filter(Number.isSafeInteger).slice(0, 200))]
+        if (turns.length === 0) return { byTurn: {} }
+        assertAllowed()
+        return { byTurn: await this.readToolLists(sessionId, turns, assertAllowed) }
+      }
+      if (Number.isSafeInteger(turn)) {
+        assertAllowed()
+        return (await this.readToolLists(sessionId, [turn], assertAllowed))[turn]
+      }
+    }
+    assertAllowed()
+    if (toolId !== undefined && (turn === undefined || typeof toolId !== 'string' || toolId.length > 400)) throw new Error('工具调用无效。')
+    if (Number.isSafeInteger(turn)) return this.readNumberedTurn(sessionId, turn, { toolId, onlyTools, assertAllowed })
+    const db = this.database()
     const native = await this.nativeTurns(sessionId)
-    if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
+    assertAllowed()
     if (typeof turn === 'string') {
       const selected = native.find(row => 'native:' + row.nativeTurnId === turn)
       const events = mergeRows(this.rt, selected?.events ?? [], toolId)
@@ -459,7 +522,7 @@ export class ExecutionHistory {
     const stored = db.prepare('SELECT turn, started_at AS startedAt, ended_at AS endedAt FROM execution_turns WHERE part=? ORDER BY turn DESC').all(sessionId)
     const storedTurns = new Set(stored.map(row => row.turn))
     const old = (await this.sessionTurns(sessionId)).filter(row => !storedTurns.has(row.turn) && row.events.length)
-    if (!allowed()) throw new Error('请选择该 Bot 的私聊或历史会话。')
+    assertAllowed()
     const ids = new Set(db.prepare("SELECT identity FROM execution_events WHERE part=? AND identity LIKE 'tool:%'").all(sessionId).map(row => row.identity))
     const recentReports = db.prepare(`SELECT turn, data FROM execution_events WHERE part=?
       AND json_extract(data,'$.type')='text' ORDER BY seq DESC LIMIT 100`).all(sessionId)

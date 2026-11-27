@@ -1,4 +1,5 @@
-const shellTools = new Set(['bash', 'pwsh'])
+export const dshShellToolNames = Object.freeze(['bash', 'pwsh'])
+const shellTools = new Set(dshShellToolNames)
 const foregroundExit = /\n\[exit code: (\d+)\]$/u
 const persistentExit = /(?:^|\n)\[Command finished with exit code (\d+)\]$/u
 const killed = /\n\[killed by signal: [^\]\n]+\]$/u

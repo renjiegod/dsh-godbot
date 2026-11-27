@@ -88,6 +88,9 @@ test('recovers a legacy Claude shell interruption only at the matching turn boun
   assert.equal(summary.recoveredInterruption, true)
   assert.equal(summary.exitCode, 137)
   assert.equal(summary.status, 'failed')
+  const batch = await history.read({ botId: 'worker', sessionId: 'part', turns: [1, 2, 3], onlyTools: true })
+  assert.deepEqual(batch.byTurn[1].events, [summary])
+  assert.equal(batch.byTurn[2].events[0].recoveredInterruption, undefined)
   assert.equal((await history.read({ ...query, toolId: receipt.id })).events[0].output, 'Exit code 137\n[redacted]')
   assert.equal(await history.recoverClaudeInterruption('part', 2), undefined)
   assert.equal(await history.recoverClaudeInterruption('part', 3), undefined)
@@ -145,6 +148,7 @@ test('execution history respects DSH command failures in new and existing shell 
   assert.deepEqual(events.map(({ id, status, exitCode }) => [id, status, exitCode]), [
     ['shell', 'failed', 128], ['structured', 'completed', 0], ['read', 'completed', undefined], ['old', 'failed', 128],
   ])
+  assert.deepEqual((await history.read({ ...part, onlyTools: true })).events, events)
   assert.deepEqual((await history.read({ ...part, toolId: 'old' })).events[0].output, output)
 })
 
@@ -237,6 +241,9 @@ test('archived Claude report links to its retained native tool bodies', async (t
   const scoped = { botId: 'worker', sessionId: 'past' }
   assert.deepEqual((await history.read(scoped)).turns.map(row => row.turn), [5])
   assert.deepEqual((await history.read({ ...scoped, turn: 5 })).events.map(row => row.type), ['tool', 'text'])
+  const batch = await history.read({ ...scoped, turns: [5, 6], onlyTools: true })
+  assert.deepEqual(batch.byTurn[5].events.map(row => [row.id, row.target, row.detailAvailable]), [['read', 'app.js', true]])
+  assert.deepEqual(batch.byTurn[6], { events: [], running: false })
   assert.equal((await history.read({ ...scoped, turn: 5, toolId: 'read' })).events[0].output, 'file contents')
 })
 
@@ -309,12 +316,18 @@ test('several turns of one chat read their tool lists in one request', async (t)
   for (const turn of [1, 2]) {
     history.observe('part', { type: 'turn/start', data: { turn }, seq: turn * 10, time: 10_000 + turn })
     history.record('part', { type: 'tool', id: 'shell-' + turn, name: 'Shell', input: { command: 'echo ' + turn }, status: 'completed' })
+    if (turn === 1) history.record('part', { type: 'tool', id: 'large', name: 'Read', output: 'x'.repeat(64 * 1024), status: 'completed' })
     history.observe('part', { type: 'turn/end', data: { turn, reason: { kind: 'completed' } }, seq: turn * 10 + 1, time: 10_100 + turn })
   }
+  history.observe('part', { type: 'turn/start', data: { turn: 3 } })
   const one = turn => history.read({ botId: 'worker', sessionId: 'part', turn, onlyTools: true })
-  const many = await history.read({ botId: 'worker', sessionId: 'part', turns: [1, 2, 2, 'x'], onlyTools: true })
-  assert.deepEqual(Object.keys(many.byTurn), ['1', '2'])
+  const many = await history.read({ botId: 'worker', sessionId: 'part', turns: [2, 1, 2, 'x', 3], onlyTools: true })
+  assert.deepEqual(Object.keys(many.byTurn), ['1', '2', '3'])
   assert.deepEqual(many.byTurn[1], await one(1))
+  assert.deepEqual(many.byTurn[1].events.map(row => row.id), ['shell-1', 'large'])
+  assert.equal(many.byTurn[1].events[1].detailAvailable, true)
+  assert.equal(many.byTurn[1].events[1].output, undefined)
   assert.deepEqual(many.byTurn[2].events.map(row => row.id), ['shell-2'])
+  assert.deepEqual(many.byTurn[3], { events: [], running: true })
   await assert.rejects(history.read({ botId: 'other', sessionId: 'part', turns: [1], onlyTools: true }), /私聊/)
 })
