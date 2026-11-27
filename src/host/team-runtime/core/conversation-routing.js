@@ -2,7 +2,7 @@
 import { SOURCE_KIND } from './constants.js'
 import { requestTitle } from './part-titles.js'
 import { textOf } from './text.js'
-import { ownConversations } from './threads.js'
+import { conversationHead, ownConversations } from './threads.js'
 
 const CONVERSATIONS_MAX = 12
 const PROMPTS_MAX = 4
@@ -18,15 +18,24 @@ const common = new Set((
   'which who will with work would you your 更新 这个 那个 可以 需要 麻烦 帮忙 请问 一下 现在 继续 处理 回复'
 ).split(' '))
 
+// A task key names one task: an uppercase project key and a number, as in OPS-213 or
+// GB-12, also inside Chinese text. Standards and model families written the same way
+// (SHA-256, UTF-8, GPT-5) name no task, a version (GPT-6.2) is no key, and a lowercase
+// name such as gemini-3 is a name. A key decides a match by itself, so a false one
+// would put a message in a conversation it does not belong to.
+const TASK_KEY = /(?<![A-Za-z\d_-])([A-Z]{2,10})-\d{1,10}(?![A-Za-z\d_]|[.-]\d)/gu
+const NOT_TASKS = new Set(['AES', 'CRC', 'ECMA', 'GLM', 'GPT', 'IEEE', 'ISO', 'MPEG', 'PEP', 'RFC', 'RSA', 'SHA', 'UTF'])
+
 // Read topics locally. Shared task terms and identifiers are positive evidence;
 // a sender name, recent activity, or the foreground selection alone never is.
 function topic(text) {
-  const normalized = text.slice(0, TOPIC_CHARS).normalize('NFKC').toLowerCase()
+  const read = text.slice(0, TOPIC_CHARS).normalize('NFKC')
+  const normalized = read.toLowerCase()
   const terms = [...words.segment(normalized)]
     .filter(({ isWordLike, segment }) => isWordLike && /\p{L}/u.test(segment) && !common.has(segment)
       && (/[^\u0000-\u007f]/u.test(segment) || segment.length > 2))
     .map(({ segment }) => segment)
-  const issues = new Set(normalized.match(/\b[a-z][a-z\d]{1,20}-\d{1,10}\b/gu) ?? [])
+  const issues = new Set([...read.matchAll(TASK_KEY)].filter(([, project]) => !NOT_TASKS.has(project)).map(([key]) => key))
   return { terms: new Set(terms), phrase: terms.join(' '), issues }
 }
 
@@ -41,6 +50,24 @@ function similarity(query, prior) {
 }
 
 export const relatedBotMessages = (message, previous) => similarity(topic(message), topic(previous)) > 0
+
+// Session IDs as Godbot writes them. The ID is what the user copies from a session row
+// and what a Bot is told when work is handed on outside message_bot.
+const SESSION_ID = /(?<![\w-])session-[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}(?![\w-])/giu
+
+// The one conversation of `bot` a message names by session ID: any part of it, so a
+// conversation that went on to a newer part after a context handoff is still found.
+// A Bot's first part has the Bot's id (threads.js currentSession), so that id names its
+// first conversation. A message that names two of its conversations leaves the choice
+// to the topic.
+export function mentionedConversation(bot, text) {
+  const heads = new Set()
+  for (const [id] of String(text ?? '').normalize('NFKC').matchAll(SESSION_ID)) {
+    const head = conversationHead(bot, id.toLowerCase())
+    if (head !== undefined) heads.add(head)
+  }
+  return heads.size === 1 ? [...heads][0] : undefined
+}
 
 function promptOf(event) {
   if (event.type !== 'user/message') return undefined
@@ -83,6 +110,19 @@ export function install(rt) {
       return undefined
     }
     return rt.conversationOpeningFrom(sender, target, fromPart)
+  }
+
+  // Where a message from `sender` must go in `target`'s chat, strongest evidence first:
+  // the conversation the sender named, the handoff the sender's part answers or opened,
+  // then the one conversation the text names by session ID. `named` is a part the caller
+  // checked belongs to `target`. `by` says why when the sender's words chose it. Undefined
+  // leaves the choice to the topic. Each of these gets its own turn there (route).
+  rt.botMessageDestination = (sender, target, { fromPart, named, text }) => {
+    if (named !== undefined) return { part: named, by: 'named' }
+    const origin = rt.botMessageOrigin(sender, target, fromPart)
+    if (origin !== undefined) return { part: origin }
+    const mentioned = mentionedConversation(target, text)
+    return mentioned === undefined ? undefined : { part: mentioned, by: 'mentioned' }
   }
 
   async function recentPrompts(conversation, signal) {
@@ -137,8 +177,9 @@ export function install(rt) {
 
   async function route(bot, message, send) {
     message.signal?.throwIfAborted()
-    // A handoff's origin is a destination, even when the update has different words
-    // or is visible to the user. It must get its own turn in that conversation.
+    // A handoff's origin, or a conversation the sender named, is a destination, even
+    // when the update has different words or is visible to the user. It must get its
+    // own turn in that conversation (botMessageDestination).
     const linked = message.originPart !== undefined
     let match
     if (linked) match = { sessionId: message.originPart, steer: false }
