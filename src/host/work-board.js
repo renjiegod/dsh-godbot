@@ -7,6 +7,7 @@ import { botWorkspaceId } from './bot-task-workspace.js'
 import { accessOf, cardId, installBoardIndex, publicCard, queryBoard } from './work-board-index.js'
 import { sourceSummary, sourceDetail } from './work-board-sources.js'
 import { ownConversations } from './team-runtime/core/threads.js'
+import { readDiscussion, WorkBoardDiscussion } from './work-board-discussion.js'
 
 const denied = () => Object.assign(new Error('工作项不存在或无法访问。'), { code: 'bot/not-found' })
 const stale = () => Object.assign(new Error('工作项或交付证据已更新，请刷新后重新确认。'), { code: 'bot/refused' })
@@ -70,7 +71,7 @@ function detailFor(service, db, req, readOnly) {
   return { ...item, readOnly }
 }
 export function readBoardOnly(dir, rt, endpoint, req = {}) {
-  if (endpoint === 'board-action') throw new Error('当前宿主为只读。')
+  if (endpoint === 'board-action' || endpoint === 'board-comment') throw new Error('当前宿主为只读。')
   const path = join(dir, 'godbot.sqlite3')
   if (!existsSync(path)) throw new Error('等待拥有此工作区的宿主初始化看板。')
   const db = new DatabaseSync(path, { readOnly: true })
@@ -78,6 +79,11 @@ export function readBoardOnly(dir, rt, endpoint, req = {}) {
     if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_cards'").get())
       throw new Error('请先在拥有工作区的宿主打开新版工作看板。')
     if (endpoint === 'board-view') return queryBoard(db, accessOf(rt), req, true)
+    if (endpoint === 'board-discussion' || endpoint === 'board-comment-file') {
+      if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_comments'").get())
+        throw new Error('请先在拥有工作区的宿主初始化任务讨论。')
+      return readDiscussion(db, rt, checkedRow(db, rt, req), endpoint, req, true)
+    }
     const byKey = db.prepare('SELECT data FROM records WHERE collection=? AND id=?')
     const byRun = db.prepare(
       "SELECT data FROM records WHERE collection=? AND json_extract(data,'$.runId')=? ORDER BY seq",
@@ -112,12 +118,17 @@ export class WorkBoard {
       'INSERT INTO board_cards(kind,scope,source_id,meta,origin_key) VALUES(?,?,?,?,?)',
     )
     this.update = this.db.prepare('UPDATE board_cards SET summary=? WHERE number=?')
+    this.discussion = new WorkBoardDiscussion(this, checkedRow, fingerprint)
+    this.rt.openWorkBoardConversation = (...args) => this.discussion.openConversation(...args)
+    this.rt.admitWorkBoardComment = (args) => this.discussion.admit(args)
+    this.rt.reconcileWorkBoardComment = (id, sessionId, turn) => this.discussion.reconcile(id, sessionId, turn)
     this.roomsDirty = true
     this.roomKeys = new Map()
     this.roomVersions = new Map()
     this.liveKeys = new Set()
     this.off = this.rt.onSaved?.(() => {
       this.roomsDirty = true
+      this.discussion.schedule()
       this.schedule()
     })
     this.rt.workBoardLive = () => this.schedule()
@@ -142,6 +153,9 @@ export class WorkBoard {
     this.closed = true
     clearTimeout(this.timer)
     this.off?.()
+    delete this.rt.openWorkBoardConversation
+    delete this.rt.admitWorkBoardComment
+    delete this.rt.reconcileWorkBoardComment
     delete this.rt.workBoardLive
     this.service.database.boardChanged = undefined
   }

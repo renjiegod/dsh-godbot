@@ -99,8 +99,9 @@ export function install(rt) {
       ...(notice.botId === undefined ? {} : { botId: notice.botId }),
       ...(notice.sessionId === undefined ? {} : { sessionId: notice.sessionId }),
       ...(notice.roomId === undefined ? {} : { roomId: notice.roomId }),
+      ...(notice.workItemId && notice.commentId ? { workItemId: notice.workItemId, commentId: notice.commentId } : {}),
     }
-    const collapseKey = `${notice.kind}:${notice.sessionId ?? notice.roomId ?? notice.botId ?? ''}`.slice(0, 64)
+    const collapseKey = `${notice.kind}:${notice.workItemId ?? notice.sessionId ?? notice.roomId ?? notice.botId ?? ''}`.slice(0, 64)
     for (const { deviceId } of registry.list()) {
       const entry = data.pushKeys[deviceId]
       if (entry === undefined || connected.has(deviceId)) continue

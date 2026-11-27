@@ -14,6 +14,7 @@ import {
 } from '../host/team-runtime/shared/work-board.js'
 import style from './work-board.css'
 import { BoardAnchor } from './work-board-anchor.js'
+import { WorkBoardDiscussionPanel } from './work-board-discussion.js'
 
 const button = (label, onClick, props = {}) => h('button', { type: 'button', onClick, ...props }, label)
 const option = (value, label) => h('option', { key: value, value }, label)
@@ -29,7 +30,9 @@ function prefs() {
 }
 function subscribe(fn) {
   const events = new EventSource('api/godbot/team/feed')
-  for (const topic of ['work-board', 'revision', 'hello', 'live']) events.addEventListener(topic, () => fn(topic))
+  for (const topic of ['work-board', 'revision', 'hello', 'live', 'work-board-discussion']) {
+    events.addEventListener(topic, (event) => fn(topic, topic === 'work-board-discussion' ? JSON.parse(event.data) : undefined))
+  }
   return () => events.close()
 }
 function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) {
@@ -181,6 +184,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
   })
   const [form, setForm] = useState(() => (initial.seed ? createForm(initial.seed) : null))
   const [anchor, setAnchor] = useState(null)
+  const [discussion, setDiscussion] = useState(!!initial.comment)
+  const [commentFocus, setCommentFocus] = useState(initial.comment)
   const panel = useRef(null),
     opener = useRef(null),
     last = useRef(null)
@@ -215,6 +220,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
     if (focus) opener.current = document.activeElement
     setForm(null)
     setSelection(id)
+    setDiscussion(false)
+    setCommentFocus(null)
     route(typeof id === 'string' ? id : null)
   }
   const closeDetail = () => {
@@ -228,6 +235,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
     }
     setForm(null)
     setSelection(null)
+    setDiscussion(false)
+    setCommentFocus(null)
     route(null)
     requestAnimationFrame(() => opener.current?.focus?.())
   }
@@ -245,7 +254,7 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
           ...node.querySelectorAll(
             'button:not(:disabled),input:not(:disabled),textarea:not(:disabled),select:not(:disabled)',
           ),
-        ]
+        ].filter(control => control.getClientRects().length > 0)
         if (!list.length) return
         if (e.shiftKey && (document.activeElement === list[0] || document.activeElement === node)) {
           e.preventDefault()
@@ -498,6 +507,7 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
             {
               className: 'wb-detail',
               ref: panel,
+              'data-discussion': discussion || undefined,
               role: 'dialog',
               'aria-modal': true,
               'aria-label': t('Work item'),
@@ -537,6 +547,18 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
                         ' · ',
                         label(sourceNames, item.source),
                       ),
+                      h('div', { className: 'wb-detail-tabs', 'aria-label': t('Work item') },
+                        button(t('Details'), () => {
+                          setDiscussion(false)
+                          setCommentFocus(null)
+                          route(item.id)
+                        }, { 'aria-pressed': !discussion }),
+                        button(t('Discussion'), () => setDiscussion(true), { 'aria-pressed': discussion })),
+                      h(WorkBoardDiscussionPanel, {
+                        key: item.id, id: item.id, active: discussion, offline: readOnly, focus: commentFocus,
+                        subscribe, openExecution: original,
+                      }),
+                      h('div', { hidden: discussion },
                       h('small', null, when(item.updated)),
                       h('h3', null, t('Acceptance criteria')),
                       h('pre', null, item.criteria || '—'),
@@ -600,6 +622,7 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
                           )
                         : null,
                       !readOnly ? h('footer', null, ...actionButtons(item)) : null,
+                      ),
                     ),
           ),
         )

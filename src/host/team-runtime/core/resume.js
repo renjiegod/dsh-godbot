@@ -370,6 +370,16 @@ export function install(rt) {
     const workId = rt.workOf(trigger)
     if (!rt.ownsWork(record.botId, workId)) return
     const exchangeId = trigger.exchangeId
+    if (typeof workId === 'string' && workId.startsWith('board-comment/')) {
+      if (ended.reason?.kind === 'aborted' && ended.reason.reason?.kind === 'disposed') {
+        update(sessionId, () => record)
+        return
+      }
+      const events = await logOf(sessionId)
+      const turn = events && turnOf(events, exchangeId ?? workId)
+      if (turn) rt.reconcileWorkBoardComment?.(workId, sessionId, turn)
+      return
+    }
     const asker = rt.workAsker(workId)
     const sender = asker?.senderSessionId
     if (exchangeId === undefined || sender === undefined || rt.botOf(sender) === undefined) return

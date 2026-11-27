@@ -232,8 +232,10 @@ export class BotTaskWorkspace {
         const member = rt.botOf(bot.id)
         const prior = task.boardSessionOwner === bot.id ? task.boardSession : undefined
         const anchor = prior ?? (task.boardOrigin?.botId === bot.id ? task.boardOrigin.sessionId : undefined)
-        sessionId = (anchor && await rt.openBotConversation(member, anchor))
-          || await rt.newBotConversation(member, 'GB-' + task.boardNumber + ' · ' + task.title)
+        sessionId = rt.openWorkBoardConversation
+          ? await rt.openWorkBoardConversation(task.boardNumber, member, task.title, anchor)
+          : (anchor && await rt.openBotConversation(member, anchor))
+            || await rt.newBotConversation(member, 'GB-' + task.boardNumber + ' · ' + task.title)
         if (!sessionId || this.closing || rt.readOnly() || !store.get('members',bot.id)
           || store.get('tasks',task.id)?.assignmentId !== next.id) throw new Error('任务会话或负责人已改变。')
         store.update('tasks', task.id, { boardSession:sessionId, boardSessionOwner:bot.id })

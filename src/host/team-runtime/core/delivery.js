@@ -147,6 +147,10 @@ export function install(rt) {
     }
     await rt.ensureCapabilities(targetSessionId)
     const agent = await resolveAgent(targetSessionId)
+    if (['request', 'resume'].includes(role) && String(work ?? exchangeId).startsWith('board-comment/')) {
+      if (!rt.admitWorkBoardComment) throw new Error('Work board discussion is unavailable.')
+      rt.admitWorkBoardComment({ exchangeId: work ?? exchangeId, toId, sessionId: targetSessionId })
+    }
     // A steered message cuts into a running turn at its next step; a follow-up
     // queues for the next turn (see turns.js for how each is routed).
     const message = createUserMessage({

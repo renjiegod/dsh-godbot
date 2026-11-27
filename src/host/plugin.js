@@ -49,6 +49,7 @@ export function workspaceOperations(rt, create, onError = () => {}) {
       if (rt.readOnly()) { checkLater(); return operations }
       if (operations) {
         operations.service.botTasks.resume()
+        operations.service.board.discussion.schedule()
         return operations
       }
       opening ??= initialize().catch(error => {
@@ -124,6 +125,9 @@ export async function apply(ctx, config = {}) {
       if (!ops) return readBoardOnly(stateDir, runtime, endpoint, body)
       if (endpoint === 'board-view') return ops.service.board.view(body)
       if (endpoint === 'board-item') return ops.service.board.item(body)
+      if (endpoint === 'board-discussion' || endpoint === 'board-comment-file')
+        return ops.service.board.discussion.read(endpoint, body)
+      if (endpoint === 'board-comment') return ops.service.board.discussion.action(body)
       return ops.service.board.action(body)
     }
     runtime.workBoardProgress = withService((service, request) => service.botTasks.progress(request))

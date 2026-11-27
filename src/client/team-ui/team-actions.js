@@ -39,7 +39,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
   }
   return {
     openWorkBoard: (initial = {}) => {
-      const hash = '#/godbot/work' + (initial.id ? '/' + initial.id : '')
+      const hash = '#/godbot/work' + (initial.id ? '/' + initial.id + (initial.comment ? '/comment/' + initial.comment : '') : '')
       if (typeof window !== 'undefined' && location.hash !== hash) history.pushState(history.state, '', hash)
       ui.set(state => ({ ...state, workBoard: { ...initial, token: Date.now() }, settings: null,
         menu: null, details: null, sectionContext: null, leftDrawer: false }))

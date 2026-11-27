@@ -256,3 +256,107 @@ test('one full-team root needs every current child accepted and denied targets d
   assert.equal((await board.view({ search: 'receipts' })).counts.all, 0)
   await assert.rejects(board.item({ id: card.id }), /无法访问/)
 })
+
+test('discussion stores replies, reactions, attachments and wake receipts by card and parent', async (t) => {
+  const { board, rt, dir } = setup(t)
+  const received = []
+  rt.deliver = async (args) => received.push(args)
+  rt.ctx = { get: () => ({ saveFile: async ({ name, data }) => ({ name, size: data.length }) }) }
+  rt.newBotConversation = async bot => 'discussion-' + bot.id
+  const card = await board.action({ op: 'create', title: 'Discussion round trip', requestId: 'discuss' })
+  const duplicateCard = await board.action({ op: 'create', title: 'Another card', requestId: 'other' })
+  const comment = (req) => board.discussion.action({ id: card.id, ...req })
+  const read = (req = {}) => board.discussion.read('board-discussion', { id: card.id, ...req })
+  const input = {
+    op: 'post', body: '@Worker review @Worker again', targets: ['b'], requestId: 'comment-1',
+    files: [{ name: 'proof.txt', mime: 'text/plain', data: 'cHJvb2Y=' }],
+  }
+  const [posted, retry] = await Promise.all([comment(input), comment(input)])
+  assert.deepEqual(posted, retry)
+  await tick()
+  assert.equal(received.length, 1)
+  const out = received[0]
+  assert.equal(out.sessionId, 'discussion-b')
+  assert.deepEqual(out.files, [{ name: 'proof.txt', size: 5 }])
+  assert.match(out.text, /Discussion round trip/)
+  assert.match(out.text, /@Worker review/)
+  let entry = (await read()).entries[0]
+  const attachment = entry.attachments[0]
+  assert.equal(entry.runs[0].state, 'sent')
+  assert.deepEqual(entry.mentions, ['b'])
+  assert.equal((await board.discussion.read('board-comment-file', {
+    id: card.id, commentId: entry.id, fileId: attachment.id,
+  })).bytes, input.files[0].data)
+  await assert.rejects(board.discussion.read('board-comment-file', {
+    id: duplicateCard.id, commentId: entry.id, fileId: attachment.id,
+  }), /无法访问/)
+  await assert.rejects(board.discussion.action({
+    id: duplicateCard.id, op: 'post', parentId: entry.id, body: 'Cross-card reply', requestId: 'cross',
+  }), /无法访问/)
+  await comment({ op: 'resolve', commentId: entry.id, resolved: true, requestId: 'resolve' })
+  board.discussion.recordTurn(out.exchangeId, 'unrelated-session', 41, 'running')
+  assert.equal((await read()).entries[0].runs[0].turnId, null)
+  board.discussion.recordTurn(out.exchangeId, out.sessionId, 7, 'running')
+  board.discussion.reply(out.exchangeId, 'Actual Bot answer')
+  board.discussion.reply(out.exchangeId, 'Duplicate runtime receipt')
+  const thread = await read({ thread: entry.id })
+  assert.equal(thread.root.resolvedAt, null)
+  assert.equal(thread.root.replyCount, 1)
+  assert.equal(thread.root.runs[0].state, 'answered')
+  assert.equal(thread.root.runs[0].turnId, 7)
+  assert.equal(thread.entries[0].body, 'Actual Bot answer')
+  const answer = thread.entries[0]
+  await comment({ op: 'react', commentId: answer.id, emoji: '👍', active: true, requestId: 'reaction' })
+  await comment({ op: 'post', parentId: answer.id, body: 'And what next?', requestId: 'follow-up', targets: ['b'] })
+  await tick()
+  assert.equal(received.length, 2)
+  assert.equal(received[1].sessionId, out.sessionId)
+  assert.match(received[1].text, /Actual Bot answer/)
+  await comment({
+    op: 'edit', commentId: entry.id, body: '@Worker and @Other', expectedRevision: 1,
+    keepFiles: [attachment.id], targets: ['c'], requestId: 'edit',
+  })
+  await tick()
+  assert.equal(received.length, 3)
+  assert.equal(received[2].toId, 'c')
+  await assert.rejects(comment({ op: 'delete', commentId: entry.id, expectedRevision: 1, requestId: 'old' }), /已更新/)
+  await comment({ op: 'delete', commentId: entry.id, expectedRevision: 2, requestId: 'delete' })
+  entry = (await read()).entries[0]
+  assert.equal(entry.deleted, true)
+  assert.equal(entry.body, '')
+  assert.deepEqual(entry.attachments, [])
+  const saved = readBoardOnly(dir, rt, 'board-discussion', { id: card.id, thread: entry.id, focus: answer.id })
+  assert.equal(saved.readOnly, true)
+  assert.equal(saved.focusFound, true)
+  assert.deepEqual(saved.entries[0].reactions, ['👍'])
+  rt.state.bots.b.private = true
+  assert.equal((await read({ thread: entry.id })).entries[0].body, '')
+  await assert.rejects(comment({ op: 'post', body: 'unsafe', targets: ['b'], requestId: 'stale-plan' }), /已更新/)
+})
+
+test('discussion never invokes outside the source group and separates notes from dispatch', async (t) => {
+  const { board, rt, database } = setup(t)
+  const delivered = []
+  rt.deliver = async args => delivered.push(args)
+  const card = await board.action({ op: 'create', title: 'Group context', owner: 'b', room: 'r', requestId: 'group-draft' })
+  const write = (body, requestId, extra) => board.discussion.action({ id: card.id, body, op: 'post', requestId, ...extra })
+  await write('Ordinary comment', 'ordinary')
+  await write('@Other should not see group notes', 'outside')
+  await write('@Worker only a note', 'quiet', { quiet: true })
+  await tick()
+  assert.equal(delivered.length, 0)
+  const page = await board.discussion.read('board-discussion', { id: card.id })
+  assert.equal(page.entries.length, 3)
+  assert.equal(page.entries[1].unmatched, true)
+  assert.equal(page.assignee, null)
+  assert.deepEqual(page.bots.map(bot => bot.id), ['b'])
+  assert.equal(database.all('tasks').length, 0)
+  const cited = await write('@Worker check this', 'call', { targets: ['b'] })
+  await tick()
+  assert.equal(delivered.length, 1)
+  board.discussion.recordTurn(delivered[0].exchangeId, delivered[0].sessionId, 3, 'stopped')
+  board.discussion.reply(delivered[0].exchangeId, 'Stopped text must not become a successful reply')
+  const latest = await board.discussion.read('board-discussion', { id: card.id, thread: cited.commentId })
+  assert.equal(latest.root.runs[0].state, 'stopped')
+  assert.equal(latest.entries.length, 0)
+})

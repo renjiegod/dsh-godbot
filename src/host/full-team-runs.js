@@ -141,11 +141,13 @@ export class FullTeamRuns {
     hook(rt, 'holdWork', old => (id, text) => {
       const task = this.live(id)
       if (task) this.store.update(tasks, task.id, { waitingForChildren: true })
+      this.service.board?.discussion.update(id, 'waiting')
       return old(id, text)
     })
     hook(rt, 'closeWork', old => (id, name, text, extra) => {
       const result = old(id, name, text, extra)
       this.service.botTasks?.botReply(id, text)
+      this.service.board?.discussion.reply(id, text)
       const row = this.live(id)
       if (row && !row.targetId.startsWith('room/')) this.report(id, text, { workId: id, source: 'handoff' })
       return result
@@ -159,7 +161,10 @@ export class FullTeamRuns {
     for (const name of ['dropWork', 'abandonWork']) hook(rt, name, old => (id, ...args) => {
       this.end(id, name === 'abandonWork' ? 'stopped' : 'unknown', 'Godbot ' + name)
       const result = old(id, ...args)
-      if (name === 'dropWork' || result) this.service.botTasks?.botFailed(id, 'unknown', 'Bot 已结束此派工，尚无结果回执。')
+      if (name === 'dropWork' || result) {
+        this.service.botTasks?.botFailed(id, 'unknown', 'Bot 已结束此派工，尚无结果回执。')
+        this.service.board?.discussion.update(id, name === 'abandonWork' ? 'stopped' : 'unknown')
+      }
       return result
     })
     hook(rt, 'postToRoom', old => (room, sender, text, extra, ...rest) => {
@@ -169,7 +174,8 @@ export class FullTeamRuns {
     })
     hook(rt, 'deliver', old => async args => {
       const reply = this.store.get(works, args.replyTo)
-      if (!args.toId && args.role === 'reply' && (reply || this.service.botTasks?.ownsWork(args.replyTo))) return
+      if (!args.toId && args.role === 'reply' &&
+          (reply || this.service.botTasks?.ownsWork(args.replyTo) || this.service.board?.discussion.owned(args.replyTo))) return
       if (args.role === 'room') {
         const round = [...rt.roomProgress.values()].find(r => r.roomId === args.roomId && r.startSeq != null)
         const parent = round && activeRooms(args.roomId).find(row => row.roomSeq === round.startSeq)
@@ -224,7 +230,11 @@ export class FullTeamRuns {
       }
       return next()
     }, { prepend: true }))
+    disposers.push(rt.ctx.on('agent/inbox/discarded', ({ message } = {}) => {
+      if (message?.source?.kind === 'bot') this.service.board?.discussion.update(message.source.exchangeId, 'stopped')
+    }))
     disposers.push(rt.ctx.on('session/event', (session, event) => {
+      this.service.board?.discussion.observe(session, event)
       if (event.type !== 'turn/end') return
       this.service.botTasks?.observeEnd(session.id, rt.live.get(session.id), event.data?.reason)
       const row = current(session.id)

@@ -279,6 +279,8 @@ export function install(rt) {
 
   READS.add('board-view')
   READS.add('board-item')
+  READS.add('board-discussion')
+  READS.add('board-comment-file')
   async function setPrefs(body) {
     if (body.theme !== undefined) {
       if (typeof body.theme !== 'string' || !/^[a-z][\w-]{0,31}$/.test(body.theme)) throw invalid('Unknown theme')
@@ -762,6 +764,9 @@ export function install(rt) {
         case 'board-view':
         case 'board-item':
         case 'board-action':
+        case 'board-discussion':
+        case 'board-comment':
+        case 'board-comment-file':
           if (!profileOwner) return fail('Work board access requires the profile owner.', 'bot/refused')
           return ok(await rt.workBoard(endpoint, body))
         case 'automation-view':
