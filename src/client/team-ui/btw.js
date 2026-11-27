@@ -68,9 +68,13 @@ export function BtwCardView({ card, compact = false, sessionId, actions, onDelet
     answer !== '' ? h('div', { className: 'bt-btw-answer' }, h(MarkdownText, { text: answer, labels: mdLabels(), variant: 'compact' })) : null) : null)
 }
 
+const NO_FACTS = { turns: undefined, openTurn: undefined }
+
+// A window without the chat's turn helpers knows no turns.
 export function useTurnFacts(sessionId, actions) {
-  const [facts, setFacts] = useState(() => actions.turnFacts(sessionId))
+  const [facts, setFacts] = useState(() => actions.turnFacts?.(sessionId) ?? NO_FACTS)
   useEffect(() => {
+    if (!actions.turnFacts || !actions.watchTurns) return undefined
     let live = true
     const read = () => {
       if (!live) return

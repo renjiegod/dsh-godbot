@@ -3,8 +3,18 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { until } from '../host.mjs'
 import { openBotChat, openFullTeam } from '../native-ui.mjs'
 
+// The endpoint a request asks for: a Godbot or DSH call names it in its body.
+const endpointOf = (request) => {
+  let endpoint = request.url().replace(/^.*\/api\//u, '').split('?')[0]
+  try { const body = JSON.parse(request.postData() ?? 'null'); endpoint = body?.endpoint ?? body?.method ?? endpoint } catch { /* not JSON */ }
+  return endpoint
+}
+
 // Bot chats use their own /goal and refuse the other DSH commands. Saving the team does not make every
 // open window ask for the command list again, and a switch asks only what it draws.
+// The details panel stays open through the saves and switches: it reads a Bot's run
+// stats when its details view opens and when a turn closes, not on every render of the
+// panel. A new role starts no turn; it goes along with the Bot's next one.
 // The shield used to lift and re-register each shadow on every save: one
 // `commands/change` per command, chat and save, each answered by the browser with a
 // `commands/list` request.
@@ -35,12 +45,20 @@ export default async function COMMAND_QUIET({ makeHost, candidate, note }) {
   const rows = await a.rpc('commands/list', { agentId: chats[0] })
   note('shadowed', { commands: rows.length })
 
+  await a.page.locator('[data-gb-bot-model]').click()
+  await a.page.locator('.bt-panel .bt-drawer-id').waitFor()
   let lists = 0
-  const count = request => { if (request.url().includes('/api/commands/list')) lists += 1 }
+  let stats = 0
+  const count = (request) => {
+    if (request.url().includes('/api/commands/list')) lists += 1
+    if (request.url().includes('/api/') && endpointOf(request) === 'run-stats') stats += 1
+  }
   a.page.on('request', count)
   // Let the opening reads settle, then save the team a few times.
   await delay(1500)
   lists = 0
+  stats = 0
+  const calls = a.model.calls.length
   for (let index = 0; index < 6; index++) {
     await a.bot('update-bot', { id: bots[index % 2].id, role: 'Quiet role ' + index })
     await delay(250)
@@ -49,19 +67,37 @@ export default async function COMMAND_QUIET({ makeHost, candidate, note }) {
   a.page.off('request', count)
   note('command-list-requests', { saves: 6, requests: lists, before: 6 * chats.length * rows.length * 2 })
   assert.ok(lists <= 2, `saving the team asked for the command list ${lists} times`)
+  // A new role starts no turn of the Bot: it goes along with the next one. The saves
+  // redraw the open panel, and its run stats wait for a turn to close.
+  note('profile-saves', { saves: 6, modelCalls: a.model.calls.length - calls, runStats: stats })
+  assert.equal(a.model.calls.length, calls, 'saving a role made no model call')
+  assert.equal(stats, 0, `saving the team read the open details' run stats ${stats} times`)
   const after = await a.rpc('commands/list', { agentId: chats[1] })
   assert.ok(after.every(expected), 'the shadows stay after the saves')
+
+  // The Bot's next turn carries its latest role, once, and the open panel reads the run
+  // stats once that turn has closed.
+  const told = a.model.calls.length
+  stats = 0
+  a.page.on('request', count)
+  await a.bot('send', { sessionId: bots[0].id, text: 'What is your role now?' })
+  await until(async () => (await a.bot('chat', { botId: bots[0].id })).items.filter(item => item.kind === 'bot').length >= 2, 'the reply after the role change')
+  await until(() => stats >= 1, 'the run stats read after the turn closed')
+  await delay(1000)
+  a.page.off('request', count)
+  const turn = a.model.calls.slice(told).filter(call => call.sessionId === chats[0])
+  const notes = turn.flatMap(call => call.body.messages).flatMap(message => (Array.isArray(message.content) ? message.content : [{ text: message.content }]))
+    .map(block => String(block?.text ?? '')).filter(text => text.includes('Your role is now'))
+  note('profile-note', { modelCalls: turn.length, notes, runStats: stats })
+  assert.ok(turn.length >= 1, 'the next message reached the model')
+  assert.ok(notes.length >= 1 && notes.every(text => text.includes('Your role is now "Quiet role 4"')), 'the next turn carries the latest role')
+  assert.ok(!notes.some(text => text.includes('Quiet role 0') || text.includes('Quiet role 2')), 'the next turn carries no older role')
+  assert.equal(stats, 1, `one closed turn read the open details' run stats ${stats} times`)
 
   // Switching between two Bot chats asks only for what the new chat draws: no fresh model
   // catalog for a Bot that has its model, and no native terminal status of its own.
   const asked = []
-  const record = (request) => {
-    const url = request.url()
-    if (!url.includes('/api/')) return
-    let endpoint = url.replace(/^.*\/api\//u, '').split('?')[0]
-    try { const body = JSON.parse(request.postData() ?? 'null'); endpoint = body?.endpoint ?? body?.method ?? endpoint } catch { /* not JSON */ }
-    asked.push(endpoint)
-  }
+  const record = (request) => { if (request.url().includes('/api/')) asked.push(endpointOf(request)) }
   a.page.on('request', record)
   for (const bot of [bots[1], bots[0], bots[1]]) {
     await openBotChat(a, bot)
@@ -72,5 +108,8 @@ export default async function COMMAND_QUIET({ makeHost, candidate, note }) {
   note('switch-requests', { switches: 3, counts })
   assert.equal(counts.models ?? 0, 0, 'switching asks for no model catalog')
   assert.equal(counts['godbot/terminalStatus'] ?? 0, 0, 'switching asks for no native terminal status')
+  // One read for each details view that opens, none for the Bot that was left.
+  assert.ok(await a.page.locator('.bt-panel .bt-drawer-id').isVisible(), 'the details panel followed the switches')
+  assert.ok((counts['run-stats'] ?? 0) <= 3, `three switches read the run stats ${counts['run-stats']} times`)
   assert.equal(typeof (await a.bot('state')).nativeTerminals, 'object', 'the team state names the native terminals')
 }

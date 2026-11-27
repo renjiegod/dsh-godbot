@@ -20,6 +20,19 @@ function turnClosed(turn) {
   return seqNum(turn?.end) !== undefined
 }
 
+// The number of the chat's newest closed turn, null while every turn it has is open. It
+// moves only when a turn closes; older turns loaded later (an earlier page) leave it as it
+// is. Undefined when the chat has no turns to tell: before its timeline has loaded (the
+// shell shows an empty one until then) or before its first turn.
+export function lastClosedTurn(turns) {
+  if (!turns || typeof turns.values !== 'function' || turns.size === 0) return undefined
+  let last = null
+  for (const turn of turns.values()) {
+    if (typeof turn?.turn === 'number' && turnClosed(turn) && (last === null || turn.turn > last)) last = turn.turn
+  }
+  return last
+}
+
 // A usable anchorSeq. Null and absence mean an old card, which still uses atSeq.
 function anchorOf(card) {
   if (card == null || card.anchorSeq == null) return undefined

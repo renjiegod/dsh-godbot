@@ -549,11 +549,10 @@ export function install(rt) {
     }
     await rt.save()
     // The system prompt reads the live profile every turn, but a Session with
-    // several rounds behind it follows the old kickoff's pull until a message
-    // lands; notify the Bot's chat so the next turn honors the new profile.
-    const notes = []
-    if (bot.role !== roleBefore) notes.push(`Your role is now "${bot.role || '(none)'}"`)
-    if (bot.instructions !== instructionsBefore) notes.push(`Your instructions now read:\n${bot.instructions || '(none)'}`)
+    // several rounds behind it follows the old kickoff's pull until something lands
+    // among its messages: the Bot's chat is told, as context of its next turn there
+    // (prompt.js), so the edit itself starts no turn and costs no model call.
+    const changed = { role: bot.role !== roleBefore, instructions: bot.instructions !== instructionsBefore }
     // A held greeting means the model pick is still open: the kickoff it later sends
     // already reads the new profile, and a notice would start a turn before that.
     // A Bot editing itself in its own chat just got the tool result in the turn
@@ -561,7 +560,12 @@ export function install(rt) {
     // reply. The same edit made from a group Session reaches no own-chat turn, so
     // the notice still goes out.
     const selfEditInChat = actorId === bot.id && fromSessionId === rt.chatOf(bot.id)
-    if (notes.length > 0 && bot.kickoff === undefined && !selfEditInChat) {
+    if ((changed.role || changed.instructions) && bot.kickoff === undefined && !selfEditInChat && rt.noteProfile?.(bot, changed) !== true) {
+      // A host without runtime context: a message tells the Bot, and starts a turn.
+      const notes = [
+        changed.role ? `Your role is now "${bot.role || '(none)'}"` : '',
+        changed.instructions ? `Your instructions now read:\n${bot.instructions || '(none)'}` : '',
+      ].filter(line => line !== '')
       void rt.deliver({ toId: bot.id, text: notes.join('\n'), role: 'update' })
         .catch(error => rt.warn('godbot: profile update for %s not delivered: %s', bot.name, error?.message ?? error))
     }

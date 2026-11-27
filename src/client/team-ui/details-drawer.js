@@ -25,6 +25,8 @@ import { sessionLabel, sessionMeta, sessionTime, useBotSessionRows } from './bot
 import { CopyIdButton, SessionIdLine } from './copy-id.js'
 import { t } from './i18n.js'
 import { nativeMode } from '../native-agent-target.js'
+import { useTurnFacts } from './btw.js'
+import { lastClosedTurn } from './btw-model.js'
 
 function transcriptOf(list, id, name, hiddenTurns = []) {
   const outline = list.projectionsBySession?.[id]?.values?.turnOutline ?? list.byId[id]?.projectionValues?.turnOutline
@@ -54,20 +56,30 @@ function PermissionRow({ bot, roster, actions, run }) {
     h(PermissionPicker, { catalog, saved: bot.permission ?? catalog.defaultPreset, repick: bot.permission === undefined, onPick: permission => run(actions.updateBot(bot.id, { permission })) }))
 }
 
-// The current part's turns, speed, cache hits and context, refreshed when a turn starts or ends.
-export function RunStats({ bot, part, running, actions }) {
+// The current part's turns, speed, cache hits and context. They settle when a turn of the
+// chat closes, so that is when they are read again. The session's busy flag is not the
+// signal: it also blinks for work that ends no turn, and a re-render of the panel is none
+// either. The chat's turns arriving after the first read, or leaving, change nothing.
+export function RunStats({ bot, part, actions }) {
   const scope = `${bot.id}:${part ?? ''}`
+  const closed = lastClosedTurn(useTurnFacts(part, actions).turns)
   const [read, setRead] = useState(null)
+  const last = useRef(null)
+  const reads = useRef(0)
   useEffect(() => {
-    if (!actions.runStats) return undefined
-    let current = true
+    if (!actions.runStats) return
+    const before = last.current
+    last.current = { scope, closed }
+    // Turns that are not known (yet, or any more) say nothing about the figures.
+    if (before !== null && before.scope === scope && (before.closed === closed || before.closed === undefined || closed === undefined)) return
+    const order = ++reads.current
     actions.runStats(bot.id).then(
-      (values) => { if (current) setRead({ scope, values }) },
+      // Only the newest read shows; a slower earlier one does not overwrite it.
+      (values) => { if (order === reads.current) setRead({ scope, values }) },
       // The line stays as it was until the next read works.
       () => {},
     )
-    return () => { current = false }
-  }, [scope, bot.id, running, actions])
+  }, [scope, closed, actions])
   const shown = runStatsOf(read?.scope === scope ? read.values : null)
   if (shown.length === 0) return null
   return h('div', { className: 'bt-run-stats' },
@@ -389,7 +401,7 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
       room && tab === 'details' ? h(GroupOverview, { room, roster, actions, usage, useWork, openSettings: () => setView('settings') }) : null,
       bot && tab === 'computer' ? h(ComputerDrawerPane, { bot, sessionId, roster, actions, run, hooks: { useComputer } }) : null,
       bot && tab === 'details' ? [
-        h(RunStats, { key: 'stats', bot, part, running, actions }),
+        h(RunStats, { key: 'stats', bot, part, actions }),
         h('div', { key: 'model', className: 'bt-drawer-model' },
           h('div', { className: 'bt-section-title' }, t('Model')),
           h(ModelMenu, { bot, roster, actions, run, wide: true, inline: true }),

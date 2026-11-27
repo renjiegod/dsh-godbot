@@ -21,6 +21,7 @@ import { panelHasStrip, sideChatsOf, stripMenuKeys } from './side-model.js'
 import { DotsIcon, FolderIcon, SideIcon, TerminalIcon } from './icons.js'
 import { t } from './i18n.js'
 import { rectsOverlap } from './browser-overlap.js'
+import { useWrappedActions } from './wrapped-actions.js'
 
 export const PANEL_LINGER_MS = 300
 const WIDTH_KEY = STORAGE.browserWidth
@@ -660,13 +661,16 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
     actions.setPanelView(next)
   }
   // Every path into the browser view (globe, card, +) animates the same collapse.
-  const panelActions = { ...actions }
+  const wrappers = {}
   for (const name of ['openBrowser', 'browserNewTab', 'browserPick']) {
-    if (actions[name]) panelActions[name] = (...args) => { if (view !== 'browser') beginSwitch('browser'); return actions[name](...args) }
+    if (actions[name]) wrappers[name] = (...args) => { if (view !== 'browser') beginSwitch('browser'); return actions[name](...args) }
   }
   for (const name of ['openSideChat', 'newSideChat']) {
-    if (actions[name]) panelActions[name] = (...args) => { if (view !== 'side') beginSwitch('side'); return actions[name](...args) }
+    if (actions[name]) wrappers[name] = (...args) => { if (view !== 'side') beginSwitch('side'); return actions[name](...args) }
   }
+  // The same object on every render, so the views below do not read again each time the
+  // panel draws (the details view's run stats did, on every save of the team).
+  const panelActions = useWrappedActions(actions, wrappers)
   // The note is good for the one switch it was made for. A view change without a note
   // (a closed tab folding the panel back, say) or after the note went stale ends the flight:
   // its target is no longer what it flew for.

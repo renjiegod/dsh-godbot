@@ -5,6 +5,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { BACKGROUND_NOTE, BACKGROUND_ROLE, HISTORY_TIMEOUT_MS, LONG_HEAD, MESSAGE_INLINE_MAX, READ_LINE_MAX, SOURCE_KIND, TEXT_KEPT, TEXT_SHOW_MAX } from './constants.js'
 import { headOf, textOf } from './text.js'
 import { conversationHead } from './threads.js'
+import { PROFILE_UPDATED } from './prompt.js'
 
 export function install(rt) {
   const { ctx, state } = rt
@@ -35,9 +36,7 @@ export function install(rt) {
     if (role === 'report') return `[Group chat "${roomName}" · replies to your post${goesOn}]`
     if (role === 'kickoff') return '[Bot team setup]'
     if (role === 'continue') return '[Retry after a failed turn]'
-    // The editor can be the user or a Bot (its own tool call, or a Main Bot's):
-    // the header stays neutral about who changed the profile.
-    if (role === 'update') return '[Your profile was updated — follow the latest version]'
+    if (role === 'update') return PROFILE_UPDATED
     if (role === 'secret') return '[Secret card]'
     if (audience === 'user') return `[Message from ${fromName} · the user sees your reply here]`
     return `[Message from ${fromName}]`

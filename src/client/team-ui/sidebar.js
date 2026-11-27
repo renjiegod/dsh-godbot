@@ -21,6 +21,7 @@ import { quietly } from './diagnostics.js'
 import { frameLayout, dragColumn, RAIL_WIDTH, FALLBACK_SIDEBAR_WIDTH, userSidebarToggle } from './frame-layout.js'
 import { chatRoom, dshCollapsed } from './frame-watch.js'
 import { STORAGE } from './storage.js'
+import { useWrappedActions } from './wrapped-actions.js'
 
 // -------------------------------------------------------------------------
 // Sidebar
@@ -782,13 +783,13 @@ export function TeamSidebar(props) {
     if (leftDrawer) actions.setLeftDrawer?.(false)
     return result
   }
-  const rowActions = {
-    ...actions,
+  // The same object on every render, so a row's hooks that depend on it stay put.
+  const rowActions = useWrappedActions(actions, {
     openSession: id => navigate(actions.openSession, id),
     openAgent: id => navigate(actions.openAgent, id),
     openAgentSession: id => navigate(actions.openAgentSession, id),
     newAgentSession: id => navigate(actions.newAgentSession, id),
-  }
+  })
   const rowProps = { roster, actions: rowActions, useSessions, useUi, useSessionStatus: props.useSessionStatus, useSessionRetainInfo: props.useSessionRetainInfo, useActivity: props.useActivity, useWork: props.useWork, wide: wideContent }
   // Typing while the sidebar has focus starts a search.
   const typeToSearch = (event) => {

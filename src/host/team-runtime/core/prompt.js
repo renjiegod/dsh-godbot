@@ -9,6 +9,11 @@
 // runs on a local agent CLI, which has its own file, shell and web tools instead of
 // Godbot's. Details of how a tool is called live in its own description.
 
+// How a change of a Bot's profile opens, as context of its next turn or, on a host
+// without runtime context, as the header of a message (delivery.js). The editor can be
+// the user or a Bot, so it stays neutral about who changed the profile.
+export const PROFILE_UPDATED = '[Your profile was updated — follow the latest version]'
+
 const TEAM = [
   '<team>',
   '- Every Bot is its own long-lived conversation with the user, with its own memory and computer. The team changes over time: call list_bots whenever you need to know who exists or what a Bot is doing now; do not rely on memory.',
@@ -135,4 +140,43 @@ export function install(rt) {
     interpolate: false,
     text: context => promptFor(context),
   }), 'godbot: identity section')
+
+  // A changed role or instructions, told in the chat the Bot was in when they changed. The
+  // identity above reads the live profile every turn, but a Session with several rounds
+  // behind it follows its earlier messages until something lands among them. The note is
+  // context of the Bot's next turn there: DSH renews it when its text changes and the
+  // local agent adapter folds it into the CLI's next prompt. It starts no turn of its own,
+  // so a profile edit costs no model call. A host without runtime context says no, and
+  // the caller tells the Bot with a message instead.
+  if (typeof ctx.systemPrompt?.context !== 'function') {
+    rt.noteProfile = () => false
+    return
+  }
+  const notes = new Map()
+  rt.noteProfile = (bot, changed) => {
+    const sessionId = rt.chatOf(bot.id)
+    const earlier = notes.get(bot.id)
+    const fields = earlier?.sessionId === sessionId ? { ...earlier.fields } : {}
+    if (changed.role) fields.role = true
+    if (changed.instructions) fields.instructions = true
+    notes.set(bot.id, { sessionId, fields })
+    return true
+  }
+  rt.profileNote = (sessionId) => {
+    const bot = rt.botOf(rt.selfOf(sessionId))
+    const note = bot === undefined ? undefined : notes.get(bot.id)
+    if (note === undefined || note.sessionId !== sessionId) return ''
+    return [
+      PROFILE_UPDATED,
+      note.fields.role ? `Your role is now "${bot.role || '(none)'}"` : '',
+      note.fields.instructions ? `Your instructions now read:\n${bot.instructions || '(none)'}` : '',
+    ].filter(line => line !== '').join('\n')
+  }
+  ctx.effect(() => ctx.systemPrompt.context({
+    name: 'godbot-profile',
+    order: 650,
+    // The user's instructions may hold `{{…}}` of their own.
+    interpolate: false,
+    text: context => rt.profileNote(context?.agent?.id),
+  }), 'godbot: profile change context')
 }
