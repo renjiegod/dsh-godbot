@@ -477,7 +477,8 @@ npm pack --dry-run
 | `npm test` | 单元与集成测试 |
 | `npm run test:e2e` | 浏览器端到端测试，默认 `release` 套件；可加 `--artifact <tgz>` 测试指定安装包 |
 | `npm run test:e2e -- --suite release --strict --retries 1 --artifact <tgz>` | 发布结论用的严格模式：跳过的用例算未通过，除非用 `--allow-skip <用例> --waiver-reason <原因>` 写明；失败的用例在同一安装包上重跑，每次结果都留在报告里（重跑的证据放在 `<用例>.attempt-<n>`） |
-| `npm run test:e2e -- --case E12 --previous <tgz>` | 升级测试：从指定的旧版安装包升级到当前构建。未传 `--previous` 且仓库中没有 0.1.0 基线提交时，E12 记为 `skipped` |
+| `npm run test:e2e -- --case UPGRADE-PREVIOUS --previous <tgz>` | 从上一公开版升级：先装指定的旧版安装包，建 Bot、会话和看板任务，再升级到当前构建，检查 Bot、会话和任务都保留，升级后能接新任务，重启后仍在。发版工具传入最新的已发布安装包；未传 `--previous` 时记为 `skipped` |
+| `npm run test:e2e -- --case E12` | 0.1.0 迁移测试：用仓库里的 0.1.0 基线提交构建旧版并升级，两套名册切换为一套后只保留 Bot 的数据。仓库中没有该提交时记为 `skipped` |
 | `npm run test:e2e -- --case UPDATE` | 自动更新：从本机模拟的发布列表下载、校验新版本，经 DSH 插件管理器安装，重启后运行新版本 |
 | `GODBOT_RELAY_BIN=<godbot-relay> npm run test:e2e -- --case PHONE` | 手机链路：经 godbot-server 中继配对、调用团队接口、交换推送密钥，离线时经（模拟的）FCM 收到加密推送，移除后无法再连。未设置 `GODBOT_RELAY_BIN` 时记为 `skipped` |
 | `GODBOT_RELAY_BIN=<godbot-relay> npm run test:e2e -- --case PHONE-PAGES` | 手机 App 的每个页面经加密链路各做一次读和一次写（Bot、群、记忆、日程、工作文件夹、用量、Bot 浏览器、密钥、模型服务商、连接器、能力、更新、诊断、侧聊），写入都在电脑上核对 |

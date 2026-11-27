@@ -22,8 +22,10 @@ if (values.help) {
   console.log(usage)
 } else {
   if (values.case && values.suite) throw new Error('Select a case or a suite')
-  // E12 upgrades from the 0.1.0 build committed at this revision. Clones without
-  // that commit (such as the public history) skip E12 unless --previous is given.
+  // E12 upgrades from the 0.1.0 build committed at this revision (the two-roster
+  // cutover); clones without that commit, such as the public history, skip it.
+  // UPGRADE-PREVIOUS upgrades from --previous: the release tool passes the newest
+  // published archive.
   const upgradeBaseline = '71e8cac'
   const hasRevision = revision => {
     try {
@@ -61,9 +63,10 @@ if (values.help) {
   try {
     const candidate = values.artifact ? await inspectArchive(values.artifact) : await buildArchive(scratch)
     report.archive = { sha256: candidate.sha256, buildId: candidate.buildId, version: candidate.version }
-    let previous = values.previous ? await inspectArchive(values.previous) : undefined
-    if (!previous && cases.includes('E12') && hasRevision(upgradeBaseline)) previous = await buildArchive(scratch, upgradeBaseline)
+    const previous = values.previous ? await inspectArchive(values.previous) : undefined
+    const legacy = cases.includes('E12') && hasRevision(upgradeBaseline) ? await buildArchive(scratch, upgradeBaseline) : undefined
     if (previous) report.previous = { sha256: previous.sha256, buildId: previous.buildId, version: previous.version }
+    if (legacy) report.legacyBaseline = { revision: upgradeBaseline, sha256: legacy.sha256, buildId: legacy.buildId, version: legacy.version }
     const launch = await openBrowser()
     browser = launch.browser
     report.browser = { engine: browser.browserType().name(), version: browser.version(), source: launch.source }
@@ -91,7 +94,7 @@ if (values.help) {
           hosts.push(host)
           return host
         }
-        await check({ makeHost, candidate, previous, reportDir: dir, scratch, note, scenario: id })
+        await check({ makeHost, candidate, previous: id === 'E12' ? legacy : previous, reportDir: dir, scratch, note, scenario: id })
         if (!evidence.some(item => item.event === 'started' && item.buildId === candidate.buildId && item.clientSha256 === candidate.clientSha256)) {
           throw new Error('Scenario did not load the candidate Host and browser client')
         }
@@ -124,7 +127,8 @@ if (values.help) {
       const file = new URL('../test/e2e/' + scenarioFile, import.meta.url)
       // PHONE needs a godbot-server relay binary (renjiegod/godbot-server, go build ./cmd/godbot-relay).
       const skip = !existsSync(file) ? { status: 'not-run', reason: 'Scenario has no implementation' }
-        : id === 'E12' && !previous ? { status: 'skipped', reason: 'Upgrade baseline ' + upgradeBaseline + ' is not in this checkout; pass --previous <tgz> to run E12' }
+        : id === 'E12' && !legacy ? { status: 'skipped', reason: 'The 0.1.0 upgrade baseline ' + upgradeBaseline + ' is not in this checkout' }
+        : id === 'UPGRADE-PREVIOUS' && !previous ? { status: 'skipped', reason: 'Pass --previous <tgz>, the newest published archive, to run UPGRADE-PREVIOUS' }
         : id === 'BUNDLED-COMPUTER-HOST' && (process.platform !== 'darwin' || process.arch !== 'arm64') ? { status: 'skipped', reason: 'The bundled host E2E requires an Apple silicon Mac' }
         : needsRelay(id) && !process.env.GODBOT_RELAY_BIN ? { status: 'skipped', reason: 'Set GODBOT_RELAY_BIN to a godbot-relay binary to run ' + id }
         : null
