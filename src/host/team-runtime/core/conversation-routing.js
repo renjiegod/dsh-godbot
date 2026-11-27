@@ -115,8 +115,8 @@ export function install(rt) {
   // Where a message from `sender` must go in `target`'s chat, strongest evidence first:
   // the conversation the sender named, the handoff the sender's part answers or opened,
   // then the one conversation the text names by session ID. `named` is a part the caller
-  // checked belongs to `target`. `by` says why when the sender's words chose it. Undefined
-  // leaves the choice to the topic. Each of these gets its own turn there (route).
+  // checked belongs to `target`. `by` says why when the sender's words chose it. Without
+  // an explicit destination, route uses an outstanding request or the topic.
   rt.botMessageDestination = (sender, target, { fromPart, named, text }) => {
     if (named !== undefined) return { part: named, by: 'named' }
     const origin = rt.botMessageOrigin(sender, target, fromPart)
@@ -183,7 +183,19 @@ export function install(rt) {
     const linked = message.originPart !== undefined
     let match
     if (linked) match = { sessionId: message.originPart, steer: false }
-    else if (!message.newConversation) match = await choose(bot, message)
+    else if (!message.newConversation) {
+      // Resolve this under the recipient's routing queue: a concurrent send
+      // can have just opened the conversation and admitted its request.
+      const sender = rt.botOf(message.fromId)
+      const outstanding = sender && rt.outstandingBotConversation?.(sender, bot, message.fromPart)
+      if (outstanding) {
+        const entry = rt.live.get(outstanding.sessionId)
+        const steered = message.steer && (rt.inboxSteered?.(outstanding.sessionId, entry?.turn) ?? [])
+          .some(source => source.exchangeId === outstanding.exchangeId)
+        const sameTurn = entry?.turn !== undefined && entry.info?.exchangeId === outstanding.exchangeId
+        match = { sessionId: outstanding.sessionId, steer: message.steer && (sameTurn || steered) }
+      } else match = await choose(bot, message)
+    }
     message.signal?.throwIfAborted()
     if (rt.botOf(bot.id) !== bot) throw new Error('The receiving Bot no longer exists.')
     if (match !== undefined) {

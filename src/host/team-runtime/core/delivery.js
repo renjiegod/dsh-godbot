@@ -88,6 +88,23 @@ export function install(rt) {
     return opening
   }
 
+  // A prior release placed requests in the pair ledger and kept their unfinished
+  // work in the handoff table. Preserve its destination until that work settles.
+  function outstandingBotConversation(sender, recipient, fromPart) {
+    const source = conversationHead(sender, fromPart)
+    if (source === undefined) return undefined
+    const pending = rt.inboxOutstanding?.(sender, recipient, fromPart)
+    if (pending) return pending
+    const delivery = rt.ledger.records(pairBook(sender.id, recipient.id)).findLast(record => {
+      if (record.event !== 'delivered' || conversationHead(sender, record.fromPart) !== source
+          || rt.inboxHas?.(record.id)) return false
+      const work = state.works?.[record.id]
+      return work?.from === sender.id && work.to === recipient.id
+        && conversationHead(recipient, record.sessionId) !== undefined
+    })
+    if (delivery) return { sessionId: conversationHead(recipient, delivery.sessionId), exchangeId: delivery.id }
+  }
+
   function relayMessage({ fromId, fromName: senderName, text, role, replyTo, roomId, audience, note,
     exchangeId, inboxAttempt, deferred = false, resumed = false, retried = false, resent = false, abandoned = false,
     askedBy, fromRoomId, fromPart, images = [], files = [], work, initiator, title }) {
@@ -295,5 +312,5 @@ export function install(rt) {
     return { ...record, ledger: true }
   }
 
-  Object.assign(rt, { resolveAgent, deliver, relayMessage, deliverBackground, exchangeText, attachLong, fileText, exchangesOf, exchangeOf, conversationOpeningFrom })
+  Object.assign(rt, { resolveAgent, deliver, relayMessage, deliverBackground, exchangeText, attachLong, fileText, exchangesOf, exchangeOf, conversationOpeningFrom, outstandingBotConversation })
 }

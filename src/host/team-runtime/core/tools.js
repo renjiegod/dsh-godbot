@@ -238,7 +238,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'message_bot',
-    description: 'Send a message to another Bot on the team. Updates to the Bot that delegated this work return to its originating conversation. When you were given the other Bot\'s conversation for this work by its session ID, pass it as conversation. For other work, include the task name so Godbot can reuse a relevant conversation or open a new one. A reply comes back to the conversation you sent from. With reply_to "user" the Bot answers the user in the selected conversation. Do not message a Bot waiting for your current work: your answer reaches it once you end your turn and everything you handed on is back. In a group chat this calls a member there, as writing "@Name" does. With request_id, repeating the same request reads its delivery status without sending it again.',
+    description: 'Send a message to another Bot on the team. Updates to the Bot that delegated this work return to its originating conversation. When you were given the other Bot\'s conversation for this work by its session ID, pass it as conversation. While a request from this conversation is unanswered, follow-ups to the same Bot default to its conversation. For other work, include the task name so Godbot can reuse a relevant conversation or open a new one. The receipt gives you the recipient’s session ID. A reply comes back to the conversation you sent from. With reply_to "user" the Bot answers the user in the selected conversation. Do not message a Bot waiting for your current work: your answer reaches it once you end your turn and everything you handed on is back. In a group chat this calls a member there, as writing "@Name" does. With request_id, repeating the same request reads its delivery status without sending it again.',
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
@@ -354,7 +354,7 @@ export function install(rt) {
         await rt.bootBotInbox()
         return rt.routeBotMessage(target, route, async (sessionId, { steer, created }) => {
           const earlier = originPart === undefined ? rt.unreadBotDelivery(sessionId, {
-            fromId: sender.id, fromPart, toId: target.id, work, toUser, steer, text, initiator,
+            fromId: sender.id, fromPart, toId: target.id, work, toUser, steer: route.steer, text, initiator,
           }) : undefined
           const combined = earlier ? `${earlier.fullText ?? earlier.args.text}\n\n${text}` : undefined
           const merged = combined === undefined ? undefined : await rt.attachLong(combined, filename)
