@@ -1,0 +1,132 @@
+name: Build Godbot release candidate
+# Builds the plugin archive once, from an exact commit on main, and stages it on
+# a draft GitHub release for its version with candidate.json beside it. Installed
+# Godbots never see drafts (update-release.js skips them), so the draft is where
+# the candidate waits while the strict release e2e suite verifies it. Pushing the
+# version tag then publishes these exact bytes (release.yml); nothing is rebuilt.
+# Building the same version again replaces its draft: a draft was never public.
+# The release tool finds its run again by the commit in the run name.
+run-name: Godbot release candidate ${{ inputs.ref }}
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Full 40-character commit SHA on main to build
+        required: true
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+concurrency:
+  group: godbot-release
+  cancel-in-progress: false
+jobs:
+  candidate:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    env:
+      REF: ${{ github.event.inputs.ref }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the requested commit
+        shell: bash
+        run: |
+          if ! [[ "$REF" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::ref must be a full 40-character commit SHA, not '$REF'"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.0
+          cache: npm
+      - name: Check the commit is on main and its version is unpublished
+        shell: bash
+        run: |
+          git fetch --quiet origin main
+          if ! git merge-base --is-ancestor "$REF" origin/main; then
+            echo "::error::$REF is not on main"
+            exit 1
+          fi
+          version=$(node -p "require('./package.json').version")
+          tag="v$version"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          if tagged=$(git rev-parse -q --verify "refs/tags/$tag^{commit}"); then
+            if [ "$tagged" != "$REF" ]; then
+              echo "::error::$tag already points at $tagged"
+              exit 1
+            fi
+          fi
+          published=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq "[.[] | select(.tag_name == \"$tag\" and (.draft | not))] | length")
+          if [ "$published" != "0" ]; then
+            echo "::error::$tag is already published; a published release is never replaced"
+            exit 1
+          fi
+      - run: npm install -g pnpm@11.1.2 "@deepseek-ai/dsh@$(node -p "require('./package.json').godbot.verifiedDsh")"
+      - run: npm ci
+      - name: Check the committed build output matches the sources
+        shell: bash
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            echo "::error::The committed build output is stale. Run npm run build and commit the result."
+            exit 1
+          fi
+      - name: Install Chromium matched to the locked Playwright version
+        run: npx --no-install playwright-core install --no-shell chromium
+      - run: npm run typecheck
+      - run: npm test
+      - name: Pack the plugin
+        shell: bash
+        run: |
+          mkdir -p dist
+          package="dsh-godbot-$VERSION.tgz"
+          npm pack --pack-destination dist --silent
+          test -s "dist/$package"
+          node scripts/check-bundled-host-package.mjs "dist/$package" --require-encoder
+          (cd dist && shasum -a 256 "$package" > "$package.sha256" && cat "$package.sha256")
+          node --input-type=module -e "import { verifyEncoderDistribution } from './computer-host/bundled-encoder.js'; verifyEncoderDistribution(undefined, { sources: true })"
+          (cd computer-host/bundled-encoder && shasum -a 256 ffmpeg-8.0.1.tar.xz libvpx-v1.17.0.tar.gz) > dist/godbot-mac-encoder-source.sha256
+          node scripts/release-candidate.mjs describe "dist/$package" --commit "$REF" \
+            --run-url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > dist/candidate.json
+          cat dist/candidate.json
+      - name: Record where the archive was built
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/dsh-godbot-${{ env.VERSION }}.tgz
+      - name: Stage the candidate on a draft release
+        shell: bash
+        run: |
+          assets=(
+            "dist/dsh-godbot-$VERSION.tgz"
+            "dist/dsh-godbot-$VERSION.tgz.sha256"
+            computer-host/bundled-encoder/ffmpeg-8.0.1.tar.xz
+            computer-host/bundled-encoder/libvpx-v1.17.0.tar.gz
+            dist/godbot-mac-encoder-source.sha256
+            dist/candidate.json
+          )
+          source_notes='The corresponding source for the bundled Mac video encoder is attached as `ffmpeg-8.0.1.tar.xz` and `libvpx-v1.17.0.tar.gz`. Their checksums are in `godbot-mac-encoder-source.sha256`.'
+          for id in $(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq ".[] | select(.tag_name == \"$TAG\" and .draft) | .id"); do
+            echo "Replacing the earlier draft $id for $TAG"
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id"
+          done
+          flags=()
+          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$TAG" "${assets[@]}" --draft --target "$REF" --title "Godbot $VERSION" \
+            --generate-notes --notes "$source_notes" "${flags[@]}"
+          {
+            echo "### Godbot $VERSION candidate"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`$REF\` |"
+            echo "| Archive | \`$(jq -r .archive.sha256 dist/candidate.json)\` |"
+            echo "| Host build | \`$(jq -r .buildId dist/candidate.json)\` |"
+            echo
+            echo "Staged on a draft release. Verify it with the strict release e2e suite, attach verification.json, then push $TAG to publish."
+          } >> "$GITHUB_STEP_SUMMARY"

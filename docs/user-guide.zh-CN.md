@@ -476,6 +476,7 @@ npm pack --dry-run
 | --- | --- |
 | `npm test` | 单元与集成测试 |
 | `npm run test:e2e` | 浏览器端到端测试，默认 `release` 套件；可加 `--artifact <tgz>` 测试指定安装包 |
+| `npm run test:e2e -- --suite release --strict --retries 1 --artifact <tgz>` | 发布结论用的严格模式：跳过的用例算未通过，除非用 `--allow-skip <用例> --waiver-reason <原因>` 写明；失败的用例在同一安装包上重跑，每次结果都留在报告里（重跑的证据放在 `<用例>.attempt-<n>`） |
 | `npm run test:e2e -- --case E12 --previous <tgz>` | 升级测试：从指定的旧版安装包升级到当前构建。未传 `--previous` 且仓库中没有 0.1.0 基线提交时，E12 记为 `skipped` |
 | `npm run test:e2e -- --case UPDATE` | 自动更新：从本机模拟的发布列表下载、校验新版本，经 DSH 插件管理器安装，重启后运行新版本 |
 | `GODBOT_RELAY_BIN=<godbot-relay> npm run test:e2e -- --case PHONE` | 手机链路：经 godbot-server 中继配对、调用团队接口、交换推送密钥，离线时经（模拟的）FCM 收到加密推送，移除后无法再连。未设置 `GODBOT_RELAY_BIN` 时记为 `skipped` |
@@ -492,15 +493,18 @@ npm pack --dry-run
 > [!WARNING]
 > `live-*` 套件和 `test/external/live-control.mjs` 使用本机已登录的账号，会消耗对应订阅或模型额度。测试用的 DSH profile 和工单数据均为临时创建。`L-BOT-WORKFLOW` 可通过 `GODBOT_E2E_CLAUDE_CONFIG_DIR` 和 `GODBOT_E2E_CODEX_HOME` 指定测试账号目录。
 
-仓库的 GitHub Actions（`.github/workflows/verification.yml`）在每次 push 和 Pull Request 时于 macOS 上运行单元测试、构建和 `npm pack --dry-run`，并在 Ubuntu 上用两版 DSH 验证打包安装、Bot 对话和重启后的会话恢复。在 Actions 页面选择 **Verify Godbot package → Run workflow** 可运行完整的 `release` E2E 套件。
+仓库的 GitHub Actions（`.github/workflows/verification.yml`）在每次 push 和 Pull Request 时于 macOS 上运行单元测试、构建和 `npm pack --dry-run`，并核对提交的构建产物（`client.js`、`src/host/build-id.js`、`src/host/team-runtime/mobile-link.js`）与源码构建结果一致；合并后这些文件不要手工合并，解决源码冲突后重新 `npm run build`。它还在 Ubuntu 上用两版 DSH 验证打包安装、Bot 对话和重启后的会话恢复。在 Actions 页面选择 **Verify Godbot package → Run workflow** 可运行完整的 `release` E2E 套件；这里没有中继，手机用例会跳过，所以不能作为发布结论。
 
 正式打包时，`npm pack` 会暂存并校验来自 [v0.2.0-rc.22](https://github.com/renjiegod/dsh-godbot/releases/tag/v0.2.0-rc.22) 的签名版 Mac 主机组件。设置 `GODBOT_BUNDLED_HOST_ASSETS_DIR` 为现有下载文件所在目录可离线暂存，仍使用相同的签名和校验和。Apple 芯片 Mac 首次打包还会使用 Xcode 命令行工具构建视频编码器，后续打包复用已校验的文件。单元测试、类型检查和客户端构建无需这些资产。
 
 ### 发布新版本
 
-1. 修改 `package.json` 的 `version`，运行 `npm run build` 并提交。
-2. 推送同名 tag，例如 `git tag v0.2.0 && git push origin v0.2.0`。
-3. `.github/workflows/release.yml` 核对 tag 与 `package.json` 版本一致，运行测试和构建，校验安装包内的 Mac 主机和编码器，再发布 `dsh-godbot-<version>.tgz`、校验和及 Mac 视频编码器对应的源码包。版本号带 `-`（如 `0.2.0-rc.4`）时标记为预发布。
+发布包只构建一次，验证过的和发布出去的是同一份字节：
+
+1. 修改 `package.json` 的 `version`，运行 `npm run build`，提交并合入 `main`。
+2. 在 Actions 页面运行 **Build Godbot release candidate**（`.github/workflows/candidate.yml`），填入这个提交的完整 SHA。它核对提交的构建产物与源码一致，运行类型检查和单元测试，打包并校验 Mac 主机和编码器，把安装包、校验和、Mac 视频编码器源码包和 `candidate.json`（提交、版本、SHA-256、宿主 build ID）放进该版本的草稿 Release，并记录构建来源证明（`gh attestation verify <tgz> -R renjiegod/dsh-godbot` 可核对）。已安装的 Godbot 不读草稿；同一版本重新构建会替换草稿。
+3. 下载草稿里的安装包，用严格模式跑完整 `release` 套件，升级用例从上一公开版开始：`GODBOT_RELAY_BIN=<godbot-relay> npm run test:e2e -- --suite release --strict --retries 1 --artifact <tgz> --previous <上一公开版 tgz>`。再用 `node scripts/release-candidate.mjs verification <report.json> --candidate candidate.json > verification.json` 生成验证记录，上传到同一个草稿。报告的安装包与 `candidate.json` 不一致、不是严格模式或有用例未通过时，不会生成验证记录。
+4. 先用 `node scripts/release-candidate.mjs promote --repo renjiegod/dsh-godbot --tag v<version> --dry-run --before-tag` 预检，再推送指向候选提交的同名 tag，例如 `git tag v0.2.0 <提交> && git push origin v0.2.0`。`.github/workflows/release.yml` 不构建也不上传：tag 指向候选提交且该提交在 `main` 上、安装包字节与 GitHub 记录的摘要、`candidate.json`、`.sha256` 和 `verification.json` 一致、没有更新的版本已经发布时，它才把草稿转为正式发布，然后按已安装 Godbot 的方式读取发布列表、下载并核对安装包。版本号带 `-`（如 `0.2.0-rc.4`）时标记为预发布。已发布的 Release 不会再被改动；需要修正时发更高的版本。
 
 已安装的 Godbot 会在下一次检查时发现这个版本（见 [更新](#更新)）。
 

@@ -1,27 +1,36 @@
 name: Release Godbot
-# Push a tag vX.Y.Z (matching package.json) to publish the packed plugin as a
-# GitHub release. Installed Godbots find it through the releases API, check the
-# archive against the SHA-256 GitHub records for it (and the .sha256 beside it),
-# and install it through DSH's plugin manager.
+# Publishing promotes a verified candidate; it never builds or uploads. Before the
+# tag vX.Y.Z (matching package.json) is pushed, candidate.yml has staged that
+# version on a draft release with candidate.json, and the strict release e2e
+# suite's verification.json was attached to the same draft. This workflow
+# publishes the draft only when the tag points at the candidate's commit on main,
+# the archive's bytes match the SHA-256 that GitHub, candidate.json, the .sha256
+# beside it and verification.json all state, and no newer release is out. A
+# published release is never changed: run it again and it only re-checks.
+#
+# Installed Godbots find the published release through the releases API and check
+# the archive against the SHA-256 GitHub records for it (and the .sha256 beside
+# it); the last step reads the release back exactly that way.
 on:
   push:
     tags: ['v*.*.*']
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to publish, such as v0.2.0
+        description: Version tag to publish or re-check, such as v0.2.0
         required: true
 permissions:
   contents: write
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  group: godbot-release
   cancel-in-progress: false
 jobs:
   release:
-    runs-on: macos-latest
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,49 +48,26 @@ jobs:
             echo "::error::Tag $TAG does not match package.json version $version"
             exit 1
           fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-      - run: npm install -g pnpm@11.1.2 "@deepseek-ai/dsh@$(node -p "require('./package.json').godbot.verifiedDsh")"
-      - run: npm ci
-      - name: Install Chromium matched to the locked Playwright version
-        run: npx --no-install playwright-core install --no-shell chromium
-      - run: npm test
-      - run: npm run build
-      - name: Pack the plugin
+      - run: npm ci --ignore-scripts
+      - name: Publish the verified candidate
+        run: node scripts/release-candidate.mjs promote --repo "$GITHUB_REPOSITORY" --tag "$TAG"
+      - name: Read the release back as installed Godbots see it
         shell: bash
         run: |
-          mkdir -p dist
-          package="dsh-godbot-$VERSION.tgz"
-          npm pack --pack-destination dist --silent
-          test -s "dist/$package"
-          node scripts/check-bundled-host-package.mjs "dist/$package" --require-encoder
-          (cd dist && shasum -a 256 "$package" > "$package.sha256" && cat "$package.sha256")
-          node --input-type=module -e "import { verifyEncoderDistribution } from './computer-host/bundled-encoder.js'; verifyEncoderDistribution(undefined, { sources: true })"
-          (cd computer-host/bundled-encoder && shasum -a 256 ffmpeg-8.0.1.tar.xz libvpx-v1.17.0.tar.gz) > dist/godbot-mac-encoder-source.sha256
-      - name: Publish the release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          flags=()
-          case "$VERSION" in *-*) flags+=(--prerelease) ;; esac
-          assets=(
-            "dist/dsh-godbot-$VERSION.tgz"
-            "dist/dsh-godbot-$VERSION.tgz.sha256"
-            computer-host/bundled-encoder/ffmpeg-8.0.1.tar.xz
-            computer-host/bundled-encoder/libvpx-v1.17.0.tar.gz
-            dist/godbot-mac-encoder-source.sha256
-          )
-          source_notes='The corresponding source for the bundled Mac video encoder is attached as `ffmpeg-8.0.1.tar.xz` and `libvpx-v1.17.0.tar.gz`. Their checksums are in `godbot-mac-encoder-source.sha256`.'
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" "${assets[@]}" --clobber
-            notes=$(mktemp)
-            gh release view "$TAG" --json body --jq .body > "$notes"
-            if ! grep -Fq "$source_notes" "$notes"; then
-              printf '\n%s\n' "$source_notes" >> "$notes"
-              gh release edit "$TAG" --notes-file "$notes"
+          # The release list can take a moment to show a release just published.
+          for attempt in 1 2 3; do
+            if node scripts/release-candidate.mjs readback --repo "$GITHUB_REPOSITORY" --tag "$TAG" > readback.json; then
+              cat readback.json
+              {
+                echo "### Godbot ${TAG#v} published"
+                echo
+                echo '```json'
+                cat readback.json
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
             fi
-            rm -f "$notes"
-          else
-            gh release create "$TAG" "${assets[@]}" --title "Godbot $VERSION" \
-              --generate-notes --notes "$source_notes" --verify-tag "${flags[@]}"
-          fi
+            sleep 20
+          done
+          echo "::error::$TAG is published but did not read back as installed Godbots would see it"
+          exit 1

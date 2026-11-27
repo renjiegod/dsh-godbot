@@ -21,7 +21,17 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
+      # The build output is committed with the sources; it must be what they build to.
+      # After a merge, regenerate it with npm run build instead of merging it by hand.
+      - name: Check the committed build output matches the sources
+        shell: bash
+        run: |
+          npm run build
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            echo "::error::The committed build output is stale. Run npm run build and commit the result."
+            exit 1
+          fi
       - run: npm pack --dry-run --ignore-scripts
 
   linux-compatibility:
@@ -45,7 +55,9 @@ jobs:
       - run: npm run test:e2e -- --case E0
 
   # The packaged browser end-to-end suite is long-running, so it only runs when
-  # started by hand from the Actions tab (Run workflow).
+  # started by hand from the Actions tab (Run workflow). Without a relay its phone
+  # cases are skipped, so this run is no release verdict: a release candidate is
+  # verified with --strict by the release tool (godbot-server release/).
   packaged-release:
     if: github.event_name == 'workflow_dispatch'
     runs-on: macos-latest

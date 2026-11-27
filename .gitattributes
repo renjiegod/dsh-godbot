@@ -1,0 +1,6 @@
+# Build output, committed with the sources (npm run build). Never merge these by
+# hand: resolve the sources, run npm run build and commit what it writes. CI
+# checks that they match the sources.
+client.js linguist-generated=true merge=binary
+src/host/build-id.js linguist-generated=true merge=binary
+src/host/team-runtime/mobile-link.js linguist-generated=true merge=binary
