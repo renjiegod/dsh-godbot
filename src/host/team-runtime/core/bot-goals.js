@@ -273,7 +273,7 @@ export function install(rt) {
     }
     if (!eligible(goal, row, sessionId)) return waitingReasons.set(goal.id, 'Waiting for this conversation to become available.')
     if (rt.unreadOf?.(sessionId)?.length) return waitingReasons.set(goal.id, 'Waiting for earlier queued messages.')
-    if (rt.localAgentBackground?.(sessionId) || rt.hasSubagents?.(sessionId)) return waitingReasons.set(goal.id, 'Waiting for background work.')
+    if (rt.backgroundWork?.(sessionId)) return waitingReasons.set(goal.id, 'Waiting for background work.')
     if (rt.waitsForApproval?.(sessionId) || rt.own(state.questions, sessionId)) return waitingReasons.set(goal.id, 'Waiting for your input.')
     waitingReasons.delete(goal.id)
     const route = rt.botOf(goal.botId)?.appliedModel ?? rt.botOf(goal.botId)?.model

@@ -3,13 +3,16 @@ import { createPortal } from 'react-dom'
 import { BotMark, RoomAvatar } from './mark.js'
 import { Elapsed, Shimmer, PHRASES } from './cells.js'
 import { noteClientError } from './diagnostics.js'
+import { worksInBackground } from './bot-sessions.js'
 import { reducedEffects, reducedMotion } from './motion.js'
 import { t } from './i18n.js'
 
 // -------------------------------------------------------------------------
 // The activity row: the Bot's mark and a shimmering phrase at the transcript
 // tail while it works. It lives in the shell's running status, steps aside while a
-// reply streams, and holds each phrase long enough to read.
+// reply streams, and holds each phrase long enough to read. Once a turn has ended
+// while work it started goes on by itself (a CLI's background task, a DSH subagent),
+// the row stays and says so: the chat works, and a reply is still to come.
 
 const PHRASE_HOLD_MS = 800
 const drawPhrase = pool => t(pool[Math.min(pool.length - 1, Math.floor(Math.random() * pool.length))])
@@ -122,6 +125,10 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   const pendingInput = useSession(snapshot => freshInputAt(snapshot?.pendingSubmissions, steeredAt))
   const bot = roster.byId[sessionId]
   const room = roster.roomsById[sessionId]
+  // No turn runs, but the part works in the background, as the session lists and the
+  // sidebar say (bot-sessions.js). DSH's own status covers a running turn; this is what
+  // only the host knows.
+  const background = useWork?.(work => !running && worksInBackground(roster, work.turns, sessionId)) === true
   // The one switch the row names: a working-folder move jumps the chat to a fresh
   // part while a turn is not running, so without it the conversation just empties.
   const moveAt = useWork?.((work) => {
@@ -135,7 +142,7 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   // Group chats show who is typing on their own while members speak.
   const relaying = tools.some(entry => entry.relay)
   const waitingForTerminal = running && terminalActive
-  const visible = !waitingForTerminal && (moveAt !== 0 || rowVisible({ running, streaming, tools, relaying, bot, room }))
+  const visible = !waitingForTerminal && (moveAt !== 0 || background || rowVisible({ running, streaming, tools, relaying, bot, room }))
   const tool = tools.at(-1)
   const inputRef = useRef(0)
   // A steer keeps the run going, so nothing else resets the row: fresh input is
@@ -144,6 +151,7 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   inputRef.current = inputAt
   const want = !visible ? null
     : moveAt !== 0 ? { key: 'move', label: t('Switching working folder'), state: 'thinking' }
+      : background ? { key: 'background', label: t('Working in the background'), state: 'working' }
       : inputAt > (tool?.at ?? 0)
         ? { key: `input:${inputAt}`, pool: PHRASES.thinking, state: 'thinking' }
         : tool ? { key: tool.label ? `tool:${tool.label}` : 'working', label: tool.label, pool: PHRASES.working, state: tool.state ?? 'working' }
@@ -191,7 +199,7 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   useEffect(() => { if (!running) actions.clearLive(sessionId) }, [running, sessionId])
   // Only rows that take the activity row's place grow out of it.
   useRowEntrances(() => leaving.current || Date.now() - endedAt.current < 300)
-  const host = useRunningHost(running || moveAt !== 0)
+  const host = useRunningHost(running || background || moveAt !== 0)
   if (host && waitingForTerminal) return createPortal(h('div', { className: 'bt-terminal-wait' },
     h('span', { role: 'status' }, '消息正在等待。将原生终端交还聊天后继续执行。'),
     h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: openTerminal }, '打开终端并交还')), host)
@@ -200,5 +208,7 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
     bot ? h(BotMark, { bot, size: 28, state: markState.current, live: true, pokeable: true }) : h(RoomAvatar, { room, roster, size: 28 }),
     h('span', { className: 'bt-typing-text' },
       h('span', { key: `${shown.key}:${shown.at}`, className: 'bt-typing-label' }, h(Shimmer, null, `${shown.text}…`)),
-      h(Elapsed, { at: moveAt !== 0 ? moveAt : Math.max(turnAt ?? runAt.current, inputAt), className: 'bt-typing-time' }))), host)
+      // Background work has no turn to time; the row says what comes of it instead.
+      shown.key === 'background' ? h('span', { className: 'bt-typing-time' }, t('Replies when done'))
+        : h(Elapsed, { at: moveAt !== 0 ? moveAt : Math.max(turnAt ?? runAt.current, inputAt), className: 'bt-typing-time' }))), host)
 }

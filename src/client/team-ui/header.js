@@ -15,7 +15,7 @@ import { NewSessionButton } from './new-session.js'
 import { FailoverActivity } from './bot-failover.js'
 import { SessionMenu } from './session-menu.js'
 import { CopyIdButton } from './copy-id.js'
-import { conversationTitle, documentTitle } from './bot-sessions.js'
+import { conversationTitle, documentTitle, worksInBackground } from './bot-sessions.js'
 import { GodbotModal } from '../modal.js'
 import { nativeTabs } from '../native-agent-target.js'
 import { viewBottom } from './motion.js'
@@ -127,6 +127,8 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
     return () => document.body.style.removeProperty('--bt-first-sep')
   }, [opening])
   const running = useSessionStatus(map => map.get(sessionId)?.running === true)
+  // A part whose turn ended while work it started goes on by itself still works.
+  const background = useWork?.(work => worksInBackground(roster, work.turns, sessionId)) === true
   const owner = roster.byId[sessionId]?.id ?? sessionId
   const doing = useActivity(map => map[owner])
   const bot = roster.byId[sessionId]
@@ -205,7 +207,7 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
     title: away ? name : undefined,
     onClick: () => (away ? selectView('chat') : memoryNotice ? actions.openMemory(changed) : actions.toggleDetails(sessionId)),
   },
-    bot ? h(BotAvatar, { bot, size: 24, state: botState(running, doing, roster.questions?.[currentPart(bot)] !== undefined), badge: false })
+    bot ? h(BotAvatar, { bot, size: 24, state: botState(running || background, doing, roster.questions?.[currentPart(bot)] !== undefined), badge: false })
       : room ? h(RoomAvatar, { room, roster, size: 24 }) : null,
     goalShown
       ? h('span', { className: 'bt-pill-swap' },
@@ -245,7 +247,7 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
             : null,
           // Its other sessions, as a list to switch to.
           bot && currentPart(bot) === sessionId
-            ? h(SessionMenu, { key: 'sessions', bot, roster, actions, useSessions })
+            ? h(SessionMenu, { key: 'sessions', bot, roster, actions, useSessions, useWork })
             : null,
           search,
           actions.godbot?.computerButton ? actions.godbot.computerButton(bot, sessionId, roster, actions, useComputer) : null,

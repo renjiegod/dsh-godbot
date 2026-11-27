@@ -72,6 +72,31 @@ test('the managed runtime loads one durable workspace in the owning Godbot profi
   assert.deepEqual((await rt.channelCall('local-agent-usage', {}, undefined, { profileOwner: true })).value, { providers: [] })
 })
 
+// A Bot whose turn ended while its CLI still runs a background task works: every Running
+// mark reads partsRunning, and work.turns in the same answer says no turn runs there.
+test('a part with background work and no turn reads as running, with no turn of its own', async t => {
+  const { home, owner, stateDir } = await profile(t)
+  const workspace = join(stateDir, 'team-workspace')
+  await mkdir(workspace, { recursive: true })
+  await writeFile(join(workspace, 'state.json'), JSON.stringify({
+    version: 1, mainBotId: 'm1', bots: { m1: { id: 'm1', name: 'Lead', createdAt: 1 }, w1: { id: 'w1', name: 'Worker', createdAt: 2 } },
+    rooms: {}, exchanges: [], exchangeTurns: {}, questions: {},
+  }))
+  mountTeamRuntime(owner, stateDir, { updateCheck: false, github: false, diagnosticsFile: false, home: join(home, 'bot') })
+  await owner.started
+  const rt = await getTeamRuntime(owner)
+  const live = async () => (await rt.channelCall('state', {})).value
+  assert.deepEqual((await live()).partsRunning, {})
+  rt.localAgentBackground = id => id === 'w1'
+  assert.equal(rt.backgroundWork('w1'), true)
+  assert.equal(rt.backgroundWork('m1'), false)
+  const value = await live()
+  assert.deepEqual(value.partsRunning, { w1: true })
+  assert.equal(value.work.turns.w1, undefined, 'no turn runs in it')
+  rt.localAgentBackground = () => false
+  assert.deepEqual((await live()).partsRunning, {}, 'it stops reading as running once its work is done')
+})
+
 test('a Main Bot that kept the old defaults Chief, Chief of Staff becomes GodBot, Team Lead once', async t => {
   async function open(extra) {
     const { home, owner, stateDir } = await profile(t)

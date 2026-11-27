@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { botSessions, conversationTitle, documentTitle, lastActivity, ownPartIds, sessionLabel, sessionMeta, shortList, useBotSessionRows } from '../../src/client/team-ui/bot-sessions.js'
+import { backgroundRunning, botSessions, conversationTitle, documentTitle, lastActivity, ownPartIds, sessionLabel, sessionMeta, shortList, useBotSessionRows, worksInBackground } from '../../src/client/team-ui/bot-sessions.js'
 
 // The Codex Bot from the report as the host lists it: p4 current and running, p5 a
 // busy-time part nobody talked in, p6 another one still running in the background with
@@ -66,6 +66,27 @@ test('running rows come first, and the displayed timestamp orders each set of ro
   assert.equal(rows[3].waiting, true)
   const idle = useBotSessionRows(bot, { ...roster, partsRunning: {} }, selectRows)
   assert.deepEqual(idle.map(row => row.id), ['p1', 'p4', 'p3', 'p2', 'p6', 'p0'])
+})
+
+// The report: the current part's turn ended while its CLI waits on a background task
+// (p4), and p6 runs beside it. The session list marks both Running, so the sidebar
+// counts both, not only the one beside it.
+test('a part whose turn ended while its background work goes on runs in the background', () => {
+  const turns = { p6: 100 }
+  assert.equal(worksInBackground(roster, turns, 'p4'), true, 'no turn runs in p4, yet it works')
+  assert.equal(worksInBackground(roster, turns, 'p6'), false, 'a turn runs in p6')
+  assert.equal(worksInBackground(roster, turns, 'p2'), false, 'p2 does not work at all')
+  assert.equal(backgroundRunning(bot, roster, turns), 2, 'p6 beside it and p4 itself')
+  assert.equal(botSessions(bot, roster).filter(entry => entry.running).length, 2, 'the same two the session list marks Running')
+  // A turn running in the current part is DSH's to show; only the part beside it counts.
+  assert.equal(backgroundRunning(bot, roster, { p4: 200, p6: 100 }), 1)
+  assert.equal(backgroundRunning(bot, { ...roster, partsRunning: { p6: true } }, { p6: 100 }), 1)
+  assert.equal(backgroundRunning(bot, { ...roster, partsRunning: {} }, {}), 0)
+  // An older host with no partsRunning reads as nothing running; with no turns, a part
+  // that runs may run a turn, so only the parts beside the current one count.
+  assert.equal(backgroundRunning(bot, { ...roster, partsRunning: undefined }, undefined), 0)
+  assert.equal(worksInBackground(roster, undefined, 'p4'), false)
+  assert.equal(backgroundRunning(bot, roster, undefined), 1)
 })
 
 test('a short list keeps the current, running and waiting sessions, then the newest', () => {

@@ -2451,7 +2451,9 @@ var JA = {
   "Open this running session": "実行中のセッションを開く",
   "A running session keeps using model calls in the background.": "実行中のセッションはバックグラウンドでモデル呼び出しを続けます。",
   "Switch session": "セッションを切り替え",
-  "{count} running in the background": "{count} 件のセッションがバックグラウンドで実行中"
+  "{count} running in the background": "{count} 件のセッションがバックグラウンドで実行中",
+  "Working in the background": "バックグラウンドで作業中",
+  "Replies when done": "完了したら返信します"
 };
 var HOST_ERRORS_JA = [
   [/^Could not reach the mail server at (.+)\. Check the server address\.$/, "メールサーバー $1 に接続できませんでした。サーバーアドレスを確認してください。"],
@@ -4983,7 +4985,9 @@ var KO = {
   "Open this running session": "실행 중인 세션 열기",
   "A running session keeps using model calls in the background.": "실행 중인 세션은 백그라운드에서 모델 호출을 계속 사용합니다.",
   "Switch session": "세션 전환",
-  "{count} running in the background": "세션 {count}개가 백그라운드에서 실행 중"
+  "{count} running in the background": "세션 {count}개가 백그라운드에서 실행 중",
+  "Working in the background": "백그라운드에서 작업 중",
+  "Replies when done": "완료되면 답장합니다"
 };
 var HOST_ERRORS_KO = [
   [/^Could not reach the mail server at (.+)\. Check the server address\.$/, "메일 서버 $1에 연결할 수 없습니다. 서버 주소를 확인하세요."],
@@ -7516,7 +7520,9 @@ var ES = {
   "Open this running session": "Abrir esta sesión en ejecución",
   "A running session keeps using model calls in the background.": "Una sesión en ejecución sigue usando llamadas al modelo en segundo plano.",
   "Switch session": "Cambiar de sesión",
-  "{count} running in the background": "{count} en ejecución en segundo plano"
+  "{count} running in the background": "{count} en ejecución en segundo plano",
+  "Working in the background": "Trabajando en segundo plano",
+  "Replies when done": "Responderá al terminar"
 };
 var HOST_ERRORS_ES = [
   [/^Could not reach the mail server at (.+)\. Check the server address\.$/, "No se pudo conectar con el servidor de correo en $1. Comprueba la dirección del servidor."],
@@ -10005,7 +10011,9 @@ var FR = {
   "Open this running session": "Ouvrir cette session en cours",
   "A running session keeps using model calls in the background.": "Une session en cours continue d’utiliser des appels au modèle en arrière-plan.",
   "Switch session": "Changer de session",
-  "{count} running in the background": "{count} en cours en arrière-plan"
+  "{count} running in the background": "{count} en cours en arrière-plan",
+  "Working in the background": "Travail en arrière-plan",
+  "Replies when done": "Répondra une fois terminé"
 };
 var HOST_ERRORS_FR = [
   [/^Could not reach the mail server at (.+)\. Check the server address\.$/, "Impossible de joindre le serveur de messagerie à l’adresse $1. Vérifiez l’adresse du serveur."],
@@ -12537,7 +12545,9 @@ var DE = {
   "Open this running session": "Diese laufende Sitzung öffnen",
   "A running session keeps using model calls in the background.": "Eine laufende Sitzung verbraucht weiterhin Modellaufrufe im Hintergrund.",
   "Switch session": "Sitzung wechseln",
-  "{count} running in the background": "{count} laufen im Hintergrund"
+  "{count} running in the background": "{count} laufen im Hintergrund",
+  "Working in the background": "Arbeitet im Hintergrund",
+  "Replies when done": "Antwortet, sobald es fertig ist"
 };
 var HOST_ERRORS_DE = [
   [/^Could not reach the mail server at (.+)\. Check the server address\.$/, "Mailserver unter $1 nicht erreichbar. Bitte prüfe die Serveradresse."],
@@ -15360,7 +15370,9 @@ var ZH = {
   "Open this running session": "打开这个正在运行的会话",
   "A running session keeps using model calls in the background.": "运行中的会话会在后台继续消耗模型调用。",
   "Switch session": "切换会话",
-  "{count} running in the background": "{count} 个会话在后台运行"
+  "{count} running in the background": "{count} 个会话在后台运行",
+  "Working in the background": "后台任务运行中",
+  "Replies when done": "完成后会接着回复"
 };
 var HOST_ERRORS = [
   [/^Objective must contain (\d+) to (\d+) characters\.$/, "目标要写 $1 到 $2 个字。"],
@@ -19262,6 +19274,12 @@ function WorkspaceMark({ size = 24 }) {
 
 // src/client/team-ui/bot-sessions.js
 var ownPartIds = (bot) => [currentPart(bot), ...(bot.openParts ?? []).map((part) => part.sessionId), ...bot.parts ?? [], ...(bot.openParts ?? []).flatMap((part) => part.parts ?? [])].filter((id, index, list) => typeof id === "string" && id !== "" && list.indexOf(id) === index);
+var worksInBackground = (roster, turns, sessionId) => roster.partsRunning?.[sessionId] === true && turns !== void 0 && turns[sessionId] === void 0;
+function backgroundRunning(bot, roster, turns) {
+  const current2 = currentPart(bot);
+  const beside = (bot.openParts ?? []).filter((part) => part.sessionId !== current2 && roster.partsRunning?.[part.sessionId] === true).length;
+  return beside + (worksInBackground(roster, turns, current2) ? 1 : 0);
+}
 var lastActivity = (bot, stamps) => Math.max(0, ...ownPartIds(bot).map((id) => stamps[id] ?? 0)) || bot.createdAt;
 function botSessions(bot, roster) {
   const current2 = currentPart(bot);
@@ -42377,6 +42395,7 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
   const pendingInput = useSession((snapshot) => freshInputAt(snapshot?.pendingSubmissions, steeredAt));
   const bot = roster.byId[sessionId];
   const room2 = roster.roomsById[sessionId];
+  const background = useWork?.((work) => !running && worksInBackground(roster, work.turns, sessionId)) === true;
   const moveAt = useWork?.((work) => {
     const entry = bot !== void 0 ? work.bots?.[bot.id] : room2 !== void 0 ? work.rooms?.[room2.id]?.find((item) => item.self === true) : void 0;
     return entry?.switching === true && entry.folder === true && entry.roomId === void 0 ? entry.since : 0;
@@ -42386,12 +42405,12 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
   const tools = entries2.filter((entry) => !entry.text).sort((a3, b2) => a3.at - b2.at);
   const relaying = tools.some((entry) => entry.relay);
   const waitingForTerminal = running && terminalActive;
-  const visible = !waitingForTerminal && (moveAt !== 0 || rowVisible({ running, streaming, tools, relaying, bot, room: room2 }));
+  const visible = !waitingForTerminal && (moveAt !== 0 || background || rowVisible({ running, streaming, tools, relaying, bot, room: room2 }));
   const tool = tools.at(-1);
   const inputRef = (0, import_react43.useRef)(0);
   const inputAt = Math.max(inputRef.current, pendingInput);
   inputRef.current = inputAt;
-  const want = !visible ? null : moveAt !== 0 ? { key: "move", label: t("Switching working folder"), state: "thinking" } : inputAt > (tool?.at ?? 0) ? { key: `input:${inputAt}`, pool: PHRASES2.thinking, state: "thinking" } : tool ? { key: tool.label ? `tool:${tool.label}` : "working", label: tool.label, pool: PHRASES2.working, state: tool.state ?? "working" } : { key: "thinking", pool: PHRASES2.thinking, state: "thinking" };
+  const want = !visible ? null : moveAt !== 0 ? { key: "move", label: t("Switching working folder"), state: "thinking" } : background ? { key: "background", label: t("Working in the background"), state: "working" } : inputAt > (tool?.at ?? 0) ? { key: `input:${inputAt}`, pool: PHRASES2.thinking, state: "thinking" } : tool ? { key: tool.label ? `tool:${tool.label}` : "working", label: tool.label, pool: PHRASES2.working, state: tool.state ?? "working" } : { key: "thinking", pool: PHRASES2.thinking, state: "thinking" };
   const [shown, setShown] = (0, import_react43.useState)(null);
   const wantKey = want?.key ?? null;
   const markState = (0, import_react43.useRef)("thinking");
@@ -42439,7 +42458,7 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
     if (!running) actions.clearLive(sessionId);
   }, [running, sessionId]);
   useRowEntrances(() => leaving.current || Date.now() - endedAt.current < 300);
-  const host = useRunningHost(running || moveAt !== 0);
+  const host = useRunningHost(running || background || moveAt !== 0);
   if (host && waitingForTerminal) return (0, import_react_dom5.createPortal)((0, import_react43.createElement)(
     "div",
     { className: "bt-terminal-wait" },
@@ -42455,7 +42474,8 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
       "span",
       { className: "bt-typing-text" },
       (0, import_react43.createElement)("span", { key: `${shown.key}:${shown.at}`, className: "bt-typing-label" }, (0, import_react43.createElement)(Shimmer, null, `${shown.text}…`)),
-      (0, import_react43.createElement)(Elapsed, { at: moveAt !== 0 ? moveAt : Math.max(turnAt ?? runAt.current, inputAt), className: "bt-typing-time" })
+      // Background work has no turn to time; the row says what comes of it instead.
+      shown.key === "background" ? (0, import_react43.createElement)("span", { className: "bt-typing-time" }, t("Replies when done")) : (0, import_react43.createElement)(Elapsed, { at: moveAt !== 0 ? moveAt : Math.max(turnAt ?? runAt.current, inputAt), className: "bt-typing-time" })
     )
   ), host);
 }
@@ -42980,7 +43000,7 @@ function BotRow({ bot, roster, actions, useSessions, useSessionStatus, useSessio
   const part = currentPart(bot);
   const preview = useSessions((list) => previewOf(list, part, roster.exchangeTurns[part]));
   const running = useSessionStatus((map) => map.get(part)?.running === true);
-  const background = (bot.openParts ?? []).filter((entry) => roster.partsRunning?.[entry.sessionId] === true).length;
+  const background = useWork ? useWork((work) => backgroundRunning(bot, roster, work.turns)) : backgroundRunning(bot, roster, void 0);
   const active2 = useSessionRetainInfo(part, (info) => (info?.retainedBy?.mainView ?? 0) > 0);
   const unread = useSessionStatus((map) => map.get(part)?.completionUnread === true || map.get(part)?.pendingInteraction !== void 0) || marked2 && !active2;
   useMarkedUnread(id, active2, marked2, actions);
@@ -51071,7 +51091,7 @@ var COPY_ID_CSS = `
 // src/client/team-ui/session-menu.js
 var MENU_WIDTH = 340;
 var MENU_EXIT_MS3 = 120;
-function SessionMenu({ bot, roster, actions, useSessions }) {
+function SessionMenu({ bot, roster, actions, useSessions, useWork }) {
   const [open, setOpen] = (0, import_react65.useState)(false);
   const [place, setPlace] = (0, import_react65.useState)(null);
   const [shownPlace, leaving] = useLinger(open ? place : null, MENU_EXIT_MS3);
@@ -51079,6 +51099,7 @@ function SessionMenu({ bot, roster, actions, useSessions }) {
   const menu = (0, import_react65.useRef)(null);
   const tick = useViewport();
   const entries2 = useBotSessionRows(bot, roster, useSessions);
+  const background = useWork ? useWork((work) => backgroundRunning(bot, roster, work.turns)) : backgroundRunning(bot, roster, void 0);
   const close = () => setOpen(false);
   (0, import_react65.useLayoutEffect)(() => {
     if (!open || !button9.current) return;
@@ -51109,7 +51130,7 @@ function SessionMenu({ bot, roster, actions, useSessions }) {
   }, [open]);
   if (entries2.length < 2) return null;
   const elsewhere = entries2.filter((entry) => !entry.current && (entry.running || entry.waiting)).length;
-  const label2 = elsewhere > 0 ? `${t("Switch session")} · ${t("{count} running in the background", { count: elsewhere })}` : t("Switch session");
+  const label2 = background > 0 ? `${t("Switch session")} · ${t("{count} running in the background", { count: background })}` : t("Switch session");
   const pick2 = (entry) => {
     close();
     if (entry.current) return;
@@ -51320,6 +51341,7 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
     return () => document.body.style.removeProperty("--bt-first-sep");
   }, [opening]);
   const running = useSessionStatus((map) => map.get(sessionId)?.running === true);
+  const background = useWork?.((work) => worksInBackground(roster, work.turns, sessionId)) === true;
   const owner = roster.byId[sessionId]?.id ?? sessionId;
   const doing = useActivity((map) => map[owner]);
   const bot = roster.byId[sessionId];
@@ -51404,7 +51426,7 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
       title: away ? name : void 0,
       onClick: () => away ? selectView("chat") : memoryNotice ? actions.openMemory(changed) : actions.toggleDetails(sessionId)
     },
-    bot ? (0, import_react66.createElement)(BotAvatar, { bot, size: 24, state: botState(running, doing, roster.questions?.[currentPart(bot)] !== void 0), badge: false }) : room2 ? (0, import_react66.createElement)(RoomAvatar, { room: room2, roster, size: 24 }) : null,
+    bot ? (0, import_react66.createElement)(BotAvatar, { bot, size: 24, state: botState(running || background, doing, roster.questions?.[currentPart(bot)] !== void 0), badge: false }) : room2 ? (0, import_react66.createElement)(RoomAvatar, { room: room2, roster, size: 24 }) : null,
     goalShown ? (0, import_react66.createElement)(
       "span",
       { className: "bt-pill-swap" },
@@ -51448,7 +51470,7 @@ function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus, useSe
         // Start a fresh conversation with this Bot.
         bot && currentPart(bot) === sessionId ? (0, import_react66.createElement)(NewSessionButton, { key: "new-session", bot, roster, actions, sessionId, variant: "bar" }) : null,
         // Its other sessions, as a list to switch to.
-        bot && currentPart(bot) === sessionId ? (0, import_react66.createElement)(SessionMenu, { key: "sessions", bot, roster, actions, useSessions }) : null,
+        bot && currentPart(bot) === sessionId ? (0, import_react66.createElement)(SessionMenu, { key: "sessions", bot, roster, actions, useSessions, useWork }) : null,
         search,
         actions.godbot?.computerButton ? actions.godbot.computerButton(bot, sessionId, roster, actions, useComputer) : null,
         actions.godbot.browserButton(bot, sessionId, roster),
@@ -55698,13 +55720,13 @@ function GroupOverview({ room: room2, roster, actions, usage, useWork, openSetti
 }
 function BotSessions({ bot, part, run: run2, useSessions, actions, roster }) {
   const entries2 = useBotSessionRows(bot, roster, useSessions);
-  const backgroundRunning = entries2.some((entry) => !entry.current && entry.running);
+  const backgroundRunning2 = entries2.some((entry) => !entry.current && entry.running);
   return (0, import_react81.createElement)(
     "div",
     { className: "bt-drawer-model" },
     (0, import_react81.createElement)("div", { className: "bt-section-title" }, t("Sessions")),
     (0, import_react81.createElement)(NewSessionButton, { bot, roster, actions, sessionId: part, variant: "panel" }),
-    backgroundRunning ? (0, import_react81.createElement)(
+    backgroundRunning2 ? (0, import_react81.createElement)(
       "div",
       { className: "bt-agent-sessions-warn", role: "status" },
       (0, import_react81.createElement)(AlertIcon),
@@ -55767,6 +55789,7 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
   const side = move === "tab" ? void 0 : move;
   const bot = owner;
   const running = useSessionStatus((map) => map.get(part)?.running === true);
+  const background = useWork?.((work) => worksInBackground(roster, work.turns, part)) === true;
   const doing = useActivity((map) => map[bot?.id ?? sessionId]);
   const transcript = useSessions((list) => transcriptOf(list, part, bot?.name ?? room2?.name ?? t("Bot"), roster.exchangeTurns[part]));
   const usage = useSessions((list) => usageOf(list, [part, ...bot?.parts ?? room2?.parts ?? []]));
@@ -55837,7 +55860,7 @@ function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, ros
     (0, import_react81.createElement)(
       "div",
       { key: "id", className: "bt-drawer-id", "data-move": side },
-      bot ? (0, import_react81.createElement)(BotAvatar, { bot, size: 64, state: botState(running, doing, roster.questions?.[part] !== void 0), main: isMainBot, badge: false, gaze: true, pokeable: true }) : (0, import_react81.createElement)(MemberPile, { room: room2, roster }),
+      bot ? (0, import_react81.createElement)(BotAvatar, { bot, size: 64, state: botState(running || background, doing, roster.questions?.[part] !== void 0), main: isMainBot, badge: false, gaze: true, pokeable: true }) : (0, import_react81.createElement)(MemberPile, { room: room2, roster }),
       editing ? (0, import_react81.createElement)("input", {
         className: "bt-drawer-name-input",
         autoFocus: true,
