@@ -104,9 +104,9 @@ export default async function check({ makeHost, candidate, previous, reportDir, 
       .click()
     await editor.locator('textarea').fill('Keep this review comment while I read the revised evidence')
     await tap('return for changes on Android', 'Request changes', '退回修改')
-    ui.tap(await ui.scrollTo((n) => ui.field(n, 'Review feedback', '验收意见'), 'review feedback'))
+    ui.tap(await ui.waitFor((n) => ui.field(n, 'Review feedback', '验收意见'), 'review feedback'))
     ui.typeText('Include the second receipt')
-    await ui.hideKeyboard()
+    await ui.waitFor((n) => ui.field(n, 'Include the second receipt'), 'entered review feedback')
     await tap('confirm rework', 'Confirm', '确认')
     const next = await until(
       async () => {
