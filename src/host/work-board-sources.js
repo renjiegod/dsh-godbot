@@ -29,7 +29,7 @@ function runInteractions(rt, rows) {
   return result
 }
 
-export function sourceSummary(service, row, meta) {
+function summarizeSource(service, row, meta) {
   const { store, runtime: rt } = service
   const base = {
     title: meta.title,
@@ -166,6 +166,32 @@ export function sourceSummary(service, row, meta) {
   }
 }
 
+export function sourceSummary(service, row, meta) {
+  const source = summarizeSource(service, row, meta)
+  if (!source) return null
+  const draft = row.kind === 'draft'
+  source.title = meta.title ?? source.title
+  source.updated = Math.max(source.updated ?? 0, meta.updated ?? 0)
+  source.version += ':' + (meta.version ?? 0)
+  source.assignee = meta.assignee || (source.owner ? 'bot/' + source.owner : '')
+  source.startDate = meta.startDate ?? ''
+  source.dueDate = meta.dueDate ?? ''
+  source.labels = meta.labels ?? []
+  source.customValues = meta.customValues ?? {}
+  source.parent = meta.parent ?? ''
+  if (meta.assignee?.startsWith('room/')) source.refs.push(meta.assignee)
+  if (meta.snapshot?.refs?.length) source.refs.push(...meta.snapshot.refs)
+  if (meta.duplicateOf) Object.assign(source, when('history', 'duplicate'))
+  else if (draft && !meta.archived && meta.statusPhase) {
+    Object.assign(source, when(meta.statusPhase, meta.statusId === 'done' ? 'manualDone' : 'manual'))
+  }
+  if (draft && meta.dispatchPending && !meta.archived && !meta.duplicateOf)
+    Object.assign(source, meta.dispatchError ? when('attention', 'failed', true) : when('todo', 'dependencies'))
+  if (meta.dispatchError && draft) source.hint = meta.dispatchError
+  source.statusId = meta.statusPhase === source.phase ? meta.statusId || '' : ''
+  return source
+}
+
 function pageEvents(rows, convert) {
   const events = rows.slice(0, 40)
   return {
@@ -234,7 +260,7 @@ export function sourceDetail(service, row, meta, card, before = Number.MAX_SAFE_
           : null
     return {
       ...detail,
-      criteria: run.criteria,
+      criteria: meta.criteria ?? run.criteria,
       attempt: run.attempt,
       children,
       execution,

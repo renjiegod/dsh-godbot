@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { parseArgs } from 'node:util'
 import { child, collectAttachments, decode, relocateLog, fileData, includeDescendants, sessionHeader, logLines, logRelative, mapFields, remapper, seal, sessionRefs, sha, tree, unpackTree, unseal } from './backup-files.js'
 
+import { installCommentStore } from './work-board-comment-store.js'
 import { installBoardIndex } from './work-board-index.js'
 
 const managed = new Set(['memory','ledger','handoff-results','avatars','workspace','group-lines','group-logs','skills','usage.sqlite','execution.sqlite'])
@@ -62,8 +63,25 @@ function portableBoard(dir) {
   const db = new DatabaseSync(file,{readOnly:true})
   try {
     if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_cards'").get()) return undefined
-    return { cards:db.prepare("SELECT number,kind,scope,source_id,origin_key,meta,CASE WHEN kind='draft' THEN summary END AS summary FROM board_cards ORDER BY number").all(),
-      requests:db.prepare('SELECT id,fingerprint,number,outcome FROM board_requests').all() }
+    const board = {
+      cards: db.prepare("SELECT number,kind,scope,source_id,origin_key,meta,CASE WHEN kind='draft' THEN summary END AS summary FROM board_cards ORDER BY number").all(),
+      requests: db.prepare('SELECT id,fingerprint,number,outcome FROM board_requests').all(),
+    }
+    if (db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_comments'").get()) {
+      board.discussions = {
+        comments: db.prepare('SELECT * FROM board_comments ORDER BY seq').all(),
+        files: db.prepare('SELECT * FROM board_comment_files ORDER BY rowid').all()
+          .map(file => ({ ...file, bytes: Buffer.from(file.bytes).toString('base64') })),
+        runs: db.prepare('SELECT * FROM board_comment_runs ORDER BY created,rowid').all(),
+        routes: db.prepare('SELECT * FROM board_comment_routes').all(),
+        requests: db.prepare('SELECT * FROM board_comment_requests').all(),
+        retired: db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_retired_artifacts'").get()
+          ? db.prepare('SELECT id FROM board_retired_artifacts').all().map(row => row.id) : [],
+        versions: db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_artifact_versions'").get()
+          ? db.prepare('SELECT * FROM board_artifact_versions').all() : [],
+      }
+    }
+    return board
   } finally { db.close() }
 }
 function nativeDatabase(path, rows, board) {
@@ -80,9 +98,33 @@ function nativeDatabase(path, rows, board) {
       for (const r of board.cards) card.run(r.number,r.kind,r.scope,r.source_id,r.origin_key,r.meta,r.summary)
       const receipt = db.prepare('INSERT INTO board_requests(id,fingerprint,number,outcome) VALUES(?,?,?,?)')
       for (const r of board.requests) receipt.run(r.id,r.fingerprint,r.number,r.outcome)
+      if (board.discussions) restoreBoardComments(db, board.discussions)
       db.exec('COMMIT')
     }
   } finally { db.close() }
+}
+function restoreBoardComments(db, discussion) {
+  installCommentStore(db)
+  const comment = db.prepare('INSERT INTO board_comments(seq,id,number,root_id,parent_id,data) VALUES(?,?,?,?,?,?)')
+  for (const row of discussion.comments) comment.run(row.seq, row.id, row.number, row.root_id, row.parent_id, row.data)
+  const file = db.prepare('INSERT INTO board_comment_files(id,comment_id,name,mime,bytes) VALUES(?,?,?,?,?)')
+  for (const row of discussion.files) file.run(row.id, row.comment_id, row.name, row.mime, Buffer.from(row.bytes, 'base64'))
+  const retire = db.prepare('INSERT INTO board_retired_artifacts(id) VALUES(?)')
+  for (const id of discussion.retired ?? []) retire.run(id)
+  const version = db.prepare('INSERT INTO board_artifact_versions(file_id,number,artifact_key,version,created) VALUES(?,?,?,?,?)')
+  for (const row of discussion.versions ?? []) version.run(row.file_id,row.number,row.artifact_key,row.version,row.created)
+  const run = db.prepare(`INSERT INTO board_comment_runs
+    (id,number,comment_id,bot_id,state,session_id,turn_id,reply_id,created,mode,bound_id,bound_turn,retry_of,reason)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+  for (const row of discussion.runs) {
+    const state = ['queued', 'sending', 'sent', 'running', 'waiting'].includes(row.state) ? 'unknown' : row.state
+    run.run(row.id, row.number, row.comment_id, row.bot_id, state, row.session_id, row.turn_id, row.reply_id, row.created,
+      row.mode ?? null, row.bound_id ?? null, row.bound_turn ?? null, row.retry_of ?? null, row.reason ?? null)
+  }
+  const route = db.prepare('INSERT INTO board_comment_routes(number,bot_id,session_id) VALUES(?,?,?)')
+  for (const row of discussion.routes) route.run(row.number, row.bot_id, row.session_id)
+  const request = db.prepare('INSERT INTO board_comment_requests(id,number,comment_id,fingerprint) VALUES(?,?,?,?)')
+  for (const row of discussion.requests) request.run(row.id, row.number, row.comment_id, row.fingerprint)
 }
 function portableTeamState(original) {
   const s = structuredClone(original)

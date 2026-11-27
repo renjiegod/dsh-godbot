@@ -46,6 +46,7 @@ export const CAPABILITIES = [
   'local-agent-usage',
   'unified-automation',
   'work-board-v1',
+  'work-board-management-v1',
   'work-board-discussion-v1',
   'stop-chat',
   'bot-goals',

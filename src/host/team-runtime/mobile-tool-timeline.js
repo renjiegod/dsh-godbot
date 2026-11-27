@@ -52,11 +52,11 @@ export function withInterruptedAttempts(events) {
 
 const interactive = new Set(['ask_user', 'request_secret', 'show_view', 'group_relay'])
 
-export async function mobileToolDetail(rt, { botId, sessionId, turn, toolId }) {
+export async function mobileToolDetail(rt, { botId, sessionId, turn, toolId }, { associatedWork = false } = {}) {
   const history = rt.executionHistory
   if (!history || typeof botId !== 'string' || history.ownerOf(sessionId) !== botId ||
       typeof toolId !== 'string' || !toolId || !Number.isSafeInteger(turn) ||
-      rt.state.exchangeTurns?.[sessionId]?.includes(turn)) throw new Error('Tool call unavailable')
+      (!associatedWork && rt.state.exchangeTurns?.[sessionId]?.includes(turn))) throw new Error('Tool call unavailable')
   const { events } = await history.read({ botId, sessionId, turn, toolId })
   const tool = events[0]
   if (!tool || interactive.has(tool.name)) throw new Error('Tool call unavailable')
@@ -82,10 +82,10 @@ const clip = (text, max) => text.length > max ? text.slice(0, max) + '…' : tex
 const locationText = location => typeof location === 'string' ? location : typeof location?.path === 'string'
   ? location.path + (location.line != null ? ':' + location.line : '') : ''
 
-export async function mobileTurnProcess(rt, { botId, sessionId, turn, knownRev }) {
+export async function mobileTurnProcess(rt, { botId, sessionId, turn, knownRev, before }, { associatedWork = false } = {}) {
   const history = rt.executionHistory
   if (!history || typeof botId !== 'string' || typeof sessionId !== 'string' || history.ownerOf(sessionId) !== botId ||
-      !Number.isSafeInteger(turn) || rt.state.exchangeTurns?.[sessionId]?.includes(turn)) throw new Error('Work process unavailable')
+      !Number.isSafeInteger(turn) || (!associatedWork && rt.state.exchangeTurns?.[sessionId]?.includes(turn))) throw new Error('Work process unavailable')
   const { events, running } = await history.read({ botId, sessionId, turn })
   const clean = text => rt.redactSecrets?.(text) ?? text
   const rows = []
@@ -111,8 +111,9 @@ export async function mobileTurnProcess(rt, { botId, sessionId, turn, knownRev }
     }
   }
   // A very long turn sends its newest rows; `omitted` counts the ones before them.
-  const omitted = Math.max(0, rows.length - PROCESS_ROWS)
-  const value = { running: running === true, events: rows.slice(omitted), ...(omitted > 0 ? { omitted } : {}) }
+  const end = associatedWork && Number.isSafeInteger(before) && before > 0 ? Math.min(before, rows.length) : rows.length
+  const omitted = Math.max(0, end - PROCESS_ROWS)
+  const value = { running: running === true, events: rows.slice(omitted, end), ...(omitted > 0 ? { omitted } : {}) }
   const rev = createHash('sha256').update(JSON.stringify(value)).digest('hex').slice(0, 16)
   return typeof knownRev === 'string' && knownRev === rev ? { running: value.running, rev, unchanged: true } : { ...value, rev }
 }

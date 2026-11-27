@@ -283,6 +283,8 @@ export function install(rt) {
 
   READS.add('board-view')
   READS.add('board-item')
+  READS.add('board-runs')
+  READS.add('board-artifacts')
   READS.add('board-discussion')
   READS.add('board-comment-file')
   async function setPrefs(body) {
@@ -774,6 +776,8 @@ export function install(rt) {
           return ok(await rt.scheduleEndpoint(endpoint, body))
         case 'board-view':
         case 'board-item':
+        case 'board-runs':
+        case 'board-artifacts':
         case 'board-action':
         case 'board-discussion':
         case 'board-comment':

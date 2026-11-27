@@ -5,7 +5,7 @@ import { MarkdownText, writeClipboard } from './team-ui/dsh-primitives.js'
 import { useWorkBoardDiscussion } from '../host/team-runtime/shared/work-board-discussion.js'
 import {
   chooseCommentAddress, commentAddress, commentFileCount, commentFileLimit, commentLength,
-  commentLink, commentPlan, commentReactions, commentRunLabels,
+  commentLink, commentPlan, commentReactions, commentRunLabels, commentModes, quoteRanges,
 } from '../team/work-board-discussion-format.js'
 
 const button = (label, onClick, props) => h('button', { type: 'button', onClick, ...props }, label)
@@ -24,9 +24,15 @@ async function encodeFile(file) {
   return { name: file.name, mime: file.type, size: file.size, data }
 }
 
-export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe, openExecution }) {
+export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe, openExecution, openRun, openComment, createSubtask, quote }) {
   const state = useWorkBoardDiscussion({ call, subscribe, id, active, online: true, focus, requestId: uuid })
   const [draft, setDraft] = useState(blank)
+  const [annotations, setAnnotations] = useState([])
+  const [annotation, setAnnotation] = useState(null)
+  const [modes, setModes] = useState({})
+  useEffect(() => {
+    if (quote && active) setAnnotation({ source: quote.text ?? '', quote: quote.quote ?? '', note: '', start: quote.start, end: quote.end })
+  }, [quote, active])
   const [error, setError] = useState(null)
   const [selectedAction, setSelectedAction] = useState(null)
   const [target, setTarget] = useState(focus)
@@ -117,9 +123,21 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
     }
   }
 
+  function startAnnotation(entry, quote = '') {
+    reply(entry)
+    setAnnotation({ commentId: entry.id, source: entry.body, quote, note: '' })
+  }
+  function addAnnotation() {
+    const range = annotation.start !== undefined
+      ? { start: annotation.start, end: annotation.end, quote: annotation.quote }
+      : quoteRanges(annotation.source, annotation.quote)[0]
+    if (!range || !annotation.note.trim()) return
+    setAnnotations(old => [...old, { ...range, note: annotation.note, commentId: annotation.commentId }])
+    setAnnotation(null)
+  }
   async function submit(event) {
     event.preventDefault()
-    if (disabled || !(draft.body.trim() || draft.files.length || draft.keep.length)) return
+    if (disabled || !(draft.body.trim() || draft.files.length || draft.keep.length || annotations.length)) return
     setError(null)
     const result = await state.write({
       op: draft.edit ? 'edit' : 'post',
@@ -131,9 +149,14 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
       keepFiles: draft.keep.map(file => file.id),
       quiet: draft.quiet,
       targets: notified,
+      ...(annotations.length ? { annotations } : {}),
+      ...(Object.keys(modes).length ? { modes } : {}),
     }, draft.parent?.rootId ?? (draft.edit?.parentId ? draft.edit.rootId : null))
     if (result) {
       setDraft(blank())
+      setModes({})
+      setAnnotations([])
+      setAnnotation(null)
       setTarget(result.commentId)
       setEditingAddress(false)
     }
@@ -163,14 +186,24 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
     entry.parent && entry.parentId !== entry.rootId
       ? h('p', { className: 'wb-comment-quote' }, entry.parent.deleted
           ? t('Deleted comment') : (entry.parent.author ?? t('You')) + ' · ' + entry.parent.excerpt) : null,
-    entry.body ? h('div', { className: 'wb-comment-body' },
+    entry.body ? h('div', { className: 'wb-comment-body', onMouseUp: event => {
+      const selected = window.getSelection()
+      if (disabled || !selected || selected.isCollapsed || !event.currentTarget.contains(selected.anchorNode)
+        || !event.currentTarget.contains(selected.focusNode)) return
+      const text = selected.toString().trim()
+      if (text && quoteRanges(entry.body, text).length) startAnnotation(entry, text)
+    } },
       h(MarkdownText, { text: entry.body, labels: mdLabels(), variant: 'compact' })) : null,
+    ...(entry.annotations ?? []).map((note, i) => h('blockquote', { key: i, className: 'wb-annotation' },
+      h('pre', null, note.quote), h('p', null, note.note))),
+    entry.conclusion && button(t('Conclusion') + ' · ' + entry.conclusion.excerpt, () => openComment(entry.conclusion.id)),
     entry.attachments.length ? h('div', { className: 'wb-comment-tools' }, ...entry.attachments.map(file =>
       button(file.name, () => void download(entry, file), { key: file.id, title: t('Download attachment') }))) : null,
     entry.runs.length || entry.unmatched ? h('div', { className: 'wb-comment-runs', 'aria-label': t('Comment executions') },
       ...entry.runs.map(run => h('div', { className: 'wb-comment-run', key: run.id },
         h('span', null, (run.name ?? t('Bot')) + ' · ' + t(commentRunLabels[run.state] ?? 'Unknown')),
-        run.sessionId ? button(t('Open execution conversation'), () => openExecution(run)) : null)),
+        run.reason ? h('small', null, run.reason) : null,
+        openRun ? button(t('View run'), () => openRun(run.id)) : (run.sessionId ? button(t('Open execution conversation'), () => openExecution(run)) : null))),
       entry.unmatched ? h('small', null, t('An @mention did not match an available Bot.')) : null) : null,
     h('div', { className: 'wb-comment-tools' },
       ...entry.reactions.map(emoji => button(emoji + ' 1', () => state.write({ op: 'react', commentId: entry.id, emoji, active: false }),
@@ -188,7 +221,7 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
           setCopied(entry.id)
         } catch (cause) { setError(cause.message) }
       }),
-      !entry.deleted && (entry.authorType === 'person' || !entry.parentId) && button('⋯', () => select(entry.id, 'menu'),
+      !entry.deleted && button('⋯', () => select(entry.id, 'menu'),
         { disabled, 'aria-label': t('Comment actions'), 'aria-expanded': actions === 'menu' }),
     ),
     actions === 'reaction' ? h('div', { className: 'wb-comment-tools', 'aria-label': t('Choose a reaction') },
@@ -199,6 +232,12 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
     actions === 'menu' ? h('div', { className: 'wb-comment-tools' },
       entry.authorType === 'person' && button(t('Edit comment'), () => { edit(entry); setSelectedAction(null) }, { disabled }),
       entry.authorType === 'person' && button(t('Delete comment'), () => select(entry.id, 'delete'), { disabled }),
+      entry.body && button(t('Annotate text'), () => startAnnotation(entry), { disabled }),
+      createSubtask ? button(t('Create subtask from comment'), () => createSubtask(entry), { disabled }) : null,
+      entry.parentId && button(t('Mark as conclusion'), async () => {
+        if (await state.write({ op: 'resolve', commentId: entry.rootId, resolved: true, conclusionId: entry.id }, entry.rootId))
+          setSelectedAction(null)
+      }, { disabled }),
       !entry.parentId && button(t(entry.resolvedAt ? 'Reopen thread' : 'Resolve thread'), async () => {
         if (await state.write({ op: 'resolve', commentId: entry.id, resolved: !entry.resolvedAt })) setSelectedAction(null)
       }, { disabled }),
@@ -236,9 +275,21 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
       ) : null,
     ))),
     h('form', { className: 'wb-comment-composer', onSubmit: submit },
+      annotation ? h('section', { className: 'wb-annotation' },
+        annotation.source ? h('details', null, h('summary', null, t('Source text')), h('pre', null, annotation.source)) : null,
+        h('label', { className: 'wb-field' }, t('Quoted text'), h('textarea', { value: annotation.quote, rows: 2,
+          readOnly: annotation.start !== undefined, onChange: e => setAnnotation({ ...annotation, quote: e.target.value }) })),
+        h('label', { className: 'wb-field' }, t('Annotation'), h('textarea', { value: annotation.note, rows: 2,
+          maxLength: 2000, onChange: e => setAnnotation({ ...annotation, note: e.target.value }) })),
+        button(t('Add annotation'), addAnnotation, { disabled: disabled || annotations.length >= 20 || !annotation.note.trim() ||
+          (annotation.start === undefined && !quoteRanges(annotation.source, annotation.quote).length) }),
+        button(t('Cancel'), () => setAnnotation(null))) : null,
+      ...annotations.map((note, i) => h('blockquote', { key: i, className: 'wb-annotation' },
+        h('pre', null, note.quote), h('p', null, note.note),
+        button(t('Remove annotation'), () => setAnnotations(old => old.filter((_, index) => index !== i))))),
       draft.edit || draft.parent ? h('div', { className: 'wb-comment-target' },
         draft.edit ? t('Edit comment') : t('Reply to {name}', { name: author(draft.parent) }),
-        button(t('Cancel'), () => setDraft(blank())),
+        button(t('Cancel'), () => { setDraft(blank()); setAnnotations([]); setAnnotation(null); setModes({}) }),
       ) : null,
       h('textarea', {
         ref: input, value: draft.body, disabled, rows: 3, maxLength: commentLength,
@@ -280,6 +331,17 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
             notified.length && plan.unmatched ? ' · ' : null,
             plan.unmatched ? t('An @mention did not match an available Bot.') : null)
         : null,
+      !draft.quiet ? notified.map(botId => {
+        const binding = state.roots?.activeRuns?.[botId]
+        if (!binding) return null
+        const hasFiles = draft.files.length || draft.keep.length
+        return h('label', { key: botId, className: 'wb-field' }, bots.find(bot => bot.id === botId)?.name,
+          h('select', { value: modes[botId]?.mode ?? 'queue', disabled, onChange: e => {
+            const mode = e.target.value
+            setModes(old => ({ ...old, [botId]: { mode, runId: binding.runId, turnId: binding.turnId } }))
+          } }, ...Object.entries(commentModes).filter(([mode]) => mode !== 'steer' || binding.steer && !hasFiles)
+            .map(([mode, label]) => h('option', { key: mode, value: mode }, t(label)))))
+      }) : null,
       h('div', { className: 'wb-comment-tools' },
         h('input', { ref: filesInput, hidden: true, type: 'file', multiple: true, onChange: event => {
           void attach(event.target.files)
@@ -288,7 +350,7 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
         button(t('Attach files'), () => filesInput.current?.click(), { disabled }),
         h('label', null, h('input', { type: 'checkbox', checked: draft.quiet, disabled,
           onChange: event => setDraft({ ...draft, quiet: event.target.checked }) }), ' ', t('Comment without waking Bots')),
-        h('button', { className: 'wb-primary', disabled: disabled || !(draft.body.trim() || draft.files.length || draft.keep.length) },
+        h('button', { className: 'wb-primary', disabled: disabled || !(draft.body.trim() || draft.files.length || draft.keep.length || annotations.length) },
           t(draft.edit ? 'Save changes' : draft.parent ? 'Send reply' : 'Post comment')),
       ),
     ),

@@ -162,6 +162,7 @@ export class BotTaskWorkspace {
       case 'task.review': {
         const task = team.task(req)
         const delivery = store.get('botTaskDeliveries', task.assignmentId)
+        if (req.approve === true) this.rt.boardReviewAllowed?.(task)
         if (pendingFor(this.rt, delivery).length)
           throw new Error('请先处理 Bot 会话里待回答的问题或审批。')
         return team.review(req)
@@ -237,7 +238,7 @@ export class BotTaskWorkspace {
           : (anchor && await rt.openBotConversation(member, anchor))
             || await rt.newBotConversation(member, 'GB-' + task.boardNumber + ' · ' + task.title)
         if (!sessionId || this.closing || rt.readOnly() || !store.get('members',bot.id)
-          || store.get('tasks',task.id)?.assignmentId !== next.id) throw new Error('任务会话或负责人已改变。')
+          || store.get('tasks',task.id)?.assignmentId !== next.id || store.get('botTaskDeliveries', next.id)?.state !== 'sending') throw new Error('任务会话或负责人已改变。')
         store.update('tasks', task.id, { boardSession:sessionId, boardSessionOwner:bot.id })
         store.update('botTaskDeliveries', next.id, {sessionId})
       }
@@ -333,9 +334,12 @@ export class BotTaskWorkspace {
       // The runtime carries an interrupted steer/part switch into its successor turn.
       if (entry.switched || entry.suppressedSubagent ||
           entry.cut && reason?.kind === 'aborted' && ['godbot/steer', 'ds-bot/steer'].includes(reason.reason?.reason)) continue
-      if (ids.size > 1) this.botFailed(id, 'unknown', '同一 Bot 回合包含多个请求，无法单独确认此任务的结果。')
+      if (entry.joined?.some(item => item.info?.boardInline !== true))
+        this.botFailed(id, 'unknown', '同一 Bot 回合包含多个请求，无法单独确认此任务的结果。')
       else if (reason?.kind === 'error' || reason?.kind === 'aborted')
-        this.botFailed(id, reason.kind === 'error' ? 'failed' : 'interrupted', 'Bot 回合' + (reason.kind === 'error' ? '失败' : '已停止'))
+        this.botFailed(id, reason.kind === 'error' ? 'failed' : 'interrupted', reason.kind === 'error'
+          ? (this.rt.redactSecrets?.(reason.error?.message ?? '') || reason.error?.code || 'Bot 回合失败').slice(0, 500)
+          : 'Bot 回合已停止')
       else this.store.update('botTaskDeliveries', id, { sessionId, turnId: entry.turn,
         questionId: this.rt.state.questions?.[sessionId]?.id ?? null })
     }

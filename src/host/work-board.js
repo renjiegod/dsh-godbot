@@ -7,7 +7,9 @@ import { botWorkspaceId } from './bot-task-workspace.js'
 import { accessOf, cardId, installBoardIndex, publicCard, queryBoard } from './work-board-index.js'
 import { sourceSummary, sourceDetail } from './work-board-sources.js'
 import { ownConversations } from './team-runtime/core/threads.js'
-import { readDiscussion, WorkBoardDiscussion } from './work-board-discussion.js'
+import { boardCommentTargets, readDiscussion, WorkBoardDiscussion } from './work-board-discussion.js'
+import { WorkBoardRuns } from './work-board-runs.js'
+import { boardCatalog, BoardRelations, editPlanning, mutateBoardCatalog, planningFields } from './work-board-planning.js'
 
 const denied = () => Object.assign(new Error('工作项不存在或无法访问。'), { code: 'bot/not-found' })
 const stale = () => Object.assign(new Error('工作项或交付证据已更新，请刷新后重新确认。'), { code: 'bot/refused' })
@@ -55,10 +57,11 @@ function checkedRow(db, rt, req) {
   if (JSON.parse(row.summary).refs.some((ref) => !allowed.has(ref))) throw denied()
   return row
 }
-function detailFor(service, db, req, readOnly) {
+function detailFor(service, db, req, readOnly, planning) {
   const row = checkedRow(db, service.runtime, req)
   const before = Number.isSafeInteger(req.before) && req.before > 0 ? req.before : Number.MAX_SAFE_INTEGER
-  const item = sourceDetail(service, row, JSON.parse(row.meta), publicCard(row), before)
+  const meta = JSON.parse(row.meta)
+  const item = sourceDetail(service, row, meta, publicCard(row), before)
   item.dependencies = item.dependencies.flatMap((taskId) => {
     try {
       const dependency = checkedRow(db, service.runtime, { taskId })
@@ -67,19 +70,46 @@ function detailFor(service, db, req, readOnly) {
       return []
     }
   })
+  item.fields = { ...planningFields(meta), assignee: meta.assignee || (item.owner ? 'bot/' + item.owner : '') }
+  item.planning = planning.detail(row, { snapshot: meta.snapshot })
+  for (const key of ['parent', 'duplicateOf']) {
+    if (!item.planning[key]) delete item.fields[key]
+  }
+  item.fields.blockedBy = item.fields.blockedBy.filter(id => planning.visible(id))
+  item.canEdit = !readOnly
+  if (row.kind === 'draft') {
+    item.actions = item.actions.filter(op => !['archive', 'dispatch'].includes(op) || !meta.archived)
+    if (!meta.archived && !meta.duplicateOf) {
+      if (item.phase !== 'done' && item.phase !== 'history') item.actions.push('complete')
+      if (['done', 'history'].includes(item.phase)) item.actions.push('reopen')
+    } else item.actions.push('reopen')
+    if (item.planning.pendingDispatch) {
+      item.actions = item.actions.filter(op => op !== 'dispatch')
+      item.actions.push('withdraw')
+    }
+  }
+  if (row.kind === 'task' && item.actions.includes('approve')) {
+    const task = service.store.get('tasks', row.source_id)
+    item.reviewBlocked = item.planning.waiting || (task.boardRequirementsRevision ?? 0) !== (task.reportRequirementsRevision ?? 0)
+    if (item.reviewBlocked) item.actions = item.actions.filter(op => op !== 'approve')
+  }
   if (readOnly) item.actions = []
   return { ...item, readOnly }
 }
 export function readBoardOnly(dir, rt, endpoint, req = {}) {
-  if (endpoint === 'board-action' || endpoint === 'board-comment') throw new Error('当前宿主为只读。')
+  if (['board-action', 'board-comment'].includes(endpoint)) throw new Error('当前宿主为只读。')
   const path = join(dir, 'godbot.sqlite3')
   if (!existsSync(path)) throw new Error('等待拥有此工作区的宿主初始化看板。')
   const db = new DatabaseSync(path, { readOnly: true })
+  let readingRuns = false
   try {
     if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_cards'").get())
       throw new Error('请先在拥有工作区的宿主打开新版工作看板。')
-    if (endpoint === 'board-view') return queryBoard(db, accessOf(rt), req, true)
-    if (endpoint === 'board-discussion' || endpoint === 'board-comment-file') {
+    if (endpoint === 'board-view') {
+      const access = accessOf(rt)
+      return { ...queryBoard(db, access, req, true), catalog: boardCatalog(db, access) }
+    }
+    if (['board-discussion', 'board-comment-file', 'board-artifacts'].includes(endpoint)) {
       if (!db.prepare("SELECT 1 FROM sqlite_schema WHERE name='board_comments'").get())
         throw new Error('请先在拥有工作区的宿主初始化任务讨论。')
       return readDiscussion(db, rt, checkedRow(db, rt, req), endpoint, req, true)
@@ -98,9 +128,22 @@ export function readBoardOnly(dir, rt, endpoint, req = {}) {
         })(),
       forRun: (c, id) => byRun.all(c, id).map((r) => JSON.parse(r.data)),
     }
-    return detailFor({ store, runtime: rt, ...queryStatements(db) }, db, req, true)
+    if (endpoint === 'board-runs') {
+      const runs = new WorkBoardRuns({
+        db, store, rt, warm: async () => {},
+        discussion: { allowed: row => boardCommentTargets(rt, JSON.parse(row.summary)) },
+      }, input => checkedRow(db, rt, input))
+      readingRuns = true
+      return runs.query(req).finally(() => db.close())
+    }
+    const planning = new BoardRelations({
+      db, store,
+      byNumber: db.prepare('SELECT * FROM board_cards WHERE number=?'),
+      source: db.prepare('SELECT * FROM board_cards WHERE kind=? AND scope=? AND source_id=?'),
+    }, input => checkedRow(db, rt, input), true)
+    return detailFor({ store, runtime: rt, ...queryStatements(db) }, db, req, true, planning)
   } finally {
-    db.close()
+    if (!readingRuns) db.close()
   }
 }
 
@@ -118,7 +161,9 @@ export class WorkBoard {
       'INSERT INTO board_cards(kind,scope,source_id,meta,origin_key) VALUES(?,?,?,?,?)',
     )
     this.update = this.db.prepare('UPDATE board_cards SET summary=? WHERE number=?')
+    this.planning = new BoardRelations(this, input => checkedRow(this.db, this.rt, input))
     this.discussion = new WorkBoardDiscussion(this, checkedRow, fingerprint)
+    this.runs = new WorkBoardRuns(this, input => checkedRow(this.db, this.rt, input))
     this.rt.openWorkBoardConversation = (...args) => this.discussion.openConversation(...args)
     this.rt.admitWorkBoardComment = (args) => this.discussion.admit(args)
     this.rt.reconcileWorkBoardComment = (id, sessionId, turn) => this.discussion.reconcile(id, sessionId, turn)
@@ -132,6 +177,11 @@ export class WorkBoard {
       this.schedule()
     })
     this.rt.workBoardLive = () => this.schedule()
+    this.rt.boardReviewAllowed = task => {
+      const row = this.source.get('task', '', task.id)
+      if (row && this.planning.pending(row, JSON.parse(row.meta)).length)
+        throw new Error('仍有未结束的前置任务。')
+    }
     service.database.boardChanged = () => this.schedule()
     this.schedule()
   }
@@ -157,6 +207,7 @@ export class WorkBoard {
     delete this.rt.admitWorkBoardComment
     delete this.rt.reconcileWorkBoardComment
     delete this.rt.workBoardLive
+    delete this.rt.boardReviewAllowed
     this.service.database.boardChanged = undefined
   }
   ensure(kind, scope, id) {
@@ -168,7 +219,8 @@ export class WorkBoard {
     return row
   }
   project(row) {
-    const next = sourceSummary(this.service, row, JSON.parse(row.meta))
+    const meta = JSON.parse(row.meta)
+    const next = sourceSummary(this.service, row, meta)
     const json = next ? JSON.stringify(next) : null
     if (json === row.summary) return false
     this.update.run(json, row.number)
@@ -260,6 +312,7 @@ export class WorkBoard {
       .all()) {
       if (this.project(row)) changed = true
     }
+    if (rows.length < 250 && this.releaseWaiting()) changed = true
     if (changed) this.changed()
     if (rows.length === 250) {
       this.schedule()
@@ -274,11 +327,12 @@ export class WorkBoard {
   }
   async view(req) {
     await this.warm()
-    return queryBoard(this.db, accessOf(this.rt), req, !!this.rt.readOnly())
+    const access = accessOf(this.rt)
+    return { ...queryBoard(this.db, access, req, !!this.rt.readOnly()), catalog: boardCatalog(this.db, access) }
   }
   async item(req) {
     await this.warm()
-    return detailFor(this.service, this.db, req, !!this.rt.readOnly())
+    return detailFor(this.service, this.db, req, !!this.rt.readOnly(), this.planning)
   }
   origin(input, access) {
     if (!input) return null
@@ -325,6 +379,7 @@ export class WorkBoard {
     await this.warm()
     if (this.rt.readOnly()) throw new Error('当前工作区为只读。')
     const digest = fingerprint(req)
+    if (req.op === 'configure' || req.op === 'bulk') return this.manage(req, digest)
     const previous = this.db.prepare('SELECT * FROM board_requests WHERE id=?').get(requestId)
     if (previous) {
       if (previous.fingerprint !== digest) throw new Error('请求编号已用于另一项操作。')
@@ -344,12 +399,25 @@ export class WorkBoard {
     let row = req.op === 'create' ? null : checkedRow(this.db, this.rt, req)
     if (row && (typeof req.version !== 'string' || req.version !== JSON.parse(row.summary).version)) throw stale()
     const op = req.op
-    const external = op === 'note' || op === 'cancel' || row?.kind === 'run'
+    const editOp = ['edit-fields', 'complete', 'reopen', 'withdraw'].includes(op)
+    if (op === 'run-stop') {
+      const run = this.runs.get(row, req.runId)
+      this.db.prepare('INSERT INTO board_requests VALUES(?,?,?,NULL)').run(requestId, digest, row.number)
+      try {
+        await this.runs.stop(row, req, run)
+      } catch (error) {
+        this.db.prepare('DELETE FROM board_requests WHERE id=? AND outcome IS NULL').run(requestId)
+        throw error
+      }
+      this.db.prepare("UPDATE board_requests SET outcome='ok' WHERE id=?").run(requestId)
+      return this.item({ id: cardId(row.number) })
+    }
+    const external = !editOp && op !== 'run-retry' && (op === 'note' || op === 'cancel' || row?.kind === 'run')
     const recordRequest = (number, outcome) =>
       this.db.prepare('INSERT INTO board_requests VALUES(?,?,?,?)').run(requestId, digest, number, outcome)
     if (external) {
       if (!row) throw denied()
-      const detail = detailFor(this.service, this.db, { id: cardId(row.number) }, false)
+      const detail = detailFor(this.service, this.db, { id: cardId(row.number) }, false, this.planning)
       if (!detail.actions.includes(op)) throw stale()
       if (op === 'note' && !textField(req.text, 500)) throw new Error('请填写留言。')
       if (
@@ -427,44 +495,52 @@ export class WorkBoard {
               owner: req.owner || null,
               room: req.room || origin?.roomId || null,
               origin,
-              priority: req.priority === 1 ? 1 : 0,
+              priority: 0,
               version: 1,
               updated: Date.now(),
             }
+            editPlanning(meta, req, 'draft', 'todo', boardCatalog(this.db, access))
+            if (req.commentId) {
+              if (!meta.parent) throw new Error('请选择评论所在的父任务。')
+              meta.snapshot = this.discussion.snapshot(meta.parent, req.commentId)
+            }
             const result = this.insert.run('draft', '', randomUUID(), JSON.stringify(meta), key)
             row = this.byNumber.get(result.lastInsertRowid)
+            if (meta.snapshot?.attachments.length) {
+              meta.snapshot.attachments = this.discussion.store.copySnapshotFiles(meta.snapshot.attachments, 'snapshot/' + row.number)
+              this.planning.update.run(JSON.stringify(meta), row.number)
+            }
+            this.planning.assertValid(row, meta, {})
           }
+        } else if (op === 'run-retry') {
+          this.runs.retry(row, req)
+        } else if (editOp) {
+          this.editCard(row, req, access)
         } else if (row.kind === 'draft') {
           const meta = JSON.parse(row.meta)
           if (meta.archived || !['edit', 'archive', 'dispatch'].includes(op)) throw stale()
           if (req.owner !== undefined) {
             this.checkOwner(req.owner, access)
-            meta.owner = req.owner || null
+            if (req.owner || !meta.assignee || meta.assignee.startsWith('bot/')) {
+              meta.owner = req.owner || null
+              meta.assignee = req.owner ? 'bot/' + req.owner : ''
+            }
           }
+          if (req.assignee !== undefined) editPlanning(meta, { assignee: req.assignee }, 'draft', 'todo', boardCatalog(this.db, access))
           if (req.criteria !== undefined) meta.criteria = textField(req.criteria, 8000)
           if (req.title !== undefined) {
             meta.title = textField(req.title, 160)
             if (!meta.title) throw new Error('请填写工作项标题。')
           }
-          if (req.priority !== undefined) meta.priority = req.priority === 1 ? 1 : 0
+          if (req.priority !== undefined) editPlanning(meta, { priority: req.priority }, 'draft', 'todo', {})
           meta.updated = Date.now()
           meta.version++
-          if (op === 'archive') meta.archived = true
-          if (op === 'dispatch') {
-            const task = this.service.botTasks.apply({
-              action: 'task.create',
-              teamId: botWorkspaceId,
-              title: meta.title,
-              criteria: meta.criteria,
-              ownerId: meta.owner,
-              boardNumber: row.number,
-              boardOrigin: meta.origin,
-            })
-            this.db
-              .prepare("UPDATE board_cards SET kind='task',source_id=? WHERE number=?")
-              .run(task.id, row.number)
+          if (op === 'archive') {
+            meta.archived = true
+            delete meta.dispatchPending
           }
-          this.db.prepare('UPDATE board_cards SET meta=? WHERE number=?').run(JSON.stringify(meta), row.number)
+          if (op === 'dispatch') this.dispatchDraft(row, meta, access)
+          this.planning.update.run(JSON.stringify(meta), row.number)
         } else {
           const card = publicCard(row),
             detail = sourceDetail(this.service, row, JSON.parse(row.meta), card)
@@ -485,14 +561,187 @@ export class WorkBoard {
             })
           } else if (op === 'retry') this.service.botTasks.apply({ ...request, action: 'task.retry' })
           else if (op === 'transfer') {
-            this.checkOwner(req.owner, access)
-            this.service.botTasks.apply({ ...request, action: 'task.transfer', ownerId: req.owner })
+            const meta = JSON.parse(row.meta)
+            const assignee = req.assignee || (req.owner ? 'bot/' + req.owner : '')
+            const owner = this.dispatchOwner({ assignee, owner: req.owner }, access)
+            this.service.botTasks.apply({ ...request, action: 'task.transfer', ownerId: owner })
+            this.planning.update.run(JSON.stringify({ ...meta, assignee, version: (meta.version || 1) + 1 }), row.number)
           } else throw stale()
         }
         recordRequest(row.number, 'ok')
         this.project(this.byNumber.get(row.number))
         this.changed()
       })
+    // The write may unblock downstream cards. The same query observes both results.
     return this.item({ id: cardId(row.number) })
+  }
+
+  dispatchOwner(meta, access) {
+    const assignee = meta.assignee || (meta.owner && 'bot/' + meta.owner)
+    const room = assignee?.startsWith('room/') && access.rooms.find(r => r.id === assignee.slice(5))
+    const owner = room ? room.admin : assignee?.startsWith('bot/') ? assignee.slice(4) : null
+    if (!owner) throw new Error('请选择 Bot 或有负责人 Bot 的群组。')
+    this.checkOwner(owner, access)
+    return owner
+  }
+
+  dispatchDraft(row, meta, access) {
+    if (meta.archived || meta.duplicateOf || ['backlog', 'done', 'history'].includes(meta.statusId)
+      || ['done', 'history'].includes(meta.statusPhase)) throw stale()
+    const ownerId = this.dispatchOwner(meta, access)
+    if (!meta.criteria) throw new Error('派工前请填写验收条件。')
+    if (this.planning.pending(row, meta).length) {
+      meta.dispatchPending = { at: Date.now() }
+      return
+    }
+    const task = this.service.botTasks.apply({
+      action: 'task.create',
+      teamId: botWorkspaceId,
+      title: meta.title,
+      criteria: meta.criteria,
+      boardDescription: meta.description,
+      boardSnapshot: meta.snapshot,
+      ownerId,
+      boardNumber: row.number,
+      boardOrigin: meta.origin,
+    })
+    delete meta.dispatchPending
+    delete meta.dispatchError
+    this.db.prepare("UPDATE board_cards SET kind='task',source_id=? WHERE number=?").run(task.id, row.number)
+  }
+
+  releaseWaiting() {
+    let changed = false
+    const access = accessOf(this.rt)
+    for (const row of this.planning.waiting.all()) {
+      const meta = JSON.parse(row.meta)
+      if (this.planning.pending(row, meta).length) continue
+      if (JSON.parse(row.summary ?? '{}').refs?.some(ref => !access.allowed.has(ref))) continue
+      try {
+        this.store.transaction(() => {
+          this.dispatchDraft(row, meta, access)
+          this.planning.update.run(JSON.stringify(meta), row.number)
+          this.project(this.byNumber.get(row.number))
+        })
+        changed = true
+      } catch (error) {
+        if (meta.dispatchError === error.message) continue
+        meta.dispatchError = error.message
+        this.planning.update.run(JSON.stringify(meta), row.number)
+        changed = this.project(this.byNumber.get(row.number)) || changed
+      }
+    }
+    return changed
+  }
+
+  editCard(row, req, access) {
+    const before = JSON.parse(row.meta)
+    const meta = { ...before }
+    const base = JSON.parse(row.summary)
+    let nextOwner
+    if (req.op === 'complete') {
+      if (row.kind !== 'draft' || meta.archived || meta.duplicateOf || ['done', 'history'].includes(base.phase))
+        throw stale()
+      if (this.planning.pending(row, meta).length) throw new Error('仍有未结束的前置任务。')
+      meta.statusId = 'done'
+      meta.statusPhase = 'done'
+      delete meta.dispatchPending
+    } else if (req.op === 'reopen') {
+      if (row.kind !== 'draft' || (!meta.duplicateOf && !['done', 'history'].includes(base.phase))) throw stale()
+      Object.assign(meta, { archived: false, duplicateOf: '', statusId: 'todo', statusPhase: 'todo' })
+    } else if (req.op === 'withdraw') {
+      if (row.kind !== 'draft' || !meta.dispatchPending) throw stale()
+      delete meta.dispatchPending
+      delete meta.dispatchError
+    } else {
+      const input = { ...req }
+      if (row.kind === 'task' && input.assignee && input.assignee !== (meta.assignee || 'bot/' + base.owner)) {
+        nextOwner = this.dispatchOwner({ assignee: input.assignee }, access)
+        meta.assignee = input.assignee
+        delete input.assignee
+      } else if (row.kind !== 'draft' && input.assignee === (meta.assignee || 'bot/' + base.owner)) {
+        delete input.assignee
+      }
+      if (Array.isArray(input.blockedBy)) {
+        input.blockedBy = [...input.blockedBy, ...(before.blockedBy ?? []).filter(id => !this.planning.visible(id))]
+      }
+      editPlanning(meta, input, row.kind, base.phase, boardCatalog(this.db, access))
+      if (req.title != null) {
+        meta.title = textField(req.title, 160)
+        if (!meta.title) throw new Error('请填写工作项标题。')
+      }
+      if (req.criteria != null) {
+        meta.criteria = textField(req.criteria, 8000)
+        if (!meta.criteria && row.kind === 'task') throw new Error('派工需要验收条件。')
+      }
+      if (row.kind === 'draft' && meta.statusPhase === 'done' && this.planning.pending(row, meta).length)
+        throw new Error('仍有未结束的前置任务。')
+      if (row.kind === 'draft' && (meta.duplicateOf || meta.statusId === 'backlog'
+        || ['done', 'history'].includes(meta.statusPhase))) delete meta.dispatchPending
+    }
+    if (row.kind === 'task') {
+      let task = this.store.require('tasks', row.source_id)
+      const title = meta.title ?? task.title
+      const criteria = meta.criteria ?? task.criteria
+      const description = meta.description ?? task.boardDescription ?? ''
+      if (title !== task.title || criteria !== task.criteria || description !== (task.boardDescription ?? '')) {
+        task = this.service.botTasks.team.change(task, {
+          title, criteria, boardDescription: description,
+          boardRequirementsRevision: (task.boardRequirementsRevision ?? 0) + 1,
+        })
+      }
+      if (nextOwner && task.ownerId !== nextOwner) this.service.botTasks.apply({
+        action: 'task.transfer', teamId: botWorkspaceId, taskId: task.id, expectedRevision: task.revision, ownerId: nextOwner,
+      })
+    }
+    const audited = { ...planningFields(before), title: before.title ?? base.title, criteria: before.criteria ?? '', priority: before.priority ?? 0, archived: !!before.archived, pendingDispatch: !!before.dispatchPending }
+    const next = { ...planningFields(meta), title: meta.title ?? base.title, criteria: meta.criteria ?? '', priority: meta.priority ?? 0, archived: !!meta.archived, pendingDispatch: !!meta.dispatchPending }
+    const changes = Object.entries(next).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify(audited[key]))
+      .map(([field, after]) => ({ field, before: audited[field], after }))
+    if (!changes.length) return
+    meta.version = (before.version ?? 0) + 1
+    meta.updated = Date.now()
+    this.planning.save(row, before, meta)
+    this.store.put('boardEditHistory', {
+      id: randomUUID(), number: row.number, at: meta.updated, reason: textField(req.reason, 1000), changes,
+    })
+  }
+
+  manage(req, digest) {
+    const prior = this.store.get('boardManagementRequests', req.requestId)
+    if (prior) {
+      if (prior.fingerprint !== digest) throw new Error('请求编号已用于另一项操作。')
+      return prior.result
+    }
+    const access = accessOf(this.rt)
+    return this.store.transaction(() => {
+      let result
+      if (req.op === 'configure') result = mutateBoardCatalog(this.store, { ...req.entry, op: req.entry?.op })
+      else {
+        if (!Array.isArray(req.items) || req.items.length > 100 || !req.items.length)
+          throw new Error('请选择 1–100 张工作卡片。')
+        result = { applied: [], rejected: [] }
+        for (const { id, version } of req.items) {
+          if (result.applied.includes(id)) continue
+          this.db.exec('SAVEPOINT board_bulk_item')
+          try {
+            const row = checkedRow(this.db, this.rt, { id })
+            if (version !== JSON.parse(row.summary).version) throw stale()
+            this.editCard(row, { ...req.patch, op: 'edit-fields' }, access)
+            this.project(this.byNumber.get(row.number))
+            result.applied.push(id)
+          } catch (error) {
+            this.db.exec('ROLLBACK TO board_bulk_item')
+            result.rejected.push({ id, reason: error.message })
+          } finally {
+            this.db.exec('RELEASE board_bulk_item')
+          }
+        }
+      }
+      this.store.put('boardManagementRequests', { id: req.requestId, fingerprint: digest, result })
+      this.changed()
+      this.schedule()
+      return result
+    })
   }
 }

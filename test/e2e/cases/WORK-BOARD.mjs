@@ -77,7 +77,7 @@ export default async function check({ makeHost, candidate, previous, note }) {
   await shell.locator('.wb-lane').first().waitFor()
   const firstPaintMs = Math.round(performance.now() - start)
   await shell.getByRole('button', { name: /^(新建工作项|New work item)$/ }).click()
-  await shell.locator('form input').fill('Board round trip')
+  await shell.getByRole('textbox', { name: /^(Title|标题)$/ }).fill('Board round trip')
   await shell.getByRole('button', { name: /^(确认|Confirm)$/ }).click()
   const draft = await until(
     async () => (await board()).columns.flatMap((c) => c.items).find((c) => c.title === 'Board round trip'),
@@ -158,7 +158,7 @@ export default async function check({ makeHost, candidate, previous, note }) {
   await bubble.hover()
   const convert = bubble.getByRole('button', { name: /从消息建工作项|Create work item from message/ })
   await convert.click()
-  assert.equal(await page.locator('.wb-editor input').inputValue(), message)
+  assert.equal(await page.locator('.wb-editor').getByRole('textbox', { name: /^(Title|标题)$/ }).inputValue(), message)
   await page.locator('.wb-editor button[type=submit]').click()
   const linked = await until(
     async () => (await board()).columns.flatMap((c) => c.items).find((c) => c.title === message),

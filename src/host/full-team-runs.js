@@ -61,7 +61,7 @@ export class FullTeamRuns {
   task(run, id, targetId, parentTaskId, workId = id) {
     const prior = this.store.get(tasks, id)
     const row = this.store.put(tasks, record({ ...prior, id, runId: run.id, teamId: run.teamId, targetId, workId,
-      parentTaskId, attempt: run.attempt, status: 'running', roomSeq: null, questionId: null, questionSession: null, waitingForChildren: false, reviewedEvidenceRevision: null, evidenceRevision: prior?.evidenceRevision ?? 0, detail: null }))
+      parentTaskId, attempt: run.attempt, status: 'running', roomSeq: null, questionId: null, questionSession: null, waitingForChildren: false, reviewedEvidenceRevision: null, boardFailureReceipt: null, evidenceRevision: prior?.evidenceRevision ?? 0, detail: null }))
     this.store.put(works, { id: workId, taskId: id, runId: run.id })
     return row
   }
@@ -95,9 +95,9 @@ export class FullTeamRuns {
     void send().catch(() => this.end(work, 'unknown', 'Delivery could not be confirmed'))
   }
 
-  end(id, status, detail) {
+  end(id, status, detail, receipt) {
     const row = this.live(id)
-    if (row) this.store.update(tasks, row.id, { status, detail })
+    if (row) this.store.update(tasks, row.id, { status, detail, ...(receipt ? { boardFailureReceipt: receipt } : {}) })
   }
 
   report(id, text, receipt) {
@@ -242,9 +242,13 @@ export class FullTeamRuns {
       const entry = rt.live.get(session.id)
       const question = rt.state.questions?.[session.id]
       if (question?.id) this.store.update(tasks, row.id, { questionId: question.id, questionSession: session.id })
-      if (entry.joined?.some(item => rt.workOf(item.info) !== row.workId)) return this.end(row.workId, 'unknown', 'Mixed requests in one Godbot turn')
-      if (event.data?.reason?.kind === 'error') return this.end(row.workId, 'failed', 'DSH model turn failed')
-      if (event.data?.reason?.kind === 'aborted') return this.end(row.workId, 'stopped', 'DSH turn stopped')
+      if (entry.joined?.some(item => item.info?.boardInline !== true && rt.workOf(item.info) !== row.workId)) return this.end(row.workId, 'unknown', 'Mixed requests in one Godbot turn')
+      if (event.data?.reason?.kind === 'error' || event.data?.reason?.kind === 'aborted') {
+        const failure = event.data.reason.kind === 'error'
+        const detail = failure ? String(event.data.reason.error?.message || 'DSH model turn failed') : 'DSH turn stopped'
+        return this.end(row.workId, failure ? 'failed' : 'stopped', (rt.redactSecrets?.(detail) ?? detail).slice(0, 500),
+          { sessionId: session.id, turnId: entry.turn, botId: rt.selfOf(session.id) })
+      }
       if (entry.info?.role === 'room') {
         this.report(row.workId, entry.texts?.join('\n\n'), { source: 'group-member-turn', sessionId: session.id, exchangeId: row.workId, turnId: entry.turn })
         rt.closeWork(row.workId, rt.botOf(rt.selfOf(session.id))?.name ?? 'Group member', entry.texts?.join('\n') ?? '')
@@ -316,6 +320,22 @@ export class FullTeamRuns {
     })
     if (next) this.dispatch(next, feedback)
     return { reviewed: task.id, revision: task.evidenceRevision }
+  }
+
+  retryBoardRoot(runId, workId) {
+    const run = this.store.require('automationRuns', runId)
+    const task = this.store.require(tasks, run.rootTaskId)
+    const previous = this.store.forRun(tasks, runId)
+    if (task.workId !== workId || task.attempt !== run.attempt || !['failed', 'stopped'].includes(task.status) ||
+      previous.some(running)) throw new AutomationError(409, 'This run is no longer ready to retry')
+    this.assertIdle(run.targetId)
+    this.store.put(evidence, record({ runId, taskId: task.id, kind: 'run-failure', attempt: task.attempt,
+      evidence: task.detail, receipt: task.boardFailureReceipt, status: task.status }))
+    const next = this.store.update('automationRuns', run.id, { attempt: run.attempt + 1 })
+    this.task(next, run.rootTaskId, run.targetId, undefined, randomUUID())
+    queueMicrotask(() => {
+      if (this.store.get(tasks, run.rootTaskId)?.attempt === next.attempt && !this.service.closing) this.dispatch(next)
+    })
   }
 
   reviews(teamId) {

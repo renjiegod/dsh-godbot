@@ -143,6 +143,13 @@ export function install(rt) {
       }
       if (result.error !== undefined) return result.error
       const task = result.task
+      const sessionId = exec.agent?.id
+      const entry = rt.live.get(sessionId)
+      if (task.botId === self && Number.isSafeInteger(entry?.turn) &&
+        !(task.boardRuns ?? []).some(row => row.sessionId === sessionId && row.turnId === entry.turn)) {
+        const workId = rt.workOf(entry.info) ?? entry.info?.exchangeId
+        ;(task.boardRuns ??= []).push({ sessionId, turnId: entry.turn, workId, at: Date.now() })
+      }
       const done = task.status === 'done' ? ` Finished: "${task.result}"` : task.status === 'cancelled' ? ' Cancelled.' : ''
       touch(room)
       await rt.save()

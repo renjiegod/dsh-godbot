@@ -1466,6 +1466,10 @@ export function install(rt) {
           for (const source of rt.inboxSteered?.(id, turn) ?? []) finish(source, replyText())
         }
         for (const request of joined) {
+          if (request.info.boardInline === true) {
+            if (!retry && !handedOff && reason?.kind === 'completed') finish(request.info, replyText())
+            continue
+          }
           if (request.info.role === 'room' && stoppedRoomTurns.delete(request.info.exchangeId)) continue
           // A failed or stopped turn closes the request like any other; a finished
           // one hands it back to the Bot to answer next.

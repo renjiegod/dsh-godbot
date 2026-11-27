@@ -107,7 +107,7 @@ export function install(rt) {
 
   function relayMessage({ fromId, fromName: senderName, text, role, replyTo, roomId, audience, note,
     exchangeId, inboxAttempt, deferred = false, resumed = false, retried = false, resent = false, abandoned = false,
-    askedBy, fromRoomId, fromPart, images = [], files = [], work, initiator, title }) {
+    askedBy, fromRoomId, fromPart, images = [], files = [], work, initiator, title, boardInline }) {
     const from = rt.botOf(fromId)
     const fromName = senderName ?? from?.name ?? 'You'
     const room = rt.roomOf(roomId)
@@ -121,6 +121,7 @@ export function install(rt) {
       ...(inboxAttempt ? { inboxAttempt } : {}),
       senderName: fromName,
       ...(work ? { work } : {}),
+      ...(boardInline === true ? { boardInline: true } : {}),
       ...(fromId ? { senderSessionId: fromId } : {}),
       ...(fromPart ? { senderPart: fromPart } : {}),
       ...(replyTo ? { replyTo } : {}),
@@ -167,7 +168,7 @@ export function install(rt) {
   // session ID in the text (conversation-routing.js botMessageDestination).
   // `title`: the name its sender gave a request, which names the conversation it opens
   // (parts.js promptTitle).
-  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, opensConversation = false, addressed, images = [], files = [], length, work, initiator, title }) {
+  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, opensConversation = false, addressed, images = [], files = [], length, work, initiator, title, boardInline }) {
     const from = rt.botOf(fromId)
     if (rt.botOf(toId) === undefined) throw new Error(`Unknown Bot ${toId}`)
     const targetSessionId = sessionId ?? rt.chatOf(toId)
@@ -188,7 +189,7 @@ export function install(rt) {
     // A steered message cuts into a running turn at its next step; a follow-up
     // queues for the next turn (see turns.js for how each is routed).
     const message = relayMessage({ fromId, fromName: senderName, text, role, replyTo, roomId, audience, note,
-      exchangeId, deferred, resumed, retried, resent, abandoned, askedBy, fromRoomId, fromPart, images, files, work, initiator, title })
+      exchangeId, deferred, resumed, retried, resent, abandoned, askedBy, fromRoomId, fromPart, images, files, work, initiator, title, boardInline })
     if (steer) agent.steer(message)
     else agent.followup(message)
     await ctx.sessions.flush(agent.session)

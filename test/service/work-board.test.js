@@ -360,3 +360,144 @@ test('discussion never invokes outside the source group and separates notes from
   assert.equal(latest.root.runs[0].state, 'stopped')
   assert.equal(latest.entries.length, 0)
 })
+
+test('manual tasks accept catalog fields, preserve edits, reopen and support scoped bulk changes and saved views', async t => {
+  const { board } = setup(t)
+  const command = (op, payload, requestId) => board.action({ op, requestId, ...payload })
+  const status = await command('configure', { entry: { kind: 'status', name: 'Ready', phase: 'todo' } }, 'status')
+  const effort = await command('configure', { entry: { kind: 'property', name: 'Effort', propertyType: 'number' } }, 'property')
+  const task = await command('create', {
+    title: 'Release notes', description: 'Findable description', statusId: status.id,
+    assignee: 'person/owner', labels: ['Release'], startDate: '2026-11-28', dueDate: '2026-12-01',
+    customValues: { [effort.id]: 4 },
+  }, 'notes')
+  assert.equal(task.fields.assignee, 'person/owner')
+  assert.equal(task.statusId, status.id)
+  assert.equal(task.fields.customValues[effort.id], 4)
+  assert.equal((await board.view({ search: 'findable DESCRIPTION' })).counts.all, 1)
+  assert.equal((await board.view({ label: 'Release', property: effort.id, propertyValue: '4' })).counts.all, 1)
+  const complete = await command('complete', { id: task.id, version: task.version }, 'complete')
+  assert.equal(complete.phase, 'done')
+  const current = await command('reopen', { id: complete.id, version: complete.version }, 'reopen')
+  assert.equal(current.phase, 'todo')
+  assert.equal(current.planning.audit.length, 2)
+  await assert.rejects(command('edit-fields', {
+    id: task.id, version: current.version, dueDate: '2026-02-30',
+  }, 'bad-date'), /有效日期/)
+  const saved = await command('configure', { entry: {
+    kind: 'view', name: 'Releases', visibility: 'shared',
+    filters: { label: 'Release', sort: 'dueDate', injected: true }, display: { layout: 'gantt', groupBy: 'assignee' },
+  } }, 'view')
+  assert.deepEqual(saved.filters, { label: 'Release', sort: 'dueDate' })
+  assert.deepEqual((await board.view({})).catalog.views.find(view => view.id === saved.id).display, { layout: 'gantt', groupBy: 'assignee' })
+  const bulk = {
+    items: [{ id: task.id, version: current.version }, { id: 'GB-7777', version: 'old' }],
+    patch: { addLabels: ['Verified'], priority: 2, dueDate: '2026-12-03' },
+  }
+  const result = await command('bulk', bulk, 'batch')
+  assert.deepEqual(result.applied, [task.id])
+  assert.equal(result.rejected[0].id, 'GB-7777')
+  assert.deepEqual(await command('bulk', bulk, 'batch'), result)
+  assert.deepEqual((await board.item({ id: task.id })).fields.labels, ['Release', 'Verified'])
+})
+
+test('parent and dependency edits reject cycles and dispatch a later stage once the prerequisites end', async t => {
+  const { board, database } = setup(t)
+  let n = 0
+  const act = (op, inputs, item) => board.action({
+    op, id: item?.id, version: item?.version, requestId: 'relations-' + n++, ...inputs,
+  })
+  const parent = await act('create', { title: 'Ship' })
+  const first = await act('create', { title: 'Build', parent: parent.id, stage: 1 })
+  const second = await act('create', { title: 'Verify', parent: parent.id, stage: 2 })
+  await assert.rejects(act('edit-fields', { blockedBy: [second.id] }, first), /循环/)
+  await assert.rejects(act('edit-fields', { parent: second.id }, parent), /循环/)
+  const waiting = await act('dispatch', { owner: 'b', criteria: 'Read the build report' }, second)
+  assert.equal(waiting.planning.pendingDispatch, true)
+  assert.deepEqual(waiting.planning.prerequisites.map(row => row.id), [first.id])
+  assert.equal(database.all('tasks').length, 0)
+  const archived = await act('archive', {}, first)
+  assert.equal((await board.item({ id: second.id })).planning.pendingDispatch, true)
+  assert.equal((await board.item({ id: parent.id })).planning.progress.completed, 0)
+  assert.equal(database.all('tasks').length, 0)
+  await assert.rejects(act('edit-fields', { duplicateOf: second.id }, archived), /循环/)
+  const restored = await act('reopen', {}, archived)
+  await act('complete', {}, restored)
+  const assigned = await board.item({ id: second.id })
+  assert.equal(assigned.id, second.id)
+  assert.equal(database.all('tasks').length, 1)
+  assert.deepEqual((await board.item({ id: parent.id })).planning.progress, { completed: 1, total: 2 })
+  const duplicate = await act('create', { title: 'Another copy', duplicateOf: first.id })
+  assert.equal(duplicate.mark, 'duplicate')
+  assert.equal((await act('reopen', {}, duplicate)).planning.duplicateOf, null)
+})
+
+test('changes to requirements invalidate old evidence across both review entry points', async t => {
+  const { board, database, botTasks } = setup(t)
+  const draft = await board.action({ op: 'create', title: 'Audit', requestId: 'audit-create' })
+  await board.action({ op: 'dispatch', id: draft.id, version: draft.version, owner: 'b', criteria: 'Check version one', requestId: 'audit-dispatch' })
+  await tick()
+  const task = database.all('tasks')[0]
+  botTasks.botReply(task.assignmentId, 'Old proof')
+  const before = await board.item({ id: draft.id })
+  const edited = await board.action({
+    op: 'edit-fields', id: draft.id, version: before.version, title: 'Audit revised', criteria: 'Check version two',
+    description: 'Updated source', reason: 'New scope', requestId: 'audit-edit',
+  })
+  assert.equal(edited.reviewBlocked, true)
+  assert.equal(edited.evidence, 'Old proof')
+  assert.equal(edited.actions.includes('approve'), false)
+  assert.equal(edited.planning.audit[0].reason, 'New scope')
+  assert.throws(() => botTasks.apply({ action: 'task.review', teamId, taskId: task.id, approve: true }), /验收条件已更新/)
+  await board.action({
+    op: 'reject', id: draft.id, version: edited.version, evidenceRevision: edited.evidenceRevision,
+    text: 'Use the revised criteria', requestId: 'audit-reject',
+  })
+  await tick()
+  const revised = database.get('tasks', task.id)
+  assert.match(database.get('messages', revised.assignmentId).text, /Check version two/)
+  botTasks.botReply(revised.assignmentId, 'New proof')
+  const current = await board.item({ id: draft.id })
+  assert.equal(current.actions.includes('approve'), true)
+  const archived = await board.runs.query({ id: draft.id })
+  assert.equal(archived.runs.length, 2)
+})
+
+test('annotations, conclusions, attachment versions and comment snapshots remain tied to their source', async t => {
+  const { board } = setup(t)
+  const card = await board.action({ op: 'create', title: 'Discuss', description: 'First paragraph', requestId: 'discuss' })
+  const file = { name: 'proof.txt', mime: 'text/plain' }
+  const post = (body, requestId, extra = {}) => board.discussion.action({ id: card.id, op: 'post', body, quiet: true, requestId, ...extra })
+  const first = await post('Original proof', 'post-first', { files: [{ ...file, data: Buffer.from('first').toString('base64') }] })
+  const second = await post('Revised proof', 'post-next', {
+    parentId: first.commentId, files: [{ ...file, data: Buffer.from('second').toString('base64') }],
+    annotations: [{ commentId: first.commentId, start: 0, end: 8, quote: 'Original', note: 'Keep this earlier proof' }],
+  })
+  await board.discussion.action({
+    id: card.id, op: 'resolve', commentId: first.commentId, conclusionId: second.commentId, resolved: true, requestId: 'conclude',
+  })
+  const root = (await board.discussion.read('board-discussion', { id: card.id })).entries[0]
+  assert.equal(root.conclusion.id, second.commentId)
+  const artifacts = await board.discussion.read('board-artifacts', { id: card.id })
+  assert.deepEqual(artifacts.artifacts[0].versions.map(v => v.version), [1, 2])
+  assert.equal((await board.view({ search: 'revised proof' })).counts.all, 1)
+  const child = await board.action({ op: 'create', title: 'Follow up', parent: card.id, commentId: second.commentId, requestId: 'child' })
+  assert.equal(child.planning.snapshot.context.comments[1].text, 'Revised proof')
+  const snapshotFile = child.planning.snapshot.attachments[1].id
+  await board.discussion.action({
+    id: card.id, op: 'edit', commentId: first.commentId, body: 'Original proof', expectedRevision: 1,
+    requestId: 'new-file-version', files: [{ ...file, data: Buffer.from('third').toString('base64') }],
+  })
+  const afterEdit = (await board.discussion.read('board-artifacts', { id: card.id })).artifacts[0].versions
+  assert.deepEqual(afterEdit.map(v => v.commentId), [first.commentId, second.commentId, first.commentId])
+  assert.deepEqual(afterEdit.map(v => v.version), [1, 2, 3])
+  await board.discussion.action({
+    id: card.id, op: 'delete', commentId: second.commentId, expectedRevision: 1, requestId: 'delete',
+  })
+  const afterDelete = (await board.discussion.read('board-artifacts', { id: card.id })).artifacts[0].versions
+  assert.deepEqual(afterDelete.map(v => v.version), [1, 3])
+  const downloaded = await board.discussion.read('board-comment-file', { id: child.id, fileId: snapshotFile, snapshot: true })
+  assert.equal(Buffer.from(downloaded.bytes, 'base64').toString(), 'second')
+  await post('More information', 'post-more', { parentId: first.commentId })
+  assert.equal((await board.discussion.read('board-discussion', { id: card.id })).entries[0].conclusion, null)
+})

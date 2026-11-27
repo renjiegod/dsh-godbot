@@ -174,7 +174,7 @@ export function connectNavigation(ctx, browser, mountBot) {
         : hash === sandboxSettingsHash ? 'sandboxes' : null
       const board = isWorkBoardHash(hash)
       if (!board && (settings || hash === legacyAgentsHash || !browser.history.state?.[historyKey])) saveRoute(false)
-      show(true, board ? { workBoard:{id:hash.split('/')[3], comment:hash.split('/')[5]} } : settings ? { settings } : boardLocation ? {} : undefined)
+      show(true, board ? { workBoard: hash.split('/')[3] === 'view' ? {viewId:hash.split('/')[4]} : {id:hash.split('/')[3], comment:hash.split('/')[5]} } : settings ? { settings } : boardLocation ? {} : undefined)
       boardLocation = board
     } else if (active) leave(previous?.panel, true)
   }

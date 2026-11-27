@@ -4,6 +4,7 @@ import { t, dateLocale } from './team-ui/i18n.js'
 import {
   actionNames,
   activityByAttempt,
+  boardInput,
   currentReview,
   defaultFilters,
   markNames,
@@ -15,6 +16,9 @@ import {
 import style from './work-board.css'
 import { BoardAnchor } from './work-board-anchor.js'
 import { WorkBoardDiscussionPanel } from './work-board-discussion.js'
+import { assigneeChoices, BoardControls, BoardLayouts, PlanningFields } from './work-board-management.js'
+import { BoardArtifactsPanel, BoardRunsPanel, PlanningDetails } from './work-board-detail.js'
+import { filterLink, priorities, viewDisplay } from '../team/work-board-planning.js'
 
 const button = (label, onClick, props = {}) => h('button', { type: 'button', onClick, ...props }, label)
 const option = (value, label) => h('option', { key: value, value }, label)
@@ -39,7 +43,10 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
   const { op, base, child } = form
   const patch = (key, value) => setForm((f) => ({ ...f, [key]: value }))
   const field = (name, control) => h('label', { className: 'wb-field' }, t(name), control)
-  const writing = ['create', 'edit', 'dispatch'].includes(op)
+  const writing = ['create', 'edit', 'edit-fields', 'dispatch'].includes(op)
+  const planning = op === 'create' || op === 'edit-fields'
+  const owners = assigneeChoices(view?.catalog, { execution: op === 'dispatch' || op === 'transfer' })
+    .map(([id, name]) => [id.startsWith('bot/') ? id.slice(4) : id, name])
   const different = base && item && base.version !== item.version
   const review = op === 'approve' || op === 'reject'
   const updated = currentReview(form, item)
@@ -68,15 +75,15 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
               onChange: (e) => patch('title', e.target.value),
             }),
           ),
-          field(
+          op !== 'edit-fields' || base?.source === 'draft' ? field(
             'Owner',
             h(
               'select',
               { value: form.owner, required: op === 'dispatch', onChange: (e) => patch('owner', e.target.value) },
               option('', t('Unassigned')),
-              ...(view?.bots ?? []).map((b) => option(b.id, b.name)),
+              ...owners.map(([id, name]) => option(id, name)),
             ),
-          ),
+          ) : null,
           field(
             'Acceptance criteria',
             h('textarea', {
@@ -91,10 +98,10 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
             h(
               'select',
               { value: form.priority, onChange: (e) => patch('priority', Number(e.target.value)) },
-              option(0, t('Normal')),
-              option(1, t('High')),
+              ...Object.entries(priorities).map(([id, label]) => option(id, t(label))),
             ),
           ),
+          planning ? h(PlanningFields, { form, setForm, catalog: view?.catalog }) : null,
           op === 'dispatch'
             ? h(
                 'p',
@@ -113,7 +120,7 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
             'select',
             { value: form.owner, required: true, onChange: (e) => patch('owner', e.target.value) },
             option('', t('Choose a Bot')),
-            ...(view?.bots ?? []).filter((b) => b.id !== base.owner).map((b) => option(b.id, b.name)),
+            ...owners.filter(([id]) => id !== base.owner).map(([id, name]) => option(id, name)),
           ),
         )
       : null,
@@ -168,7 +175,12 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
 
 export function WorkBoard({ initial, actions, roster, column = 0 }) {
   const [filter, setFilter] = useState(() => ({ ...defaultFilters, ...prefs().filters, ...initial.filters }))
-  const [layout, setLayout] = useState(() => (prefs().layout === 'list' ? 'list' : 'board'))
+  const [display, setDisplay] = useState(() => viewDisplay(prefs()))
+  const { layout } = display
+  const [viewId, setViewId] = useState(initial.viewId ?? '')
+  const [selecting, setSelecting] = useState(false)
+  const [checked, setChecked] = useState(() => new Map())
+  const [managementError, setManagementError] = useState('')
   const [selection, setSelection] = useState(
     () => initial.id ?? (initial.taskId ? { taskId: initial.taskId } : null),
   )
@@ -178,6 +190,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
     criteria: '',
     priority: 0,
     owner: filter.owner === 'unassigned' ? '' : filter.owner,
+    fields: seed.parent ? { parent: seed.parent } : {},
+    commentId: seed.commentId,
     room: filter.room || seed.origin?.roomId || '',
     origin: seed.origin,
     text: '',
@@ -186,6 +200,9 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
   const [anchor, setAnchor] = useState(null)
   const [discussion, setDiscussion] = useState(!!initial.comment)
   const [commentFocus, setCommentFocus] = useState(initial.comment)
+  const [extra, setExtra] = useState('')
+  const [initialRun, setInitialRun] = useState(null)
+  const [quote, setQuote] = useState(null)
   const panel = useRef(null),
     opener = useRef(null),
     last = useRef(null)
@@ -205,22 +222,38 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
   }, [accessGone])
   const readOnly = !!(roster.readOnly || view?.readOnly || !reachable)
   const editFilter = (k, v) => setFilter((f) => ({ ...f, [k]: v }))
+  const applyView = saved => {
+    setViewId(saved?.id ?? '')
+    setFilter({ ...defaultFilters, ...saved?.filters })
+    setDisplay(viewDisplay(saved?.display))
+    history.replaceState(history.state, '', saved?.visibility === 'shared' ? filterLink(saved.id) : '#/godbot/work')
+  }
+  useEffect(() => {
+    if (!initial.viewId || !view?.catalog || last.current === initial.viewId) return
+    last.current = initial.viewId
+    const saved = view.catalog.views.find(row => row.id === initial.viewId && row.visibility === 'shared')
+    if (saved) applyView(saved)
+    else setManagementError(t('The saved view is unavailable.'))
+  }, [view?.catalog, initial.viewId])
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ layout, filters: { ...filter, search: '' } }))
+      localStorage.setItem(storageKey, JSON.stringify({ ...display, filters: { ...filter, search: '' } }))
     } catch {}
-  }, [layout, filter])
-  const route = (id) =>
+  }, [display, filter])
+  const route = (id, comment = null) =>
     history.replaceState(
       history.state,
       '',
-      location.pathname + location.search + '#/godbot/work' + (id ? '/' + id : ''),
+      location.pathname + location.search + (id ? '#/godbot/work/' + id + (comment ? '/comment/' + comment : '') : viewId ? filterLink(viewId) : '#/godbot/work'),
     )
   const pick = (id, focus = true) => {
     if (focus) opener.current = document.activeElement
     setForm(null)
     setSelection(id)
     setDiscussion(false)
+    setExtra('')
+    setInitialRun(null)
+    setQuote(null)
     setCommentFocus(null)
     route(typeof id === 'string' ? id : null)
   }
@@ -236,6 +269,9 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
     setForm(null)
     setSelection(null)
     setDiscussion(false)
+    setExtra('')
+    setInitialRun(null)
+    setQuote(null)
     setCommentFocus(null)
     route(null)
     requestAnimationFrame(() => opener.current?.focus?.())
@@ -275,31 +311,29 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
       child,
       title: base?.title || '',
       criteria: base?.criteria || '',
-      owner: op === 'transfer' ? '' : base?.owner || '',
+      owner: op === 'transfer' ? '' : base?.fields?.assignee?.startsWith('bot/') ? base.fields.assignee.slice(4)
+        : base?.fields?.assignee || base?.owner || '',
+      fields: op === 'edit-fields' ? { ...base?.fields, statusId: base?.statusId ?? '', assignee: undefined,
+        customValues: Object.fromEntries(Object.entries(base?.fields?.customValues ?? {})
+          .filter(([id]) => view?.catalog?.properties.some(property => property.id === id && !property.archived))) } : {},
       priority: base?.priority || 0,
       origin: base?.origin,
       text: '',
     })
   }
   async function submit() {
-    const { op, base, child, title, owner, criteria, priority, origin, text, room } = form
-    const result = await act(
-      {
-        op,
-        id: base?.id,
-        version: base?.version,
-        childId: child?.id,
-        evidenceRevision: child?.evidenceRevision ?? base?.evidenceRevision,
-        title,
-        owner,
-        criteria,
-        priority,
-        origin,
-        text,
-        room,
-      },
-      () => crypto.randomUUID(),
-    )
+    const request = boardInput(form)
+    if (['create', 'edit-fields', 'dispatch', 'transfer'].includes(form.op)) {
+      const owner = form.owner
+      if (owner && /^(room|person)\//.test(owner)) {
+        request.assignee = owner
+        delete request.owner
+      } else if (form.op === 'edit-fields' && form.base.source === 'draft') {
+        request.assignee = owner ? 'bot/' + owner : ''
+      }
+      if (form.op === 'edit-fields' && form.base.source !== 'draft') delete request.assignee
+    }
+    const result = await act(request, () => crypto.randomUUID())
     if (result) {
       setForm(null)
       setSelection(result.id)
@@ -310,6 +344,34 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
     const id = anchor?.sessionId || anchor?.roomId
     if (!id) return
     setAnchor(anchor)
+  }
+  const toggle = card => setChecked(old => {
+    const next = new Map(old)
+    if (next.has(card.id)) next.delete(card.id)
+    else if (next.size < 100) next.set(card.id, card.version)
+    return next
+  })
+  const seed = options => {
+    setForm(createForm(options))
+    setDiscussion(false)
+    setExtra('')
+  }
+  function openComment(id, commentId) {
+    if (item?.id !== id) pick(id)
+    setExtra('')
+    setDiscussion(true)
+    setCommentFocus(commentId)
+    history.replaceState(history.state, '', '#/godbot/work/' + id + '/comment/' + commentId)
+  }
+  function runPanel(id) {
+    setInitialRun(id)
+    setDiscussion(false)
+    setExtra('runs')
+  }
+  function annotate(selection) {
+    setQuote(selection)
+    setExtra('')
+    setDiscussion(true)
   }
   async function drop(e, phase) {
     e.preventDefault()
@@ -339,8 +401,15 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
       ...options,
     )
   const ownerName = (id) => view?.bots.find((b) => b.id === id)?.name || t('Unassigned')
+  const cardOwner = (card) => {
+    const assignee = view?.catalog?.assignees.find(a => a.id === card.assignee)
+    return assignee ? t(assignee.name) : ownerName(card.owner)
+  }
   function card(c) {
-    return h(
+    return h('div', { key: c.id, className: selecting ? 'wb-select-card' : undefined },
+      selecting ? h('input', { type: 'checkbox', 'aria-label': t('Select') + ' ' + c.id,
+        checked: checked.has(c.id), onChange: () => toggle(c) }) : null,
+      h(
       'button',
       {
         type: 'button',
@@ -351,11 +420,13 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
         onDragStart: (e) => e.dataTransfer.setData('application/x-godbot-work', c.id),
         onClick: () => pick(c.id),
       },
-      h('small', null, c.id, c.priority ? h('b', null, '↑ ', t('High')) : null),
+      h('small', null, c.id, c.priority !== 0 && priorities[c.priority] ? h('b', null, t(priorities[c.priority])) : null),
       h('strong', null, c.title),
       c.hint ? h('span', { className: 'wb-hint' }, c.hint) : null,
-      h('span', { className: 'wb-meta' }, ownerName(c.owner), h('em', null, label(markNames, c.mark))),
-    )
+      h('span', { className: 'wb-meta' }, cardOwner(c),
+        h('em', null, (view?.catalog?.statuses ?? []).find(status => status.id === c.statusId)?.name || label(markNames, c.mark))),
+      c.dueDate || c.labels?.length ? h('span', { className: 'wb-subtext' }, [c.dueDate, ...(c.labels ?? [])].filter(Boolean).join(' · ')) : null,
+    ))
   }
   function actionButtons(d) {
     return d.source === 'run'
@@ -384,8 +455,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
   useEffect(() => {
     if (!selection || !item || last.current === item.id) return
     last.current = item.id
-    route(item.id)
-  }, [selection, item])
+    route(item.id, commentFocus)
+  }, [selection, item, commentFocus])
   return h(
     'section',
     { className: 'wb-shell', style: { left: column }, 'aria-label': t('Work board') },
@@ -423,8 +494,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
         h('input', {
           type: 'search',
           value: filter.search,
-          placeholder: t('Search ID or title'),
-          'aria-label': t('Search ID or title'),
+          placeholder: t('Search work and comments'),
+          'aria-label': t('Search work and comments'),
           onChange: (e) => editFilter('search', e.target.value),
         }),
         filterSelect('owner', 'All owners', [
@@ -446,10 +517,16 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
           'All sources',
           Object.keys(sourceNames).map((k) => option(k, label(sourceNames, k))),
         ),
-        button(t(layout === 'board' ? 'List view' : 'Board view'), () =>
-          setLayout(layout === 'board' ? 'list' : 'board'),
-        ),
       ),
+      h(BoardControls, {
+        catalog: view?.catalog, filters: filter, display, setDisplay, setFilter, onApplyView: applyView, refresh, readOnly,
+        selection: viewId, selectedItems: Array.from(checked, ([id, version]) => ({ id, version })),
+        enabled: selecting, setEnabled: setSelecting, clearSelection: ids => setChecked(old => {
+          const latest = new Map((view?.columns ?? []).flatMap(col => col.items).map(row => [row.id, row.version]))
+          return new Map(ids.map(id => [id, latest.get(id) ?? old.get(id)]))
+        }),
+        error: managementError, setError: setManagementError,
+      }),
       roster.readOnly || view?.readOnly ? h('p', { role: 'status' }, t('Read only')) : null,
       !view && !error ? h('p', { role: 'status' }, t('Loading…')) : null,
       view && cards.every((c) => !c.total)
@@ -460,7 +537,7 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
             freshBoard ? null : button(t('Clear filters'), () => setFilter({ ...defaultFilters })),
           )
         : null,
-      h(
+      (['list', 'board'].includes(layout) && display.groupBy === 'phase') ? h(
         'div',
         { className: 'wb-lanes', 'data-layout': layout },
         ...cards.map((c) =>
@@ -491,7 +568,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
             c.next ? button(t('Load more'), () => more(c)) : null,
           ),
         ),
-      ),
+      ) : h(BoardLayouts, { display, columns: cards, catalog: view?.catalog, renderCard: card,
+        open: pick, more, toggle, enabled: selecting, selected: checked }),
     ),
     focused
       ? h(
@@ -542,23 +620,34 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
                         null,
                         label(markNames, item.mark),
                         ' · ',
-                        ownerName(item.owner),
+                        cardOwner(item),
                         ' · ',
                         label(sourceNames, item.source),
                       ),
                       h('div', { className: 'wb-detail-tabs', 'aria-label': t('Work item') },
                         button(t('Details'), () => {
                           setDiscussion(false)
+                          setExtra('')
                           setCommentFocus(null)
                           route(item.id)
-                        }, { 'aria-pressed': !discussion }),
-                        button(t('Discussion'), () => setDiscussion(true), { 'aria-pressed': discussion })),
+                        }, { 'aria-pressed': !discussion && !extra }),
+                        button(t('Discussion'), () => { setDiscussion(true); setExtra('') }, { 'aria-pressed': discussion }),
+                        button(t('Runs'), () => runPanel(null), { 'aria-pressed': extra === 'runs' }),
+                        button(t('Artifacts'), () => { setDiscussion(false); setExtra('artifacts') }, { 'aria-pressed': extra === 'artifacts' })),
                       h(WorkBoardDiscussionPanel, {
                         key: item.id, id: item.id, active: discussion, offline: readOnly, focus: commentFocus,
-                        subscribe, openExecution: original,
+                        subscribe, openExecution: original, openRun: runPanel, quote,
+                        openComment: id => openComment(item.id, id),
+                        createSubtask: entry => seed({ parent: item.id, commentId: entry.id, title: entry.body.split('\n')[0].slice(0, 110) }),
                       }),
-                      h('div', { hidden: discussion },
+                      extra === 'runs' ? h(BoardRunsPanel, { key: item.id + '/' + initialRun, id: item.id, initialRun,
+                        subscribe, readOnly, openExecution: original, openComment, modify: change => act({
+                          ...change, id: item.id, version: item.version,
+                        }, () => crypto.randomUUID()) }) : null,
+                      extra === 'artifacts' ? h(BoardArtifactsPanel, { key: item.id, id: item.id, subscribe, openComment }) : null,
+                      h('div', { hidden: discussion || Boolean(extra) },
                       h('small', null, when(item.updated)),
+                      h(PlanningDetails, { key: item.id, item, catalog: view?.catalog, pick, seed, openComment, annotate, readOnly }),
                       h('h3', null, t('Acceptance criteria')),
                       h('pre', null, item.criteria || '—'),
                       item.evidence
@@ -620,7 +709,7 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
                             ...item.children.map((c) => h('li', { key: c.id }, c.target, ' · ', c.status)),
                           )
                         : null,
-                      !readOnly ? h('footer', null, ...actionButtons(item)) : null,
+                      !readOnly ? h('footer', null, button(t('Edit work item'), () => begin('edit-fields', item)), ...actionButtons(item)) : null,
                       ),
                     ),
           ),

@@ -73,9 +73,9 @@ export default async function check({ makeHost, candidate, previous, reportDir, 
       .locator('.wb-shell')
       .getByRole('button', { name: /^(新建工作项|New work item)$/ })
       .click()
-    await page.locator('.wb-editor input').fill(title)
+    await page.locator('.wb-editor').getByRole('textbox', { name: /^(Title|标题)$/ }).fill(title)
     await page.locator('.wb-editor select').first().selectOption(worker.id)
-    await page.locator('.wb-editor textarea').fill('Retain both reports and accept only the current one')
+    await page.locator('.wb-editor').getByRole('textbox', { name: /^(Acceptance criteria|验收条件)$/ }).fill('Retain both reports and accept only the current one')
     await page.locator('.wb-editor button[type=submit]').click()
     const draft = await until(
       async () =>
