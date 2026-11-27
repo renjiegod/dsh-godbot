@@ -63974,10 +63974,18 @@ function apply(ctx, godbot) {
   const refreshed = /* @__PURE__ */ new Set();
   let pulls = 0;
   let applied = 0;
+  const mainView = () => Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find((session) => (session?.retainedBy?.mainView ?? 0) > 0)?.id;
   const pull = async () => {
     const order = ++pulls;
     const known = roster.getSnapshot();
-    const value = await call("state", { since: known.revision, models: known.modelsKey ?? "", live: liveKey, locale: language(), sessionOrder: true });
+    const value = await call("state", {
+      since: known.revision,
+      models: known.modelsKey ?? "",
+      live: liveKey,
+      locale: language(),
+      sessionOrder: true,
+      chatSessionId: mainView()
+    });
     if (order < applied) return;
     applied = order;
     const prevLiveKey = liveKey;
@@ -64370,7 +64378,6 @@ function apply(ctx, godbot) {
     return ids;
   };
   const latestAgentSession = (agentId, list) => agentSessions(agentId).sort((a3, b2) => (list.byId[b2]?.updatedAt ?? 0) - (list.byId[a3]?.updatedAt ?? 0))[0];
-  const mainView = () => Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find((session) => (session?.retainedBy?.mainView ?? 0) > 0)?.id;
   const ownerOfSession = (sessionId) => {
     const snapshot = roster.getSnapshot();
     if (snapshot.byId[sessionId] !== void 0) return snapshot.byId[sessionId];
@@ -65272,6 +65279,7 @@ function apply(ctx, godbot) {
       if (main === previous) return;
       const before = previous;
       previous = main;
+      if (roster.getSnapshot().exchangeTurns[main]?.length) void pull().catch(quietly("refresh conversation visibility"));
       const ours = expected2 !== null && main === expected2;
       if (main !== void 0) expected2 = null;
       if (ours || main === void 0) return;

@@ -16,7 +16,7 @@ for (const canSteer of [true, false]) {
       route: 'local-codex-cli', spec: { kind: 'codex' }, cwd: '/fixture',
       handed: 'opening', cliSessionId: 'native-session', engineSession: {}, state: 'suspended',
       mcp: {}, events: [], queue: [], pending: new Map([['call', { name: 'ask_user', resolve: reply.resolve }]]),
-      async next() { return this.events.shift() },
+      waiters: [], next: () => adapter.take(live),
     }
     function send(kind, blocks) {
       sent.push({ kind, blocks })

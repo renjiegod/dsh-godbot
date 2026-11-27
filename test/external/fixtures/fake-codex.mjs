@@ -115,6 +115,21 @@ function runTurn(thread, turnId, text, effort, images = []) {
     return
   }
   const dir = process.env.GODBOT_E2E_GATE_DIR
+  if (dir && text.includes('GODBOT-CODEX-USER-FOLLOWUP')) {
+    const emit = (method, payload) => notice(method, { threadId: thread.id, turnId, ...payload })
+    const textItem = (id, message) => {
+      emit('item/agentMessage/delta', { itemId: id, delta: message })
+      emit('item/completed', { item: { id, type: 'agentMessage', text: message } })
+    }
+    textItem('followup-before', 'The release verification is still running.')
+    const item = { id: 'followup-shell', type: 'commandExecution', command: 'cat release-status.txt' }
+    emit('item/started', { item: { ...item, status: 'inProgress' } })
+    void delay(150).then(() => {
+      emit('item/completed', { item: { ...item, status: 'completed', exitCode: 0, aggregatedOutput: 'Web verified, Android pending.' } })
+      textItem('followup-after', 'The Web checks passed. I am checking Android.')
+    })
+    return
+  }
   if (dir && text.includes('Verify the Codex conversation layout')) {
     const emit = (method, payload) => notice(method, { threadId: thread.id, turnId, ...payload })
     const complete = item => emit('item/completed', { item })

@@ -202,10 +202,14 @@ export function apply(ctx, godbot) {
   // Pulls can overlap (the poll and a navigation); an older answer never wins.
   let pulls = 0
   let applied = 0
+  const mainView = () => Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find(session => (session?.retainedBy?.mainView ?? 0) > 0)?.id
   const pull = async () => {
     const order = ++pulls
     const known = roster.getSnapshot()
-    const value = await call('state', { since: known.revision, models: known.modelsKey ?? '', live: liveKey, locale: language(), sessionOrder: true })
+    const value = await call('state', {
+      since: known.revision, models: known.modelsKey ?? '', live: liveKey, locale: language(), sessionOrder: true,
+      chatSessionId: mainView(),
+    })
     if (order < applied) return
     applied = order
     const prevLiveKey = liveKey
@@ -581,7 +585,6 @@ export function apply(ctx, godbot) {
   }
   const latestAgentSession = (agentId, list) => agentSessions(agentId)
     .sort((a, b) => (list.byId[b]?.updatedAt ?? 0) - (list.byId[a]?.updatedAt ?? 0))[0]
-  const mainView = () => Object.values(ctx.sessions.list.getSnapshot().byId ?? {}).find(session => (session?.retainedBy?.mainView ?? 0) > 0)?.id
   // A Session the Host made a moment ago is not in the shell's list yet, so the main view
   // would keep showing the chat that was there before — for a Bot the user just opened,
   // that reads as "the new Bot loaded someone else's conversation" (#1196). The asked-for
@@ -1527,6 +1530,7 @@ export function apply(ctx, godbot) {
       if (main === previous) return
       const before = previous
       previous = main
+      if (roster.getSnapshot().exchangeTurns[main]?.length) void pull().catch(quietly('refresh conversation visibility'))
       const ours = expected !== null && main === expected
       if (main !== undefined) expected = null
       if (ours || main === undefined) return

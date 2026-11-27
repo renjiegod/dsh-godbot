@@ -463,21 +463,22 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
       return
     }
     const next = live.next
-    live.next = async () => {
-      const event = await next()
-      // Match the workspace drain's turn fence, and ignore a pending dequeue that
-      // settled after cancellation. Trace-only events produce no model chunks.
-      if (event.trace && !options.signal?.aborted && !live.dead &&
-          (event.turnId === undefined || live.turnTag === undefined || event.turnId === live.turnTag)) {
-        // The CLI's own tools run inside this one model request: the turn's live work
-        // (the group's member status included) follows them as they start and end.
-        try { rt.noteNativeTool?.(live.sessionId, event.trace) } catch (error) { rt.warn?.('godbot: native tool progress: %s', error) }
-        if (history) {
-          history.record(live.sessionId, event.trace)
-          if (event.type === 'activity') return { ...event, text: toolReference(event.text, event.trace.id) }
+    live.next = () => {
+      const wait = next()
+      return { drop: wait.drop, event: wait.event.then(event => {
+        // Match the workspace drain's turn fence. Trace-only events produce no model chunks.
+        if (event.trace && !options.signal?.aborted && !live.dead &&
+            (event.turnId === undefined || live.turnTag === undefined || event.turnId === live.turnTag)) {
+          // The CLI's own tools run inside this one model request: the turn's live work
+          // (the group's member status included) follows them as they start and end.
+          try { rt.noteNativeTool?.(live.sessionId, event.trace) } catch (error) { rt.warn?.('godbot: native tool progress: %s', error) }
+          if (history) {
+            history.record(live.sessionId, event.trace)
+            if (event.type === 'activity') return { ...event, text: toolReference(event.text, event.trace.id) }
+          }
         }
-      }
-      return event
+        return event
+      }) }
     }
     try { yield* super.drain(live, options) } finally { live.next = next }
   }

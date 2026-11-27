@@ -371,6 +371,7 @@ export function install(rt) {
         case 'state': {
           if (typeof body.locale === 'string' && /^[a-z]{2,3}(-[\w-]+)?$/i.test(body.locale)) uiLocale = body.locale
           if (readOnly === undefined) await rt.bootstrap()
+          if (browser) await rt.restoreUserTurnVisibility?.(body.chatSessionId)
           await rt.catalog()
           await rt.loadSecrets()
           if (!browser && body.sessionOrder === true) await loadSessionActivity()
