@@ -79,3 +79,22 @@ test('the named conversation comes first, then the handoff origin, then a sessio
   assert.deepEqual(rt.botMessageDestination(sender, bot, { fromPart: 'sender-current', text }), { part: sid(5) })
   assert.deepEqual(rt.botMessageDestination(sender, bot, { fromPart: 'sender-current', named: sid(3), text }), { part: sid(3), by: 'named' })
 })
+
+test('outstanding requests from an earlier release follow the sender conversation until answered', () => {
+  const recipient = worker()
+  const sender = { id: sid(6), sessionId: sid(7), segments: [{ sessionId: sid(6) }], openParts: [{ sessionId: sid(8) }] }
+  const records = [
+    { id: 'first', event: 'delivered', sessionId: sid(3), fromPart: sid(6) },
+    { id: 'other', event: 'delivered', sessionId: sid(5), fromPart: sid(8) },
+  ]
+  const state = { works: {
+    first: { from: sender.id, to: recipient.id },
+    other: { from: sender.id, to: recipient.id },
+  } }
+  const rt = { state, ledger: { importer() {}, records: () => records } }
+  installDelivery(rt)
+  assert.deepEqual(rt.outstandingBotConversation(sender, recipient, sid(7)), { sessionId: sid(4), exchangeId: 'first' })
+  assert.deepEqual(rt.outstandingBotConversation(sender, recipient, sid(8)), { sessionId: sid(5), exchangeId: 'other' })
+  delete state.works.first
+  assert.equal(rt.outstandingBotConversation(sender, recipient, sid(7)), undefined)
+})

@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto'
 import { SOURCE_KIND, TEXT_KEPT } from './constants.js'
 import { relatedBotMessages } from './conversation-routing.js'
 import { readDeliveryEvents, turnsOf } from './resume.js'
-import { ownConversations } from './threads.js'
+import { conversationHead, ownConversations } from './threads.js'
 import { headOf } from './text.js'
 import { turnFailure } from './turns.js'
 import { INBOX_DELIVERY } from '../shared/inbox-delivery.js'
@@ -192,7 +192,7 @@ export function install(rt) {
   function statusReceipt(id, receipt) {
     const row = get(id)
     if (!row) return receipt
-    return `${statusLine(row)} · message ${id} · queue #${row.sequence}. ${receipt ?? ''}`.trim()
+    return `${statusLine(row)} · message ${id} · queue #${row.sequence}. Recipient conversation ${row.args.sessionId}. ${receipt ?? ''}`.trim()
   }
 
   async function offer(row) {
@@ -664,6 +664,13 @@ export function install(rt) {
       ...(args.length === undefined ? {} : { length: args.length, files: args.files }),
       ...(args.replyTo ? { replyTo: args.replyTo } : {}),
     })),
+    inboxOutstanding(sender, recipient, fromPart) {
+      const source = keyOf(sender.id, fromPart)
+      const row = rows().findLast(({ args, state }) => args.role === 'request' && !terminal.has(state)
+        && args.fromId === sender.id && args.toId === recipient.id && keyOf(sender.id, args.fromPart) === source
+        && conversationHead(recipient, args.sessionId) !== undefined)
+      if (row) return { sessionId: conversationHead(recipient, row.args.sessionId), exchangeId: row.id }
+    },
     inboxOrigins: (a, b) => rows().filter(({ args }) => args.role === 'request' && args.fromId === b && args.toId === a)
       .map(({ args }) => ({ event: 'delivered', ...args })),
     inboxStatusForBot: (id, viewer) => rows().filter(row => row.args.toId === id && related(row, viewer)).slice(-3)

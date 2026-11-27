@@ -18,12 +18,27 @@ export default async function botConversationReference({ makeHost, candidate, no
   const finished = 'Release finished for the dashboard. Verify the public package in the originating conversation '
   const checksum = 'The relay now serves the same package checksum.'
   const verified = 'Verified in the original conversation.'
+  const firstWork = 'Count barcode scanners at the loading dock.'
+  const supplement = 'Station seven is closed this afternoon.'
+  const namedUpdate = 'Please add the two crates to the count.'
+  const newWork = 'Plan the winter catering budget.'
+  const finishFirst = Promise.withResolvers()
+  const followups = new Map()
   let origin
   let publisherPart
   const tool = input => [{ type: 'tool_use', name: 'message_bot', input: { to: engineerName, ...input } }]
   host.model.reply = async body => {
     const last = JSON.stringify(body.messages?.findLast(message => message.role === 'user')?.content ?? '')
     if (last.includes('tool_result')) return 'Fixture acknowledged.'
+    for (const [trigger, args] of followups) {
+      if (!last.includes(trigger)) continue
+      followups.delete(trigger)
+      return tool({ reply_to: 'me', when: 'queue', ...args })
+    }
+    if (last.includes('[Message from') && last.includes(firstWork)) {
+      await finishFirst.promise
+      return 'The dock inventory is verified.'
+    }
     if (last.includes(handoff)) return tool({ message: finished + origin + '.' })
     if (last.includes('Send the checksum note')) return tool({ message: checksum, conversation: origin })
     if (last.includes('Send a note to the wrong conversation')) return tool({ message: checksum, conversation: publisherPart })
@@ -98,4 +113,42 @@ export default async function botConversationReference({ makeHost, candidate, no
   const requests = (await host.bot('exchange', { a: publisher.id, b: engineer.id })).filter(row => row.role === 'request')
   assert.equal(requests.length, 2, 'the refused messages were not sent')
   note('conversation-reference', { origin, foreground, publisher: publisherPart })
+
+  const exchange = () => host.bot('exchange', { a: publisher.id, b: engineer.id })
+  async function dispatch(trigger, message, options = {}) {
+    followups.set(trigger, { message, ...options })
+    await send(publisherPart, trigger)
+    const row = await until(async () => (await exchange()).find(item => item.role === 'request' && item.text === message),
+      'the host records ' + message)
+    const receipt = await toolResult(`message ${row.id}`)
+    const input = JSON.stringify(receipt.body.messages.findLast(message => message.role === 'user').content)
+    const sessionId = /Recipient conversation (session-[0-9a-f-]+)\./u.exec(input)?.[1]
+    assert.ok(sessionId, 'the sender can copy a recipient session ID from the receipt')
+    await idle(publisherPart)
+    return { row, sessionId, input }
+  }
+
+  try {
+    const first = await dispatch('Open dock inventory work', firstWork, { new_conversation: true })
+    const receiving = await calls(firstWork, '[Message from')
+    assert.equal(first.sessionId, receiving.sessionId, 'the new conversation ID points at the engine input')
+    assert.match(first.input, /a new conversation/u)
+    const next = await dispatch('Send a separate detail about the dock', supplement)
+    assert.equal(next.sessionId, first.sessionId, 'a follow-up with no matching topic uses the unanswered request')
+    const named = await dispatch('Use the session ID from the tool receipt', namedUpdate, { conversation: first.sessionId })
+    assert.equal(named.sessionId, first.sessionId, 'the receipt can be passed back as conversation')
+    assert.match(named.input, /the conversation you named/u)
+    finishFirst.resolve()
+    await until(async () => {
+      const rows = await exchange()
+      return [first, next, named].every(({ row }) => rows.find(item => item.id === row.id)?.delivery?.state === 'replied')
+    }, 'the recipient answered all three requests')
+    for (const message of [supplement, namedUpdate]) assert.equal((await calls(message, '[Message from')).sessionId, first.sessionId)
+    const independent = await dispatch('Dispatch independent catering work', newWork)
+    assert.notEqual(independent.sessionId, first.sessionId, 'an unrelated request after the replies uses normal routing')
+    assert.equal((await calls(newWork, '[Message from')).sessionId, independent.sessionId)
+    note('unanswered-request-routing', { original: first.sessionId, followup: next.sessionId, explicitlyNamed: named.sessionId, afterReply: independent.sessionId })
+  } finally {
+    finishFirst.resolve()
+  }
 }
