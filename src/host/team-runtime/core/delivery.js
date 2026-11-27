@@ -102,9 +102,12 @@ export function install(rt) {
   // one its recipient had not read, under that one's exchange. `fromPart`: the Session
   // of the sending Bot, which a reply comes back to when that is a background part.
   // `opensConversation` records that a direct request created its own conversation.
+  // `addressed` records why a direct request went to the conversation it did, when the
+  // sender's words chose it: 'named' by its conversation argument, 'mentioned' by a
+  // session ID in the text (conversation-routing.js botMessageDestination).
   // `title`: the name its sender gave a request, which names the conversation it opens
   // (parts.js promptTitle).
-  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, opensConversation = false, images = [], files = [], length, work, initiator, title }) {
+  async function deliver({ fromId, fromName: senderName, toId, sessionId, text, role, replyTo, roomId, audience, note, exchangeId = randomUUID(), steer = false, deferred = false, resumed = false, retried = false, resent = false, merged = false, abandoned = false, recordExchange = true, askedBy, fromRoomId, fromPart, opensConversation = false, addressed, images = [], files = [], length, work, initiator, title }) {
     const from = rt.botOf(fromId)
     const to = rt.botOf(toId)
     if (to === undefined) throw new Error(`Unknown Bot ${toId}`)
@@ -168,6 +171,7 @@ export function install(rt) {
       rt.ledger.append(book, {
         event: 'delivered', id: exchangeId, sessionId: targetSessionId, time: Date.now(),
         ...(direct ? { fromPart } : {}), ...(direct && opensConversation ? { opensConversation: true } : {}),
+        ...(direct && typeof addressed === 'string' ? { addressed } : {}),
       })
       // The message went out either way. A lost mark makes it unavailable to the ledger's readers.
       await rt.ledger.written(book).catch(() => {})

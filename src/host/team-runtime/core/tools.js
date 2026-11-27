@@ -11,7 +11,7 @@ import { absoluteLinks } from './links.js'
 import { NAME_MAX } from './requests.js'
 import { relatedBotMessages } from './conversation-routing.js'
 import { unquote } from './text.js'
-import { isOpenPart, ownChatSessions } from './threads.js'
+import { conversationHead, isOpenPart, ownChatSessions } from './threads.js'
 import { mentionSpans } from '../shared/mentions.js'
 import { plainToolSchema } from './tool-schema.js'
 import { COMPONENT_RECEIPT } from '../shared/component-receipt.js'
@@ -254,7 +254,7 @@ export function install(rt) {
 
   rt.teamTools.push(defineTool({
     name: 'message_bot',
-    description: 'Send a message to another Bot on the team. Updates to the Bot that delegated this work return to its originating conversation. For other work, include the task name so Godbot can reuse a relevant conversation or open a new one. A reply comes back to the conversation you sent from. With reply_to "user" the Bot answers the user in the selected conversation. Do not message a Bot waiting for your current work: your answer reaches it once you end your turn and everything you handed on is back. In a group chat this calls a member there, as writing "@Name" does. With request_id, repeating the same request returns its first receipt.',
+    description: 'Send a message to another Bot on the team. Updates to the Bot that delegated this work return to its originating conversation. When you were given the other Bot\'s conversation for this work by its session ID, pass it as conversation. For other work, include the task name so Godbot can reuse a relevant conversation or open a new one. A reply comes back to the conversation you sent from. With reply_to "user" the Bot answers the user in the selected conversation. Do not message a Bot waiting for your current work: your answer reaches it once you end your turn and everything you handed on is back. In a group chat this calls a member there, as writing "@Name" does. With request_id, repeating the same request returns its first receipt.',
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
@@ -266,9 +266,13 @@ export function install(rt) {
       when: {
         type: 'string',
         enum: ['now', 'queue'],
-        description: '"now" (default) can reach the next step of the relevant running task. "queue" starts a separate turn. A message routed back to the handoff origin or sent with reply_to "user" always queues.',
+        description: '"now" (default) can reach the next step of the relevant running task. "queue" starts a separate turn. A message routed back to the handoff origin, sent to a conversation named by its session ID, or sent with reply_to "user" always queues.',
       },
       new_conversation: { type: 'boolean', description: 'Start a separate conversation for unrelated work. Applies only when messaging from your own chat.' },
+      conversation: {
+        type: 'string',
+        description: 'The session ID ("session-…") of the other Bot\'s conversation this message belongs to, when you were given it: for example the conversation a release or other handoff came from. Any part of that conversation works, also one that went on to a newer part. It gets the message in a turn of its own. Leave it out to let Godbot choose. Applies only when messaging from your own chat.',
+      },
       title: {
         type: 'string',
         description: 'A short name for the work, a few words in the user\'s language (e.g. "Release Godbot 0.2.31"). When the message opens a conversation for the other Bot, this names it in that Bot\'s session list. Without it the message\'s first sentence names it.',
@@ -292,6 +296,10 @@ export function install(rt) {
       const text = absoluteLinks(String(args.message), rt.sessionFolder?.(exec.agent?.session ?? exec.agent))
       const room = rt.roomOf(rt.groupOwners.get(exec.agent?.id)?.roomId)
       const newConversation = room === undefined && args.new_conversation === true
+      // The target's conversation the caller named by session ID.
+      const given = typeof args.conversation === 'string' ? args.conversation.trim() : ''
+      if (given !== '' && room !== undefined) refuse('Not sent: conversation applies only when you message from your own chat. In a group, call the member there.')
+      if (given !== '' && newConversation) refuse('Not sent: conversation names an existing conversation and new_conversation asks for a new one. Send with only one of them.')
       // The request the caller named: it is admitted once, and a repeat of it is not sent again.
       const request = name === '' ? undefined : rt.requestIdentity({
         caller: sender.id,
@@ -303,6 +311,7 @@ export function install(rt) {
           reply_to: args.reply_to === 'user' ? 'user' : 'me',
           when: args.when === 'queue' ? 'queue' : 'now',
           ...(newConversation ? { new_conversation: true } : {}),
+          ...(given !== '' ? { conversation: given } : {}),
         },
       })
       // What the caller gets for a request that was admitted before.
@@ -317,6 +326,13 @@ export function install(rt) {
       if (request !== undefined) {
         const seen = await rt.knownRequest(request)
         if (seen !== undefined) return answer(seen)
+      }
+      // Any part of one of the target's own conversations, never a group Session or
+      // another Bot's chat: a message goes to a related conversation or a new one.
+      const namedPart = given === '' ? undefined : conversationHead(target, given) ?? conversationHead(target, given.toLowerCase())
+      if (given !== '' && namedPart === undefined) {
+        const shown = given.length > 80 ? `${given.slice(0, 80)}…` : given
+        refuse(`Not sent: ${shown} is not one of ${target.name}'s conversations. Check the session ID, or leave conversation out to let Godbot choose.`)
       }
       if (room !== undefined) {
         const refusal = groupRefusal(room, sender, target)
@@ -339,7 +355,10 @@ export function install(rt) {
         // The part of the sender's own chat this request comes from: its answer goes back
         // to that part's thread.
         const fromPart = callerPart(exec).fromPart
-        const originPart = newConversation ? undefined : rt.botMessageOrigin(sender, target, fromPart)
+        // The conversation this message belongs to, when one is known: named, the
+        // handoff's origin, or named by session ID in the message.
+        const destination = newConversation ? undefined : rt.botMessageDestination(sender, target, { fromPart, named: namedPart, text })
+        const originPart = destination?.part
         const filename = `Message from ${sender.name}.txt`
         const original = await rt.attachLong(text, filename)
         // Nothing went out, so a named request must not take this as a delivered
@@ -370,13 +389,17 @@ export function install(rt) {
               text: long.text, files: [...long.files, ...(joins ? before.files : [])], length: long.length,
               role: 'request', steer: atNextStep, exchangeId, ...(created ? { opensConversation: true } : {}), ...(named ? { title: named } : {}),
               ...(joins ? { merged: true } : {}), ...(toUser ? { audience: 'user' } : {}),
+              ...(!created && destination?.by ? { addressed: destination.by } : {}),
             })
           } catch (error) {
             // A queued delivery for an existing Bot can be retried after restart.
             if (!joins && rt.botOf(target.id) === undefined) rt.dropWork(exchangeId)
             throw error
           }
-          const where = created ? 'a new conversation' : 'its conversation for this work'
+          const where = created ? 'a new conversation'
+            : destination?.by === 'named' ? 'the conversation you named'
+              : destination?.by === 'mentioned' ? 'the conversation your message names by session ID'
+                : 'its conversation for this work'
           const sent = `Delivered to ${target.name} in ${where}.`
           const when = working ? (atNextStep ? 'It can read the message at its next step.' : 'It will read the message in a separate turn.') : ''
           const reply = toUser
