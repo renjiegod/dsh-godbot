@@ -32,7 +32,17 @@ export default async function check({ makeHost, candidate, reportDir, note }) {
   }
   const boardUrl = host.url + '/#/godbot/work/' + draft.id
   await page.goto(boardUrl)
+  const drawer = page.locator('.wb-detail')
+  const criteria = drawer.getByText('Keep the execution receipt unique.', { exact: true }).first()
+  await criteria.waitFor()
+  const bounds = await drawer.boundingBox()
+  const detailsStyle = await criteria.evaluate(node => {
+    const { color, fontSize, lineHeight, backgroundColor, borderRadius } = getComputedStyle(node)
+    return { color, fontSize, lineHeight, backgroundColor, borderRadius }
+  })
+  await drawer.screenshot({ path: join(reportDir, 'details-web.png') })
   await page.getByRole('button', { name: /^(讨论|Discussion)$/ }).click()
+  assert.deepEqual(await drawer.boundingBox(), bounds, 'switching tabs keeps the same drawer geometry')
   const input = page.getByRole('textbox', { name: /^(评论|Comment)$/ })
   await input.fill('@Discussion')
   await page.getByRole('button', { name: '@Discussion Worker', exact: true }).click()
@@ -47,6 +57,12 @@ export default async function check({ makeHost, candidate, reportDir, note }) {
   const root = await until(async () => (await read()).entries.find(item => item.runs[0]?.state === 'answered'), 'Bot answer in discussion', 45000)
   assert.equal(root.runs[0].sessionId, assigned.execution.sessionId)
   assert.ok(Number.isSafeInteger(root.runs[0].turnId))
+  const discussionStyle = await drawer.locator('.wb-thread').first().evaluate(node => {
+    const { color, fontSize, lineHeight } = getComputedStyle(node.querySelector('.wb-comment-body p'))
+    const { backgroundColor, borderRadius } = getComputedStyle(node)
+    return { color, fontSize, lineHeight, backgroundColor, borderRadius }
+  })
+  assert.deepEqual(discussionStyle, detailsStyle, 'discussion uses the details text and surface styles')
   const thread = await read({ thread: root.id })
   assert.equal(thread.entries[0].parentId, root.id)
   assert.match(thread.entries[0].body, /reviewed the/)
@@ -77,14 +93,14 @@ export default async function check({ makeHost, candidate, reportDir, note }) {
   const unchanged = await channel(host, 'board-item', { id: draft.id })
   assert.equal(unchanged.evidenceRevision, assigned.evidenceRevision)
   assert.equal(unchanged.phase, 'review')
-  await page.screenshot({ path: join(reportDir, 'discussion-web.png') })
+  await drawer.screenshot({ path: join(reportDir, 'discussion-web.png') })
   await host.stop()
   await host.start()
   await page.goto(boardUrl + '/comment/' + final.id)
   await page.locator('[data-board-comment="' + final.id + '"][data-linked]').waitFor()
   assert.equal((await read({ thread: root.id })).entries.length, 3)
   await page.setViewportSize({ width: 420, height: 850 })
-  assert.equal(await page.locator('.wb-detail').evaluate(node => node.scrollWidth <= node.clientWidth + 1), true)
+  assert.equal(await drawer.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true)
   await page.screenshot({ path: join(reportDir, 'discussion-narrow.png') })
   note('work-board-discussion', {
     id: draft.id, executionConversationReused: true, sameTaskEvidence: true,

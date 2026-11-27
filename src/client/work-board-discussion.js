@@ -170,7 +170,7 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
     entry.runs.length || entry.unmatched ? h('div', { className: 'wb-comment-runs', 'aria-label': t('Comment executions') },
       ...entry.runs.map(run => h('div', { className: 'wb-comment-run', key: run.id },
         h('span', null, (run.name ?? t('Bot')) + ' · ' + t(commentRunLabels[run.state] ?? 'Unknown')),
-        run.sessionId ? button(t('Open execution conversation'), () => openExecution(run), { className: 'wb-comment-link' }) : null)),
+        run.sessionId ? button(t('Open execution conversation'), () => openExecution(run)) : null)),
       entry.unmatched ? h('small', null, t('An @mention did not match an available Bot.')) : null) : null,
     h('div', { className: 'wb-comment-tools' },
       ...entry.reactions.map(emoji => button(emoji + ' 1', () => state.write({ op: 'react', commentId: entry.id, emoji, active: false }),

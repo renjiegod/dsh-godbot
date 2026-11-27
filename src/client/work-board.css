@@ -196,12 +196,15 @@
 .wb-detail h3 {
   font-size: 14px;
 }
+.wb-detail pre,
+.wb-thread {
+  background: var(--bt-bubble);
+  border-radius: 6px;
+}
 .wb-detail pre {
   font: inherit;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  background: var(--bt-bubble);
-  border-radius: 6px;
   padding: 9px;
 }
 .wb-detail footer {
@@ -215,7 +218,8 @@
   gap: 4px;
   margin: 12px 0;
 }
-.wb-field textarea {
+.wb-field textarea,
+.wb-comment-composer textarea {
   min-height: 86px;
 }
 .wb-error {
@@ -258,9 +262,6 @@
   }
 }
 
-.wb-detail[data-discussion] {
-  width: min(650px, 100%);
-}
 .wb-detail-tabs {
   display: flex;
   gap: 12px;
@@ -285,22 +286,20 @@
   color: var(--bt-danger);
 }
 .wb-discussion-empty {
-  padding-block: 16px;
   color: var(--bt-ink-2);
 }
 .wb-thread {
   margin-bottom: 12px;
-  border: 1px solid var(--bt-line);
-  border-radius: 10px;
 }
 .wb-comment {
   display: grid;
-  gap: 7px;
-  padding: 12px;
+  gap: 8px;
+  padding: 9px;
   min-width: 0;
   scroll-margin: 16px;
 }
 .wb-comment[data-linked] {
+  border-radius: 6px;
   box-shadow: inset 3px 0 var(--bt-accent);
 }
 .wb-comment-head,
@@ -309,7 +308,7 @@
 .wb-comment-run {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .wb-comment-head time,
@@ -326,7 +325,7 @@
   height: 24px;
   flex: none;
   border-radius: 100%;
-  background: var(--bt-bubble);
+  background: var(--bt-card);
   color: var(--bt-ink);
   font-size: 12px;
 }
@@ -339,6 +338,11 @@
 .wb-comment-body {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+.wb-detail .wb-comment-body > div {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
 }
 .wb-comment-quote {
   border-inline-start: 2px solid var(--bt-line-2);
@@ -355,6 +359,8 @@
 }
 .wb-comment-run {
   justify-content: space-between;
+}
+.wb-comment-run > span {
   color: var(--bt-ink-2);
   font-size: 12px;
 }
@@ -363,10 +369,8 @@
   padding-top: 5px;
   color: var(--bt-ink-2);
 }
-.wb-discussion .wb-comment-tools button,
-.wb-discussion .wb-comment-link {
-  font-size: 12px;
-  padding: 4px 7px;
+.wb-discussion button {
+  max-width: 100%;
 }
 .wb-comment-tools [aria-pressed='true'],
 .wb-discussion .wb-mention-active {
@@ -375,16 +379,12 @@
 }
 .wb-comment-composer {
   display: grid;
-  gap: 7px;
-  border: 1px solid var(--bt-line-2);
-  border-radius: 10px;
-  margin-top: 10px;
-  padding: 9px;
+  gap: 8px;
+  margin-top: 12px;
 }
 .wb-comment-composer textarea {
   width: 100%;
   resize: vertical;
-  min-height: 74px;
   max-height: 240px;
 }
 .wb-comment-composer input[type='checkbox'] {

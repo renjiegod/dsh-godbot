@@ -507,7 +507,6 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
             {
               className: 'wb-detail',
               ref: panel,
-              'data-discussion': discussion || undefined,
               role: 'dialog',
               'aria-modal': true,
               'aria-label': t('Work item'),
