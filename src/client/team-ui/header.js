@@ -75,9 +75,10 @@ function BotHeaderModel({ bot, roster, actions, sessionId }) {
   !roster.readOnly && h(Caret))
 }
 
-function BotUsageButton({ actions }) {
+// This Bot's own local agent usage. Every agent's stays in Settings → Local agents.
+function BotUsageButton({ bot, actions }) {
   const [open, setOpen] = useState(false)
-  const label = t('Local agent usage')
+  const label = t('{name}\'s local agent usage', { name: bot.name })
   return h(Fragment, null,
     h('button', {
       type: 'button', className: 'bt-icon-btn gb-usage-button', title: label,
@@ -85,9 +86,9 @@ function BotUsageButton({ actions }) {
     }, h(GaugeIcon), h('span', { className: 'gb-usage-label' }, t('Usage'))),
     open ? createPortal(h(GodbotModal, {
       title: label, close: () => setOpen(false), closeLabel: t('Close'), dismissOnBackdrop: true,
-    }, actions.godbot.providerAgents({ usageOnly: true, openSandboxSettings: route => {
+    }, actions.godbot.botAgentUsage({ botId: bot.id, openAll: () => {
       setOpen(false)
-      actions.openSettings('sandboxes', route)
+      actions.openSettings('local-agents', 'usage')
     } })), document.body) : null)
 }
 
@@ -240,7 +241,8 @@ export function HeaderPill({ sessionId, useRoster, useSessions, useSessionStatus
           actions.godbot?.computerButton ? actions.godbot.computerButton(bot, sessionId, roster, actions, useComputer) : null,
           actions.godbot.browserButton(bot, sessionId, roster),
           actions.godbot.nativeButton(bot, sessionId, roster, actions, terminalActive),
-          bot && !roster.readOnly ? h(BotUsageButton, { key: sessionId, actions }) : null)),
+          // Only a Bot on a local agent has local agent usage of its own.
+          bot?.engine && !roster.readOnly ? h(BotUsageButton, { key: sessionId, bot, actions }) : null)),
     h('span', { className: 'bt-sr', role: 'status' }, memoryNotice ? t('Memory updated') : ''),
     h(NewMessagePills, { key: sessionId, sessionId, useSessions, useUi, useTurnClock }),
     h(ActivityIndicator, { key: `activity:${sessionId}`, sessionId, useRoster, useSessionStatus, useSession, useLive, useWork, actions,

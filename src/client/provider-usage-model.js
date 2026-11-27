@@ -47,6 +47,53 @@ export function usageProviders(providers = [], period = 'week') {
     || a.name.localeCompare(b.name, 'en') || a.route.localeCompare(b.route, 'en'))
 }
 
+// The account a local agent runs with, as one short label.
+export function accountText(accountId, name) {
+  if (accountId === null || accountId === undefined) return name ? name + '（本机）' : '本机账号'
+  return '沙箱账号 · ' + (name || accountId)
+}
+
+const active = totals => Boolean(totals?.reports || totals?.unreported)
+const byTokens = (a, b) => (b.totals.tokens ?? 0) - (a.totals.tokens ?? 0) || (b.totals.unreported ?? 0) - (a.totals.unreported ?? 0)
+  || a.key.localeCompare(b.key, 'en')
+
+// One Bot's usage by the agent and account each call ran on, busiest first.
+export function botAgentRows(usage, period) {
+  const rows = []
+  for (const provider of usage?.providers ?? []) {
+    for (const account of provider.accounts ?? []) {
+      const totals = account.periods?.[period]
+      if (!active(totals)) continue
+      const accountId = account.attribution === 'sandbox' ? account.accountId : null
+      rows.push({ key: provider.route + '\n' + (accountId ?? ''), route: provider.route, name: provider.name ?? provider.route,
+        account: accountText(accountId, account.name), totals })
+    }
+  }
+  return rows.sort(byTokens)
+}
+
+// One Bot's usage by model, whichever account served it, busiest first. A model
+// names its agent when the Bot used more than one.
+export function botModelRows(usage, period) {
+  const rows = new Map()
+  for (const provider of usage?.providers ?? []) {
+    for (const account of provider.accounts ?? []) {
+      for (const model of account.models ?? []) {
+        const totals = model.periods?.[period]
+        if (!active(totals)) continue
+        const key = provider.route + '\n' + (model.model ?? '')
+        const row = rows.get(key) ?? { key, route: provider.route, agent: provider.name ?? provider.route, model: model.model ?? null,
+          totals: { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reports: 0, unreported: 0 } }
+        for (const field of Object.keys(row.totals)) row.totals[field] += Number.isFinite(totals[field]) ? totals[field] : 0
+        rows.set(key, row)
+      }
+    }
+  }
+  const list = [...rows.values()].sort(byTokens)
+  const several = new Set(list.map(row => row.route)).size > 1
+  return list.map(row => ({ ...row, label: (row.model || '未标记模型') + (several ? ' · ' + row.agent : '') }))
+}
+
 export function usageDetail(route, settings, consumption) {
   if (!route) return undefined
   return settings.find(row=>row.route===route)

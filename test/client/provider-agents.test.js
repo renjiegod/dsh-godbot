@@ -103,3 +103,28 @@ test('usage overview orders measured and unreported agents first and keeps every
   assert.equal(usageDetail('local-custom',rows,past),rows[2])
   assert.equal(usageDetail('missing',rows,past),undefined)
 })
+
+test('a Bot usage view splits its own calls by agent and account and by model, busiest first',async()=>{
+  const {accountText,botAgentRows,botModelRows}=await import('../../src/client/provider-usage-model.js')
+  assert.equal(accountText(null,null),'本机账号')
+  assert.equal(accountText(null,'Personal'),'Personal（本机）')
+  assert.equal(accountText('work','Work Claude'),'沙箱账号 · Work Claude')
+  assert.equal(accountText('work',null),'沙箱账号 · work')
+  const week=(tokens,unreported=0)=>({week:{tokens,input:tokens,output:0,cacheRead:0,cacheWrite:0,reports:tokens?1:0,unreported}})
+  const usage={providers:[
+    {route:'local-claude-code',name:'Claude Code',accounts:[
+      {attribution:'host',accountId:null,name:null,periods:week(20),models:[{model:'sonnet',periods:week(20)}]},
+      {attribution:'sandbox',accountId:'work',name:'Work Claude',periods:week(300),models:[{model:'opus',periods:week(280)},{model:'sonnet',periods:week(20)}]},
+      {attribution:'sandbox',accountId:'idle',name:'Idle',periods:week(0),models:[]},
+    ]},
+    {route:'local-acp-quiet',name:'Quiet ACP',accounts:[{attribution:'host',accountId:null,name:null,periods:week(0,2),models:[{model:null,periods:week(0,2)}]}]},
+  ]}
+  assert.deepEqual(botAgentRows(usage,'week').map(row=>[row.name,row.account,row.totals.tokens]),
+    [['Claude Code','沙箱账号 · Work Claude',300],['Claude Code','本机账号',20],['Quiet ACP','本机账号',0]])
+  assert.deepEqual(botModelRows(usage,'week').map(row=>[row.label,row.totals.tokens,row.totals.unreported]),
+    [['opus · Claude Code',280,0],['sonnet · Claude Code',40,0],['未标记模型 · Quiet ACP',0,2]])
+  const single={providers:[usage.providers[0]]}
+  assert.deepEqual(botModelRows(single,'week').map(row=>row.label),['opus','sonnet'])
+  assert.deepEqual(botAgentRows(null,'week'),[])
+  assert.deepEqual(botModelRows({providers:[]},'today'),[])
+})
