@@ -587,7 +587,8 @@ export function install(rt) {
     if (event.type !== 'turn/end') return
     const reason = event.data?.reason
     const cancelled = reason?.kind === 'aborted' && (reason.reason?.kind === 'user' || reason.reason?.reason === 'godbot/stopped')
-    if (cancelled && rt.chatOwners.has(id)) rt.stopBotInbox(rt.chatOwners.get(id), id)
+    // A cancellation can target one board run or goal. The actions that stop
+    // an entire conversation clear its durable queue explicitly.
     for (const row of rows()) {
       if (!active(row, id, event.data.turn) || terminal.has(row.state) || row.done) continue
       if (cancelled) { stop(row); later(); continue }

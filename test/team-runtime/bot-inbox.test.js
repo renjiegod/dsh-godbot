@@ -58,7 +58,7 @@ test('an accepted delivery retries recovery when preparing its reply fails', asy
   assert.deepEqual(replies.map(item => item.text), ['Inventory checked'])
 })
 
-test('a claim rejected before engine acceptance keeps its position and merges unread updates', async t => {
+test('an unaccepted delivery keeps its position on retry and a scoped stop preserves later work', async t => {
   const handlers = new Map()
   const bots = { sender: { id: 'sender' }, recipient: { id: 'recipient' } }
   const inputs = []
@@ -132,4 +132,19 @@ test('a claim rejected before engine acceptance keeps its position and merges un
   assert.equal(inputs[1].source.exchangeId, first.id)
   assert.match(inputs[1].content[0].text, /crate count/u)
   assert.notEqual(inputs[1].source.inboxAttempt, inputs[0].source.inboxAttempt)
+
+  agent.status = 'running'
+  rt.live.set('recipient', { turn: 2 })
+  handlers.get('agent/inbox/claimed')({ agent, message: inputs[1], turn: 2 })
+  // Goal and work-board stops cancel just the turn and pass keepInbox to DSH.
+  handlers.get('session/event')({ id: 'recipient' }, {
+    type: 'turn/end', data: { turn: 2, reason: { kind: 'aborted', reason: { kind: 'user' } } },
+  })
+  assert.equal(rows()[0].state, 'stopped')
+  assert.equal(rows()[1].state, 'queued')
+  idle()
+  await waitForInput(3)
+  assert.equal(inputs[2].source.exchangeId, second.id)
+  assert.equal(rt.stopBotInbox('recipient', 'recipient'), true)
+  assert.equal(rows()[1].state, 'stopped')
 })

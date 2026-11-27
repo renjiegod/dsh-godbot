@@ -996,6 +996,7 @@ export function install(rt) {
           const sessionId = rt.chatOf(botId)
           if (sessionId && rt.live.get(sessionId)?.turn !== undefined) {
             const agent = await rt.resolveAgent(sessionId)
+            rt.stopBotInbox?.(botId, sessionId)
             agent.cancel({ kind: 'user' })
           }
           for (const room of Object.values(rt.state.rooms ?? {})) {
