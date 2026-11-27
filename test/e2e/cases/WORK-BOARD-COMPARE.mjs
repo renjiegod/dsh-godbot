@@ -41,8 +41,16 @@ export default async function compare({ makeHost, candidate, previous, note }) {
       async () => (await host.bot('chat', { botId: bot.id })).items.some((i) => i.kind === 'bot'),
       'the comparison Bot is ready',
     )
-    const marker = 'Switch latency marker ' + name
-    await host.bot('send', { sessionId: bot.id, text: marker })
+    const marker = 'Conversation receipt for ' + name
+    host.model.reply = () => marker
+    await host.bot('send', { sessionId: bot.id, text: 'Prepare comparison ' + name })
+    await until(
+      async () =>
+        (await host.bot('chat', { botId: bot.id })).items.some(
+          (i) => i.kind === 'bot' && JSON.stringify(i).includes(marker),
+        ),
+      'completed conversation to measure',
+    )
     bots.push({ ...bot, marker })
   }
   await seedHistory(
@@ -58,7 +66,7 @@ export default async function compare({ makeHost, candidate, previous, note }) {
     }
     async function switchTo(bot) {
       await openBotChat(host, bot)
-      await host.page.locator('.bt-umsg').getByText(bot.marker, { exact: true }).last().waitFor()
+      await host.page.locator('[data-conversation-scroll]').getByText(bot.marker, { exact: true }).last().waitFor()
     }
     await switchTo(bots[1])
     const times = []

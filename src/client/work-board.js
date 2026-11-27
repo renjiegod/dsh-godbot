@@ -3,6 +3,8 @@ import { call } from './team-ui/api.js'
 import { t, dateLocale } from './team-ui/i18n.js'
 import {
   actionNames,
+  activityByAttempt,
+  currentReview,
   defaultFilters,
   markNames,
   phaseIcons,
@@ -37,6 +39,7 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
   const writing = ['create', 'edit', 'dispatch'].includes(op)
   const different = base && item && base.version !== item.version
   const review = op === 'approve' || op === 'reject'
+  const updated = currentReview(form, item)
   const needsText = ['reject', 'note'].includes(op) || !!child
   return h(
     'form',
@@ -135,7 +138,16 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
       ? h(
           'p',
           { className: 'gb-alert', role: 'alert' },
-          t('This work item changed. Reopen the action to review the current evidence.'),
+          updated
+            ? [
+                t('Evidence changed from v{old} to v{current}.', {
+                  old: child?.evidenceRevision ?? base.evidenceRevision,
+                  current: updated.child?.evidenceRevision ?? item.evidenceRevision,
+                }),
+                ' ',
+                button(t('Review current evidence'), () => setForm(updated), { key: 'review' }),
+              ]
+            : t('This work item changed. Reopen the action to review the current evidence.'),
         )
       : null,
     h(
@@ -357,6 +369,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
         )
   }
   const cards = view?.columns ?? []
+  const freshBoard =
+    Object.keys(defaultFilters).every((k) => filter[k] === defaultFilters[k]) && !view?.counts.history
   const focused = form || !!selection
   useEffect(() => {
     if (!selection || !item || last.current === item.id) return
@@ -433,8 +447,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
         ? h(
             'p',
             { className: 'wb-empty' },
-            t('No matching work items'),
-            button(t('Clear filters'), () => setFilter({ ...defaultFilters })),
+            freshBoard ? t('No work items yet') : t('No matching work items'),
+            freshBoard ? null : button(t('Clear filters'), () => setFilter({ ...defaultFilters })),
           )
         : null,
       h(
@@ -554,17 +568,27 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
                             'details',
                             null,
                             h('summary', null, t('Activity'), ' · ', item.events.length),
-                            ...item.events.map((e, i) =>
-                              h(
-                                'div',
-                                { key: i },
-                                h('small', null, e.kind, ' · ', when(e.at), e.attempt ? ' · #' + e.attempt : ''),
-                                h('pre', null, e.text),
-                                e.execution
-                                  ? button(t('Open execution conversation'), () => original(e.execution))
-                                  : null,
-                              ),
-                            ),
+                            ...activityByAttempt(item.events).map((group) => {
+                              const entries = group.events.map((e, i) =>
+                                h(
+                                  'div',
+                                  { key: i },
+                                  h('small', null, e.kind, ' · ', when(e.at), e.version ? ' · v' + e.version : ''),
+                                  h('pre', null, e.text),
+                                  e.execution
+                                    ? button(t('Open execution conversation'), () => original(e.execution))
+                                    : null,
+                                ),
+                              )
+                              return group.attempt
+                                ? h(
+                                    'details',
+                                    { key: group.attempt },
+                                    h('summary', null, t('Attempt {number}', { number: group.attempt })),
+                                    ...entries,
+                                  )
+                                : h('div', { key: 0 }, ...entries)
+                            }),
                           )
                         : null,
                       item.eventNext ? button(t('Earlier activity'), earlier) : null,

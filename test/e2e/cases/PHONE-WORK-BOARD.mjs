@@ -92,6 +92,12 @@ export default async function check({ makeHost, candidate, previous, reportDir, 
       60000,
     )
     host.model.reply = () => 'Second Android board evidence.'
+    const editor = page.locator('.wb-editor')
+    await page
+      .locator('.wb-detail')
+      .getByRole('button', { name: /Accept evidence|验收通过/ })
+      .click()
+    await editor.locator('textarea').fill('Keep this review comment while I read the revised evidence')
     await tap('return for changes on Android', 'Request changes', '退回修改')
     ui.tap(await ui.scrollTo((n) => ui.field(n, 'Review feedback', '验收意见'), 'review feedback'))
     ui.typeText('Include the second receipt')
@@ -115,6 +121,16 @@ export default async function check({ makeHost, candidate, previous, reportDir, 
       }),
     )
     await tap('inspect revised evidence on Android', 'Accept evidence', '验收通过')
+    const updated = editor.getByRole('button', { name: /Review current evidence|查看新版证据/ })
+    await updated.waitFor()
+    assert.equal(await editor.getByRole('button', { name: /^(Confirm|确认)$/ }).isDisabled(), true)
+    await updated.click()
+    assert.equal(
+      await editor.locator('textarea').inputValue(),
+      'Keep this review comment while I read the revised evidence',
+    )
+    await editor.getByText('Second Android board evidence.', { exact: true }).waitFor()
+    await editor.getByRole('button', { name: /^(Back|返回)$/ }).click()
     await tap('confirm revised evidence', 'Confirm', '确认')
     await until(async () => (await read()).phase === 'done', 'Android acceptance on host')
     await page
@@ -163,6 +179,27 @@ export default async function check({ makeHost, candidate, previous, reportDir, 
       { timeout: 90000 },
     )
     assert.equal((await read()).phase, 'done')
+    const other = await makeHost()
+    await other.install(candidate)
+    await other.start()
+    const second = await channel(other, 'board-action', {
+      op: 'create',
+      title: 'Separate computer only',
+      requestId: 'second-computer',
+    })
+    await channel(other, 'phone-set', { server: relay.url, on: true })
+    await until(async () => (await channel(other, 'phone-set')).status === 'online', 'second profile connected')
+    ui.openUrl((await channel(other, 'phone-pair')).pairing.uri)
+    await tap('pair the second test computer', 'Pair', '配对')
+    await ui.waitFor((n) => n.some((v) => v.cls.endsWith('EditText')), 'second computer chat', { timeout: 65000 })
+    await tap('second team list', 'Open team list', '打开团队列表')
+    await tap('second board', 'Work board', '工作看板')
+    await ui.waitFor(
+      (n) => ui.find(n, new RegExp(second.id + '.*Separate computer only')),
+      'work from the newly paired computer',
+    )
+    assert.ok(!ui.find(ui.dumpUi().nodes, target), 'cross-computer navigation clears old cards')
+    note('android-board-host-switch', { separateProfiles: true, oldCardWasRemoved: true, newCard: second.id })
     note('android-board-reconnect', {
       id: draft.id,
       cachedOffline: true,

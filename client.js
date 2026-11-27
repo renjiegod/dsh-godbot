@@ -13241,6 +13241,9 @@ var DSH_DE = {
 // src/client/team-ui/i18n.js
 var NAMESPACE = "godbot";
 var ZH = {
+  "Review current evidence": "查看新版证据",
+  "Evidence changed from v{old} to v{current}.": "证据已从第 {old} 版更新到第 {current} 版。",
+  "Attempt {number}": "第 {number} 次执行",
   "Title": "标题",
   "Source record": "来源记录",
   "Earlier activity": "更早的活动",
@@ -57295,6 +57298,22 @@ var actionNames = {
 };
 var phaseIcons = { todo: "○", doing: "◐", attention: "!", review: "◇", done: "✓", history: "◷" };
 var defaultFilters = { tab: "all", search: "", owner: "", room: "", source: "", section: "" };
+function currentReview(form, item) {
+  if (!form?.base || !item || form.base.id !== item.id || form.base.version === item.version || !["approve", "reject"].includes(form.op) || !item.actions.includes(form.op))
+    return null;
+  const child = form.child && item.children.find((c) => c.id === form.child.id && c.status === "reported");
+  if (form.child && !child) return null;
+  return { ...form, base: item, child };
+}
+function activityByAttempt(events) {
+  const groups = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    const attempt = event.attempt || 0;
+    if (!groups.has(attempt)) groups.set(attempt, { attempt, events: [] });
+    groups.get(attempt).events.push(event);
+  }
+  return [...groups.values()];
+}
 function useWorkBoard({ call: call3, subscribe: subscribe2, online = true, identity: identity2, filters, selected }) {
   const [view, setView] = (0, import_react85.useState)(null), [item, setItem] = (0, import_react85.useState)(null), [error, setError] = (0, import_react85.useState)(""), [writeError, setWriteError] = (0, import_react85.useState)("");
   const [reachable, setReachable] = (0, import_react85.useState)(false);
@@ -57435,7 +57454,7 @@ function useWorkBoard({ call: call3, subscribe: subscribe2, online = true, ident
     setWriteError("");
     try {
       const result = await call3("board-action", { ...input3, requestId: request.id });
-      if (gen !== generation.current) return result;
+      if (gen !== generation.current) return null;
       pending.current = null;
       await refresh();
       return result;
@@ -57466,7 +57485,7 @@ function useWorkBoard({ call: call3, subscribe: subscribe2, online = true, ident
 }
 
 // src/client/work-board.css
-var work_board_default = ".wb-shell,\n.wb-shell * {\n  box-sizing: border-box;\n}\n.wb-shell {\n  position: fixed;\n  inset: 0 0 0 auto;\n  z-index: 38;\n  display: flex;\n  background: var(--bt-main);\n  color: var(--bt-ink);\n  font:\n    14px/1.55 system-ui,\n    sans-serif;\n  min-width: 0;\n  container-type: inline-size;\n}\n.wb-main {\n  overflow: auto;\n  flex: 1;\n  padding: 24px;\n  min-width: 0;\n}\n.wb-shell :is(button, input, select, textarea) {\n  font: inherit;\n  color: inherit;\n}\n.wb-shell :is(button, input, select, textarea) {\n  border: 1px solid var(--bt-line-2);\n  border-radius: 7px;\n  background: var(--bt-card);\n  padding: 6px 10px;\n}\n.wb-shell button,\n.wb-shell select {\n  cursor: pointer;\n}\n.wb-shell button:disabled {\n  opacity: 0.55;\n  cursor: default;\n}\n.wb-shell :focus-visible {\n  outline: 2px solid var(--bt-accent);\n  outline-offset: 2px;\n}\n.wb-shell .wb-primary {\n  background: var(--bt-accent);\n  color: var(--bt-accent-ink);\n  border-color: var(--bt-accent);\n}\n.wb-head,\n.wb-tools,\n.wb-tabs,\n.wb-detail header,\n.wb-detail footer {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n.wb-head h1 {\n  font-size: 28px;\n  letter-spacing: -0.03em;\n  margin: 0 auto 0 0;\n}\n.wb-tabs {\n  border-bottom: 1px solid var(--bt-line);\n  margin: 14px 0;\n}\n.wb-tabs button {\n  border: 0;\n  border-radius: 0;\n  background: none;\n}\n.wb-tabs button[aria-pressed='true'] {\n  color: var(--bt-accent);\n  box-shadow: inset 0 -2px var(--bt-accent);\n}\n.wb-tools {\n  margin-bottom: 15px;\n}\n.wb-tools input {\n  min-width: 100px;\n  max-width: 170px;\n}\n.wb-lanes {\n  display: grid;\n  grid-template-columns: repeat(5, minmax(166px, 1fr));\n  align-items: start;\n  gap: 10px;\n  overflow-x: auto;\n  padding-bottom: 8px;\n}\n.wb-lane {\n  background: var(--bt-bubble);\n  border: 1px solid var(--bt-line);\n  padding: 8px;\n  border-radius: 9px;\n  min-height: 150px;\n}\n.wb-lane h2 {\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  font-size: 14px;\n  margin: 4px 0 10px;\n}\n.wb-lane h2 small,\n.wb-card b {\n  margin-left: auto;\n}\n.wb-lane[data-phase='attention'] h2 span {\n  color: var(--bt-danger);\n}\n.wb-lane[data-phase='review'] h2 span {\n  color: var(--bt-warn);\n}\n.wb-lane[data-phase='done'] h2 span {\n  color: var(--bt-accent);\n}\n.wb-shell .wb-card {\n  display: flex;\n  text-align: left;\n  width: 100%;\n  flex-direction: column;\n  gap: 5px;\n  margin-bottom: 6px;\n  padding: 10px;\n  border: 1px solid var(--bt-line);\n  overflow-wrap: anywhere;\n  content-visibility: auto;\n  contain-intrinsic-size: auto 100px;\n}\n.wb-card:hover {\n  border-color: var(--bt-accent);\n}\n.wb-card small,\n.wb-meta {\n  display: flex;\n  gap: 4px;\n  align-items: center;\n  flex-wrap: wrap;\n  font-size: 11px;\n  color: var(--bt-ink-2);\n}\n.wb-meta {\n  margin-top: 7px;\n  justify-content: space-between;\n}\n.wb-card em {\n  font-style: normal;\n  background: var(--bt-bubble);\n  padding: 1px 5px;\n  border-radius: 4px;\n}\n.wb-card strong,\n.wb-hint {\n  display: -webkit-box;\n  -webkit-line-clamp: 2;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n}\n.wb-hint {\n  font-size: 12px;\n  color: var(--bt-ink-2);\n}\n.wb-lanes[data-layout='list'] {\n  display: block;\n}\n.wb-lanes[data-layout='list'] .wb-lane {\n  min-height: 0;\n  margin-bottom: 10px;\n}\n.wb-shade {\n  position: absolute;\n  inset: 0;\n  background: #13293938;\n  display: flex;\n  justify-content: flex-end;\n}\n.wb-detail {\n  height: 100%;\n  overflow: auto;\n  width: min(470px, 100%);\n  padding: 16px 20px;\n  background: var(--bt-card);\n  box-shadow: -4px 0 20px #0001;\n  overflow-wrap: anywhere;\n}\n.wb-detail header {\n  justify-content: space-between;\n}\n.wb-detail h2 {\n  font-size: 22px;\n}\n.wb-detail h3 {\n  font-size: 14px;\n}\n.wb-detail pre {\n  font: inherit;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--bt-bubble);\n  border-radius: 6px;\n  padding: 9px;\n}\n.wb-detail footer {\n  position: sticky;\n  bottom: 0;\n  padding: 10px 0;\n  background: var(--bt-card);\n}\n.wb-field {\n  display: grid;\n  gap: 4px;\n  margin: 12px 0;\n}\n.wb-field textarea {\n  min-height: 86px;\n}\n.wb-error {\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n  color: var(--bt-danger);\n  background: var(--bt-card);\n  padding: 8px;\n}\n.wb-empty {\n  color: var(--bt-ink-2);\n}\n.wb-empty button {\n  margin-left: 8px;\n}\n.wb-detail details {\n  margin: 15px 0;\n}\n@container (max-width:760px) {\n  .wb-main {\n    padding: 12px;\n  }\n  .wb-lanes {\n    display: block;\n  }\n  .wb-lane {\n    min-height: 0;\n    margin-bottom: 10px;\n  }\n  .wb-detail {\n    width: 100%;\n  }\n  .wb-shell button {\n    min-height: 40px;\n  }\n  .wb-head h1 {\n    font-size: 23px;\n  }\n}\n";
+var work_board_default = ".wb-shell,\n.wb-shell * {\n  box-sizing: border-box;\n}\n.wb-shell {\n  position: fixed;\n  inset: 0 0 0 auto;\n  z-index: 38;\n  display: flex;\n  background: var(--bt-main);\n  color: var(--bt-ink);\n  font:\n    14px/1.55 system-ui,\n    sans-serif;\n  min-width: 0;\n  container-type: inline-size;\n}\n.wb-main {\n  overflow: auto;\n  flex: 1;\n  padding: 24px;\n  min-width: 0;\n}\n.wb-shell :is(button, input, select, textarea) {\n  font: inherit;\n  color: inherit;\n}\n.wb-shell :is(button, input, select, textarea) {\n  border: 1px solid var(--bt-line-2);\n  border-radius: 7px;\n  background: var(--bt-card);\n  padding: 6px 10px;\n}\n.wb-shell button,\n.wb-shell select {\n  cursor: pointer;\n}\n.wb-shell button:disabled {\n  opacity: 0.55;\n  cursor: default;\n}\n.wb-shell :focus-visible {\n  outline: 2px solid var(--bt-accent);\n  outline-offset: 2px;\n}\n.wb-shell .wb-primary {\n  background: var(--bt-accent);\n  color: var(--bt-accent-ink);\n  border-color: var(--bt-accent);\n}\n.wb-head,\n.wb-tools,\n.wb-tabs,\n.wb-detail header,\n.wb-detail footer {\n  display: flex;\n  align-items: center;\n  gap: 8px;\n  flex-wrap: wrap;\n}\n.wb-head h1 {\n  font-size: 28px;\n  letter-spacing: -0.03em;\n  margin: 0 auto 0 0;\n}\n.wb-tabs {\n  border-bottom: 1px solid var(--bt-line);\n  margin: 14px 0;\n}\n.wb-tabs button {\n  border: 0;\n  border-radius: 0;\n  background: none;\n}\n.wb-tabs button[aria-pressed='true'] {\n  color: var(--bt-accent);\n  box-shadow: inset 0 -2px var(--bt-accent);\n}\n.wb-tools {\n  margin-bottom: 15px;\n}\n.wb-tools input {\n  min-width: 100px;\n  max-width: 170px;\n}\n.wb-lanes {\n  display: grid;\n  grid-template-columns: repeat(5, minmax(166px, 1fr));\n  align-items: start;\n  gap: 10px;\n  overflow-x: auto;\n  padding-bottom: 8px;\n}\n.wb-lane {\n  background: var(--bt-bubble);\n  border: 1px solid var(--bt-line);\n  padding: 8px;\n  border-radius: 9px;\n  min-height: 150px;\n}\n.wb-lane h2 {\n  display: flex;\n  align-items: center;\n  gap: 5px;\n  font-size: 14px;\n  margin: 4px 0 10px;\n}\n.wb-lane h2 small,\n.wb-card b {\n  margin-left: auto;\n}\n.wb-lane[data-phase='attention'] h2 span {\n  color: var(--bt-danger);\n}\n.wb-lane[data-phase='review'] h2 span {\n  color: var(--bt-warn);\n}\n.wb-lane[data-phase='done'] h2 span {\n  color: var(--bt-accent);\n}\n.wb-shell .wb-card {\n  display: flex;\n  text-align: left;\n  width: 100%;\n  flex-direction: column;\n  gap: 5px;\n  margin-bottom: 6px;\n  padding: 10px;\n  border: 1px solid var(--bt-line);\n  overflow-wrap: anywhere;\n  content-visibility: auto;\n  contain-intrinsic-size: auto 100px;\n}\n.wb-card:hover {\n  border-color: var(--bt-accent);\n}\n.wb-card small,\n.wb-meta {\n  display: flex;\n  gap: 4px;\n  align-items: center;\n  flex-wrap: wrap;\n  font-size: 11px;\n  color: var(--bt-ink-2);\n}\n.wb-meta {\n  margin-top: 7px;\n  justify-content: space-between;\n}\n.wb-card em {\n  font-style: normal;\n  background: var(--bt-bubble);\n  padding: 1px 5px;\n  border-radius: 4px;\n}\n.wb-card strong,\n.wb-hint {\n  display: -webkit-box;\n  -webkit-line-clamp: 2;\n  -webkit-box-orient: vertical;\n  overflow: hidden;\n}\n.wb-hint {\n  font-size: 12px;\n  color: var(--bt-ink-2);\n}\n.wb-lanes[data-layout='list'] {\n  display: block;\n}\n.wb-lanes[data-layout='list'] .wb-lane {\n  min-height: 0;\n  margin-bottom: 10px;\n}\n.wb-shade {\n  position: absolute;\n  inset: 0;\n  background: #13293938;\n  display: flex;\n  justify-content: flex-end;\n}\n.wb-detail {\n  height: 100%;\n  overflow: auto;\n  width: min(470px, 100%);\n  padding: 16px 20px;\n  background: var(--bt-card);\n  box-shadow: -4px 0 20px #0001;\n  overflow-wrap: anywhere;\n}\n.wb-detail header {\n  justify-content: space-between;\n}\n.wb-detail h2 {\n  font-size: 22px;\n}\n.wb-detail h3 {\n  font-size: 14px;\n}\n.wb-detail pre {\n  font: inherit;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  background: var(--bt-bubble);\n  border-radius: 6px;\n  padding: 9px;\n}\n.wb-detail footer {\n  position: sticky;\n  bottom: 0;\n  padding: 10px 0;\n  background: var(--bt-card);\n}\n.wb-field {\n  display: grid;\n  gap: 4px;\n  margin: 12px 0;\n}\n.wb-field textarea {\n  min-height: 86px;\n}\n.wb-error {\n  position: absolute;\n  bottom: 0;\n  left: 0;\n  right: 0;\n  color: var(--bt-danger);\n  background: var(--bt-card);\n  padding: 8px;\n}\n.wb-empty {\n  color: var(--bt-ink-2);\n}\n.wb-empty button {\n  margin-left: 8px;\n}\n.wb-detail details {\n  margin: 15px 0;\n}\n@container (max-width:760px) {\n  .wb-main {\n    padding: 12px;\n  }\n  .wb-lanes {\n    display: block;\n  }\n  .wb-lane {\n    min-height: 0;\n    margin-bottom: 10px;\n  }\n  .wb-detail {\n    width: 100%;\n  }\n  .wb-shell button {\n    min-height: 48px;\n  }\n  .wb-head h1 {\n    font-size: 23px;\n  }\n}\n";
 
 // src/client/work-board-anchor.js
 var import_react86 = require("react");
@@ -57533,6 +57552,7 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
   const writing = ["create", "edit", "dispatch"].includes(op);
   const different = base && item && base.version !== item.version;
   const review = op === "approve" || op === "reject";
+  const updated = currentReview(form, item);
   const needsText = ["reject", "note"].includes(op) || !!child;
   return (0, import_react87.createElement)(
     "form",
@@ -57618,7 +57638,14 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
     different ? (0, import_react87.createElement)(
       "p",
       { className: "gb-alert", role: "alert" },
-      t("This work item changed. Reopen the action to review the current evidence.")
+      updated ? [
+        t("Evidence changed from v{old} to v{current}.", {
+          old: child?.evidenceRevision ?? base.evidenceRevision,
+          current: updated.child?.evidenceRevision ?? item.evidenceRevision
+        }),
+        " ",
+        button(t("Review current evidence"), () => setForm(updated), { key: "review" })
+      ] : t("This work item changed. Reopen the action to review the current evidence.")
     ) : null,
     (0, import_react87.createElement)(
       "footer",
@@ -57826,6 +57853,7 @@ function WorkBoard({ initial: initial2, actions, roster, column: column2 = 0 }) 
     );
   }
   const cards = view?.columns ?? [];
+  const freshBoard = Object.keys(defaultFilters).every((k) => filter[k] === defaultFilters[k]) && !view?.counts.history;
   const focused = form || !!selection;
   (0, import_react87.useEffect)(() => {
     if (!selection || !item || last.current === item.id) return;
@@ -57902,8 +57930,8 @@ function WorkBoard({ initial: initial2, actions, roster, column: column2 = 0 }) 
       view && cards.every((c) => !c.total) ? (0, import_react87.createElement)(
         "p",
         { className: "wb-empty" },
-        t("No matching work items"),
-        button(t("Clear filters"), () => setFilter({ ...defaultFilters }))
+        freshBoard ? t("No work items yet") : t("No matching work items"),
+        freshBoard ? null : button(t("Clear filters"), () => setFilter({ ...defaultFilters }))
       ) : null,
       (0, import_react87.createElement)(
         "div",
@@ -58007,15 +58035,23 @@ function WorkBoard({ initial: initial2, actions, roster, column: column2 = 0 }) 
             "details",
             null,
             (0, import_react87.createElement)("summary", null, t("Activity"), " · ", item.events.length),
-            ...item.events.map(
-              (e, i) => (0, import_react87.createElement)(
-                "div",
-                { key: i },
-                (0, import_react87.createElement)("small", null, e.kind, " · ", when2(e.at), e.attempt ? " · #" + e.attempt : ""),
-                (0, import_react87.createElement)("pre", null, e.text),
-                e.execution ? button(t("Open execution conversation"), () => original(e.execution)) : null
-              )
-            )
+            ...activityByAttempt(item.events).map((group) => {
+              const entries2 = group.events.map(
+                (e, i) => (0, import_react87.createElement)(
+                  "div",
+                  { key: i },
+                  (0, import_react87.createElement)("small", null, e.kind, " · ", when2(e.at), e.version ? " · v" + e.version : ""),
+                  (0, import_react87.createElement)("pre", null, e.text),
+                  e.execution ? button(t("Open execution conversation"), () => original(e.execution)) : null
+                )
+              );
+              return group.attempt ? (0, import_react87.createElement)(
+                "details",
+                { key: group.attempt },
+                (0, import_react87.createElement)("summary", null, t("Attempt {number}", { number: group.attempt })),
+                ...entries2
+              ) : (0, import_react87.createElement)("div", { key: 0 }, ...entries2);
+            })
           ) : null,
           item.eventNext ? button(t("Earlier activity"), earlier) : null,
           item.children.length ? (0, import_react87.createElement)(
