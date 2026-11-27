@@ -29,7 +29,7 @@ export default async function check({ makeHost, candidate, reportDir, note }) {
   let editor = board.locator('.wb-editor')
   await editor.getByRole('textbox', { name: /^(标题|Title)$/ }).fill('Release verification')
   await editor.getByRole('textbox', { name: /^(任务描述|Task description)$/ }).fill('Hosted release requirements')
-  await editor.getByRole('textbox', { name: /^(标签|Labels)$/ }).fill('release, milestone')
+  await editor.getByRole('textbox', { name: /^(标签|Labels)$/ }).fill('release, unassigned')
   await editor.getByLabel(/^(截止日期|Due date)$/).fill('2026-12-15')
   await editor.getByLabel('Severity').selectOption('Major')
   await editor.getByRole('button', { name: /^(确认|Confirm)$/ }).click()
@@ -62,7 +62,7 @@ export default async function check({ makeHost, candidate, reportDir, note }) {
 
   const saved = await act('configure', { entry: {
     kind: 'view', name: 'Release timeline', visibility: 'shared',
-    filters: { label: 'release', sort: 'dueDate' }, display: { layout: 'gantt', groupBy: 'phase' },
+    filters: { label: 'unassigned', sort: 'dueDate' }, display: { layout: 'gantt', groupBy: 'phase' },
   } })
   await page.goto(host.url + '/#/godbot/work/view/' + saved.id)
   await board.locator('.wb-timeline-track').getByRole('button', { name: parent.id }).waitFor()
@@ -111,4 +111,35 @@ export default async function check({ makeHost, candidate, reportDir, note }) {
     assert.ok(log.events.some(event => event.type === 'text' && event.text.includes('attributable receipt')))
     note('board-management', { card: parent.id, child: child.id, runCount: runs.length, stopped: stopped.status })
   } finally { release() }
+
+  let unblock
+  const blockerGate = new Promise(resolve => { unblock = resolve })
+  host.model.reply = async body => {
+    const messages = JSON.stringify(body.messages)
+    if (messages.includes('HOLD_BOARD_ASSIGNMENTS')) await blockerGate
+    if (messages.includes('Queued board assignment')) {
+      return messages.includes('Acceptance criteria: Revised receipt') && !messages.includes('Acceptance criteria: Original receipt')
+        ? 'Proof for the revised requirements.' : 'Received a stale assignment.'
+    }
+    return 'Queue unblocked.'
+  }
+  try {
+    const blocker = await act('create', { title: 'HOLD_BOARD_ASSIGNMENTS', owner: bot.id, criteria: 'Hold this Bot temporarily' })
+    await act('dispatch', {}, blocker)
+    await until(async () => (await runList(blocker.id)).runs.some(run => run.status === 'running'), 'first assignment running')
+    const waiting = await act('create', { title: 'Queued board assignment', owner: bot.id, criteria: 'Original receipt' })
+    const dispatched = await act('dispatch', {}, waiting)
+    const [queued] = (await runList(waiting.id)).runs
+    assert.equal(queued.status, 'queued')
+    await act('edit-fields', { criteria: 'Revised receipt', reason: 'Update scope before delivery' }, dispatched)
+    unblock()
+    const result = await until(async () => {
+      const card = await read(waiting.id)
+      return card.phase === 'review' && card
+    }, 'the queued Bot reports')
+    assert.match(result.evidence, /Proof for the revised requirements/)
+    assert.ok(result.actions.includes('approve'))
+    assert.equal((await runList(waiting.id)).runs[0].id, queued.id)
+    note('queued-assignment', { card: waiting.id, run: queued.id, latestRequirements: true })
+  } finally { unblock() }
 }

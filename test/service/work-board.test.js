@@ -401,6 +401,20 @@ test('manual tasks accept catalog fields, preserve edits, reopen and support sco
   assert.deepEqual((await board.item({ id: task.id })).fields.labels, ['Release', 'Verified'])
 })
 
+test('the unassigned label and the unassigned assignee are independent board filters', async t => {
+  const { board } = setup(t)
+  const labelled = await board.action({
+    op: 'create', title: 'Has the unassigned label', assignee: 'person/owner', labels: ['unassigned'], requestId: 'labelled',
+  })
+  const unassigned = await board.action({ op: 'create', title: 'Has no assignee', requestId: 'unassigned' })
+  const labelledView = await board.view({ label: 'unassigned' })
+  const unassignedView = await board.view({ assignee: 'unassigned' })
+  assert.equal(labelledView.counts.all, 1)
+  assert.equal(unassignedView.counts.all, 1)
+  assert.deepEqual(labelledView.columns.flatMap(column => column.items.map(item => item.id)), [labelled.id])
+  assert.deepEqual(unassignedView.columns.flatMap(column => column.items.map(item => item.id)), [unassigned.id])
+})
+
 test('parent and dependency edits reject cycles and dispatch a later stage once the prerequisites end', async t => {
   const { board, database } = setup(t)
   let n = 0
@@ -461,6 +475,44 @@ test('changes to requirements invalidate old evidence across both review entry p
   assert.equal(current.actions.includes('approve'), true)
   const archived = await board.runs.query({ id: draft.id })
   assert.equal(archived.runs.length, 2)
+})
+
+test('an unsent assignment uses the latest work board requirements when it leaves the queue', async t => {
+  const { board, rt, database, botTasks } = setup(t)
+  const deliveries = []
+  rt.deliver = async message => { deliveries.push(message) }
+  const dispatch = async (title, key) => {
+    const card = await board.action({ op: 'create', title, requestId: key + '-create' })
+    return board.action({
+      op: 'dispatch', id: card.id, version: card.version, owner: 'b', criteria: 'Check version one', requestId: key + '-dispatch',
+    })
+  }
+  await dispatch('First assignment', 'first')
+  await tick()
+  const card = await dispatch('Second assignment', 'second')
+  await tick()
+  const task = database.all('tasks').find(task => task.title === 'Second assignment')
+  assert.equal(database.get('botTaskDeliveries', task.assignmentId).state, 'queued')
+  assert.equal(deliveries.length, 1)
+
+  await board.action({
+    op: 'edit-fields', id: card.id, version: card.version, title: 'Updated assignment', criteria: 'Check version two',
+    description: 'Read the new source', reason: 'Correct the scope before it starts', requestId: 'second-edit',
+  })
+  botTasks.botReply(deliveries[0].exchangeId, 'First assignment result')
+  await tick()
+  assert.equal(deliveries.length, 2)
+  const sent = deliveries[1]
+  assert.equal(sent.exchangeId, task.assignmentId)
+  assert.match(sent.text, /Updated assignment/)
+  assert.match(sent.text, /Acceptance criteria: Check version two/)
+  assert.match(sent.text, /Read the new source/)
+  assert.doesNotMatch(sent.text, /Check version one/)
+
+  botTasks.botReply(sent.exchangeId, 'Proof for the current requirements')
+  const detail = await board.item({ id: card.id })
+  assert.equal(detail.actions.includes('approve'), true)
+  assert.equal(detail.planning.audit[0].reason, 'Correct the scope before it starts')
 })
 
 test('annotations, conclusions, attachment versions and comment snapshots remain tied to their source', async t => {
