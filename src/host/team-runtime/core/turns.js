@@ -5,7 +5,7 @@
 // Turn tracking: which turns were triggered by another Bot, and what they said.
 import { randomUUID } from 'node:crypto'
 import { carrierKeyOf } from '@deepseek-ai/dsh-scope'
-import { HANDOFF_ACK, LATE_ANSWER, MESSAGE_INLINE_MAX, REFERENCE_KIND, REPLY_KIND, SOURCE_KIND, STEER_CUT } from './constants.js'
+import { HANDOFF_ACK, HISTORY_TIMEOUT_MS, LATE_ANSWER, MESSAGE_INLINE_MAX, REFERENCE_KIND, REPLY_KIND, SOURCE_KIND, STEER_CUT } from './constants.js'
 import { cleanText } from './diagnostics.js'
 import { absoluteLinks } from './links.js'
 import { splitRef, textOf } from './text.js'
@@ -196,6 +196,30 @@ export function prematureCutOff(usage, route) {
 // rest of the reply is not judged.
 const PROMISED_WORK = /(?:^(?:收到|好的|明白|好|行|没问题|了解)[，,、。.!！：\s]*(?:我(?:现在|这就|先|马上|立刻|去|来)?(?:开始|着手|去|来|准备)?(?:排查|检查|调查|查看|看看|搜索|搜一下|分析|处理|执行|运行|跑一下|修改|修复|实现|编写|整理|验证|测试|读一下|翻一下)(?!过了|过(?:[，,。.!！、；;\s]|$)|完了|完毕|好了)|(?:现在|马上|立刻)?(?:开始|着手)(?:执行|处理|排查|检查|调查|干活|开工)(?!过了|过(?:[，,。.!！、；;\s]|$)|完了|完毕|好了)|开工(?:[。！!，,\s]|$))|^(?:开工(?:[。！!，,\s]|$)|我(?:现在|这就|先|马上|立刻)(?:开始|着手|去)(?:排查|检查|调查|查看|搜索|分析|处理|执行|运行|修改|修复|实现|编写|整理|验证|测试)(?!过了|过(?:[，,。.!！、；;\s]|$)|完了|完毕|好了))|\b(?:(?:i\s+will|i'll|let\s+me|going\s+to)\s+(?:start|begin|check|look\s+into|investigate|search|run|inspect|read|fix|implement|work\s+on)\b|(?:starting|beginning)\s+(?:the\s+)?(?:investigation|check|search|work|execution|analysis)\b|^on\s+it[,.\s!]+(?:i'll|i\s+will|let\s+me|starting|checking)\b))/i
 export const promisesWork = text => typeof text === 'string' && text.trim().length <= 240 && PROMISED_WORK.test(text.trim())
+
+// An older host saved the carried Bot request as the next turn's visibility.
+// Verify the steer boundary and the new opener before removing that marker.
+function hiddenUserFollowups(events, hidden) {
+  const restored = new Set()
+  let steered = false
+  let candidate
+  for (const event of events) {
+    if (event.type === 'turn/end') {
+      steered = turnOutcome(event.data?.reason)?.cause === 'steered'
+      candidate = undefined
+    } else if (event.type === 'turn/start') {
+      const turn = event.data?.turn
+      candidate = steered && hidden.has(turn) ? turn : undefined
+      steered = false
+    } else if (candidate !== undefined) {
+      const kind = event.type === 'user/message' ? event.data?.source?.kind : undefined
+      if (kind === 'user') restored.add(candidate)
+      if (kind === 'user' || kind === SOURCE_KIND || kind === REPLY_KIND || kind === 'schedule' ||
+          event.type === 'assistant/message' || event.type === 'assistant/attempt') candidate = undefined
+    }
+  }
+  return restored
+}
 
 export function install(rt) {
   const { ctx, state } = rt
@@ -545,6 +569,35 @@ export function install(rt) {
     if (!turns.includes(turn)) return
     state.exchangeTurns[sessionId] = turns.filter(other => other !== turn)
     void rt.save().catch(() => {})
+  }
+
+  // Check only private parts opened for reading. DSH can read archived logs
+  // without activating their agents. Concurrent views share the same check.
+  const visibilityReads = new WeakMap()
+  function restoreUserTurnVisibility(sessionId) {
+    if (typeof sessionId !== 'string' || rt.readOnly?.() !== undefined) return
+    const past = rt.pastOwners?.get(sessionId)
+    if (!rt.chatOwners.has(sessionId) && (past?.botId === undefined || past.roomId !== undefined)) return
+    const turns = state.exchangeTurns[sessionId]
+    if (!Array.isArray(turns) || turns.length === 0) return
+    const query = ctx.get?.('sessionQuery')
+    if (!query?.observeSession) return
+    let reading = visibilityReads.get(turns)
+    if (reading === undefined) {
+      const hidden = new Set(turns)
+      reading = query.observeSession(sessionId, { projectionMode: 'none', signal: AbortSignal.timeout(HISTORY_TIMEOUT_MS) })
+        .then(async observation => {
+          let restored
+          try { restored = hiddenUserFollowups(observation.events, hidden) } finally { observation[Symbol.dispose]() }
+          if (!restored.size || state.exchangeTurns[sessionId] !== turns || rt.readOnly?.() !== undefined) return
+          const remaining = turns.filter(turn => !restored.has(turn))
+          state.exchangeTurns[sessionId] = remaining
+          visibilityReads.set(remaining, reading)
+          await rt.save()
+        }).catch(() => visibilityReads.delete(turns))
+      visibilityReads.set(turns, reading)
+    }
+    return reading
   }
 
   // A request whose audience is the user is answered in the recipient's own chat: that
@@ -1096,6 +1149,9 @@ export function install(rt) {
             if (entry.answers) break
           } else {
             entry.answers = true
+            // A user who restarts this turn can see its answer and tool calls.
+            // The carried request still owns the original reply destination.
+            if (source.kind === 'user' && entry.carried) unmarkExchangeTurn(id, entry.turn)
             if (bare(entry.info)) {
               unmarkExchangeTurn(id, entry.turn)
               entry.info = undefined
@@ -1576,5 +1632,5 @@ export function install(rt) {
     await rt.inboxReply(source.exchangeId, sessionId, source, said, long)
   }
 
-  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteNativeTool, turnWork, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, hasSubagents, backgroundWork, stopSubagents, adoptLiveWork })
+  Object.assign(rt, { live, liveOf, roomWaiters, roomProgress, roomInbox, activityView, workView, roomWorkView, turnsView, steeredView, callDetail, doingOf, noteNativeTool, turnWork, stopRoomTurn, stopChat, releaseBot, unblockBots, resumeBot, markSteerCut, restoreUserTurnVisibility, hasSubagents, backgroundWork, stopSubagents, adoptLiveWork })
 }

@@ -265,10 +265,7 @@ export class LocalAgentAdapter extends LlmAdapter {
       if (waiter !== undefined) waiter(event)
       else live.events.push(event)
     }
-    live.next = () => {
-      if (live.closeEvent !== undefined) return Promise.resolve(live.closeEvent)
-      return live.events.length > 0 ? Promise.resolve(live.events.shift()) : new Promise(resolve => live.waiters.push(resolve))
-    }
+    live.next = () => this.take(live)
     this.live.set(sessionId, live)
     return live
   }
@@ -1100,12 +1097,16 @@ export class LocalAgentAdapter extends LlmAdapter {
     else options.signal?.addEventListener('abort', onAbort)
     try {
     for (;;) {
-      const event = await Promise.race([live.next(), abortPromise]).catch(error => ({ type: 'abort', error }))
+      const next = live.next()
+      let event
+      try {
+        event = await Promise.race([next.event, abortPromise])
+      } catch (error) {
+        event = { type: 'abort', error }
+      } finally {
+        next.drop()
+      }
       if (event.type === 'abort') {
-        // What the CLI's own turn still says once its showing stopped goes nowhere
-        // (backgroundEvent), so the read left waiting here would take a later turn's
-        // first event instead.
-        if (live.showing !== undefined) live.waiters.length = 0
         this.stopTurn(live, 'the turn was stopped')
         yield { type: 'finish', reason: { kind: 'aborted', failure: { code: 'ABORTED', message: 'the turn was stopped' } } }
         return
@@ -1307,6 +1308,7 @@ export class LocalAgentAdapter extends LlmAdapter {
   // The next event of a live session, as a wait that can be given up: a wait left
   // behind would take the first event of the next turn.
   take(live) {
+    if (live.closeEvent !== undefined) return { event: Promise.resolve(live.closeEvent), drop: () => {} }
     if (live.events.length > 0) return { event: Promise.resolve(live.events.shift()), drop: () => {} }
     let resolver
     const event = new Promise((resolve) => { resolver = resolve; live.waiters.push(resolve) })

@@ -1935,6 +1935,7 @@ export function install(rt) {
 
   async function partPage(parts, index, cursor, steps = false, floor = 0, turnStatuses = false) {
     const part = parts[index]
+    await rt.restoreUserTurnVisibility?.(part.sessionId)
     const signal = AbortSignal.timeout(HISTORY_TIMEOUT_MS)
     // An archived earlier part may have no live agent left; its stored events
     // still page fine, so resolve failure only drops the live-session cap.

@@ -115,7 +115,7 @@ test('ACP Bot approvals follow the effective DSH session permissions', async t =
         options: [{ optionId: 'always', kind: 'allow_always' }, { optionId: 'once', kind: 'allow_once' }],
       })
       events.push({ type: 'done' })
-      const live = { sessionId: session.id, pending: new Map(), queue: [], next: async () => events.shift() }
+      const live = { sessionId: session.id, pending: new Map(), queue: [], events, waiters: [], next: () => adapter.take(live) }
       const chunks = await Array.fromAsync(adapter.drain(live, {}))
       const call = chunks.find(chunk => chunk.type === 'tool-call-delta')
       if (sample.outcome === undefined) {
@@ -251,7 +251,7 @@ test('Codex Bot records rich tool updates during its matching turn without strea
     executionHistory: { record: (id, event) => records.push({ id, event }) },
     noteNativeTool: (id, trace) => progress.push([id, trace.id, trace.status]),
   } })
-  const live = { sessionId: 'bot-part', turnTag: 'turn-current', next: () => Promise.resolve(events.shift()), queue: [] }
+  const live = { sessionId: 'bot-part', turnTag: 'turn-current', events, waiters: [], next: () => adapter.take(live), queue: [] }
   const chunks = []
   for await (const chunk of adapter.drain(live, {})) chunks.push(chunk)
 
