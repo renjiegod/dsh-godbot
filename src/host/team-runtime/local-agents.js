@@ -256,6 +256,7 @@ export class WorkspaceCodexEngine extends CodexEngine {
     const { resumeId, cwd, mode, mcp, model } = options
     if (!resumeId || !this.handedToTerminal?.(resumeId)) return super.open(id, options)
     const peer = await this.ensure()
+    await this.whenReleased(resumeId)
     const reply = await peer.request('thread/resume', { threadId: resumeId, cwd,
       ...(model && model !== 'default' ? { model } : {}),
       ...(mode ? { sandbox: mode, approvalPolicy: mode === 'danger-full-access' ? 'never' : 'on-request' } : {}),

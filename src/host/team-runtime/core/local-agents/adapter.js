@@ -405,6 +405,10 @@ export class LocalAgentAdapter extends LlmAdapter {
     live.dead = true
     clearTimeout(live.idle)
     this.live.delete(live.sessionId)
+    // A process other Sessions keep running keeps this one's CLI session loaded with
+    // the loopback server that closes below, the model and the permissions it had.
+    // Letting go of it makes the next open load it with its own (CodexEngine.release).
+    if (this.engineInUse(live.engine)) void live.engine.release?.(live.sessionId)
     live.engine.forget?.(live.sessionId)
     live.mcp?.close()
     if (idle) {

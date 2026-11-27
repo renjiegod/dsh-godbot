@@ -17,6 +17,9 @@
 // activity items first: a test can then tell whether the one text event reached
 // the client. `--record <file>` appends the params of thread/start and thread/resume,
 // so a test can check the shape the client sent without a model call.
+// `--keep-loaded` resumes as Codex 0.172 does: a thread/resume of a thread the process
+// still has loaded keeps the settings and MCP servers it was loaded with, and only a
+// thread/unsubscribe lets go of it, so the next resume loads it with what it asks for.
 import { appendFileSync, existsSync } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -24,6 +27,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 const exitAfterTurn = process.argv.includes('--exit-after-turn')
 const textOnly = process.argv.includes('--text-only')
 const holdCompact = process.argv.includes('--hold-compact')
+const keepLoaded = process.argv.includes('--keep-loaded')
 const recordAt = process.argv.indexOf('--record')
 const recordPath = recordAt === -1 ? undefined : process.argv[recordAt + 1]
 const record = (method, params) => {
@@ -257,7 +261,12 @@ process.stdin.on('data', (chunk) => {
       }
       case 'collaborationMode/list':
         reply(id,{data:[{mode:'default',name:'Default'},{mode:'plan',name:'Plan'}]});break
-      case 'thread/unsubscribe': reply(id,{status:'unsubscribed'});break
+      case 'thread/unsubscribe': {
+        record('thread/unsubscribe', params)
+        const thread = threads.get(params.threadId)
+        if (thread !== undefined) thread.loaded = false
+        reply(id,{status:'unsubscribed'});break
+      }
       case 'thread/settings/update': {
         reply(id,{})
         if (params.model && params.model!=='gpt-5.1-codex' && params.model!=='gpt-next') break
@@ -293,7 +302,7 @@ process.stdin.on('data', (chunk) => {
         record('thread/start', params)
         const extra = unknownField(params, THREAD_START)
         if (extra !== undefined) { replyError(id, extra); break }
-        const thread = { id: process.env.GODBOT_E2E_GATE_DIR ? randomUUID() : `thr-${++nextId}`, params }
+        const thread = { id: process.env.GODBOT_E2E_GATE_DIR ? randomUUID() : `thr-${++nextId}`, params, loaded: true }
         threads.set(thread.id, thread)
         reply(id, { thread: { id: thread.id },sandbox:{type:params.sandbox === 'read-only'?'readOnly':'workspaceWrite'},approvalPolicy:params.approvalPolicy,model:params.model ?? 'gpt-5.1-codex', reasoningEffort:params.model==='gpt-next'?'low':'high' })
         break
@@ -304,9 +313,11 @@ process.stdin.on('data', (chunk) => {
         const extra = unknownField(params, THREAD_RESUME)
         if (extra !== undefined) { replyError(id, extra); break }
         const thread = threads.get(params.threadId) ?? { id: params.threadId }
-        thread.params = params
+        if (!(keepLoaded && thread.loaded === true)) thread.params = params
+        thread.loaded = true
         threads.set(thread.id, thread)
-        reply(id, { thread: { id: params.threadId },sandbox:{type:params.sandbox === 'read-only'?'readOnly':'workspaceWrite'},approvalPolicy:params.approvalPolicy,model:params.model ?? 'gpt-5.1-codex', reasoningEffort:params.model==='gpt-next'?'low':'high' })
+        const active = thread.params
+        reply(id, { thread: { id: params.threadId },sandbox:{type:active.sandbox === 'read-only'?'readOnly':'workspaceWrite'},approvalPolicy:active.approvalPolicy,model:active.model ?? 'gpt-5.1-codex', reasoningEffort:active.model==='gpt-next'?'low':'high' })
         break
       }
       case 'config/read':

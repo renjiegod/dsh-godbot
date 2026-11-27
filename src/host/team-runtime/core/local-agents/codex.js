@@ -27,6 +27,7 @@ export class CodexEngine {
     this.peer = undefined
     this.starting = undefined
     this.threads = new Map()
+    this.releases = new Map()   // threadId -> the thread/unsubscribe under way
   }
 
   threadFor(dshSessionId) {
@@ -207,6 +208,9 @@ export class CodexEngine {
     }
     thread.cwd = cwd
     if (thread.threadId !== undefined) {
+      // A thread let go of a moment ago is resumed only once Codex has let go of it,
+      // or the resume keeps what the thread had (release).
+      await this.whenReleased(thread.threadId)
       try {
         // thread/resume takes the same params, plus the thread id. The instructions it
         // was started with stay: they are not sent again here.
@@ -324,6 +328,31 @@ export class CodexEngine {
     }
     if (thread.turnId === undefined) return
     return this.peer?.request('turn/interrupt', { threadId: thread.threadId, turnId: thread.turnId }, { timeout: 15_000 }).catch(() => {})
+  }
+
+  // The app-server keeps a thread it loaded for as long as it runs, and a thread/resume
+  // of a loaded thread ignores what it asks for: the godbot MCP server, the model, the
+  // sandbox and the approval policy stay as the thread was loaded with (Codex 0.172).
+  // So a thread Godbot lets go of while other Sessions keep the process is let go of
+  // here too, and the next open loads it again with what that open asks for. Without
+  // this, a Session closed while idle came back bound to the loopback server that
+  // closed with it, and every Godbot tool failed until the process restarted.
+  release(dshSessionId) {
+    const threadId = this.threads.get(dshSessionId)?.threadId
+    const peer = this.peer
+    if (threadId === undefined || peer === undefined) return Promise.resolve()
+    const pending = this.releases.get(threadId)
+    if (pending !== undefined) return pending
+    // A failed unsubscribe leaves nothing to wait for: the next open resumes anyway.
+    const done = peer.request('thread/unsubscribe', { threadId }, { timeout: 10_000 })
+      .then(() => {}, () => {})
+      .finally(() => { if (this.releases.get(threadId) === done) this.releases.delete(threadId) })
+    this.releases.set(threadId, done)
+    return done
+  }
+
+  whenReleased(threadId) {
+    return this.releases.get(threadId)
   }
 
   // The adapter stopped reading this thread: a later open starts a new queue, or
