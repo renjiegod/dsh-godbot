@@ -227,6 +227,7 @@ export function apply(ctx, godbot) {
     // Connector, capability and phone states change without a new revision.
     const live = {}
     if (value.partsRunning !== undefined && JSON.stringify(value.partsRunning) !== JSON.stringify(current.partsRunning ?? {})) live.partsRunning = value.partsRunning
+    if (value.botGoalWaits !== undefined && JSON.stringify(value.botGoalWaits) !== JSON.stringify(current.botGoalWaits ?? {})) live.botGoalWaits = value.botGoalWaits
     if (value.nativeTerminals !== undefined && JSON.stringify(value.nativeTerminals) !== JSON.stringify(current.nativeTerminals ?? null)) live.nativeTerminals = value.nativeTerminals
     if (value.newSessions !== undefined && JSON.stringify(value.newSessions) !== JSON.stringify(current.newSessions ?? {})) live.newSessions = value.newSessions
     if (value.emptyParts !== undefined && JSON.stringify(value.emptyParts) !== JSON.stringify(current.emptyParts ?? {})) live.emptyParts = value.emptyParts

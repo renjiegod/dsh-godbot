@@ -233,6 +233,8 @@ export function install(rt) {
     learningSettled: rt.learningSettledView(),
     connectors: rt.connectorsView(),
     capabilityStatuses: rt.capabilityStatusesView(),
+    // Queue reasons can change while the goal and team revisions stay the same.
+    botGoalWaits: rt.botGoalWaitsView?.() ?? {},
     phone: rt.phoneView(),
     imStatus: rt.imStatusView?.() ?? {},
     imVia: rt.imViaView?.() ?? {},

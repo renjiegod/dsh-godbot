@@ -14627,6 +14627,7 @@ var ZH = {
   "Waiting for earlier queued messages.": "等前面排队的消息处理完。",
   "Waiting for background work.": "等后台任务做完。",
   "Waiting for your input.": "等你回复。",
+  "Waiting for the current turn": "等待当前回合结束",
   "Waiting for the current turn and queued messages.": "等当前这一轮和排队的消息处理完。",
   "This conversation is archived or the Bot was removed.": "这个会话已归档，或 Bot 已被删除。",
   "This remote agent cannot confirm goal progress or cancellation.": "这个远程 Agent 没法确认目标进度或取消。",
@@ -51639,7 +51640,7 @@ var BOT_GOAL_CSS = `
 .bt-goal-chip:hover,.bt-goal-chip[aria-expanded=true]{background:color-mix(in srgb,var(--bt-ink) 10%,transparent);color:var(--bt-ink)}
 .bt-goal-chip:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 .bt-goal-chip svg{flex:none;width:14px;height:14px;color:var(--bt-goal-tone,currentColor)}
-.bt-goal-state{flex:none;font-weight:500;color:var(--bt-goal-tone,var(--bt-ink))}
+.bt-goal-state{flex:none;max-width:calc(100% - 30px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--bt-goal-tone,var(--bt-ink))}
 .bt-goal-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-goal-dot{flex:none;width:6px;height:6px;margin-right:-2px;border-radius:50%;background:var(--bt-goal-tone,var(--bt-ink-3))}
 [data-goal-phase=running] .bt-goal-dot{animation:bt-goal-pulse 1.4s ease-in-out infinite}
@@ -51694,7 +51695,7 @@ function goalPhase(goal) {
 }
 var PHASE_LABELS = {
   running: "Working",
-  queued: "Starting soon",
+  queued: "Queued",
   waiting: "Waiting for you",
   pausing: "Pausing",
   paused: "Paused",
@@ -51739,6 +51740,7 @@ function BotGoalChip({ sessionId, useRoster, useUi, actions }) {
   const bot = roster.byId?.[sessionId];
   const known = Boolean(bot) && !roster.roomsById?.[sessionId] && roster.botGoals !== void 0;
   const goal = known ? roster.botGoals[sessionId] : void 0;
+  const waitReason = goal && (roster.botGoalWaits === void 0 ? goal.reason : roster.botGoalWaits[goal.id]);
   const current2 = Boolean(bot) && ((bot.sessionId ?? bot.id) === sessionId || bot.openParts?.some((part) => part.sessionId === sessionId));
   const unfinished = !goalEnded(goal);
   (0, import_react67.useEffect)(() => {
@@ -51761,13 +51763,14 @@ function BotGoalChip({ sessionId, useRoster, useUi, actions }) {
       botId: bot.id,
       botName: bot.name,
       goal,
+      waitReason,
       composing: composing && current2,
       actions,
       canWrite: current2 && !roster.readOnly
     }) : null
   );
 }
-function GoalChip({ sessionId, botId, botName, goal, composing, canWrite, actions }) {
+function GoalChip({ sessionId, botId, botName, goal, waitReason, composing, canWrite, actions }) {
   const [open, setOpen] = (0, import_react67.useState)(false);
   const [draft, setDraft] = (0, import_react67.useState)(null);
   const [pending, setPending] = (0, import_react67.useState)(false);
@@ -51901,7 +51904,8 @@ function GoalChip({ sessionId, botId, botName, goal, composing, canWrite, action
     }
   };
   const phase = draft?.fresh || !shown ? "draft" : goalPhase(shown);
-  const label2 = phase === "draft" ? t("New goal") : goalPhaseLabel(shown);
+  const queuedReason = phase === "queued" && waitReason;
+  const label2 = queuedReason ? hostText(queuedReason) : phase === "draft" ? t("New goal") : goalPhaseLabel(shown);
   const button9 = (text, onClick, { disabled = false, className = "" } = {}) => (0, import_react67.createElement)("button", {
     type: "button",
     className: ("bt-soft bt-soft-sm " + className).trim(),
@@ -51963,7 +51967,7 @@ function GoalChip({ sessionId, botId, botName, goal, composing, canWrite, action
   const details = () => {
     const facts = [
       shown.acceptance ? [t("Finished when"), shown.acceptance] : null,
-      shown.reason && !ended ? [t("Note"), hostText(shown.reason)] : null,
+      shown.reason && !ended && phase !== "queued" ? [t("Note"), hostText(shown.reason)] : null,
       shown.checkpoint?.summary ? [t("Latest progress"), shown.checkpoint.summary] : null,
       shown.checkpoint?.next && !ended ? [t("Next step"), shown.checkpoint.next] : null,
       shown.checkpoint?.evidence ? [t("Evidence"), shown.checkpoint.evidence] : null
@@ -52025,7 +52029,7 @@ function GoalChip({ sessionId, botId, botName, goal, composing, canWrite, action
         "aria-haspopup": "dialog",
         "aria-expanded": open,
         "aria-label": phase === "draft" ? t("New goal") : [t("Goal"), label2, shown?.objective].filter(Boolean).join(" · "),
-        title: shown?.objective,
+        title: queuedReason ? [label2, shown.objective].join(" · ") : shown?.objective,
         onMouseDown: keepComposerFocus,
         onClick: (event) => {
           if (open) {
@@ -62739,6 +62743,7 @@ function apply(ctx, godbot) {
     const current2 = roster.getSnapshot();
     const live2 = {};
     if (value.partsRunning !== void 0 && JSON.stringify(value.partsRunning) !== JSON.stringify(current2.partsRunning ?? {})) live2.partsRunning = value.partsRunning;
+    if (value.botGoalWaits !== void 0 && JSON.stringify(value.botGoalWaits) !== JSON.stringify(current2.botGoalWaits ?? {})) live2.botGoalWaits = value.botGoalWaits;
     if (value.nativeTerminals !== void 0 && JSON.stringify(value.nativeTerminals) !== JSON.stringify(current2.nativeTerminals ?? null)) live2.nativeTerminals = value.nativeTerminals;
     if (value.newSessions !== void 0 && JSON.stringify(value.newSessions) !== JSON.stringify(current2.newSessions ?? {})) live2.newSessions = value.newSessions;
     if (value.emptyParts !== void 0 && JSON.stringify(value.emptyParts) !== JSON.stringify(current2.emptyParts ?? {})) live2.emptyParts = value.emptyParts;

@@ -18,7 +18,11 @@ export default async function phoneBotGoals({ makeHost, candidate, reportDir, sc
   const tap = async (why, ...names) => ui.tap(await ui.waitFor(nodes => ui.find(nodes, ...names), why, { timeout: 60_000 }))
   const objective = 'Verify the goal on two clients.'
   const evidence = 'Paired fixture evidence.'
+  const earlierInput = 'Let this conversation turn finish first.'
   let reversed = false
+  let earlierStarted = false
+  let releaseEarlier
+  const earlier = new Promise(resolve => { releaseEarlier = resolve })
   let release
   const gate = new Promise(resolve => { release = resolve })
   try {
@@ -28,7 +32,13 @@ export default async function phoneBotGoals({ makeHost, candidate, reportDir, sc
       const blocks = messages.flatMap(row => row.content)
       const text = blocks.findLast(block => block.text?.startsWith('[Godbot goal turn]'))?.text
       const id = /attempt_id "([^"]+)"/u.exec(text ?? '')?.[1]
-      if (!id) return 'Goal fixture ready.'
+      if (!id) {
+        if (blocks.some(block => block.text === earlierInput)) {
+          earlierStarted = true
+          await earlier
+        }
+        return 'Goal fixture ready.'
+      }
       if (blocks.some(block => block.type === 'tool_use' && block.name === 'report_bot_goal' && block.input?.attempt_id === id)) return 'Cross-client checkpoint recorded.'
       if (!attempts.has(id)) attempts.set(id, attempts.size + 1)
       const first = attempts.get(id) === 1
@@ -78,6 +88,10 @@ export default async function phoneBotGoals({ makeHost, candidate, reportDir, sc
     }
 
     await openBotChat(host, bot)
+    const composer = host.page.locator('[data-composer-card] [role=textbox]')
+    await composer.fill(earlierInput)
+    await composer.press('Enter')
+    await until(() => earlierStarted, 'an earlier turn is still running')
     // The Web goal lives in the composer: "+" → Set a goal opens its form, the chip beside
     // the "+" opens its panel.
     const webPanel = host.page.locator('.bt-goal-pop')
@@ -86,9 +100,12 @@ export default async function phoneBotGoals({ makeHost, candidate, reportDir, sc
     await host.page.getByRole('menuitem', { name: /^(Set a goal|设定目标)$/u }).click()
     await webPanel.getByRole('textbox', { name: /^(Goal|目标)$/u }).fill(objective)
     await webPanel.getByRole('button', { name: /^(Start goal|开始目标)$/u }).click()
-    await until(() => attempts.size === 1, 'Web start reaches the first Bot turn')
     await tap('open the same goal on Android', 'Goal', '目标')
     await ui.waitFor(nodes => ui.find(nodes, objective), 'Android reads the Web goal')
+    await ui.waitFor(nodes => ui.find(nodes, 'Waiting for the current turn', '等待当前回合结束'), 'Android reads the live queue reason')
+    assert.equal(attempts.size, 0)
+    releaseEarlier()
+    await until(() => attempts.size === 1, 'the queued goal starts after the earlier turn ends')
     await tap('pause from Android', 'Pause goal', '暂停目标')
     await until(async () => (await read())?.status === 'paused', 'Web host reads the Android pause')
     release()
@@ -112,8 +129,9 @@ export default async function phoneBotGoals({ makeHost, candidate, reportDir, sc
     await ui.waitFor(nodes => ui.find(nodes, evidence), 'Android reads the finished goal evidence', { timeout: 60_000 })
     await writeFile(join(reportDir, 'android-goal-completed.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
     await host.capture('web-goal-completed')
-    note('paired-goal-lifecycle', { webStarted: true, appPaused: true, hostRestarted: true, webResumed: true, appReadEvidence: true, turns: complete.turns })
+    note('paired-goal-lifecycle', { webStarted: true, appReadQueueReason: true, appPaused: true, hostRestarted: true, webResumed: true, appReadEvidence: true, turns: complete.turns })
   } finally {
+    releaseEarlier()
     release()
     try { if (reversed) ui.adb(['reverse', '--remove', 'tcp:' + port]) } finally { await relay.close() }
   }

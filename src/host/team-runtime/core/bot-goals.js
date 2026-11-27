@@ -105,6 +105,7 @@ export function install(rt) {
         }
         throw failure
       }
+      if (next.status !== 'active') waitingReasons.delete(next.id)
       return next
     })
     commits = run.catch(() => {})
@@ -159,7 +160,6 @@ export function install(rt) {
       }
     }, true)
     if (action === 'stop' && next?.attempt) await cancel(next.attempt)
-    if (next?.status !== 'active') waitingReasons.delete(next?.id)
     return view(byAnchor(anchor), targetOf(botId, anchor))
   }
 
@@ -273,9 +273,10 @@ export function install(rt) {
     }
     if (!eligible(goal, row, sessionId)) return waitingReasons.set(goal.id, 'Waiting for this conversation to become available.')
     if (rt.unreadOf?.(sessionId)?.length) return waitingReasons.set(goal.id, 'Waiting for earlier queued messages.')
-    if (rt.backgroundWork?.(sessionId)) return waitingReasons.set(goal.id, 'Waiting for background work.')
+    if (rt.backgroundWork?.(sessionId)) {
+      return waitingReasons.set(goal.id, rt.live.get(sessionId)?.turn !== undefined ? 'Waiting for the current turn' : 'Waiting for background work.')
+    }
     if (rt.waitsForApproval?.(sessionId) || rt.own(state.questions, sessionId)) return waitingReasons.set(goal.id, 'Waiting for your input.')
-    waitingReasons.delete(goal.id)
     const route = rt.botOf(goal.botId)?.appliedModel ?? rt.botOf(goal.botId)?.model
     if (route?.startsWith('ag-ui-')) {
       await change(goal.anchor, prior => prior === goal ? { ...goal, status: 'blocked', reason: 'This remote agent cannot confirm goal progress or cancellation.' } : prior)
@@ -283,10 +284,10 @@ export function install(rt) {
     }
     await rt.ensureCapabilities(sessionId)
     const agent = await rt.resolveAgent(sessionId)
-    if (agent.status !== 'idle' || agent.inbox.nextTurn.length) {
-      waitingReasons.set(goal.id, 'Waiting for the current turn and queued messages.')
-      return
-    }
+    if (byAnchor(goal.anchor) !== goal) return
+    if (agent.status !== 'idle') return waitingReasons.set(goal.id, 'Waiting for the current turn')
+    if (agent.inbox.nextTurn.length) return waitingReasons.set(goal.id, 'Waiting for earlier queued messages.')
+    waitingReasons.delete(goal.id)
     const pending = { id: randomUUID(), sessionId, plan: goal.plan }
     dispatching.add(pending.id)
     try {
@@ -408,6 +409,7 @@ export function install(rt) {
     botGoalRead: read, botGoalControl: control, botGoalCommand: command, pauseBotGoalForStop: pauseForStop,
     activeBotGoal: sessionId => forSession(sessionId)?.status === 'active',
     runningBotGoal: sessionId => running(sessionId),
+    botGoalWaitsView: () => Object.fromEntries(waitingReasons),
     botGoalsView: () => Object.fromEntries(Object.values(state.botGoals).flatMap(goal => {
       const row = headOf(goal)
       if (!row) return []

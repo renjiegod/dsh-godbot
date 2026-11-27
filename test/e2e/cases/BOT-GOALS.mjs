@@ -42,15 +42,25 @@ export default async function botGoals({ makeHost, candidate, previous, note }) 
   }
   const sessionId = bot.sessionId ?? bot.id
   const target = { botId: bot.id, sessionId }
+  const earlierInput = 'Finish the existing conversation turn first.'
   const objective = 'Verify the goal fixture across a restart.'
   const evidence = 'Fixture result: all 20 checks passed.'
   const attempts = new Map()
+  let earlierStarted = false
+  let releaseEarlier
+  const earlier = new Promise(resolve => { releaseEarlier = resolve })
   let release
   const first = new Promise(resolve => { release = resolve })
   host.model.reply = async ({ messages, tools }) => {
     const blocks = messages.flatMap(message => message.content)
     const prompt = blocks.findLast(block => block.text?.startsWith('[Godbot goal turn]'))
-    if (!prompt) return 'Fixture ready.'
+    if (!prompt) {
+      if (blocks.some(block => block.text === earlierInput)) {
+        earlierStarted = true
+        await earlier
+      }
+      return 'Fixture ready.'
+    }
     const id = /attempt_id "([^"]+)"/u.exec(prompt.text)?.[1]
     assert.ok(id, 'a real goal turn reaches the provider')
     assert.match(prompt.text, /^Goal turn \d+\. /mu, 'a goal turn carries no turn budget')
@@ -72,16 +82,36 @@ export default async function botGoals({ makeHost, candidate, previous, note }) 
   const goal = () => host.bot('bot-goal-get', target).then(value => value.goal)
   const control = (action, view) => host.bot('bot-goal-control', { ...target, action, goalId: view.id, revision: view.revision, requestId: action + '-' + view.id })
   const composer = host.page.locator('[data-composer-card] [role=textbox]')
-  await composer.fill('/goal ' + objective)
-  await composer.press('Enter')
+  const card = host.page.locator('[data-godbot-bot-goal]')
+  try {
+    await composer.fill(earlierInput)
+    await composer.press('Enter')
+    await until(() => earlierStarted, 'the same conversation already has a running turn')
+    await composer.fill('/goal ' + objective)
+    await composer.press('Enter')
+    const queued = await until(async () => {
+      const value = await goal()
+      return value?.activity === 'queued' && value.reason === 'Waiting for the current turn' && value
+    }, 'the goal is queued behind the existing turn')
+    assert.equal(queued.turns, 0)
+    assert.equal(attempts.size, 0)
+    const { revision } = await host.bot('state')
+    const delta = await host.bot('state', { since: revision })
+    assert.equal(delta.unchanged, true)
+    assert.equal(delta.botGoalWaits?.[queued.id], queued.reason)
+    await card.getByText(/^(Waiting for the current turn|等待当前回合结束)$/u).waitFor()
+    note('goal-waits-for-current-turn', { turns: queued.turns, unchangedRevision: delta.unchanged, reason: queued.reason })
+  } finally {
+    releaseEarlier()
+  }
   await until(() => attempts.size === 1, 'the Web slash command starts exactly one goal turn')
   const running = await goal()
   assert.equal(running.status, 'active')
   assert.equal(running.activity, 'running')
   assert.equal(running.objective, objective)
   assert.equal(running.turns, 1)
+  assert.equal((await host.bot('state')).botGoalWaits?.[running.id], undefined)
   // The goal shows as a chip in the composer, and its panel shows the turn it is on.
-  const card = host.page.locator('[data-godbot-bot-goal]')
   await card.getByText(objective, { exact: true }).waitFor()
   await card.locator('button.bt-goal-chip').click()
   await host.page.locator('.bt-goal-pop').getByText(/^(Turn 1|第 1 轮)$/u).waitFor()

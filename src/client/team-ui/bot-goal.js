@@ -18,7 +18,7 @@ export const BOT_GOAL_CSS = `
 .bt-goal-chip:hover,.bt-goal-chip[aria-expanded=true]{background:color-mix(in srgb,var(--bt-ink) 10%,transparent);color:var(--bt-ink)}
 .bt-goal-chip:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 .bt-goal-chip svg{flex:none;width:14px;height:14px;color:var(--bt-goal-tone,currentColor)}
-.bt-goal-state{flex:none;font-weight:500;color:var(--bt-goal-tone,var(--bt-ink))}
+.bt-goal-state{flex:none;max-width:calc(100% - 30px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--bt-goal-tone,var(--bt-ink))}
 .bt-goal-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bt-goal-dot{flex:none;width:6px;height:6px;margin-right:-2px;border-radius:50%;background:var(--bt-goal-tone,var(--bt-ink-3))}
 [data-goal-phase=running] .bt-goal-dot{animation:bt-goal-pulse 1.4s ease-in-out infinite}
@@ -70,7 +70,7 @@ export function goalPhase(goal) {
 }
 
 const PHASE_LABELS = {
-  running: 'Working', queued: 'Starting soon', waiting: 'Waiting for you', pausing: 'Pausing', paused: 'Paused',
+  running: 'Working', queued: 'Queued', waiting: 'Waiting for you', pausing: 'Pausing', paused: 'Paused',
   blocked: 'Needs you', stopping: 'Stopping', stopped: 'Goal ended', completed: 'Goal reached',
 }
 export const goalPhaseLabel = goal => t(PHASE_LABELS[goalPhase(goal)])
@@ -111,6 +111,7 @@ export function BotGoalChip({ sessionId, useRoster, useUi, actions }) {
   const bot = roster.byId?.[sessionId]
   const known = Boolean(bot) && !roster.roomsById?.[sessionId] && roster.botGoals !== undefined
   const goal = known ? roster.botGoals[sessionId] : undefined
+  const waitReason = goal && (roster.botGoalWaits === undefined ? goal.reason : roster.botGoalWaits[goal.id])
   const current = Boolean(bot) && ((bot.sessionId ?? bot.id) === sessionId || bot.openParts?.some(part => part.sessionId === sessionId))
   const unfinished = !goalEnded(goal)
   // `/goal` in this composer: say what the Bot does with it, and how an unfinished goal is
@@ -130,12 +131,12 @@ export function BotGoalChip({ sessionId, useRoster, useUi, actions }) {
   return h(Fragment, null,
     h('span', { ref: anchor, className: 'bt-goal-anchor', 'aria-hidden': true }),
     known && (current || goal) ? h(GoalChip, {
-      key: sessionId, sessionId, botId: bot.id, botName: bot.name, goal, composing: composing && current, actions,
+      key: sessionId, sessionId, botId: bot.id, botName: bot.name, goal, waitReason, composing: composing && current, actions,
       canWrite: current && !roster.readOnly,
     }) : null)
 }
 
-function GoalChip({ sessionId, botId, botName, goal, composing, canWrite, actions }) {
+function GoalChip({ sessionId, botId, botName, goal, waitReason, composing, canWrite, actions }) {
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState(null)
   const [pending, setPending] = useState(false)
@@ -260,7 +261,8 @@ function GoalChip({ sessionId, botId, botName, goal, composing, canWrite, action
   }
 
   const phase = draft?.fresh || !shown ? 'draft' : goalPhase(shown)
-  const label = phase === 'draft' ? t('New goal') : goalPhaseLabel(shown)
+  const queuedReason = phase === 'queued' && waitReason
+  const label = queuedReason ? hostText(queuedReason) : phase === 'draft' ? t('New goal') : goalPhaseLabel(shown)
   const button = (text, onClick, { disabled = false, className = '' } = {}) => h('button', {
     type: 'button', className: ('bt-soft bt-soft-sm ' + className).trim(), disabled: pending || disabled, onClick,
   }, text)
@@ -290,7 +292,7 @@ function GoalChip({ sessionId, botId, botName, goal, composing, canWrite, action
   const details = () => {
     const facts = [
       shown.acceptance ? [t('Finished when'), shown.acceptance] : null,
-      shown.reason && !ended ? [t('Note'), hostText(shown.reason)] : null,
+      shown.reason && !ended && phase !== 'queued' ? [t('Note'), hostText(shown.reason)] : null,
       shown.checkpoint?.summary ? [t('Latest progress'), shown.checkpoint.summary] : null,
       shown.checkpoint?.next && !ended ? [t('Next step'), shown.checkpoint.next] : null,
       shown.checkpoint?.evidence ? [t('Evidence'), shown.checkpoint.evidence] : null,
@@ -325,7 +327,8 @@ function GoalChip({ sessionId, botId, botName, goal, composing, canWrite, action
   return h('span', { className: 'bt-goal-slot', 'data-godbot-bot-goal': '', 'data-goal-phase': phase },
     h('button', {
       ref: chip, type: 'button', className: 'bt-goal-chip', 'aria-haspopup': 'dialog', 'aria-expanded': open,
-      'aria-label': phase === 'draft' ? t('New goal') : [t('Goal'), label, shown?.objective].filter(Boolean).join(' · '), title: shown?.objective,
+      'aria-label': phase === 'draft' ? t('New goal') : [t('Goal'), label, shown?.objective].filter(Boolean).join(' · '),
+      title: queuedReason ? [label, shown.objective].join(' · ') : shown?.objective,
       onMouseDown: keepComposerFocus,
       onClick: (event) => {
         if (open) { close(); return }
