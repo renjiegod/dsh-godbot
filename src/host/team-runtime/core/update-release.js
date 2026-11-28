@@ -76,6 +76,28 @@ export function sidecarDigest(text) {
   return SHA256.test(word) ? word : null
 }
 
+// The release feed includes GitHub's generated change list or a hand-written
+// Markdown body. Keep the change text for the sidebar and installation receipt.
+export function releaseDetails(release) {
+  const notesUrl = /^https?:\/\//i.test(release.html_url ?? '') ? release.html_url : null
+  const body = typeof release.body === 'string' ? release.body.replace(/\r\n?/g, '\n') : ''
+  const generated = /^##[ \t]+what['’]s changed[ \t]*$/im.exec(body)
+  const source = generated ? body.slice(generated.index + generated[0].length).split(/^#{1,2}[ \t]+/m, 1)[0] : body
+  const paragraphs = source.split(/^(?:\*\*)?Full Changelog\b|^## New Contributors\b/im, 1)[0]
+    .replace(/^#{1,6}[ \t]+.*$/gm, '\n')
+    .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, '\n\n')
+    .split(/\n[ \t]*\n/)
+  const changes = []
+  for (const paragraph of paragraphs) {
+    const text = paragraph.trim().replace(/\s+by @\S+ in https:\/\/github\.com\/\S+\/pull\/\d+$/i, '')
+      .replace(/\[([^\]\n]+)\]\(https?:\/\/[^)\s]+\)/g, '$1')
+      .replace(/\*\*|`/g, '').replace(/\s+/g, ' ').trim()
+    if (!text || /^(?:https?:\/\/\S+$|The corresponding source for the bundled Mac video encoder\b)/i.test(text)) continue
+    changes.push(text)
+  }
+  return { notesUrl, notes: changes.join('\n') }
+}
+
 /**
  * The newest published release that carries this package's archive: drafts are
  * skipped, prereleases count only when `prerelease` is on. Answers null when the
@@ -107,7 +129,7 @@ export async function newestRelease({ repo, name, prerelease, net, api = GITHUB_
   return {
     version,
     tag: release.tag_name,
-    notesUrl: typeof release.html_url === 'string' ? release.html_url : null,
+    ...releaseDetails(release),
     asset: { name: file.name, url: file.browser_download_url, size: Number.isSafeInteger(file.size) ? file.size : null, sha256 },
   }
 }

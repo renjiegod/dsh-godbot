@@ -12,7 +12,7 @@ import { install as installDshUpdate } from '../../src/host/team-runtime/core/ds
 import { install as installChannel } from '../../src/host/team-runtime/core/channel.js'
 import { dshRestart } from '../../src/host/team-runtime/core/dsh-restart.js'
 import {
-  GITHUB_API, archiveManifest, compatibility, downloadArchive, newer, newestRelease, releasesApi, sidecarDigest,
+  GITHUB_API, archiveManifest, compatibility, downloadArchive, newer, newestRelease, releaseDetails, releasesApi, sidecarDigest,
 } from '../../src/host/team-runtime/core/update-release.js'
 
 const PKG = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8'))
@@ -57,12 +57,12 @@ const manifestFor = (version, extra = {}) => JSON.stringify({
 })
 const archiveFor = (version, extra) => tgz([['package/README.md', '# Godbot\n'], ['package/package.json', manifestFor(version, extra)]])
 
-function release(version, { data = archiveFor(version), digest = true, prerelease = version.includes('-'), draft = false, sidecar = false } = {}) {
+function release(version, { data = archiveFor(version), digest = true, prerelease = version.includes('-'), draft = false, sidecar = false, notes } = {}) {
   const name = `${PKG.name}-${version}.tgz`
   const url = `https://github.com/${REPO}/releases/download/v${version}/${name}`
   const assets = [{ name, browser_download_url: url, size: data.length, ...(digest ? { digest: `sha256:${sha(data)}` } : {}) }]
   if (sidecar) assets.push({ name: `${name}.sha256`, browser_download_url: `${url}.sha256`, size: 90 })
-  return { body: { tag_name: `v${version}`, html_url: `https://github.com/${REPO}/releases/tag/v${version}`, draft, prerelease, assets }, url, data }
+  return { body: { tag_name: `v${version}`, html_url: `https://github.com/${REPO}/releases/tag/v${version}`, body: notes, draft, prerelease, assets }, url, data }
 }
 
 function fakeNet(routes) {
@@ -190,8 +190,8 @@ test('a packed archive install updates from GitHub releases; a folder or link do
 })
 
 test('the newest release carrying the archive wins, prereleases only on that channel', async () => {
-  const stable = release('0.3.0')
-  const rc = release('0.4.0-rc.1')
+  const stable = release('0.3.0', { notes: 'Stable change' })
+  const rc = release('0.4.0-rc.1', { notes: 'Preview change' })
   const draft = release('0.5.0', { draft: true })
   const bare = { body: { tag_name: 'v0.6.0', draft: false, prerelease: false, assets: [] } }
   const net = fakeNet({ [LIST]: [rc.body, draft.body, bare.body, stable.body] })
@@ -199,8 +199,28 @@ test('the newest release carrying the archive wins, prereleases only on that cha
   assert.equal(found.version, '0.3.0')
   assert.equal(found.asset.sha256, sha(stable.data))
   assert.equal(found.notesUrl, stable.body.html_url)
-  assert.equal((await newestRelease({ repo: REPO, name: PKG.name, prerelease: true, net })).version, '0.4.0-rc.1')
+  assert.equal(found.notes, 'Stable change')
+  const preview = await newestRelease({ repo: REPO, name: PKG.name, prerelease: true, net })
+  assert.equal(preview.version, '0.4.0-rc.1')
+  assert.equal(preview.notes, 'Preview change')
+  assert.deepEqual(net.calls, [LIST, LIST])
   assert.equal(await newestRelease({ repo: REPO, name: PKG.name, prerelease: false, net: fakeNet({ [LIST]: [] }) }), null)
+})
+
+test('release notes keep published changes from generated and hand-written releases', () => {
+  const sourceNotice = 'The corresponding source for the bundled Mac video encoder is attached as an archive.'
+  const changelog = '**Full Changelog**: https://github.com/example/project/compare/v1...v2'
+  const notes = body => releaseDetails({ body }).notes
+  assert.equal(notes([sourceNotice, "## What's Changed", '### Improvements',
+    '* Show **Bot mentions** by @example in https://github.com/example/project/pull/1',
+    '- Keep [work](https://example.org/work) running', '  across restarts.', changelog,
+    '## New Contributors', '* @example made a first contribution'].join('\r\n')), 'Show Bot mentions\nKeep work running across restarts.')
+  assert.equal(notes('# 更新说明\n\n修复侧栏。\n\n### 其他改进\n1. 支持键盘操作。\n2. 保留选中的会话。'),
+    '修复侧栏。\n支持键盘操作。\n保留选中的会话。')
+  assert.equal(notes([sourceNotice, '', changelog].join('\n')), '')
+  assert.equal(notes(null), '')
+  const allChanges = Array.from({ length: 20 }, (_, i) => `Change ${i + 1} with details. ${'A longer explanation. '.repeat(30).trimEnd()}`)
+  assert.equal(notes(allChanges.map(change => '- ' + change).join('\n')), allChanges.join('\n'))
 })
 
 test('GODBOT_UPDATE_API points the release list at another server', async () => {
@@ -318,19 +338,22 @@ test('a cold status poll returns the local restart receipt while remote checks a
     await settle()
     assert.equal(observed?.value?.phase, 'updated', 'the heartbeat is independent of a stalled release feed')
     assert.equal(observed.value.current, PKG.version)
+    assert.equal(observed.value.notes, '', 'older update receipts have no saved notes')
+    assert.equal(observed.value.notesUrl, `https://github.com/${REPO}/releases/tag/v${PKG.version}`)
     assert.equal(refreshed, false, 'an explicit refresh waits for discovery')
     assert.ok(net.calls.includes(LIST))
     assert.equal(net.calls.filter(url => url === LIST).length, 1, 'concurrent readers share the release listing')
   } finally {
-    feed.resolve([])
+    feed.resolve([release(PKG.version, { notes: 'Changes in the running version' }).body])
     await Promise.all([poll, manual])
   }
   assert.equal(refreshed, true)
   assert.ok((await rt.channelCall('update-check', {})).value.checkedAt > 0)
+  assert.equal(rt.updateView().notes, 'Changes in the running version')
 })
 
 test('auto mode downloads a release, waits until Godbot is idle, then installs it', async () => {
-  const next = release(NEXT)
+  const next = release(NEXT, { notes: 'Retain active work after a restart.' })
   const { rt, clock, installs, archives, home } = harness({ releases: [next] })
   await rt.updateTick()
   await rt.updatePrepare()
@@ -369,6 +392,9 @@ test('auto mode downloads a release, waits until Godbot is idle, then installs i
   assert.equal(marker.from, PKG.version)
   assert.equal(marker.to, NEXT)
   assert.equal(marker.auto, true)
+  assert.equal(marker.notes, 'Retain active work after a restart.')
+  assert.equal(view.notes, marker.notes)
+  assert.equal(marker.notesUrl, next.body.html_url)
 })
 
 test('the host rechecks after five minutes and open windows share the result', async t => {
@@ -517,19 +543,28 @@ test('turning updates off stops a download without calling it a failure', async 
 })
 
 test('a newer release found mid-download replaces the one being fetched', async () => {
-  const next = release(NEXT)
-  const later = release(`${major}.${minor}.${patch + 2}`)
+  const next = release(NEXT, { notes: 'First change' })
+  const later = release(`${major}.${minor}.${patch + 2}`, { notes: 'Later change' })
   const { rt, net, archives } = harness({ releases: [next], routes: { [later.url]: later.data } })
   hangOn(net, next.url)
   await rt.updateTick()
   assert.equal(rt.updateView().phase, 'downloading')
+  assert.equal(rt.updateView().notes, 'First change')
   net.json = async () => [later.body, next.body]
   await rt.updateCheck({ fresh: true })
   await rt.updatePrepare()
   const view = rt.updateView()
   assert.equal(view.latest, later.body.tag_name.slice(1))
   assert.equal(view.phase, 'ready')
+  assert.equal(view.notes, 'Later change')
   assert.deepEqual(readdirSync(archives).filter(name => name.endsWith('.tgz')), [`${PKG.name}-${view.latest}-${sha(later.data).slice(0, 12)}.tgz`])
+  later.body.body = 'Revised change'
+  await rt.updateCheck({ fresh: true })
+  assert.equal(rt.updateView().notes, 'Revised change')
+  net.json = async () => []
+  await rt.updateCheck({ fresh: true })
+  assert.equal(rt.updateView().notes, '')
+  assert.notEqual(rt.updateView().notesUrl, later.body.html_url)
 })
 
 test('the start that runs the new version reports the update', () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -109,7 +109,9 @@ else await import(${JSON.stringify(fixture.href)});
 // DSH never loads the update: the release here cannot be imported into it (the
 // reload trap), the way rc.16 could not after pnpm moved a dependency it had
 // already resolved, and Godbot keeps answering until the restart.
-export default async function UPDATE(context) {
+export default async function UPDATE(suite) {
+  // A same-archive retry must start with its own restart trap and answer logs.
+  const context = { ...suite, scratch: await mkdtemp(join(suite.scratch, 'update-')) }
   const { makeHost, candidate, scratch, note } = context
   const [major, minor, patch] = candidate.version.split('-')[0].split('.').map(Number)
   const version = `${major}.${minor}.${patch + 1}`
@@ -117,6 +119,10 @@ export default async function UPDATE(context) {
   const trap = join(scratch, 'update-reload-trap')
   const data = await readFile(next.path)
   const name = `dsh-godbot-${version}.tgz`
+  const changes = ['Highlight Bot mentions in the task board.', 'Keep active conversations when DSH restarts.']
+  const releaseBody = ['The corresponding source for the bundled Mac video encoder is attached.',
+    "## What's Changed", ...changes.map((change, i) => `* ${change} by @example in https://github.com/example/project/pull/${i + 1}`),
+    '', '**Full Changelog**: https://github.com/example/project/compare/v1...v2'].join('\n')
   const asked = []
   let published = false
   let heldAfterRestart = false
@@ -133,6 +139,7 @@ export default async function UPDATE(context) {
       res.writeHead(200, { 'content-type': 'application/json' })
       return res.end(JSON.stringify(published ? [{
         tag_name: 'v' + version, html_url: base + '/releases/tag/v' + version, draft: false, prerelease: false,
+        body: releaseBody,
         assets: [{ name, size: data.length, digest: 'sha256:' + sha256(data), browser_download_url: base + '/download/' + name }],
       }] : []))
     }
@@ -194,19 +201,38 @@ export default async function UPDATE(context) {
     })).json())
     assert.equal(earlyRestart.error?.code, 'bot/refused', 'restart requires an installed update')
     const readyLabel = new RegExp(`^Godbot ${version.replaceAll('.', '\\.')} (可以安装|is ready to install)$`, 'u')
-    const notice = page.locator('.bt-leftcol[data-left=open]').getByRole('button', { name: readyLabel })
+    const banner = page.locator('.bt-leftcol[data-left=open] .bt-update-banner')
+    const notice = banner.getByRole('button', { name: readyLabel })
+    const notesLabel = /^(发布说明|Release notes)$/u
+    const inlineNotes = banner.getByRole('list', { name: notesLabel })
     await notice.getByText(readyLabel).waitFor({ timeout: 30_000 })
+    await inlineNotes.waitFor()
+    assert.deepEqual(await inlineNotes.getByRole('listitem').allTextContents(), changes)
+    assert.equal(await inlineNotes.getByRole('link').count(), 0)
+    assert.equal(await notice.getAttribute('aria-expanded'), 'false')
     assert.equal(await page.evaluate(() => performance.timeOrigin), documentStart, 'the update notice arrived in the same document')
     note('update-notice', { version, reloaded: false })
     await host.capture('update-sidebar')
 
+    const details = page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
+    await notice.click()
+    await details.waitFor()
+    assert.equal(await details.getByRole('link', { name: notesLabel }).count(), 0)
+    assert.equal(await details.getByRole('list', { name: notesLabel }).count(), 0, 'the wide sidebar already shows the notes')
+    await details.evaluate(panel => Promise.all(panel.getAnimations().map(animation => animation.finished)))
+    await host.capture('update-release-notes')
+    await page.keyboard.press('Escape')
+    await details.waitFor({ state: 'hidden' })
     const desktop = page.viewportSize()
     await page.setViewportSize({ width: 390, height: 844 })
     const railNotice = page.locator('.bt-leftcol[data-left=rail]').getByRole('button', { name: readyLabel })
-    await railNotice.waitFor()
     await railNotice.click()
-    const details = page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
-    await details.waitFor()
+    const railNotes = details.getByRole('list', { name: notesLabel })
+    await railNotes.waitFor()
+    assert.deepEqual(await railNotes.getByRole('listitem').allTextContents(), changes)
+    assert.equal(await details.getByRole('link', { name: notesLabel }).count(), 0)
+    await details.evaluate(panel => Promise.all(panel.getAnimations().map(animation => animation.finished)))
+    await host.capture('update-rail-release-notes')
     await page.keyboard.press('Escape')
     await details.waitFor({ state: 'hidden' })
     assert.ok(await railNotice.evaluate(button => button === document.activeElement), 'closing details returns focus to the rail notice')
@@ -289,6 +315,7 @@ export default async function UPDATE(context) {
     const elapsedMs = Math.round(performance.now() - requestedAt)
     await until(() => pendingPolls > 0, 'the restarted host uses the local release feed')
     assert.ok(after.checking || after.dsh?.checking, 'the local receipt was available during discovery')
+    assert.equal(after.notes, changes.join('\n'), 'the local receipt includes the installed version’s changes')
     note('restart-status-during-discovery', { current: after.current, phase: after.phase, pendingPolls, elapsedMs })
     heldAfterRestart = false
     resumeFeed.resolve()
@@ -302,6 +329,8 @@ export default async function UPDATE(context) {
     const completedLabel = new RegExp('^Godbot ' + v + ' (已生效。|is running\\.)$', 'u')
     const completedNotice = page.getByRole('button', { name: completedLabel })
     await completedNotice.waitFor()
+    await inlineNotes.waitFor()
+    assert.deepEqual(await inlineNotes.getByRole('listitem').allTextContents(), changes)
     await host.capture('update-restarted')
     const appliedRestart = await page.evaluate(async () => (await fetch('api/godbot/team', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: 'update-restart' }),
@@ -310,11 +339,11 @@ export default async function UPDATE(context) {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.locator('.bt-leftcol[data-left=rail]').getByRole('button', { name: completedLabel }).click()
     await details.getByRole('button', { name: dismissLabel }).waitFor()
+    assert.deepEqual(await details.getByRole('listitem').allTextContents(), changes)
     await page.keyboard.press('Escape')
     await details.waitFor({ state: 'hidden' })
     await page.setViewportSize(desktop)
 
-    const banner = page.locator('.bt-leftcol[data-left=open] .bt-update-banner')
     await banner.getByRole('button', { name: dismissLabel }).click()
     await banner.getByRole('button', { name: completedLabel }).waitFor({ state: 'hidden' })
     assert.ok(await page.locator('.bt-leftcol[data-left=open] .bt-side-collapse').evaluate(button => button === document.activeElement), 'dismissing the notice returns focus to the sidebar')
@@ -373,6 +402,8 @@ export default async function UPDATE(context) {
     await liveHost.page.getByRole('button', { name: liveLabel }).click({ timeout: 30_000 })
     const appliedDetails = liveHost.page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
     await appliedDetails.waitFor()
+    assert.equal(await liveHost.page.getByRole('list', { name: notesLabel }).count(), 0, 'a release without notes has no empty list')
+    assert.equal(await appliedDetails.getByRole('link', { name: notesLabel }).count(), 0)
     assert.equal(await appliedDetails.getByRole('button', { name: restartLabel }).count(), 0)
     await liveHost.capture('update-applied')
     note(applied.application === 'applied' ? 'update-applied-in-place' : 'update-applied-after-restart', {
