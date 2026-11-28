@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import {
-  archiveManifest, compatibility, createNet, defaultArchiveDir, downloadArchive, dropPartials, newer, newestRelease, releasesApi, timeUpdateLookup,
+  archiveManifest, compatibility, createNet, defaultArchiveDir, downloadArchive, dropPartials, newer, newestRelease, releaseDetails, releasesApi, timeUpdateLookup,
 } from './update-release.js'
 
 export { newer }
@@ -313,12 +313,13 @@ export function install(rt) {
   const now = () => (typeof rt.updateClock === 'function' ? rt.updateClock() : Date.now())
 
   const status = {
-    name: PKG.name, current: PKG.version, latest: null, source: 'unknown', notesUrl: releasesUrl(),
+    name: PKG.name, current: PKG.version, latest: null, source: 'unknown',
     checkedAt: 0, checkFailed: false, phase: 'idle', installed: null, error: null,
   }
   // Where the newest version was found and how it installs: a registry or git
   // `spec`, or a release `asset` that becomes a local `archive` once verified.
   let target = null
+  let installedRelease = null
   let checking = null
   // The release archive being fetched, and what stops it.
   let preparing = null
@@ -366,6 +367,12 @@ export function install(rt) {
         try { unlinkSync(markerPath) } catch { /* gone is what we want */ }
       }
     }
+    if (status.installed !== null && marker?.to === status.installed) {
+      installedRelease = {
+        notesUrl: /^https?:\/\//i.test(marker.notesUrl ?? '') ? marker.notesUrl : null,
+        releaseNotes: Array.isArray(marker.releaseNotes) ? marker.releaseNotes.filter(note => typeof note === 'string') : [],
+      }
+    }
   }
 
   const busy = new Set()
@@ -394,16 +401,24 @@ export function install(rt) {
   const installedOrNewer = () => (status.phase === 'installed' || status.phase === 'updated')
     && status.installed !== null && target !== null && !newer(target.version, status.installed)
 
-  const view = () => ({
-    name: status.name, current: status.current, latest: status.latest, source: status.source, notesUrl: status.notesUrl,
-    repoUrl: repoUrl(), enabled, mode: settings.mode,
-    checkedAt: status.checkedAt, checking: checking !== null, checkFailed: status.checkFailed, phase: status.phase, installed: status.installed, error: status.error,
-    ...(status.phase === 'downloading' && progress !== null ? { progress: { ...progress } } : {}),
-    ...(blocked !== null ? { blocked: { ...blocked } } : {}),
-    ...(waiting !== null && (status.phase === 'ready' || status.phase === 'idle') ? { waiting } : {}),
-    available: !installedOrNewer() && status.phase !== 'installing' && blocked === null
-      && target !== null && status.latest !== null && newer(status.latest, status.current),
-  })
+  const defaultNotesUrl = releasesUrl()
+  const repository = repoUrl()
+  const view = () => {
+    const showInstalled = status.phase === 'installed' || status.phase === 'updated'
+    const release = showInstalled ? installedRelease : target
+    const version = showInstalled ? status.installed : target?.version
+    const notesUrl = release?.notesUrl ?? (version && repository ? `${repository}/releases/tag/v${version}` : defaultNotesUrl)
+    return {
+      name: status.name, current: status.current, latest: status.latest, source: status.source,
+      notesUrl, releaseNotes: release?.releaseNotes ?? [], repoUrl: repository, enabled, mode: settings.mode,
+      checkedAt: status.checkedAt, checking: checking !== null, checkFailed: status.checkFailed, phase: status.phase, installed: status.installed, error: status.error,
+      ...(status.phase === 'downloading' && progress !== null ? { progress: { ...progress } } : {}),
+      ...(blocked !== null ? { blocked: { ...blocked } } : {}),
+      ...(waiting !== null && (status.phase === 'ready' || status.phase === 'idle') ? { waiting } : {}),
+      available: !installedOrNewer() && status.phase !== 'installing' && blocked === null
+        && target !== null && status.latest !== null && newer(status.latest, status.current),
+    }
+  }
 
   // Asked only while the About page is open, so a closed page never calls GitHub.
   // A failed answer keeps the last count and is asked again next time.
@@ -441,7 +456,7 @@ export function install(rt) {
     const current = /^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/releases\//.exec(release.html_url ?? '')
     const [owner, repo] = current ? [current[1], current[2]] : [source.owner, source.repo]
     const fragment = [release.tag_name, ...source.rest].join('&')
-    return { version, spec: `github:${owner}/${repo}#${fragment}` }
+    return { version, spec: `github:${owner}/${repo}#${fragment}`, ...releaseDetails(release) }
   }
 
   let listing = null
@@ -454,11 +469,6 @@ export function install(rt) {
     })).finally(() => { listing = null })
   }
 
-  async function newestFromReleases() {
-    const found = await latestArchiveRelease()
-    return found === null ? null : { version: found.version, asset: found.asset, notesUrl: found.notesUrl }
-  }
-
   async function runCheck() {
     // The desktop app updates as a whole, with this package inside it.
     const source = process.env.GODBOT_APP === '1' ? { kind: 'app' } : sourceOf(await installSpecOf(ctx))
@@ -468,7 +478,7 @@ export function install(rt) {
     try {
       if (source.kind === 'registry') found = await newestFromRegistry()
       else if (source.kind === 'git') found = await newestFromGitHub(source)
-      else if (source.kind === 'archive') found = await newestFromReleases()
+      else if (source.kind === 'archive') found = await latestArchiveRelease()
     } catch (error) {
       failed = true
       rt.warn('godbot: update check failed: %s', error?.message ?? error)
@@ -487,16 +497,16 @@ export function install(rt) {
       return
     }
     status.latest = found.version
+    if (found.version === status.installed && found.releaseNotes) installedRelease = found
     const next = newer(found.version, status.current) ? found : null
     if (next === null) { retire(); return }
     // The same release keeps what was already fetched for it.
     if (target !== null && target.version === next.version && target.asset?.sha256 === next.asset?.sha256) {
-      if (next.notesUrl) status.notesUrl = next.notesUrl
+      Object.assign(target, { notesUrl: next.notesUrl, releaseNotes: next.releaseNotes })
       return
     }
     retire()
     target = next
-    if (next.notesUrl) status.notesUrl = next.notesUrl
     // The note that reported the last update is a one-time message; a newer
     // release found later in the same run still offers itself.
     if (status.phase === 'updated' || (status.phase === 'installed' && newer(next.version, status.installed ?? status.current))) {
@@ -649,6 +659,7 @@ export function install(rt) {
       try {
         writeFileSync(markerPath, JSON.stringify({
           from: PKG.version, to: chosen.version, spec: chosen.spec, startedAt: new Date().toISOString(), ...(auto ? { auto: true } : {}),
+          notesUrl: chosen.notesUrl, releaseNotes: chosen.releaseNotes,
           ...(error === undefined ? {} : { error: String(error).slice(0, 600) }),
         }))
       } catch { /* a note that cannot be written just is not there */ }
@@ -659,7 +670,10 @@ export function install(rt) {
     // first start reads it.
     mark()
     // The note stays: the start that runs the new version reports it.
-    const installed = version => Object.assign(status, { phase: 'installed', installed: cleanVersion(version) ?? chosen.version })
+    const installed = version => {
+      Object.assign(status, { phase: 'installed', installed: cleanVersion(version) ?? chosen.version })
+      installedRelease = chosen.version === status.installed ? chosen : null
+    }
     const failed = (error) => {
       if (!error?.reported) unmark()
       if (auto) autoSkip = chosen.version

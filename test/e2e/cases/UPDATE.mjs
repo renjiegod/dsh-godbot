@@ -117,6 +117,10 @@ export default async function UPDATE(context) {
   const trap = join(scratch, 'update-reload-trap')
   const data = await readFile(next.path)
   const name = `dsh-godbot-${version}.tgz`
+  const changes = ['Highlight Bot mentions in the task board.', 'Keep active conversations when DSH restarts.']
+  const releaseBody = ['The corresponding source for the bundled Mac video encoder is attached.',
+    "## What's Changed", ...changes.map((change, i) => `* ${change} by @example in https://github.com/example/project/pull/${i + 1}`),
+    '', '**Full Changelog**: https://github.com/example/project/compare/v1...v2'].join('\n')
   const asked = []
   let published = false
   let heldAfterRestart = false
@@ -133,6 +137,7 @@ export default async function UPDATE(context) {
       res.writeHead(200, { 'content-type': 'application/json' })
       return res.end(JSON.stringify(published ? [{
         tag_name: 'v' + version, html_url: base + '/releases/tag/v' + version, draft: false, prerelease: false,
+        body: releaseBody,
         assets: [{ name, size: data.length, digest: 'sha256:' + sha256(data), browser_download_url: base + '/download/' + name }],
       }] : []))
     }
@@ -196,19 +201,28 @@ export default async function UPDATE(context) {
     const readyLabel = new RegExp(`^Godbot ${version.replaceAll('.', '\\.')} (可以安装|is ready to install)$`, 'u')
     const notice = page.locator('.bt-leftcol[data-left=open]').getByRole('button', { name: readyLabel })
     await notice.getByText(readyLabel).waitFor({ timeout: 30_000 })
+    await notice.getByText(changes[0], { exact: true }).waitFor()
     assert.equal(await page.evaluate(() => performance.timeOrigin), documentStart, 'the update notice arrived in the same document')
     note('update-notice', { version, reloaded: false })
     await host.capture('update-sidebar')
 
+    const details = page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
+    const checkReleaseNotes = async (trigger, screenshot) => {
+      await trigger.click()
+      await details.getByRole('listitem').first().waitFor()
+      assert.deepEqual(await details.getByRole('listitem').allTextContents(), changes)
+      assert.equal(await details.getByRole('link', { name: /^(发布说明|Release notes)$/u }).getAttribute('href'), base + '/releases/tag/v' + version)
+      await details.evaluate(panel => Promise.all(panel.getAnimations().map(animation => animation.finished)))
+      await host.capture(screenshot)
+      await page.keyboard.press('Escape')
+      await details.waitFor({ state: 'hidden' })
+    }
+    await checkReleaseNotes(notice, 'update-release-notes')
     const desktop = page.viewportSize()
     await page.setViewportSize({ width: 390, height: 844 })
     const railNotice = page.locator('.bt-leftcol[data-left=rail]').getByRole('button', { name: readyLabel })
     await railNotice.waitFor()
-    await railNotice.click()
-    const details = page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
-    await details.waitFor()
-    await page.keyboard.press('Escape')
-    await details.waitFor({ state: 'hidden' })
+    await checkReleaseNotes(railNotice, 'update-rail-release-notes')
     assert.ok(await railNotice.evaluate(button => button === document.activeElement), 'closing details returns focus to the rail notice')
     await page.setViewportSize(desktop)
 
@@ -289,6 +303,7 @@ export default async function UPDATE(context) {
     const elapsedMs = Math.round(performance.now() - requestedAt)
     await until(() => pendingPolls > 0, 'the restarted host uses the local release feed')
     assert.ok(after.checking || after.dsh?.checking, 'the local receipt was available during discovery')
+    assert.deepEqual(after.releaseNotes, changes, 'the local receipt includes the installed version’s changes')
     note('restart-status-during-discovery', { current: after.current, phase: after.phase, pendingPolls, elapsedMs })
     heldAfterRestart = false
     resumeFeed.resolve()
@@ -302,6 +317,7 @@ export default async function UPDATE(context) {
     const completedLabel = new RegExp('^Godbot ' + v + ' (已生效。|is running\\.)$', 'u')
     const completedNotice = page.getByRole('button', { name: completedLabel })
     await completedNotice.waitFor()
+    await completedNotice.getByText(changes[0], { exact: true }).waitFor()
     await host.capture('update-restarted')
     const appliedRestart = await page.evaluate(async () => (await fetch('api/godbot/team', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: 'update-restart' }),
@@ -310,6 +326,7 @@ export default async function UPDATE(context) {
     await page.setViewportSize({ width: 390, height: 844 })
     await page.locator('.bt-leftcol[data-left=rail]').getByRole('button', { name: completedLabel }).click()
     await details.getByRole('button', { name: dismissLabel }).waitFor()
+    assert.deepEqual(await details.getByRole('listitem').allTextContents(), changes)
     await page.keyboard.press('Escape')
     await details.waitFor({ state: 'hidden' })
     await page.setViewportSize(desktop)
@@ -373,6 +390,8 @@ export default async function UPDATE(context) {
     await liveHost.page.getByRole('button', { name: liveLabel }).click({ timeout: 30_000 })
     const appliedDetails = liveHost.page.getByRole('dialog', { name: /^(Godbot 更新|Godbot update)$/u })
     await appliedDetails.waitFor()
+    assert.equal(await appliedDetails.getByRole('list').count(), 0, 'a legacy receipt without notes keeps the release link')
+    await appliedDetails.getByRole('link', { name: /^(发布说明|Release notes)$/u }).waitFor()
     assert.equal(await appliedDetails.getByRole('button', { name: restartLabel }).count(), 0)
     await liveHost.capture('update-applied')
     note(applied.application === 'applied' ? 'update-applied-in-place' : 'update-applied-after-restart', {

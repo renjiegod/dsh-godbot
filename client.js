@@ -44170,6 +44170,7 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
   const [error, setError] = (0, import_react47.useState)("");
   const [dshError, setDshError] = (0, import_react47.useState)("");
   const button11 = (0, import_react47.useRef)(null);
+  const previewId = (0, import_react47.useId)();
   const focusDetails = (0, import_react47.useCallback)((node) => {
     node?.focus({ preventScroll: true });
   }, []);
@@ -44199,12 +44200,18 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
   const dsh = update?.dsh;
   const dshPhase = dsh?.phase ?? "idle";
   const dshRow = showsDshRow(dsh, update?.app);
+  const showGodbot = update?.available || phase !== "idle";
+  const notes = showGodbot ? update?.releaseNotes : null;
+  const preview = notes?.[0];
   const tick = useViewport();
   (0, import_react47.useLayoutEffect)(() => {
     if (!open) return;
     const rect = button11.current?.getBoundingClientRect();
-    if (rect) setBox({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 288)), top: rect.bottom + 6 });
-  }, [open, tick]);
+    if (!rect) return;
+    const width = Math.min(360, window.innerWidth - 16);
+    const top = rect.bottom + 6;
+    setBox({ width, top, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)), maxHeight: window.innerHeight - top - 8 });
+  }, [open, tick, wide, phase, preview]);
   if (!update?.available && !dshRow && phase === "idle" && dshPhase === "idle") return null;
   const cloudPhase = phase === "installing" || dshPhase === "installing" ? "installing" : phase !== "idle" ? phase : dshPhase;
   const pending = phase === "downloading" ? downloadText(update) : phase === "ready" ? readyText(update) : null;
@@ -44237,14 +44244,20 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
       type: "button",
       className: wide ? "bt-update bt-update-notice" : "bt-round bt-update",
       "data-phase": cloudPhase,
-      "aria-label": wide ? void 0 : summary,
+      "aria-label": summary,
+      "aria-describedby": wide && preview ? previewId : void 0,
       title: summary,
       "aria-haspopup": "dialog",
       "aria-expanded": open,
       onClick: toggle
     },
     (0, import_react47.createElement)(CloudDownloadIcon, { done: phase === "installed" || phase === "updated" }),
-    wide ? (0, import_react47.createElement)("span", { className: "bt-update-summary" }, summary) : null,
+    wide ? (0, import_react47.createElement)(
+      "span",
+      { className: "bt-update-copy" },
+      (0, import_react47.createElement)("span", { className: "bt-update-summary" }, summary),
+      preview ? (0, import_react47.createElement)("span", { id: previewId, className: "bt-update-preview" }, preview) : null
+    ) : null,
     wide ? (0, import_react47.createElement)("span", { className: "bt-update-chevron", "aria-hidden": true }, (0, import_react47.createElement)(ChevronRightIcon)) : null,
     !wide && (phase === "failed" || dshPhase === "failed" || error || dshError) ? (0, import_react47.createElement)("span", { className: "bt-update-dot", "aria-hidden": true }) : null
   );
@@ -44265,20 +44278,26 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
         className: "bt-update-pop",
         role: "dialog",
         tabIndex: -1,
-        "aria-label": update?.available || phase !== "idle" ? t("Godbot update") : t("DSH update"),
+        "aria-label": showGodbot ? t("Godbot update") : t("DSH update"),
         style: box,
         "data-leaving": leaving || void 0
       },
-      update?.available || phase !== "idle" ? (0, import_react47.createElement)(
+      showGodbot ? (0, import_react47.createElement)(
         import_react47.Fragment,
         null,
         (0, import_react47.createElement)("div", { className: "bt-update-title" }, phase === "installed" || phase === "updated" ? t("Update installed") : t("Godbot {version}", { version: update.latest })),
         (0, import_react47.createElement)("div", { className: "bt-update-text" }, phase === "installed" ? t("Restart DSH to start using Godbot {version}.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is running.", { version: update.current }) : pending ? sentences(pending, t("You have {version}.", { version: update.current })) : t("You have {version}.", { version: update.current })),
         message2 ? (0, import_react47.createElement)("div", { className: "bt-update-error", role: "alert" }, t("The update did not finish: {reason}", { reason: message2 })) : null,
+        preview ? (0, import_react47.createElement)(
+          "div",
+          { className: "bt-update-changes" },
+          (0, import_react47.createElement)("h3", null, t("What's new")),
+          (0, import_react47.createElement)("ul", { "aria-label": t("What's new") }, notes.map((note, index) => (0, import_react47.createElement)("li", { key: index }, note)))
+        ) : null,
         (0, import_react47.createElement)(
           "div",
           { className: "bt-update-actions" },
-          update.notesUrl ? (0, import_react47.createElement)("a", { className: "bt-update-notes", href: update.notesUrl, target: "_blank", rel: "noopener noreferrer" }, t("What's new")) : null,
+          update.notesUrl ? (0, import_react47.createElement)("a", { className: "bt-update-notes", href: update.notesUrl, target: "_blank", rel: "noopener noreferrer" }, t("Release notes")) : null,
           !wide && canDismiss ? (0, import_react47.createElement)("button", { type: "button", className: "bt-update-go", onClick: dismiss }, t("Dismiss")) : null,
           phase === "installed" ? restartControl : phase === "updated" ? null : (0, import_react47.createElement)("button", {
             type: "button",
@@ -44469,7 +44488,8 @@ var SIDEBAR_CSS = `
 .bt-update-banner{display:flex;flex:none;align-items:center;margin:8px 0 6px;border:1px solid color-mix(in srgb,var(--bt-accent) 30%,transparent);border-radius:10px;background:var(--bt-accent-soft);transition:background-color .12s ease}
 .bt-update-notice{display:flex;flex:1;min-width:0;align-items:center;gap:9px;min-height:42px;padding:8px 10px;border:0;border-radius:inherit;background:transparent;color:var(--bt-ink);font:600 13px/18px var(--bt-font);text-align:left;cursor:pointer}
 .bt-update-banner>.bt-update-dismiss{flex:none;margin-right:6px}
-.bt-update-summary{flex:1;min-width:0;overflow-wrap:anywhere}
+.bt-update-copy{flex:1;min-width:0;overflow-wrap:anywhere}
+.bt-update-preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:2px;font-size:12px;font-weight:400;line-height:16px;color:var(--bt-ink-2)}
 .bt-update-chevron{display:inline-flex;flex:none;color:var(--bt-ink-2)}
 .bt-update-chevron svg{width:14px;height:14px}
 .bt-update-notice:focus-visible,.bt-update-dismiss:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
@@ -44480,11 +44500,15 @@ var SIDEBAR_CSS = `
 .bt-update[data-phase=installing] .bt-cloud-arrow,.bt-update[data-phase=downloading] .bt-cloud-arrow{animation:bt-cloud-drop 1.1s cubic-bezier(.45,0,.55,1) infinite}
 @keyframes bt-cloud-drop{0%{transform:translateY(-3px);opacity:0}35%{opacity:1}70%{transform:translateY(1px);opacity:1}100%{transform:translateY(2px);opacity:0}}
 .bt-update-dot{position:absolute;top:6px;right:6px;width:7px;height:7px;border-radius:50%;background:#E5484D;box-shadow:0 0 0 1.5px var(--bt-sidebar)}
-.bt-update-pop{position:fixed;z-index:60;width:min(280px,calc(100vw - 16px));padding:14px 14px 12px;border-radius:16px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);color:var(--bt-ink);box-sizing:border-box;transform-origin:top left;font-family:var(--bt-font);animation:bt-update-pop ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
+.bt-update-pop{position:fixed;z-index:60;overflow-y:auto;padding:14px 14px 12px;border-radius:16px;background:var(--bt-glass-bg);-webkit-backdrop-filter:blur(24px) saturate(180%);backdrop-filter:blur(24px) saturate(180%);border:.5px solid var(--bt-glass-rim);box-shadow:var(--bt-glass-shadow);color:var(--bt-ink);box-sizing:border-box;transform-origin:top left;font-family:var(--bt-font);animation:bt-update-pop ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-update-pop[data-leaving]{animation:bt-pop-out .12s cubic-bezier(.4,0,1,1) forwards;pointer-events:none}
 @keyframes bt-update-pop{from{opacity:0;transform:scale(.96);filter:var(--bt-fx-blur-4,blur(4px))}}
 .bt-update-title{font-size:14px;line-height:20px;font-weight:600}
 .bt-update-text{margin-top:2px;font-size:12px;line-height:18px;color:var(--bt-ink-2)}
+.bt-update-changes{margin-top:12px}
+.bt-update-changes h3{margin:0;font:600 13px/18px var(--bt-font)}
+.bt-update-changes ul{margin:4px 0 0;padding:0 4px 0 18px;max-height:min(28vh,200px);overflow-y:auto;overflow-wrap:anywhere;color:var(--bt-ink-2);font-size:13px;line-height:19px;list-style:disc}
+.bt-update-changes li+li{margin-top:4px}
 .bt-update-error{margin-top:8px;font-size:12px;line-height:17px;color:var(--bt-danger);overflow-wrap:anywhere;max-height:90px;overflow:auto}
 .bt-update-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:12px}
 .bt-update-notes{margin-right:auto;font-size:12px;color:var(--bt-ink-2);text-decoration:none}
