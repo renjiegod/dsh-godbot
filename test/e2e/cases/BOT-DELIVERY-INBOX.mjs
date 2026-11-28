@@ -174,6 +174,32 @@ else {
   assert.match(textOf(nativeMerged.params.input), /before shipping[\s\S]*count the crates/u)
   note('cold-model-recovered-in-order', { first: first.id, second: second.id, legacy: legacy.id, late: late.id, reason: blocked.reason })
 
+  await idle(workerPart)
+  const interrupted = await dispatch('OPS-148 INBOX-HOLD-ACCEPTED finish the outstanding fixture work', queued)
+  const accepted = await stateOf(interrupted.id, 'accepted')
+  const [original] = await nativeInputs(interrupted.id)
+  assert.ok(original, 'Codex durably accepted the original delivery')
+  const afterRestart = await dispatch('OPS-149 continue with the next queued request', queued)
+  await exactNoInput(afterRestart)
+  await host.restart()
+  const replied = await stateOf(interrupted.id, 'replied')
+  assert.equal(replied.acceptedAt, accepted.acceptedAt)
+  assert.equal(replied.sequence, accepted.sequence)
+  const continuation = (await wire()).filter(row => row.method === 'inbox/input'
+    && textOf(row.params.input).includes('[Godbot message ID: resume/' + interrupted.id + '/'))
+  assert.equal(continuation.length, 1)
+  assert.equal(continuation[0].params.threadId, original.params.threadId)
+  assert.notEqual(continuation[0].params.turnId, original.params.turnId)
+  assert.match(textOf(continuation[0].params.input), /Check what is already done/u)
+  assert.doesNotMatch(textOf(continuation[0].params.input), /INBOX-HOLD-ACCEPTED/u)
+  await exactOnce(interrupted)
+  await stateOf(afterRestart.id, 'replied')
+  await exactOnce(afterRestart)
+  const traceAfterRestart = (await wire()).filter(row => row.method === 'inbox/input')
+  assert.ok(traceAfterRestart.findIndex(row => row.params.turnId === continuation[0].params.turnId)
+    < traceAfterRestart.findIndex(row => textOf(row.params.input).includes('[Godbot message ID: ' + afterRestart.id + ']')))
+  note('accepted-native-turn-continued', { id: interrupted.id, sameNativeThread: true, originalInputCount: 1, replyCount: 1 })
+
   async function exactNoInput(...messages) {
     for (const message of messages) assert.equal((await nativeInputs(message.id)).length, 0)
   }

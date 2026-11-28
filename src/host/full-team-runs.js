@@ -2,6 +2,7 @@ import { runOrigin } from './run-origin.js'
 import { createHash, randomUUID } from 'node:crypto'
 import { AutomationError } from './automation-runs.js'
 import { activeTeam, record, required } from './team.js'
+import { restartInterrupted } from './team-runtime/shared/turn-outcome.js'
 
 const tasks = 'fullTeamTasks'
 const works = 'fullTeamWork'
@@ -17,6 +18,7 @@ export class FullTeamRuns {
     // The Host can die between an external dispatch and its receipt. Never replay
     // that dispatch or sign off on an outcome whose terminal event was lost.
     for (const task of this.store.all(tasks).filter(running)) {
+      if (service.runtime?.hasRestartWork?.(task.workId)) continue
       this.store.update(tasks, task.id, { status: 'unknown', detail: 'Host restarted before the Godbot receipt' })
     }
   }
@@ -231,11 +233,11 @@ export class FullTeamRuns {
       return next()
     }, { prepend: true }))
     disposers.push(rt.ctx.on('agent/inbox/discarded', ({ message } = {}) => {
-      if (message?.source?.kind === 'bot') this.service.board?.discussion.update(message.source.exchangeId, 'stopped')
+      if (!rt.hostClosing?.() && message?.source?.kind === 'bot') this.service.board?.discussion.update(message.source.exchangeId, 'stopped')
     }))
     disposers.push(rt.ctx.on('session/event', (session, event) => {
       this.service.board?.discussion.observe(session, event)
-      if (event.type !== 'turn/end') return
+      if (event.type !== 'turn/end' || restartInterrupted(event.data?.reason)) return
       this.service.botTasks?.observeEnd(session.id, rt.live.get(session.id), event.data?.reason)
       const row = current(session.id)
       if (!row) return

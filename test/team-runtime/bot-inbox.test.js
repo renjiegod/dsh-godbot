@@ -148,3 +148,73 @@ test('an unaccepted delivery keeps its position on retry and a scoped stop prese
   assert.equal(rt.stopBotInbox('recipient', 'recipient'), true)
   assert.equal(rows()[1].state, 'stopped')
 })
+
+test('a legacy accepted Codex request recovers only when both histories support it', async t => {
+  for (const outcome of ['interrupted', 'completed', 'user-stop']) {
+    await t.test(outcome, async t => {
+      t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 })
+      const args = { role: 'request', exchangeId: 'request', fromId: 'sender', toId: 'recipient',
+        fromPart: 'sender', sessionId: 'recipient', text: 'Original request' }
+      const prior = { kind: SOURCE_KIND, exchangeId: args.exchangeId, inboxAttempt: 'old-attempt' }
+      const blocked = { id: args.exchangeId, conversation: 'recipient', sequence: 1, args,
+        acceptedAt: 500, state: 'blocked', reason: 'REPLY_UNKNOWN',
+        attempt: { token: prior.inboxAttempt, sessionId: 'recipient', turn: 1, native: { turnId: 'native-1' } } }
+      const reason = outcome === 'user-stop' ? { kind: 'aborted', reason: { kind: 'user' } } : {
+        kind: 'error', error: { code: 'LOCAL_AGENT_INTERRUPTED', message: 'Godbot closed the native agent session before the turn finished.' },
+      }
+      const events = [
+        { type: 'turn/start', data: { turn: 1 } },
+        { type: 'user/message', data: { source: prior } },
+        { type: 'turn/end', data: { turn: 1, reason } },
+      ]
+      const messages = []
+      const native = []
+      const replies = []
+      const bots = { sender: { id: 'sender' }, recipient: { id: 'recipient' } }
+      const agent = { status: 'idle', model: { current: () => ({ provider: 'local-codex-cli', model: 'fixture' }) },
+        followup: message => messages.push(message) }
+      const rt = {
+        state: { botInbox: { [blocked.id]: blocked } }, live: new Map(),
+        ctx: { on() {}, effect: effect => t.after(effect()),
+          get: name => name === 'llm' ? { prepareCall: async () => {} } : { get: () => agent } },
+        own: (table, key) => Object.hasOwn(table, key) ? table[key] : undefined,
+        load: async () => {}, save: async () => {}, readOnly: () => undefined,
+        warn: (...args) => assert.fail(args.join(' ')),
+        chatOf: id => id, botOf: id => bots[id], isBotSession: id => id in bots,
+        closeWork() {}, dropWork() {}, exchangesOf: () => [],
+        resolveAgent: async () => agent, ensureCapabilities: async () => {},
+        async *eventsBackwards() { yield* events.toReversed() },
+        relayMessage: ({ text, exchangeId, inboxAttempt, resumeOf }) => ({
+          id: inboxAttempt, text, source: { exchangeId, inboxAttempt, resumeOf },
+        }),
+        readCodexInboxDelivery: async (id, _binding, messageId) => {
+          native.push([id, messageId])
+          return { status: outcome, text: 'Already completed', turnId: 'native-1' }
+        },
+        async finishRecoveredInbox(sessionId, target, text) {
+          replies.push(text)
+          await rt.inboxReply(blocked.id, sessionId, target, text)
+        },
+      }
+      install(rt)
+      await rt.bootBotInbox()
+      for (let step = 0; step < 4; step++) {
+        t.mock.timers.tick(0)
+        await new Promise(resolve => setImmediate(resolve))
+      }
+      if (outcome === 'interrupted') {
+        assert.equal(messages.length, 1)
+        assert.equal(messages[0].source.exchangeId, blocked.id)
+        assert.match(messages[0].source.resumeOf, /^resume\/request\//u)
+        assert.match(messages[0].text, /Check what is already done/u)
+        assert.doesNotMatch(messages[0].text, /Original request/u)
+        assert.equal(rt.inboxForChat('recipient', 'recipient')[0].acceptedAt, 500)
+      } else {
+        assert.ok(messages.every(message => message.source.exchangeId !== blocked.id))
+        assert.equal(blocked.state, outcome === 'completed' ? 'replied' : 'stopped')
+      }
+      assert.deepEqual(replies, outcome === 'completed' ? ['Already completed'] : [])
+      assert.deepEqual(native, outcome === 'user-stop' ? [] : [['recipient', 'request']])
+    })
+  }
+})

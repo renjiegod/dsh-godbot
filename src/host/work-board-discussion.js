@@ -3,6 +3,7 @@ import { commentLength, commentPlan, commentReactions } from '../team/work-board
 import { runOrigin } from './run-origin.js'
 import { commentBody, BoardCommentStore, absentComment, changedComment, installCommentStore } from './work-board-comment-store.js'
 import { conversationHead } from './team-runtime/core/threads.js'
+import { restartInterrupted } from './team-runtime/shared/turn-outcome.js'
 import { runningBoardWork } from './work-board-runs.js'
 import { accessOf, cardId } from './work-board-index.js'
 
@@ -277,7 +278,7 @@ export class WorkBoardDiscussion {
     const run = this.run.get(id)
     if (!run || !this.validSession(run, sessionId) || !runningStates.has(run.state)) return
     const reason = turn?.reason?.kind
-    if (reason === 'aborted' && turn.reason.reason?.kind === 'disposed') return
+    if (restartInterrupted(turn?.reason)) return
     if (reason === 'completed' && !this.rt.waitsWork(id)) {
       this.recordTurn(id, sessionId, turn.turn, 'running')
       const bot = this.rt.botOf(run.bot_id)
@@ -446,15 +447,15 @@ export class WorkBoardDiscussion {
       if (!live || live.switched || live.suppressedSubagent) return
       const reason = event.data?.reason
       const idOf = source => this.rt.workOf?.(source) ?? source?.exchangeId
-      if (reason?.kind === 'aborted' && reason.reason?.kind === 'disposed') return
+      if (restartInterrupted(reason)) return
       if (live.cut && reason?.kind === 'aborted' && ['godbot/steer','ds-bot/steer'].includes(reason.reason?.reason)) return
       const state = reason?.kind === 'error' ? 'failed' : reason?.kind === 'aborted' ? 'stopped' : 'running'
       const error = reason?.kind === 'error' ? reason.error?.message ?? reason.error?.code ?? 'Bot 回合失败'
         : reason?.kind === 'aborted' ? 'Bot 回合已停止' : null
       const detail = error && (this.rt.redactSecrets?.(String(error)) ?? String(error)).slice(0, 500)
       this.recordTurn(idOf(live.info), session.id, live.turn ?? event.data?.turn, state, detail)
-      if (state !== 'running') {
-        for (const joined of live.joined ?? []) this.recordTurn(idOf(joined.info), session.id, live.turn, state, detail)
+      for (const joined of live.joined ?? []) {
+        if (state !== 'running' || joined.info?.boardInline) this.recordTurn(idOf(joined.info), session.id, live.turn, state, detail)
       }
     }
   }

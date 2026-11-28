@@ -13,7 +13,7 @@ import { LoopbackMcp } from './mcp.js'
 import { withoutNativeContext } from './native-context.js'
 import { nativeOptions } from './model-options.js'
 import { QUOTA_TEXT, SIGN_IN_TEXT } from '../../../../drivers/external/agent-errors.js'
-import { NATIVE_INTERRUPTED } from '../../shared/turn-outcome.js'
+import { NATIVE_INTERRUPTED, RUNTIME_INTERRUPTED } from '../../shared/turn-outcome.js'
 import { INBOX_DELIVERY, inboxMarker } from '../../shared/inbox-delivery.js'
 
 export const DEFAULT_CONTEXT_WINDOW = 200_000
@@ -389,7 +389,7 @@ export class LocalAgentAdapter extends LlmAdapter {
     void this.closeLive(live, { idle: true, cause: 'idle-timeout' })
   }
 
-  async closeLive(live, { idle = false, cause = 'session-closed' } = {}) {
+  async closeLive(live, { idle = false, cause = 'session-closed', recover = false } = {}) {
     if (live.dead) return
     if (live.engineSession !== undefined) {
       const rt = this.deps.rt
@@ -415,7 +415,7 @@ export class LocalAgentAdapter extends LlmAdapter {
       live.engineSession = undefined
       live.started = false
     }
-    const closed = live.closeEvent = { type: 'done', reason: 'interrupted',
+    const closed = live.closeEvent = { type: 'done', reason: 'interrupted', runtimeDisposed: recover,
       detail: 'Godbot closed the native agent session before the turn finished.' }
     for (const waiter of live.waiters.splice(0)) waiter(closed)
     const stillUsed = this.engineInUse(live.engine)
@@ -1194,7 +1194,8 @@ export class LocalAgentAdapter extends LlmAdapter {
           live.state = 'idle'
           if (interrupted) {
             yield { type: 'finish', reason: { kind: 'error',
-              failure: { code: NATIVE_INTERRUPTED, message: event.detail ?? 'The native agent stopped before finishing this turn.' } } }
+              failure: { code: event.runtimeDisposed ? RUNTIME_INTERRUPTED : NATIVE_INTERRUPTED,
+                message: event.detail ?? 'The native agent stopped before finishing this turn.' } } }
             return
           }
           // Input queued while this turn ran goes out as the next prompt
@@ -1444,13 +1445,13 @@ export class LocalAgentAdapter extends LlmAdapter {
     }
   }
 
-  async dispose() {
+  async dispose({ recover = false } = {}) {
     this.disposed = true
     const requests = [...this.sideRequests]
     for (const request of requests) request.controller.abort(new LlmError('the local agents adapter is disposed', 'NO_ADAPTER'))
     await Promise.all(requests.filter(request => request.isolated).map(request => request.engine.close?.().catch(() => {})))
     await Promise.all(requests.map(request => request.done.promise))
-    for (const live of Array.from(this.live.values())) await this.closeLive(live, { cause: 'adapter-dispose' })
+    for (const live of Array.from(this.live.values())) await this.closeLive(live, { cause: 'adapter-dispose', recover })
     for (const engine of Array.from(this.engines.values())) await engine.close?.().catch(() => {})
     this.engines.clear()
   }
