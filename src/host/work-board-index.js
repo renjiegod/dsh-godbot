@@ -84,7 +84,7 @@ export function queryBoard(db, access, req, readOnly) {
   ]) {
     if (req[key]) {
       predicates.push('COALESCE(' + field(col) + ",'')=?")
-      values.push(req[key] === 'unassigned' ? '' : String(req[key]))
+      values.push(key === 'owner' && req[key] === 'unassigned' ? '' : String(req[key]))
     }
   }
   if (req.section) {
@@ -107,7 +107,7 @@ export function queryBoard(db, access, req, readOnly) {
     } else if (key === 'assignee')
       predicates.push("COALESCE(NULLIF(" + field('assignee') + ",''),'bot/'||" + field('owner') + ",'')=?")
     else predicates.push(field(key) + "=?")
-    values.push(req[key] === 'unassigned' ? '' : String(req[key]))
+    values.push(key === 'assignee' && req[key] === 'unassigned' ? '' : String(req[key]))
   }
   if (/^[0-4]$/.test(req.priority ?? '')) {
     predicates.push(priority + '=?')

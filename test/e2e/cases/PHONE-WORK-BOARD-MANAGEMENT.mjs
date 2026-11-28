@@ -34,7 +34,7 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     await tap('team drawer', 'Open team list', '打开团队列表')
     await tap('open Android work board', 'Work board', '工作看板')
     const work = await channel(host, 'board-action', {
-      op: 'create', title: 'Cross-client managed work', description: 'Original description', labels: ['web-label'],
+      op: 'create', title: 'Cross-client managed work', description: 'Original description', labels: ['unassigned'],
       dueDate: '2026-12-14', assignee: 'person/owner', requestId: 'create-managed',
     })
     const read = () => channel(host, 'board-item', { id: work.id })
@@ -85,7 +85,7 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     const shared = await channel(host, 'board-action', {
       op: 'configure', requestId: 'shared-timeline', entry: {
         kind: 'view', name: 'Paired acceptance timeline', visibility: 'shared',
-        filters: { label: 'web-label' }, display: { layout: 'gantt', groupBy: 'assignee' },
+        filters: { label: 'unassigned' }, display: { layout: 'gantt', groupBy: 'assignee' },
       },
     })
     const hostId = new URL(pairing.uri).searchParams.get('host')

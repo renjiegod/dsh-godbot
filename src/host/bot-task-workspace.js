@@ -217,7 +217,7 @@ export class BotTaskWorkspace {
     if (next?.state !== 'queued') return this.schedule(botId)
     const { store, rt } = this
     const task = next.taskId && store.get('tasks', next.taskId)
-    const original = store.get('messages', next.messageId)
+    let original = store.get('messages', next.messageId)
     if (!original) return this.botFailed(next.id, 'unknown', '找不到原派工记录。')
     if (original.kind === 'assignment' && (task?.assignmentId !== next.id || !activeTasks.has(task.status))) {
       store.update('botTaskDeliveries', next.id, { state: 'superseded' })
@@ -237,10 +237,15 @@ export class BotTaskWorkspace {
           ? await rt.openWorkBoardConversation(task.boardNumber, member, task.title, anchor)
           : (anchor && await rt.openBotConversation(member, anchor))
             || await rt.newBotConversation(member, 'GB-' + task.boardNumber + ' · ' + task.title)
+        const current = store.get('tasks', task.id)
         if (!sessionId || this.closing || rt.readOnly() || !store.get('members',bot.id)
-          || store.get('tasks',task.id)?.assignmentId !== next.id || store.get('botTaskDeliveries', next.id)?.state !== 'sending') throw new Error('任务会话或负责人已改变。')
-        store.update('tasks', task.id, { boardSession:sessionId, boardSessionOwner:bot.id })
-        store.update('botTaskDeliveries', next.id, {sessionId})
+          || current?.assignmentId !== next.id || store.get('botTaskDeliveries', next.id)?.state !== 'sending') throw new Error('任务会话或负责人已改变。')
+        store.transaction(() => {
+          // Edits while queued or opening the session belong to this unsent assignment.
+          original = this.team.refreshUnsentAssignment(current, original)
+          store.update('tasks', task.id, { boardSession:sessionId, boardSessionOwner:bot.id })
+          store.update('botTaskDeliveries', next.id, {sessionId})
+        })
       }
       rt.openWork(next.id, { to: bot.id })
       const run = task?.runId && store.get('automationRuns', task.runId)
