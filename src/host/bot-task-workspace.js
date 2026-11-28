@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { TeamActions, teamMember } from './team.js'
 import { listWorkflows, saveWorkflow, startWorkflow } from './workflows.js'
 import { taskBudgetReceipt } from './bot-budget.js'
+import { restartInterrupted } from './team-runtime/shared/turn-outcome.js'
 
 export const botWorkspaceId = 'godbot-workspace'
 const ownedStates = new Set(['sending', 'sent'])
@@ -113,7 +114,8 @@ export class BotTaskWorkspace {
         // A budget hold contains the exact undelivered Bot message. Its own
         // durable release receipt is responsible for resuming it after restart.
         const held = taskBudgetReceipt(this.store, row.sessionId, row.id)
-        if (held?.status === 'held' && this.store.get('members', row.botId) && !rt.readOnly()) this.active.set(row.botId, row.id)
+        if ((held?.status === 'held' || rt.hasRestartWork?.(row.id, row.sessionId))
+          && this.store.get('members', row.botId) && !rt.readOnly()) this.active.set(row.botId, row.id)
         else this.botFailed(row.id, 'unknown', '宿主重启，尚未确认上次派工结果。')
       } else if (row.state === 'queued') this.remember(row)
     }
@@ -329,7 +331,7 @@ export class BotTaskWorkspace {
   }
 
   observeEnd(sessionId, entry, reason) {
-    if (!entry || this.rt.readOnly()) return
+    if (!entry || this.rt.readOnly() || restartInterrupted(reason)) return
     const workOf = info => info && (this.rt.workOf(info) ?? info.exchangeId)
     const ids = new Set([entry?.info, ...(entry?.joined ?? []).map(join => join.info)].map(workOf))
     for (const id of ids) {

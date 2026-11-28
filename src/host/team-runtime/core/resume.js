@@ -12,12 +12,14 @@
 // request itself is never sent again there.
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, unlink, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { HISTORY_TIMEOUT_MS, MESSAGE_INLINE_MAX, SOURCE_KIND, STEER_CUT, isBotGoalSource } from './constants.js'
+import { BACKGROUND_ROLE, HISTORY_TIMEOUT_MS, MESSAGE_INLINE_MAX, REPLY_KIND, SOURCE_KIND, STEER_CUT, isBotGoalSource } from './constants.js'
+import { replaceFile } from './files.js'
 import { answerSender, cutOffText, failureLine, turnFailure } from './turns.js'
 import { textOf } from './text.js'
 import { conversationHead } from './threads.js'
+import { restartInterrupted } from '../shared/turn-outcome.js'
 
 // Long enough for DSH to finish opening its workspaces after a start.
 export const RESUME_DELAY_MS = 3000
@@ -49,7 +51,7 @@ export function turnsOf(events) {
   let current
   for (const event of events) {
     if (event.type === 'turn/start') {
-      current = { turn: event.data?.turn, took: [], texts: [], reason: undefined }
+      current = { turn: event.data?.turn, since: event.time, took: [], texts: [], reason: undefined }
       turns.push(current)
       continue
     }
@@ -61,6 +63,7 @@ export function turnsOf(events) {
     if (event.type === 'user/message') {
       const source = event.data?.source
       if (source?.exchangeId !== undefined) current.took.push(source)
+      if ([SOURCE_KIND, REPLY_KIND, 'user', 'schedule'].includes(source?.kind)) current.hasInput = true
       continue
     }
     if (event.type === 'assistant/message') {
@@ -109,6 +112,8 @@ export function answeredIn(events, exchangeId) {
 const triggerOf = info => ({
   role: info.role,
   ...(info.exchangeId ? { exchangeId: info.exchangeId } : {}),
+  ...(info.replyTo ? { replyTo: info.replyTo } : {}),
+  ...(info.boardInline ? { boardInline: true } : {}),
   ...(info.senderSessionId ? { senderSessionId: info.senderSessionId } : {}),
   ...(info.senderPart ? { senderPart: info.senderPart } : {}),
   ...(info.roomId ? { roomId: info.roomId } : {}),
@@ -122,49 +127,91 @@ const readNotes = (file) => {
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     const object = value => (value !== null && typeof value === 'object' && !Array.isArray(value) ? value : {})
-    return { turns: object(parsed?.turns), queued: object(parsed?.queued) }
+    const lists = (value, keep) => Object.fromEntries(Object.entries(object(value))
+      .filter(([, list]) => Array.isArray(list)).map(([id, list]) => [id, list.filter(keep)]))
+    return {
+      turns: object(parsed?.turns),
+      queued: lists(parsed?.queued, item => typeof item?.args?.exchangeId === 'string'),
+      inputs: lists(parsed?.inputs, item => typeof item?.message?.id === 'string'),
+    }
   } catch {
-    return { turns: {}, queued: {} }
+    return { turns: {}, queued: {}, inputs: {} }
   }
 }
 
 export function install(rt) {
   const { ctx, home } = rt
   const file = join(home, 'inflight.json')
+  const temp = file + '.' + process.pid + '.tmp'
+  // Cordis root is disposed or unloading.
+  const hostClosing = () => [4, 5].includes(ctx.root?.fiber?.state)
+  rt.hostClosing = hostClosing
+  const inputKinds = new Set(['user', 'schedule', REPLY_KIND])
+  const moving = new Set()
 
   // What the last run left; read before this run notes anything.
-  let interrupted = readNotes(file)
+  const interrupted = readNotes(file)
 
-  /** @type {Record<string, {botId:string, roomId?:string, since:number, trigger?:any, approval?:{tool:string, reason:string}, resumed?:boolean}>} */
-  let turns = {}
+  const turns = Object.create(null)
   // A new delivery can persist before recovery runs; it must keep the old queue.
-  /** @type {Record<string, {at:number, args:any}[]>} deliveries no turn has taken up, by Session */
   let queued = interrupted.queued
+  const inputs = interrupted.inputs
+  const pending = new Set([...Object.keys(interrupted.turns), ...Object.keys(queued), ...Object.keys(inputs)])
+  const recoveringSession = id => pending.has(id)
+  rt.recoveringSession = recoveringSession
+  rt.hasRestartWork = (workId, sessionId) => {
+    const ids = sessionId ? [sessionId] : [...pending]
+    return ids.some(id => {
+      const record = interrupted.turns[id] ?? turns[id]
+      return rt.workOf(record?.trigger) === workId || record?.joined?.some(item => rt.workOf(item.info) === workId)
+        || queued[id]?.some(({ args }) => args.exchangeId === workId || args.work === workId)
+    })
+  }
+  rt.restartTurnContext = (id, turn) => {
+    const record = turns[id] ?? interrupted.turns[id]
+    if (!record || record.turn !== undefined && record.turn !== turn) return
+    const { approval, joined } = record
+    return { ...(approval ? { approval } : {}), ...(joined?.length ? { joined } : {}) }
+  }
   let writing = Promise.resolve()
   let stopped = false
   let latest
   let due = false
+  rt.stopRestartWork = id => {
+    if (!pending.delete(id)) return false
+    delete interrupted.turns[id]
+    delete queued[id]
+    delete inputs[id]
+    persist()
+    return true
+  }
   const persist = () => {
     // Only the host that saves the team runs its work again.
     if (stopped || rt.readOnly() !== undefined) return
-    latest = JSON.stringify({ turns, queued })
+    latest = JSON.stringify({ turns: { ...interrupted.turns, ...turns }, queued, inputs })
     // One write waits at a time and takes the latest notes, so a busy round does not
     // write the file once per change.
     if (due) return
     due = true
-    // Written in place: a rename over the file fails on Windows while anything reads
-    // it, and a torn write only loses what one restart would pick up.
     writing = writing.then(async () => {
       due = false
       const snapshot = latest
       await mkdir(home, { recursive: true })
-      await writeFile(file, snapshot, 'utf8')
-    }).catch(error => rt.warn('godbot: noting running turns failed: %s', error))
+      const check = () => {
+        if (rt.readOnly() !== undefined) throw new Error('The host no longer owns the recovery journal.')
+      }
+      check()
+      await writeFile(temp, snapshot, { encoding: 'utf8', mode: 0o600 })
+      check()
+      await replaceFile(temp, file, check)
+    }).catch(async error => {
+      await unlink(temp).catch(() => {})
+      rt.warn('godbot: noting running turns failed: %s', error)
+    })
   }
   const update = (id, change) => {
     const next = change(turns[id])
     if (next === turns[id]) return
-    turns = { ...turns }
     if (next === undefined) delete turns[id]
     else turns[id] = next
     persist()
@@ -182,9 +229,11 @@ export function install(rt) {
     }
   }
   const noteQueued = (sessionId, args) => {
+    if ((queued[sessionId] ?? []).some(item => item.args.exchangeId === args.exchangeId)) return
     queued = { ...queued, [sessionId]: [...(queued[sessionId] ?? []), { at: Date.now(), args }] }
     persist()
   }
+  rt.restartDeliveryPending = resumeOf => Object.values(queued).some(list => list.some(item => item.args.resumeOf === resumeOf))
   const moveQueued = (sessionId, args) => {
     forgetQueued(args.exchangeId)
     noteQueued(sessionId, { ...args, sessionId })
@@ -198,6 +247,7 @@ export function install(rt) {
     // are kept whole; nothing waits out a delivery silently.
     noteQueued(sessionId, noted)
     try {
+      if (noted.resumeOf) await writing
       // A reply can require reopening an archived conversation. Keep the note
       // before doing that work, so a restart can still deliver the reply.
       if (noted.sessionId === undefined && noted.replyPart !== undefined) {
@@ -215,7 +265,8 @@ export function install(rt) {
   }
 
   // What a Session was sent and no turn has read yet.
-  rt.legacyBotDeliveries = () => interrupted.queued
+  const legacy = interrupted.queued
+  rt.legacyBotDeliveries = () => legacy
   rt.hasLegacyBotReply = exchangeId => Object.values(queued).some(list => list.some(item => item.args.replyTo === exchangeId))
   rt.unreadOf = sessionId => [
     ...(queued[sessionId] ?? []).map(item => item.args).filter(args => !rt.inboxHas?.(args.exchangeId)),
@@ -223,55 +274,94 @@ export function install(rt) {
   ]
   rt.forgetDelivery = forgetQueued
 
-  // A message is done with once a turn takes it up, or once it leaves the inbox untaken
-  // while Godbot runs: the user stopped the Bot, or Godbot moved or withdrew it.
-  ctx.on('agent/inbox/discarded', ({ message } = {}) => {
-    if (message?.source?.kind === SOURCE_KIND && message.source.exchangeId) forgetQueued(message.source.exchangeId)
+  const discardInput = (id, remove) => {
+    const before = inputs[id] ?? []
+    const after = before.filter(item => !remove(item))
+    if (after.length === before.length) return
+    if (after.length === 0) delete inputs[id]
+    else inputs[id] = after
+    persist()
+  }
+  ctx.on('agent/inbox/inserted', ({ agent, message }) => {
+    const id = agent.id
+    if (!rt.isBotSession(id) || !inputKinds.has(message?.source?.kind) || typeof message.id !== 'string') return
+    const list = inputs[id] ?? []
+    if (list.some(item => item.message.id === message.id)) return
+    inputs[id] = [...list, { message }]
+    persist()
   })
-  // Exchanges a turn took up since this start, until the resends are done, so a resend
-  // never repeats one.
-  let taken = Object.keys(interrupted.queued).length > 0 ? new Set() : undefined
-  // The first turn event of each Session since this start, until the noted turns are
-  // picked up. A turn that ends, or still runs, before one starts here outlived the
-  // last run: only Godbot restarted (the plugin reloaded) and DSH went on.
-  let firstTurn = Object.keys(interrupted.turns).length > 0 ? new Map() : undefined
+  ctx.on('agent/inbox/claimed', ({ agent, message, turn }) => {
+    const item = inputs[agent.id]?.find(item => item.message.id === message.id)
+    if (!item) return
+    item.turn = turn
+    persist()
+  })
+  ctx.on('agent/inbox/discarded', ({ agent, message } = {}) => {
+    if (hostClosing() || moving.has(message?.id)) return
+    if (message?.source?.kind === SOURCE_KIND && message.source.exchangeId) forgetQueued(message.source.exchangeId)
+    if (message?.id) discardInput(agent?.id, item => item.message.id === message.id)
+  })
+
+  function removeParked(agent, message) {
+    moving.add(message.id)
+    try { return agent.inbox.remove(message.id) } finally { moving.delete(message.id) }
+  }
+
+  rt.sendRestartContinuation = (agent, message) => {
+    const ids = new Set((inputs[agent.id] ?? []).map(item => item.message.id))
+    const parked = agent.status === 'idle' ? agent.inbox.nextTurn.filter(item => ids.has(item.id)) : []
+    // A hard stop may leave later prompts on disk. Give the interrupted turn its
+    // own step before those prompts re-enter the queue.
+    const removed = parked.filter(item => removeParked(agent, item))
+    try { agent.followup(message) } finally {
+      for (const item of removed) agent.inbox.append('next-turn', item)
+    }
+  }
+
   ctx.on('session/event', (session, event) => {
     const id = session?.id
     if (id === undefined) return
-    if ((event.type === 'turn/start' || event.type === 'turn/end') && firstTurn?.has(id) === false) {
-      firstTurn.set(id, { type: event.type, turn: event.data?.turn, reason: event.data?.reason })
-    }
     if (event.type === 'user/message' && event.data?.source?.kind === SOURCE_KIND && event.data.source.exchangeId) {
-      taken?.add(event.data.source.exchangeId)
       forgetQueued(event.data.source.exchangeId)
     }
+    if (event.type === 'user/message' && event.data?.id) discardInput(id, item => item.message.id === event.data.id)
     if (!rt.isBotSession(id)) return
     switch (event.type) {
       case 'turn/start': {
         const owner = rt.groupOwners.get(id)
         const botId = owner?.botId ?? rt.chatOwners.get(id)
         // turns.js runs first and has already claimed or restored the trigger.
-        const info = rt.live.get(id)?.info
-        update(id, () => ({ botId, ...(owner ? { roomId: owner.roomId } : {}), since: event.time ?? Date.now(), ...(info !== undefined ? { trigger: triggerOf(info) } : {}) }))
+        const { info, joined } = rt.live.get(id) ?? {}
+        update(id, () => ({ botId, ...(owner ? { roomId: owner.roomId } : {}), turn: event.data?.turn,
+          since: event.time ?? Date.now(), ...(info !== undefined ? { trigger: triggerOf(info) } : {}),
+          ...(joined?.length ? { joined } : {}) }))
         break
       }
       case 'user/message': {
-        if (isBotGoalSource(event.data?.source)) {
-          // The Bot goal owns recovery of this attempt and checks the durable log.
+        const source = event.data?.source
+        if (isBotGoalSource(source) || source?.role === BACKGROUND_ROLE) {
+          // Goals recover from their own attempt records. A display turn for an
+          // unsolicited native result has no prompt to continue.
           update(id, () => undefined)
           break
         }
-        if (event.data?.source?.kind !== SOURCE_KIND) break
+        if (source?.kind !== SOURCE_KIND && !inputKinds.has(source?.kind)) break
         // turns.js, installed earlier, has already claimed the turn's trigger.
-        const info = rt.live.get(id)?.info
-        update(id, record => (record === undefined || record.trigger !== undefined || info === undefined ? record
-          : { ...record, trigger: triggerOf(info), ...(info.resumed ? { resumed: true } : {}) }))
+        const { info, joined } = rt.live.get(id) ?? {}
+        const initiator = rt.governance?.current(id)
+        update(id, record => record === undefined ? record : {
+          ...record,
+          ...(info !== undefined && record.trigger === undefined ? { trigger: triggerOf(info) } : {}),
+          ...(joined?.length ? { joined } : {}),
+          ...(initiator ? { initiator } : {}),
+        })
         break
       }
       case 'turn/end': {
         // DSH stops every turn as it shuts down; that one is picked up at the next start.
         const reason = event.data?.reason
-        if (reason?.kind === 'aborted' && reason.reason?.kind === 'disposed') break
+        if (restartInterrupted(reason)) break
+        discardInput(id, item => item.turn === event.data?.turn)
         update(id, () => undefined)
         break
       }
@@ -280,41 +370,43 @@ export function install(rt) {
 
   // An approval the restart drops is named when the turn is picked up.
   rt.noteApproval = (sessionId, approval) => update(sessionId, record => (record === undefined ? record
-    : approval === undefined ? (({ approval: _, ...rest }) => rest)(record) : { ...record, approval }))
+    : approval === undefined ? (hostClosing() ? record : (({ approval: _, ...rest }) => rest)(record)) : { ...record, approval }))
 
-  async function resumeTurn(sessionId, record) {
+  async function resumeTurn(sessionId, record, events) {
     const bot = rt.botOf(record.botId)
     if (bot === undefined || rt.inboxHas?.(record.trigger?.exchangeId)) return
-    const text = resumeText(record)
+    const resumeOf = sessionId + ':' + (record.turn ?? record.since)
+    if (events.some(event => event.type === 'user/message' && event.data?.source?.resumeOf === resumeOf)
+      || Object.values(queued).some(list => list.some(item => item.args.resumeOf === resumeOf))) return
+    const trigger = record.trigger
+    const work = rt.workOf(trigger)
+    const failover = trigger?.exchangeId && rt.failoverHandoff?.(sessionId, trigger.exchangeId)
+    const initiator = record.initiator ?? failover?.initiator
+    const continuation = { toId: bot.id, sessionId, resumed: true, resumeOf, text: resumeText(record),
+      ...(initiator ? { initiator } : {}),
+      ...(record.joined?.length ? { joined: record.joined } : {}),
+      ...(work ? { work } : {}), ...(trigger?.boardInline ? { boardInline: true } : {}),
+    }
     if (record.roomId !== undefined) {
       const room = rt.roomOf(record.roomId)
-      if (room === undefined || !room.members.includes(bot.id)) return
-      await rt.postToRoom(room, bot, '', { resumed: true, quiet: true, ...(record.resumed ? { again: true } : {}) })
-      // A turn already picked up once and cut off again stays stopped: a restart loop
-      // must not run it forever.
-      if (record.resumed) return
-      const exchangeId = record.trigger?.exchangeId
-      const failover = exchangeId && rt.failoverHandoff?.(sessionId, exchangeId)
+      if (room === undefined || !room.members.includes(bot.id) || room.sessions?.[bot.id] !== sessionId) return
       await rt.deliver({
-        toId: bot.id, sessionId: room.sessions?.[bot.id] ?? sessionId, role: 'room', roomId: room.id,
-        note: 'picking up after a restart', resumed: true, text,
-        ...(failover ? { exchangeId, initiator: failover.initiator } : {}), ...(record.trigger?.askedBy ? { askedBy: record.trigger.askedBy } : {}),
+        ...continuation, role: 'room', roomId: room.id, note: 'picking up after a restart',
+        ...(trigger?.exchangeId ? { exchangeId: trigger.exchangeId } : {}),
+        ...(trigger?.askedBy ? { askedBy: trigger.askedBy } : {}),
       })
+      await rt.postToRoom(room, bot, '', { resumed: true, quiet: true })
       return
     }
-    if (record.resumed) return
-    const trigger = record.trigger
+    if (rt.selfOf(sessionId) !== bot.id || !rt.isBotSession(sessionId)) return
     if ((trigger?.role === 'request' || trigger?.role === 'stopped') && trigger.senderSessionId && rt.botOf(trigger.senderSessionId)) {
-      const target = await rt.botConversationForPart(bot, sessionId)
       // Keep the conversation, exchange, and audience of the interrupted request.
-      const failover = trigger.exchangeId && rt.failoverHandoff?.(sessionId, trigger.exchangeId)
-      await rt.deliver({ fromId: trigger.senderSessionId, toId: bot.id, sessionId: target,
-        ...(failover ? { initiator: failover.initiator } : {}), ...(trigger.senderPart ? { fromPart: trigger.senderPart } : {}), role: trigger.role, ...(trigger.exchangeId ? { exchangeId: trigger.exchangeId } : {}), ...(trigger.senderRoomId ? { fromRoomId: trigger.senderRoomId } : {}), ...(trigger.audience === 'user' ? { audience: 'user' } : {}), resumed: true, text })
+      await rt.deliver({ ...continuation, fromId: trigger.senderSessionId, fromPart: trigger.senderPart,
+        role: trigger.role, exchangeId: trigger.exchangeId, fromRoomId: trigger.senderRoomId,
+        audience: trigger.audience })
       return
     }
-    const ownPart = rt.selfOf(sessionId) === bot.id && rt.isBotSession(sessionId) ? { sessionId } : {}
-    // A turn that went on with work another Bot asked for still owes that Bot its answer.
-    await rt.deliver({ toId: bot.id, ...ownPart, role: 'resume', resumed: true, text, ...(trigger?.work ? { work: trigger.work } : {}) })
+    await rt.deliver({ ...continuation, role: 'resume', ...(String(work).startsWith('board-comment/') ? { exchangeId: work } : {}) })
   }
 
   async function sessionFor(sessionId, args) {
@@ -331,49 +423,49 @@ export function install(rt) {
     return rt.chatOf(args.toId)
   }
 
-  // A hard stop keeps the inbox, which the Session runs once it wakes; only what DSH
-  // cancelled is sent again. The notes stay queued until a turn takes the messages
-  // up, so a send that fails here, or a Session that cannot be opened, leaves them
-  // for the next start instead of losing them.
-  async function resendQueued(sessionId, list) {
-    const fresh = list.filter(item => item?.args?.exchangeId !== undefined && !rt.inboxHas?.(item.args.exchangeId)
-      && rt.botOf(item.args.toId) !== undefined && taken?.has(item.args.exchangeId) !== true)
-    const inboxes = new Map()
-    for (const { args } of fresh) {
-      try {
-        const target = await sessionFor(sessionId, args)
-        if (target === undefined) continue
-        let waiting = inboxes.get(target)
-        if (waiting === undefined) {
-          const agent = await rt.resolveAgent(target)
-          waiting = new Set([...(agent.inbox?.nextStep ?? []), ...(agent.inbox?.nextTurn ?? [])].map(message => message.source?.exchangeId))
-          inboxes.set(target, waiting)
-        }
-        if (waiting.has(args.exchangeId)) continue
-        if (taken?.has(args.exchangeId) === true) {
-          forgetQueued(args.exchangeId)
-          continue
-        }
-        // A request that waited through a restart reaches its target late.
-        if (args.role === 'request' || args.role === 'stopped') rt.lateWork?.(args.exchangeId)
-        if (target !== sessionId || (args.replyPart !== undefined && args.sessionId === undefined)) moveQueued(target, args)
-        await deliver({ ...args, sessionId: target, steer: false, resent: true })
-      } catch (error) {
-        rt.warn('godbot: sending again what %s was sent failed: %s', sessionId, error)
+  async function resendQueued(sessionId, list, events) {
+    for (const { args } of list.toSorted((a, b) => Number(!!b.args.resumeOf) - Number(!!a.args.resumeOf))) {
+      if (rt.inboxHas?.(args.exchangeId) || !rt.botOf(args.toId)) {
+        forgetQueued(args.exchangeId)
+        continue
       }
+      const target = await sessionFor(sessionId, args)
+      if (!target) { forgetQueued(args.exchangeId); continue }
+      const history = target === sessionId && events ? events : await readDeliveryEvents(rt, target)
+      if (!history) throw new Error('The delivery history is unavailable.')
+      const wasTaken = event => {
+        const source = event.data?.source
+        return event.type === 'user/message' && (args.resumeOf ? source?.resumeOf === args.resumeOf
+          : source?.exchangeId === args.exchangeId && source.replyTo === args.replyTo)
+      }
+      if (history.some(wasTaken)) { forgetQueued(args.exchangeId); continue }
+      const agent = await rt.resolveAgent(target)
+      if (!(queued[sessionId] ?? []).some(item => item.args.exchangeId === args.exchangeId)) continue
+      const parked = [...agent.inbox.nextStep, ...agent.inbox.nextTurn].find(item => item.source?.exchangeId === args.exchangeId)
+      if (parked && agent.status === 'running') continue
+      if (args.role === 'request' || args.role === 'stopped') rt.lateWork?.(args.exchangeId)
+      if (parked) {
+        removeParked(agent, parked)
+        if (args.resumeOf) rt.sendRestartContinuation(agent, parked)
+        else agent.followup(parked)
+        await ctx.sessions.flush(agent.session)
+      } else await deliver({ ...args, sessionId: target, steer: false, resent: true })
+      if (target !== sessionId && queued[sessionId]?.some(item => item.args.exchangeId === args.exchangeId))
+        moveQueued(target, args)
     }
   }
 
   // A turn that ended while Godbot was not watching it: its answer may exist and never
   // have gone to the Bot that waits for it. The Session's durable log says what it did;
   // the work it was for is settled once, the way a finished turn settles it.
-  async function reconcileEnded(sessionId, record, ended) {
+  async function reconcileEnded(sessionId, record, events, turn) {
     const trigger = record.trigger
+    for (const { info } of record.joined ?? []) {
+      if (info.boardInline) rt.reconcileWorkBoardComment?.(rt.workOf(info), sessionId, turn)
+    }
     if (trigger === undefined || rt.inboxHas?.(trigger.exchangeId)) return
     if (trigger.exchangeId && rt.failoverHandoff?.(sessionId, trigger.exchangeId)) {
-      const events = await readDeliveryEvents(rt, sessionId)
-      const turn = events && turnOf(events, trigger.exchangeId)
-      if (turn?.reason && !['blocked', 'interrupted'].includes(turn.reason.kind))
+      if (turn.reason && turn.reason.kind !== 'blocked')
         rt.reconcileFailover?.(sessionId, trigger.exchangeId, turn.reason, turn.texts.join('\n\n'))
       return
     }
@@ -381,47 +473,21 @@ export function install(rt) {
     if (!rt.ownsWork(record.botId, workId)) return
     const exchangeId = trigger.exchangeId
     if (typeof workId === 'string' && workId.startsWith('board-comment/')) {
-      if (ended.reason?.kind === 'aborted' && ended.reason.reason?.kind === 'disposed') {
-        update(sessionId, () => record)
-        return
-      }
-      const events = await readDeliveryEvents(rt, sessionId)
-      const turn = events && turnOf(events, exchangeId ?? workId)
-      if (turn) rt.reconcileWorkBoardComment?.(workId, sessionId, turn)
+      rt.reconcileWorkBoardComment?.(workId, sessionId, turn)
       return
     }
     const asker = rt.workAsker(workId)
     const sender = asker?.senderSessionId
-    if (exchangeId === undefined || sender === undefined || rt.botOf(sender) === undefined) return
     const name = rt.botOf(rt.selfOf(sessionId))?.name ?? 'The other Bot'
-    // DSH stopped that turn as it shut down: it is picked up at the next start.
-    if (ended.reason?.kind === 'aborted' && ended.reason.reason?.kind === 'disposed') {
-      update(sessionId, () => record)
-      return
-    }
-    const events = await readDeliveryEvents(rt, sessionId)
-    if (events === undefined) {
-      // The record of that work cannot be read: whether it answered cannot be
-      // established. The sender is told that, and the work is not run again.
-      const why = 'the record of that work could not be read'
-      const text = `${name} could not answer your message: ${why}, so what it did is unknown (its session is ${sessionId}). It may have done part of the work. Tell the user if it matters; do not run the work again without asking.`
-      const room = rt.roomOf(rt.groupOwners.get(sessionId)?.roomId)
-      rt.noteFailure?.({
-        level: 'warn',
-        source: 'turn',
-        text: `the result of the work ${name} was given is unknown`,
-        bot: name,
-        where: room === undefined ? 'own chat' : `group "${room.name}"`,
-        sessionId,
-      })
-      answerSender(rt, sessionId, asker, text)
-      return
-    }
-    const turn = turnOf(events, exchangeId)
-    // The request was never taken up: it is still waiting, and the delivery that is
-    // waiting for it keeps what it had.
-    if (turn === undefined) return
     const said = turn.texts.join('\n\n')
+    if (!sender) {
+      if (turn.reason?.kind === 'completed') {
+        if (rt.waitsWork(workId)) rt.holdWork(workId, said)
+        else rt.closeWork(workId, name, rt.answerText(workId, said, name))
+      } else if (turn.reason?.kind !== 'blocked') rt.dropWork(workId)
+      return
+    }
+    if (!exchangeId || rt.botOf(sender) === undefined) return
     // The answer went up in another run: the work closes with what it said, and
     // nothing is sent twice.
     const back = rt.roomOf(asker.senderRoomId)?.sessions?.[sender]
@@ -429,19 +495,14 @@ export function install(rt) {
     // from, which is not its foreground chat when that part is a background one.
     const where = back ?? conversationHead(rt.botOf(sender), asker.senderPart) ?? asker.senderPart ?? rt.chatOf(sender)
     const sent = await readDeliveryEvents(rt, where)
-    if (sent !== undefined && answeredIn(sent, workId)) {
+    if (sent === undefined) throw new Error('The reply destination history is unavailable.')
+    if (answeredIn(sent, workId) || rt.hasLegacyBotReply(workId)) {
       rt.closeWork?.(workId, name, rt.answerText(workId, said, name))
       return
     }
     const reason = turn.reason
     // A turn that went on to a fresh part goes on there; it is not settled here.
     if (reason?.kind === 'blocked') return
-    // The turn was cut off before it finished: the work is picked up again, as after
-    // a restart that cut it off.
-    if (reason === undefined || reason.kind === 'interrupted') {
-      await resumeTurn(sessionId, record)
-      return
-    }
     if (reason.kind === 'error') {
       const failure = turnFailure(reason.error)
       answerSender(rt, sessionId, asker, `${name} could not answer your message: its model call failed (${failureLine(failure)}). Tell the user if it matters; do not retry right away.`)
@@ -487,66 +548,112 @@ export function install(rt) {
     answerSender(rt, sessionId, asker, text, long)
   }
 
+  async function restoreInputs(agent, events) {
+    const id = agent.id
+    const consumed = new Set(events.filter(event => event.type === 'user/message').map(event => event.data?.id))
+    discardInput(id, item => consumed.has(item.message.id))
+    if (!inputs[id]?.length) return
+    await rt.ensureCapabilities(id)
+    if (stopped || rt.readOnly() !== undefined) return
+    for (const { message } of inputs[id] ?? []) {
+      const parked = [...agent.inbox.nextStep, ...agent.inbox.nextTurn].find(item => item.id === message.id)
+      if (parked && agent.status === 'running') continue
+      if (parked) removeParked(agent, parked)
+      agent.followup(message)
+    }
+    await ctx.sessions.flush(agent.session)
+  }
+
+  async function recoverSession(sessionId) {
+    const record = interrupted.turns[sessionId]
+    // Snapshot before resumeTurn can add a new continuation to this queue.
+    const deliveries = queued[sessionId] ?? []
+    if (!rt.isBotSession(sessionId)) {
+      discardInput(sessionId, () => true)
+      await resendQueued(sessionId, deliveries)
+      delete interrupted.turns[sessionId]
+      return true
+    }
+    const events = await readDeliveryEvents(rt, sessionId)
+    if (!events) throw new Error('The conversation history is unavailable.')
+    if (stopped || !pending.has(sessionId) || rt.readOnly() !== undefined) return false
+    const agent = await rt.resolveAgent(sessionId)
+    if (stopped || !pending.has(sessionId)) return false
+    if (record) {
+      const history = turnsOf(events)
+      const last = history.at(-1)
+      const started = history.findLast(turn => record.turn === undefined ? turn.since === record.since : turn.turn === record.turn)
+        ?? (record.turn === undefined && record.trigger?.exchangeId ? turnOf(events, record.trigger.exchangeId) : undefined)
+      const managed = rt.inboxOwnsTurn?.(sessionId, started?.turn)
+        || started?.took.some(source => rt.inboxHas?.(source.exchangeId) || isBotGoalSource(source))
+      if (started && !managed) {
+        const ended = events.findLast(event => event.type === 'turn/end' && event.data?.turn === started.turn)
+        if (ended && agent.status !== 'running') rt.executionHistory?.observe(sessionId, ended)
+        if (started.reason === undefined && started === last && agent.status === 'running') {
+          turns[sessionId] ??= record
+        } else if (started.reason === undefined || restartInterrupted(started.reason)) {
+          if (started.turn === last?.turn) {
+            if (agent.status === 'running') return false
+            if (started.hasInput) {
+              const initiator = record.initiator ?? started.took.findLast(source => source.godbotInitiator)?.godbotInitiator
+                ?? rt.governance?.lastOrigin(sessionId)
+              await resumeTurn(sessionId, { ...record, initiator }, events)
+            }
+          }
+        } else {
+          await reconcileEnded(sessionId, record, events, started)
+        }
+      }
+      delete interrupted.turns[sessionId]
+      persist()
+    }
+    if (stopped || !pending.has(sessionId) || rt.inboxRecovering?.(sessionId)) return false
+    await resendQueued(sessionId, deliveries, events)
+    await restoreInputs(agent, events)
+    return true
+  }
+
+  let timer
+  let recovery
+  function schedule(delay) {
+    if (!stopped) {
+      timer = setTimeout(() => {
+        recovery = resumeAll().catch(error => {
+          rt.warn('godbot: recovering interrupted work failed: %s', error)
+          schedule(5000)
+        })
+      }, delay)
+      timer.unref?.()
+    }
+  }
+
   async function resumeAll() {
     await rt.load()
-    if (rt.readOnly() !== undefined) return
+    if (stopped || rt.readOnly() !== undefined) return
     await rt.bootBotInbox?.()
-    const { turns: noted, queued: dropped } = interrupted
-    interrupted = { turns: {}, queued: {} }
-    // Keep the original destination until replay has resolved its conversation
-    // and moved the note. Nothing is cleared before it is handed over.
-    // A Bot that is gone takes its notes with it; what a turn already read here
-    // is done with.
-    const pending = queued
-    queued = {}
-    for (const [oldId, list] of Object.entries(pending)) {
-      if (!Array.isArray(list)) continue
-      for (const item of list) {
-        if (item?.args?.exchangeId === undefined || rt.inboxHas?.(item.args.exchangeId) || taken?.has(item.args.exchangeId) === true || rt.botOf(item.args.toId) === undefined) continue
-        queued = { ...queued, [oldId]: [...(queued[oldId] ?? []), item] }
-      }
-    }
+    await Promise.all([...pending].map(async id => {
+      try {
+        if (await recoverSession(id)) {
+          pending.delete(id)
+          rt.wakeBotInbox?.(rt.selfOf(id))
+        }
+      } catch (error) { rt.warn('godbot: recovery of %s will retry: %s', id, error?.message ?? error) }
+    }))
     persist()
-    // Agents and inboxes are read before anything wakes their Sessions.
-    const cut = []
-    for (const [sessionId, record] of Object.entries(noted)) {
-      const first = firstTurn.get(sessionId)
-      if (first?.type === 'turn/end') {
-        // The turn ended while Godbot was not watching it: what it did is settled from
-        // the Session's durable log.
-        await reconcileEnded(sessionId, record, first).catch(error => rt.warn('godbot: settling the work of %s failed: %s', sessionId, error))
-        continue
-      }
-      // Still running: noted again, as if it had started here.
-      if (first === undefined && (await rt.resolveAgent(sessionId).catch(() => undefined))?.status === 'running') update(sessionId, () => record)
-      else cut.push([sessionId, record])
+    if (pending.size) schedule(5000)
+    else {
+      await rt.settleRoomBatches?.()
+      rt.failoverAtStartup?.()
     }
-    firstTurn = undefined
-    for (const [sessionId, list] of Object.entries(dropped)) {
-      if (!Array.isArray(list)) continue
-      await resendQueued(sessionId, list)
-    }
-    taken = undefined
-    for (const [sessionId, record] of cut) {
-      await resumeTurn(sessionId, record).catch(error => rt.warn('godbot: picking up the turn of %s failed: %s', sessionId, error))
-    }
-    // What a group's members were asked for and will not pick up is settled now.
-    await rt.settleRoomBatches?.()
-    rt.failoverAtStartup?.()
   }
 
   ctx.effect(() => {
-    const pending = Object.keys(interrupted.turns).length > 0 || Object.keys(interrupted.queued).length > 0
-    // With nothing to pick up, the group batches a restart left are settled at once.
-    const timer = pending
-      ? setTimeout(() => void resumeAll().catch(error => rt.warn('godbot: picking up interrupted work failed: %s', error)), RESUME_DELAY_MS)
-      : setTimeout(() => void rt.load().then(() => { rt.failoverAtStartup?.(); return rt.settleRoomBatches?.() }).catch(error => rt.warn('godbot: settling group batches failed: %s', error)), 0)
-    timer?.unref?.()
+    schedule(pending.size ? RESUME_DELAY_MS : 0)
     // What the turns stopped by this shutdown left stays as last noted.
     return () => {
       stopped = true
       clearTimeout(timer)
-      return writing
+      return Promise.allSettled([writing, recovery])
     }
   }, 'godbot: resume interrupted turns')
 }

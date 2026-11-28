@@ -65,6 +65,15 @@ function inboxFinish(thread, turn, text) {
   notice('turn/completed', { threadId: thread.id, turn })
 }
 const inboxInput = blocks => ({ type: 'userMessage', id: randomUUID(), content: blocks })
+if (inboxDir) process.once('SIGTERM', () => {
+  for (const thread of threads.values()) {
+    const turn = thread.inboxTurn
+    if (turn?.status !== 'inProgress') continue
+    turn.status = 'interrupted'
+    inboxSave(thread, turn)
+  }
+  process.exit(0)
+})
 let nextId = 0
 const requests = new Map()
 
@@ -385,6 +394,7 @@ process.stdin.on('data', (chunk) => {
           thread.inboxTurn = turn
           inboxSave(thread, turn)
           record('inbox/input', { threadId: thread.id, turnId, input })
+          if (text.includes('INBOX-HOLD-ACCEPTED')) break
           if (text.includes('[Godbot message ID:') || text.includes('inbox competing input')) {
             setImmediate(() => inboxFinish(thread, turn, 'Native fixture finished ' + (text.match(/OPS-\d+/gu)?.at(-1) ?? 'the input') + '.'))
             break

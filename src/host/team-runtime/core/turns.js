@@ -13,7 +13,7 @@ import { threadCurrentOfPart } from './threads.js'
 import { viaOf } from '../shared/im-platforms.js'
 import { reminderText } from './schedules.js'
 import { usageChunk } from './usage.js'
-import { turnOutcome } from '../shared/turn-outcome.js'
+import { restartInterrupted, turnOutcome } from '../shared/turn-outcome.js'
 
 // Failures only the user can fix: a key, a sign-in, a balance. They block the Bot
 // until it is fixed (`bot.blocked`, for the repair card).
@@ -67,7 +67,7 @@ export function answerSender(rt, id, source, text, long) {
   const destination = back !== undefined ? { sessionId: back } : { replyPart: source.senderPart ?? null }
   const name = rt.botOf(rt.selfOf(id))?.name ?? 'The other Bot'
   const work = rt.closeWork?.(source.exchangeId, name, text)
-  if (back === undefined && source.senderRoomId !== undefined) return
+  if (source.senderSessionId === undefined || back === undefined && source.senderRoomId !== undefined) return
   // A reply that arrives after the user gave up the wait is a late answer: it closes
   // nothing, opens nothing, and says on it that the wait was already over.
   const late = work === undefined ? rt.abandonedWork?.(source.exchangeId) : undefined
@@ -441,11 +441,12 @@ export function install(rt) {
     const sessionId = part ?? rt.chatOf(botId)
     if (sessionId === undefined || rt.chatOwners.get(sessionId) !== botId) return false
     const inboxStopped = rt.stopBotInbox?.(botId, sessionId)
+    const recoveryStopped = rt.stopRestartWork?.(sessionId)
     await rt.pauseBotGoalForStop?.(sessionId)
     const handoffStopped = await rt.cancelFailover?.(botId, sessionId)
     const turnRunning = live.get(sessionId)?.turn !== undefined
     const subRunning = hasSubagents?.(sessionId) === true
-    if (!turnRunning && !subRunning) return handoffStopped === true || inboxStopped === true
+    if (!turnRunning && !subRunning) return handoffStopped === true || inboxStopped === true || recoveryStopped === true
     await stopSubagents(sessionId)
     if (turnRunning) {
       const agent = await rt.resolveAgent(sessionId).catch(() => undefined)
@@ -1388,6 +1389,9 @@ export function install(rt) {
             deferred: true,
           }).catch(error => rt.warn('godbot: handing back a result failed: %s', error))
         }
+        // Recovery owns this work. A stopped reply, failover or late group
+        // failure here would settle the same request before it can continue.
+        if (restartInterrupted(reason)) break
         const failure = reason?.kind === 'error' && !switched ? turnFailure(reason.error) : undefined
         if (failure !== undefined) noteTurnFailure(id, failure, event.data?.turn)
         // A route that is not a model endpoint refuses every generation; the failed
@@ -1416,7 +1420,8 @@ export function install(rt) {
         rt.noteCutOffTurn?.(id, { withoutText: wroteNothing, premature })
         if (cutOff) noteCutOffTurn(id, { session, wroteNothing, ...(premature ? { outputTokens } : {}) })
         // A turn the user opened in the Bot's own chat, or a go-on that answers the user.
-        const answering = owner !== undefined && (info === undefined || info.role === 'continue')
+        const answering = owner !== undefined && (info === undefined || info.role === 'continue'
+          || (info.role === 'resume' && rt.workOf?.(info) === undefined))
         const handedOff = rt.finishFailoverTurn?.(id, {
           failure, reason, toolCount, wroteText, info, joined, switched, text: texts.join('\n\n').trim(),
         }) === true

@@ -30,6 +30,8 @@ async function journey(host, tickets, note) {
   const a = await ciClient(host, botGrant), g = await ciClient(host, roomGrant)
   const id = randomUUID(), title = 'delegate-' + randomUUID(), child = 'read-' + randomUUID()
   const childResult = 'worker-result-' + randomUUID(), roomResult = 'room-result-' + randomUUID(), revision = 'revised-' + randomUUID()
+  const crashTitle = 'crash-fixture-' + randomUUID()
+  const crashResult = 'Fresh fixture evidence after restart.'
   const progress = '正在提交工单'
   const gate = Promise.withResolvers()
   let called = false, wrote = false, workerEntered = false, leadReturned = false, waitForCrash
@@ -38,7 +40,8 @@ async function journey(host, tickets, note) {
     const latestUser = JSON.stringify(msgs.findLast(m => m.role === 'user')?.content)
     const latest = JSON.stringify(msgs.slice(-2))
     const has = text => latestUser.includes(text)
-    if (has('crash-fixture-')) { await waitForCrash.promise; return 'late reply after crash' }
+    if (has('DeepSeek Harness restarted while you were working') && JSON.stringify(msgs).includes(crashTitle)) return crashResult
+    if (has(crashTitle)) { await waitForCrash.promise; return 'late reply from the interrupted request' }
     if (has('fail-fixture-')) return { failure: { status: 400, message: 'fixture rejected turn' } }
     if (has('room-fixture-')) return roomResult
     if (has('Owner requested a revision:')) return revision
@@ -146,17 +149,25 @@ async function journey(host, tickets, note) {
   await trace(a, failed.runId, s => s.state === 'failed', 'attributable failure')
   assert.equal((await a.cli('wait',failed.runId)).code, 1)
   waitForCrash = Promise.withResolvers()
-  const crashed = (await a.cli('run','--title','crash-fixture-'+randomUUID(),'--criteria','reconcile before retry')).data
-  await until(() => host.model.calls.some(c => JSON.stringify(c.body.messages.at(-1)).includes('crash-fixture-')), 'DSH accepted crash fixture')
+  const crashed = (await a.cli('run','--title',crashTitle,'--criteria','reconcile before retry')).data
+  await until(() => host.model.calls.some(c => JSON.stringify(c.body.messages.at(-1)).includes(crashTitle)), 'DSH accepted crash fixture')
   await host.stop('SIGKILL')
   waitForCrash.resolve()
   await host.start()
-  assert.equal((await a.cli('wait',crashed.runId)).code, 5)
+  const recovered = await trace(a, crashed.runId, s => s.tasks?.some(task => task.status === 'reported'), 'the same CI run recovers and reports')
+  assert.equal(recovered.tasks.length, 1)
+  assert.equal(recovered.tasks[0].id, recovered.rootTaskId)
+  assert.equal(recovered.tasks[0].attempt, 1)
+  assert.equal((await a.cli('wait',crashed.runId)).code, 3, 'recovery still requires owner review')
+  const recoveredExport = await a.mcp('export', { runId: crashed.runId })
+  assert.deepEqual(recoveredExport.reports.map(row => row.evidence), [crashResult])
+  await review(crashed.runId, recovered.tasks[0])
+  assert.equal((await a.cli('wait',crashed.runId)).code, 0)
   assert.equal((await g.cli('wait',roomRun.runId)).code, 0)
   await native.owner('automation.revoke', { id:roomGrant.id })
   assert.match((await g.mcp('inspect',{runId:roomRun.runId})).error, /revoked/)
   await host.bot('delete-room', { id:room })
   await host.bot('update-bot', { id: to, private: true })
   assert.match((await a.mcp('export', { runId })).error, /accessible|bound/, 'descendant privacy excludes historical reports')
-  note('full-team-recovery', { failed:failed.runId, unknown:crashed.runId, completedRoom:roomRun.runId, revoked:roomGrant.id })
+  note('full-team-recovery', { failed:failed.runId, recovered:crashed.runId, ownerReviewed:true, completedRoom:roomRun.runId, revoked:roomGrant.id })
 }

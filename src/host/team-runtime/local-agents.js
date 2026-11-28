@@ -486,8 +486,18 @@ export class WorkspaceAgentAdapter extends LocalAgentAdapter {
     const release = this.terminalLeases.enter(String(id))
     try { return await super.maintain(id, signal, work) } finally { release() }
   }
-  async dispose() {
-    await Promise.all([this.terminalLeases.dispose(), super.dispose(),
+  async dispose(options) {
+    if (options?.recover) {
+      // Stop the DSH driver before its native transport closes. On disposal,
+      // the inbox and the work's reply route belong to the next runtime.
+      for (const live of this.live.values()) {
+        if (live.state === 'idle') continue
+        try {
+          this.deps.rt?.ctx.get('agents')?.get(live.sessionId)?.cancel({ kind: 'disposed' }, { keepInbox: true })
+        } catch { /* The typed adapter outcome covers a driver already detaching. */ }
+      }
+    }
+    await Promise.all([this.terminalLeases.dispose(), super.dispose(options),
       ...[...this.fallbackAdapters.keys()].map(key => this.closeFallbackAgents(key)),
     ])
   }
@@ -923,7 +933,8 @@ export function install(rt) {
     disposed = true
     registration?.()
     await signIns.dispose()
-    await Promise.all([initialScan, adapter.dispose(), sandboxes.dispose(), loginTerminals?.dispose().catch(() => {})])
+    await Promise.all([initialScan, adapter.dispose({ recover: true }), sandboxes.dispose({ recover: true }),
+      loginTerminals?.dispose().catch(() => {})])
   }, 'godbot: local agents')
 
   // ---------------------------------------------------------------------------
@@ -1144,10 +1155,11 @@ export function install(rt) {
     codexInboxTarget: id => partAdapter(id).inboxTarget(id),
     readCodexInboxDelivery(id, binding, messageId) {
       // A native history lookup is pinned to the original account's adapter.
-      const part = sandboxes.parts.get(id)
       if (binding.accountRoute) {
-        if (part?.route !== binding.accountRoute) return
-        return part.adapter.readCodexInboxDelivery(binding, messageId)
+        try {
+          const sandbox = sandboxes.get(id, binding.accountRoute, adapter.deps)
+          return sandbox.readCodexInboxDelivery(binding, messageId)
+        } catch { return }
       }
       if (!isSandboxPart(id)) return adapter.readCodexInboxDelivery(binding, messageId)
     },

@@ -181,7 +181,13 @@ export class SandboxTeamAgents {
     await entry.adapter.dispose()
     if (this.parts.get(String(id)) === entry) this.parts.delete(String(id))
   }
-  async dispose() { await Promise.all([...this.parts.keys()].map(id => this.closePart(id))) }
+  async dispose(options) {
+    await Promise.all([...this.parts].map(async ([id, entry]) => {
+      if (!options?.recover) return this.closePart(id)
+      await entry.adapter.dispose(options)
+      if (this.parts.get(id) === entry) this.parts.delete(id)
+    }))
+  }
 }
 
 export const bindingChange = Symbol('owner account change')

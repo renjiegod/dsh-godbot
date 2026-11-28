@@ -1,5 +1,14 @@
 // DSH's persisted turn reason is the source of the conversation's verdict.
 export const NATIVE_INTERRUPTED = 'LOCAL_AGENT_INTERRUPTED'
+export const RUNTIME_INTERRUPTED = 'INTERRUPTED'
+
+export const restartInterrupted = reason => reason?.kind === 'interrupted'
+  || (reason?.kind === 'aborted' && reason.reason?.kind === 'disposed')
+  || (reason?.kind === 'error' && reason.error?.code === RUNTIME_INTERRUPTED)
+
+export const legacyNativeClose = reason => reason?.kind === 'error'
+  && reason.error?.code === NATIVE_INTERRUPTED
+  && reason.error.message === 'Godbot closed the native agent session before the turn finished.'
 
 export function turnOutcome(reason) {
   switch (reason?.kind) {
@@ -14,7 +23,8 @@ export function turnOutcome(reason) {
     case 'error':
     case 'failed': {
       const code = reason.error?.code
-      if (code === NATIVE_INTERRUPTED || code === 'LOCAL_AGENT_EXIT' || code === 'INTERRUPTED')
+      if (code === RUNTIME_INTERRUPTED) return { status: 'interrupted', cause: 'host-interrupted', code }
+      if (code === NATIVE_INTERRUPTED || code === 'LOCAL_AGENT_EXIT')
         return { status: 'interrupted', cause: 'agent-interrupted', code }
       return { status: 'failed', code }
     }

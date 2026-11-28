@@ -105,4 +105,84 @@ export default async function check({ makeHost, candidate, note }) {
       note('board-comment-' + mode, { id: work.id, previousTurn: initial.turnId, nextTurn: reply.turnId })
     } finally { unblock() }
   }
+
+  // Keep the same assignment and discussion attachment when the host, rather
+  // than the user, interrupts the Bot's turn.
+  const assignmentInput = 'BOARD_HOST_RESTART_ASSIGNMENT'
+  const steeredInput = 'BOARD_HOST_RESTART_STEER'
+  const commentInput = 'BOARD_HOST_RESTART_COMMENT'
+  const firstStepGate = Promise.withResolvers()
+  const assignmentGate = Promise.withResolvers()
+  const commentGate = Promise.withResolvers()
+  let assignmentStarted = false
+  let steeredStarted = false
+  let commentStarted = false
+  host.model.reply = async ({ messages }) => {
+    const current = JSON.stringify(messages.findLast(message => message.role === 'user')?.content)
+    const history = JSON.stringify(messages)
+    if (current.includes('DeepSeek Harness restarted while you were working')) {
+      return history.includes(commentInput) ? 'Recovered the discussion response.' : 'Recovered the original assignment.'
+    }
+    if (current.includes(commentInput)) {
+      commentStarted = true
+      await commentGate.promise
+    } else if (history.includes(steeredInput)) {
+      steeredStarted = true
+      await assignmentGate.promise
+    } else if (current.includes(assignmentInput)) {
+      assignmentStarted = true
+      await firstStepGate.promise
+      return [{ type: 'tool_use', name: 'list_bots', input: { bot: 'Steer Worker' } }]
+    }
+    return 'Fixture ready.'
+  }
+  try {
+    const work = await call('board-action', { op: 'create', title: assignmentInput, owner: bot.id,
+      criteria: 'Return the original assignment result', requestId: 'host-restart-create' })
+    await call('board-action', { id: work.id, version: work.version, op: 'dispatch', requestId: 'host-restart-dispatch' })
+    await until(() => assignmentStarted, 'the original assignment is working')
+    const discussion = () => call('board-discussion', { id: work.id })
+    const binding = await until(async () => (await discussion()).activeRuns?.[bot.id], 'the assignment accepts a correction')
+    const steered = await call('board-comment', {
+      id: work.id, op: 'post', body: '@Steer Worker ' + steeredInput, requestId: 'host-restart-steer',
+      modes: { [bot.id]: { ...binding, mode: 'steer' } }, targets: [bot.id],
+    })
+    const runOf = async post => (await discussion()).entries.find(entry => entry.id === post.commentId)?.runs[0]
+    await until(async () => ['sent', 'running'].includes((await runOf(steered))?.state), 'the correction is in the active inbox')
+    firstStepGate.resolve()
+    const beforeSteer = await until(async () => steeredStarted && await runOf(steered), 'the active assignment received the correction')
+    await host.stop('SIGKILL')
+    await host.start()
+    const reported = await until(async () => {
+      const item = await call('board-item', { id: work.id })
+      return item.phase === 'review' && item
+    }, 'the restarted assignment reaches review')
+    assert.equal(reported.attempt, 1)
+    assert.match(reported.evidence, /Recovered the original assignment/u)
+    const afterSteer = await until(async () => {
+      const run = await runOf(steered)
+      return run?.state === 'answered' && run
+    }, 'the correction receives its reply on the resumed assignment')
+    assert.equal(afterSteer.id, beforeSteer.id)
+    assert.equal(afterSteer.turnId, reported.execution.turnId)
+
+    const post = await call('board-comment', {
+      id: work.id, op: 'post', body: '@Steer Worker ' + commentInput, requestId: 'host-restart-comment', targets: [bot.id],
+    })
+    const receipt = () => runOf(post)
+    const before = await until(async () => commentStarted && await receipt(), 'the attached discussion turn is working')
+    await host.restart()
+    const after = await until(async () => {
+      const run = await receipt()
+      return run?.state === 'answered' && run
+    }, 'the restarted response returns to its original discussion')
+    assert.equal(after.id, before.id)
+    assert.equal(after.sessionId, before.sessionId)
+    assert.notEqual(after.turnId, before.turnId)
+    note('board-host-recovery', { card: work.id, sameAssignment: true, sameSteeredComment: true, sameDiscussion: true })
+  } finally {
+    firstStepGate.resolve()
+    assignmentGate.resolve()
+    commentGate.resolve()
+  }
 }

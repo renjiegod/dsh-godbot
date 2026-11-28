@@ -40903,6 +40903,7 @@ function commandLabel(value) {
 
 // src/host/team-runtime/shared/turn-outcome.js
 var NATIVE_INTERRUPTED = "LOCAL_AGENT_INTERRUPTED";
+var RUNTIME_INTERRUPTED = "INTERRUPTED";
 function turnOutcome(reason) {
   switch (reason?.kind) {
     case "aborted": {
@@ -40918,7 +40919,8 @@ function turnOutcome(reason) {
     case "error":
     case "failed": {
       const code = reason.error?.code;
-      if (code === NATIVE_INTERRUPTED || code === "LOCAL_AGENT_EXIT" || code === "INTERRUPTED")
+      if (code === RUNTIME_INTERRUPTED) return { status: "interrupted", cause: "host-interrupted", code };
+      if (code === NATIVE_INTERRUPTED || code === "LOCAL_AGENT_EXIT")
         return { status: "interrupted", cause: "agent-interrupted", code };
       return { status: "failed", code };
     }

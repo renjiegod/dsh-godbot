@@ -5,11 +5,12 @@
 import { randomUUID } from 'node:crypto'
 import { SOURCE_KIND, TEXT_KEPT } from './constants.js'
 import { relatedBotMessages } from './conversation-routing.js'
-import { readDeliveryEvents, turnsOf } from './resume.js'
+import { readDeliveryEvents, resumeText, turnsOf } from './resume.js'
 import { conversationHead, ownConversations } from './threads.js'
 import { headOf } from './text.js'
 import { turnFailure } from './turns.js'
 import { INBOX_DELIVERY } from '../shared/inbox-delivery.js'
+import { legacyNativeClose, restartInterrupted, turnOutcome } from '../shared/turn-outcome.js'
 
 const filteredRequest = Symbol('godbot filtered inbox input')
 const retryMin = 1000
@@ -33,7 +34,7 @@ const codeOf = failure => {
 const publicStatus = row => ({
   state: ['staged', 'sending'].includes(row.state) ? 'queued' : row.state,
   ...(row.reason ? { reason: row.reason } : {}),
-  ...(row.acceptedAt ? { acceptedAt: row.acceptedAt } : {}),
+  ...(row.acceptedAt || row.resume?.acceptedAt ? { acceptedAt: row.acceptedAt ?? row.resume.acceptedAt } : {}),
   ...(row.repliedAt ? { repliedAt: row.repliedAt } : {}),
 })
 const statusLine = row => {
@@ -51,6 +52,7 @@ export function install(rt) {
   const get = id => rt.own(records(), id)
   const workers = new Map()
   const checking = new Map()
+  const startupChecks = new Set()
   const admitting = new Set()
   let started
   let timer
@@ -112,14 +114,13 @@ export function install(rt) {
   function accept(row, { native } = {}) {
     if (!current(row) || !['sending', 'staged', 'blocked'].includes(row.state)) return
     row.state = 'accepted'
-    row.acceptedAt ??= Date.now()
+    row.acceptedAt ??= row.resume?.acceptedAt ?? Date.now()
     if (native) row.attempt.native = { ...row.attempt.native, ...native }
     delete row.reason
     delete row.retryAt
     delete row.check
     delete row.failures
     delete row.fullText
-    if (row.args.role === 'reply') row.done = true
     if (row.args.role === 'reply' && row.args.work) rt.takenWork?.(row.args.work, row.args.replyTo)
     later()
     schedule()
@@ -184,7 +185,7 @@ export function install(rt) {
   function unread(sessionId, { fromId, fromPart, toId, work, toUser, steer, text, initiator }) {
     const key = keyOf(toId, sessionId)
     return rows().find(row => row.conversation === key && row.args.role === 'request'
-      && available(row) && !row.acceptedAt && row.args.fromId === fromId && row.args.fromPart === fromPart
+      && available(row) && !row.acceptedAt && !row.resume && row.args.fromId === fromId && row.args.fromPart === fromPart
       && (row.args.audience === 'user') === toUser && (!row.args.steer || steer)
       && sameOrigin(row.args.initiator, initiator) && rt.sameWork(row.id, work) && relatedBotMessages(text, row.fullText ?? row.args.text))
   }
@@ -196,7 +197,7 @@ export function install(rt) {
   }
 
   async function offer(row) {
-    if (!current(row) || !available(row)) return
+    if (!current(row) || !available(row) || rt.hostClosing?.()) return
     const { args } = row
     const bot = rt.botOf(args.toId)
     if (!bot || !rt.botOf(args.fromId)) {
@@ -223,7 +224,8 @@ export function install(rt) {
       return
     }
     if (!current(row) || !available(row)) return
-    if (state.switching?.[sessionId] || rt.openingChat?.(bot.id)) {
+    if (state.switching?.[sessionId] || rt.openingChat?.(bot.id) || rt.nativeTerminals?.()[sessionId]
+      || !row.resume && rt.recoveringSession?.(sessionId)) {
       schedule(Date.now() + retryMin)
       return
     }
@@ -251,10 +253,13 @@ export function install(rt) {
       if (!route?.provider || !route.model) throw Object.assign(new Error('Model unavailable'), { code: 'MODEL_UNAVAILABLE' })
       if (row.reason === 'UNSUPPORTED_REASONING_EFFORT') await rt.refreshInboxEfforts?.(route.provider)
       await ctx.get('llm').prepareCall(route, AbortSignal.timeout(readinessTimeout))
-      if (!current(row) || !available(row)) return
+      if (!current(row) || !available(row) || rt.hostClosing?.()) return
       if (agent.status !== 'idle') return
       const token = randomUUID()
-      const message = rt.relayMessage({ ...row.args, inboxAttempt: token })
+      const continuation = row.resume && { resumed: true, resumeOf: row.resume.id,
+        text: resumeText(row.resume) + ' Continue the work associated with message ' + row.id + ' in this conversation.',
+        files: [], images: [], joined: row.resume.joined }
+      const message = rt.relayMessage({ ...row.args, ...continuation, inboxAttempt: token })
       row.state = 'staged'
       row.attempt = { token, sessionId, messageId: message.id }
       row.args.sessionId = sessionId
@@ -262,7 +267,8 @@ export function install(rt) {
       delete row.retryAt
       await save()
       if (!current(row) || row.state !== 'staged' || row.attempt?.token !== token) return
-      agent.followup(message)
+      if (row.resume && rt.sendRestartContinuation) rt.sendRestartContinuation(agent, message)
+      else agent.followup(message)
     } catch (error) {
       if (current(row) && (available(row) || row.state === 'staged' && row.attempt.turn === undefined))
         blocked(row, codeOf(error), { retry: true })
@@ -335,8 +341,10 @@ export function install(rt) {
         }
       }
       for (const row of rows()) {
-        if (!row.done && ['staged', 'sending', 'accepted'].includes(row.state)) {
+        if (row.attempt && !row.done && (['staged', 'sending', 'accepted'].includes(row.state)
+          || row.state === 'blocked' && row.acceptedAt && row.reason === 'REPLY_UNKNOWN')) {
           row.check = Date.now()
+          startupChecks.add(row.id)
           changed = true
         }
       }
@@ -345,13 +353,42 @@ export function install(rt) {
     return started
   }
 
+  async function continueAccepted(row, turn) {
+    const { args, attempt } = row
+    const target = conversation(args.toId, row.conversation)
+    if (!row.acceptedAt || !current(row) || terminal.has(row.state) || row.done || !rt.isBotSession(attempt.sessionId)
+      || target && (target.endedAt !== undefined || target.sessionId !== attempt.sessionId)) return false
+    const previous = { ...row, args: { ...args } }
+    row.resume = {
+      ...rt.restartTurnContext?.(attempt.sessionId, turn.turn),
+      id: `resume/${row.id}/${attempt.token ?? turn.turn}`,
+      acceptedAt: row.acceptedAt,
+      sessionId: attempt.sessionId,
+      turn: turn.turn,
+      tokens: [...new Set([...(row.resume?.tokens ?? []), attempt.token].filter(Boolean))],
+    }
+    delete row.acceptedAt
+    reset(row, { steer: false })
+    // Commit the new attempt before it can compete with later inbox messages.
+    admitting.add(row.id)
+    try { await save() } catch (error) {
+      if (current(row) && row.state === 'queued') {
+        for (const key of Object.keys(row)) delete row[key]
+        Object.assign(row, previous)
+      }
+      throw error
+    } finally { admitting.delete(row.id) }
+    schedule()
+    return true
+  }
+
   async function reconcile(row) {
-    if (!current(row) || !row.check || terminal.has(row.state)) return
+    if (!current(row) || !row.check || terminal.has(row.state) || rt.hostClosing?.()) return
     const attempt = row.attempt
     if (!attempt) return
     const { sessionId, legacy, token, native } = attempt
     const agent = ctx.get('agents')?.get(sessionId)
-    if (state.switching?.[sessionId]) {
+    if (state.switching?.[sessionId] || rt.nativeTerminals?.()[sessionId]) {
       row.check = Date.now() + checkEvery
       schedule(row.check)
       return
@@ -400,9 +437,19 @@ export function install(rt) {
 
     const events = await readDeliveryEvents(rt, sessionId)
     if (!current(row) || row.attempt !== attempt) return
-    const turn = events && turnsOf(events).findLast(turn => (
+    const history = events && turnsOf(events)
+    const turn = history?.findLast(turn => (
       attempt.steered ? turn.turn === attempt.turn : turn.took.some(source => source.inboxAttempt === token)
     ))
+    const last = turn && turn === history.at(-1)
+    const recoverable = last && (restartInterrupted(turn.reason) || turn.reason === undefined)
+    const end = turn && events.findLast(event => event.type === 'turn/end' && event.data?.turn === turn.turn)
+    if (end && agent?.status !== 'running') rt.executionHistory?.observe(sessionId, end)
+    if (turn && turnOutcome(turn.reason)?.status === 'stopped') {
+      stop(row)
+      await save()
+      return
+    }
     if ((row.acceptedAt || !native) && turn?.reason?.kind === 'completed') {
       accept(row)
       await settleRecovered(row, turn)
@@ -413,8 +460,14 @@ export function install(rt) {
       return
     }
     if (native) {
-      const seen = await rt.readCodexInboxDelivery?.(sessionId, native, row.id)
+      const seen = await rt.readCodexInboxDelivery?.(sessionId, native, row.resume?.id ?? row.id)
       if (!current(row) || row.attempt !== attempt || terminal.has(row.state)) return
+      // A user prompt can start while the native history lookup is in flight.
+      if (ctx.get('agents')?.get(sessionId)?.status === 'running' && !active(row, sessionId, liveTurn(sessionId))) {
+        row.check = Date.now() + checkEvery
+        schedule(row.check)
+        return
+      }
       if (seen) {
         accept(row, { native: { turnId: seen.turnId } })
         if (active(row, sessionId, liveTurn(sessionId))) return
@@ -422,9 +475,17 @@ export function install(rt) {
         else if (seen.status === 'inProgress') {
           row.check = Date.now() + checkEvery
           schedule(row.check)
-        } else blocked(row, 'REPLY_UNKNOWN')
+        } else if (!(recoverable || last && legacyNativeClose(turn.reason) && seen.status === 'interrupted')
+          || !await continueAccepted(row, turn)) blocked(row, 'REPLY_UNKNOWN')
         return
       }
+    }
+    if (recoverable && await continueAccepted(row, turn)) return
+    // Before Codex is called, the adapter saves its thread binding. A stopped
+    // attempt without that binding can be offered again without duplicating input.
+    if (recoverable && !native && !row.acceptedAt && rt.isCodexInboxRoute?.(attempt.provider)) {
+      blocked(row, 'DELIVERY_UNAVAILABLE', { retry: true })
+      return
     }
     if (row.acceptedAt) blocked(row, 'REPLY_UNKNOWN', { check: !!native || !turn?.reason })
     else blocked(row, 'ENGINE_RECEIPT_UNKNOWN', { check: true })
@@ -437,6 +498,7 @@ export function install(rt) {
       return
     }
     if (args.role === 'reply') {
+      row.done = true
       delete row.check
       later()
       return
@@ -472,8 +534,15 @@ export function install(rt) {
   function launch(map, key, row, work) {
     if (map.has(key)) return
     const before = [row.state, row.retryAt, row.check]
-    const promise = Promise.resolve().then(work).catch(report).finally(() => {
+    const promise = Promise.resolve().then(work).catch(error => {
+      report(error)
+      if (map === checking && current(row) && !terminal.has(row.state)) {
+        row.check = Date.now() + checkEvery
+        schedule(row.check)
+      }
+    }).finally(() => {
       if (map.get(key) === promise) map.delete(key)
+      if (map === checking && startupChecks.delete(key)) schedule()
       if (before[0] !== row.state || before[1] !== row.retryAt || before[2] !== row.check) schedule()
     })
     map.set(key, promise)
@@ -482,8 +551,10 @@ export function install(rt) {
   function pump() {
     if (!writable()) return
     const first = new Map()
+    const reconciling = new Set()
     const now = Date.now()
     for (const row of rows()) {
+      if (startupChecks.has(row.id) && row.check && !terminal.has(row.state)) reconciling.add(row.conversation)
       if (row.check) {
         if (row.check <= now) launch(checking, row.id, row, () => reconcile(row))
         else schedule(row.check)
@@ -493,7 +564,7 @@ export function install(rt) {
       if (!before || order(row, before) < 0) first.set(row.conversation, row)
     }
     for (const row of first.values()) {
-      if (!available(row)) continue
+      if (!available(row) || reconciling.has(row.conversation)) continue
       if (row.retryAt > now) schedule(row.retryAt)
       else launch(workers, row.conversation, row, () => offer(row))
     }
@@ -516,7 +587,8 @@ export function install(rt) {
       if (!source.inboxAttempt) return !record?.legacyInput || (
         record.attempt?.legacy === true && !!record.acceptedAt && !rt.isCodexInboxRoute?.(options.provider)
       )
-      if (!record || record.attempt?.token !== source.inboxAttempt) return false
+      if (!record) return false
+      if (record.attempt?.token !== source.inboxAttempt) return record.resume?.tokens.includes(source.inboxAttempt) ?? false
       if (record.acceptedAt) return true
       if (record.state !== 'staged' || !active(record, options.sessionId, liveTurn(options.sessionId))) return false
       row = record
@@ -538,7 +610,7 @@ export function install(rt) {
     }
     if (!current(row) || row.state !== 'sending') return
     const delivery = {
-      id: row.id, token: attempt.token,
+      id: row.resume?.id ?? row.id, token: attempt.token,
       async starting(native) {
         if (!current(row) || row.attempt !== attempt || row.state !== 'sending') throw new Error('Bot delivery is no longer active')
         attempt.native = native
@@ -586,13 +658,20 @@ export function install(rt) {
     if (event.type === 'model/selection') rt.wakeBotInbox?.(rt.selfOf(id))
     if (event.type !== 'turn/end') return
     const reason = event.data?.reason
-    const cancelled = reason?.kind === 'aborted' && (reason.reason?.kind === 'user' || reason.reason?.reason === 'godbot/stopped')
+    const cancelled = turnOutcome(reason)?.status === 'stopped'
     // A cancellation can target one board run or goal. The actions that stop
     // an entire conversation clear its durable queue explicitly.
     for (const row of rows()) {
       if (!active(row, id, event.data.turn) || terminal.has(row.state) || row.done) continue
       if (cancelled) { stop(row); later(); continue }
-      if (row.state === 'staged' && reason?.kind === 'error') {
+      if (restartInterrupted(reason)) {
+        startupChecks.add(row.id)
+        row.check = Date.now() + checkEvery
+        later()
+      } else if (row.state === 'accepted' && row.args.role === 'reply') {
+        row.done = true
+        later()
+      } else if (row.state === 'staged' && reason?.kind === 'error') {
         blocked(row, codeOf(reason.error), { retry: true })
       } else if (row.state === 'sending' && !row.attempt.steered) {
         if (!row.attempt.native && rt.isCodexInboxRoute?.(row.attempt.provider) && reason?.kind === 'error') {
@@ -658,7 +737,10 @@ export function install(rt) {
         && (row.state === 'accepted' || !acceptedOnly && row.state === 'sending'))
         .map(row => rt.relayMessage(row.args).source)
     },
-    inboxOwnsTurn: (id, turn) => rows().some(row => active(row, id, turn) && row.state !== 'stopped'),
+    inboxOwnsTurn: (id, turn) => rows().some(row => active(row, id, turn)
+      || row.resume?.sessionId === id && row.resume.turn === turn),
+    inboxRecovering: id => rows().some(row => forSession(row, id) && !terminal.has(row.state)
+      && (startupChecks.has(row.id) || row.resume && !row.acceptedAt && row.state !== 'blocked')),
     stopBotInbox(botId, id) {
       const key = keyOf(botId, id)
       const pending = rows().filter(row => row.conversation === key && row.args.toId === botId && !row.done && !terminal.has(row.state))

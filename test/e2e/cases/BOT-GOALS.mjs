@@ -150,11 +150,12 @@ export default async function botGoals({ makeHost, candidate, previous, note }) 
   note('bot-goal-lifecycle', { turns: complete.turns, webSlash: true, separateConversation: true, restartWhilePaused: true, evidence: true })
 
   // A goal report written during a turn is only a proposal until that turn settles.
-  const uncertain = 'Do not retry the unverified fixture activity.'
+  const uncertain = 'Verify the actual outcome of the interrupted fixture activity.'
   let acceptedReport = false
   let unblock
   const pausedModel = new Promise(resolve => { unblock = resolve })
   let secondAttempt
+  let afterRestart
   host.model.reply = async ({ messages }) => {
     const blocks = messages.flatMap(message => message.content)
     const prompt = blocks.findLast(block => block.text?.startsWith('[Godbot goal turn]'))
@@ -162,7 +163,14 @@ export default async function botGoals({ makeHost, candidate, previous, note }) 
     const id = /attempt_id "([^"]+)"/u.exec(prompt.text)?.[1]
     assert.ok(id)
     if (secondAttempt === undefined) secondAttempt = id
-    assert.equal(id, secondAttempt, 'the interrupted attempt is never dispatched a second time')
+    if (id !== secondAttempt) {
+      afterRestart ??= id
+      assert.equal(id, afterRestart, 'only one fresh recovery attempt is needed')
+      if (blocks.some(block => block.type === 'tool_use' && block.name === 'report_bot_goal' && block.input.attempt_id === id))
+        return 'Reconciled the fixture result.'
+      return [{ type: 'tool_use', name: 'report_bot_goal', input: { attempt_id: id,
+        status: 'complete', summary: 'Checked the prior work after restart.', evidence: 'Fresh readback verified the fixture.' } }]
+    }
     if (blocks.some(block => block.type === 'tool_result' && block.content?.some(item => item.text?.includes('Goal report saved')))) {
       acceptedReport = true
       await pausedModel
@@ -182,14 +190,15 @@ export default async function botGoals({ makeHost, candidate, previous, note }) 
   await openFullTeam(host)
   const reviewed = await until(async () => {
     const value = await goal()
-    return value?.status === 'blocked' && value
-  }, 'the host reconciles the interrupted goal before attempting more work')
-  assert.equal(reviewed.turns, 1)
-  assert.equal(reviewed.checkpoint, undefined)
-  assert.match(reviewed.reason, /Review the last goal turn/u)
+    return value?.status === 'completed' && value
+  }, 'the interrupted goal automatically verifies the prior work')
+  assert.equal(reviewed.turns, 2)
+  assert.equal(reviewed.id, (await goal()).id)
+  assert.equal(reviewed.checkpoint.evidence, 'Fresh readback verified the fixture.')
+  assert.notEqual(afterRestart, secondAttempt)
   await delay(1800)
-  assert.equal((await goal()).turns, 1)
-  note('goal-interruption-reconciliation', { needsReview: true, repeated: false, unconfirmedCompletionIgnored: true })
+  assert.equal((await goal()).turns, 2)
+  note('goal-interruption-reconciliation', { resumed: true, repeated: false, unconfirmedCompletionIgnored: true })
 
   for (const [engine, model] of [['Claude', 'local-claude-code/default'], ['ACP', 'local-opencode/default']]) {
     const native = await host.bot('create-bot', { name: engine + ' Goal Tester', model })

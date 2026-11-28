@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { BOT_GOAL_ROLE, HISTORY_TIMEOUT_MS, SOURCE_KIND, isBotGoalSource } from './constants.js'
+import { BOT_GOAL_ROLE, SOURCE_KIND, isBotGoalSource } from './constants.js'
 import { ownConversations } from './threads.js'
-import { turnOf } from './resume.js'
+import { readDeliveryEvents, turnOf } from './resume.js'
 import { output } from './tools.js'
-import { turnOutcome } from '../shared/turn-outcome.js'
+import { restartInterrupted, turnOutcome } from '../shared/turn-outcome.js'
 
 const FINISHED = new Set(['completed', 'stopped'])
 const CONTEXT_SOURCES = new Set(['runtime-context', 'skill-catalog', 'time-context', 'godbot-time-context', 'ds-bot-time-context'])
@@ -215,6 +215,7 @@ export function install(rt) {
       if (report?.status === 'complete') return { ...next, status: 'completed', reason: undefined }
       if (prior.status !== 'active') return next
       if (result?.status === 'stopped') return { ...next, status: 'paused' }
+      if (restartInterrupted(reason)) return { ...next, reason: undefined }
       if (result?.status !== 'completed') {
         const detail = reason?.error?.code === 'BOT_GOAL_NATIVE_ACTIVE'
           ? 'Pause or finish the Codex thread’s native goal first.'
@@ -233,24 +234,26 @@ export function install(rt) {
 
   async function reconcile(goal, agent, attempt) {
     if (dispatching.has(attempt.id) || admitted.get(attempt.sessionId)?.id === attempt.id) return
+    if (!agent) return
     if (attempt.startedAt === undefined) {
-      if (agent?.status === 'running' || agent?.inbox.nextTurn.some(message => message.source?.exchangeId === attempt.id)) return
+      if (agent.status === 'running') return
+      for (const message of agent.inbox.nextTurn) {
+        if (isBotGoalSource(message.source) && message.source.exchangeId === attempt.id) agent.inbox.remove(message.id)
+      }
       await drop(goal, attempt)
       return
     }
-    if (agent === undefined) {
-      await finish(goal, attempt)
-      return
-    }
     await ctx.sessions.flush(agent.session)
-    const events = []
-    for await (const event of rt.eventsBackwards(attempt.sessionId, AbortSignal.timeout(HISTORY_TIMEOUT_MS))) events.push(event)
-    const turn = turnOf(events.reverse(), attempt.id)
+    const events = await readDeliveryEvents(rt, attempt.sessionId)
+    if (!events) return
+    const turn = turnOf(events, attempt.id)
     if (turn?.reason === undefined && agent.status === 'running') {
       if (turn !== undefined) admitted.set(attempt.sessionId, { id: attempt.id, turn: turn.turn })
       return
     }
-    await finish(goal, attempt, turn?.reason)
+    // A hard stop can leave a reserved attempt with no turn/end or even no
+    // admitted input. Keep the objective active and build from its checkpoint.
+    await finish(goal, attempt, turn?.reason ?? { kind: 'interrupted' })
   }
 
   async function drive(goal) {
@@ -271,7 +274,8 @@ export function install(rt) {
       await change(goal.anchor, prior => prior === goal ? { ...goal, status: 'paused', reason: 'This conversation is archived or the Bot was removed.' } : prior)
       return
     }
-    if (!eligible(goal, row, sessionId)) return waitingReasons.set(goal.id, 'Waiting for this conversation to become available.')
+    if (!eligible(goal, row, sessionId) || rt.recoveringSession?.(sessionId) || rt.inboxRecovering?.(sessionId))
+      return waitingReasons.set(goal.id, 'Waiting for this conversation to become available.')
     if (rt.unreadOf?.(sessionId)?.length) return waitingReasons.set(goal.id, 'Waiting for earlier queued messages.')
     if (rt.backgroundWork?.(sessionId)) {
       return waitingReasons.set(goal.id, rt.live.get(sessionId)?.turn !== undefined ? 'Waiting for the current turn' : 'Waiting for background work.')
@@ -309,7 +313,7 @@ export function install(rt) {
   function warn(failure) { rt.warn('godbot: Bot goal work failed: %s', failure?.message ?? String(failure)) }
 
   async function tick() {
-    if (pumping || disposed) return
+    if (pumping || disposed || rt.hostClosing?.()) return
     pumping = true
     try {
       await rt.load()
