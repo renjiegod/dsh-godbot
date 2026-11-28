@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync, realpathSync } from 'node:fs'
-import { readFile, symlink, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -109,7 +109,9 @@ else await import(${JSON.stringify(fixture.href)});
 // DSH never loads the update: the release here cannot be imported into it (the
 // reload trap), the way rc.16 could not after pnpm moved a dependency it had
 // already resolved, and Godbot keeps answering until the restart.
-export default async function UPDATE(context) {
+export default async function UPDATE(suite) {
+  // A same-archive retry must start with its own restart trap and answer logs.
+  const context = { ...suite, scratch: await mkdtemp(join(suite.scratch, 'update-')) }
   const { makeHost, candidate, scratch, note } = context
   const [major, minor, patch] = candidate.version.split('-')[0].split('.').map(Number)
   const version = `${major}.${minor}.${patch + 1}`
