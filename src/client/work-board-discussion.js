@@ -1,6 +1,7 @@
 import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
 import { call } from './team-ui/api.js'
 import { dateLocale, mdLabels, t } from './team-ui/i18n.js'
+import { BotMark } from './team-ui/mark.js'
 import { MarkdownText, writeClipboard } from './team-ui/dsh-primitives.js'
 import { useWorkBoardDiscussion } from '../host/team-runtime/shared/work-board-discussion.js'
 import {
@@ -24,7 +25,7 @@ async function encodeFile(file) {
   return { name: file.name, mime: file.type, size: file.size, data }
 }
 
-export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe, openExecution, openRun, openComment, createSubtask, quote }) {
+export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe, openExecution, openRun, openComment, createSubtask, quote, roster }) {
   const state = useWorkBoardDiscussion({ call, subscribe, id, active, online: true, focus, requestId: uuid })
   const [draft, setDraft] = useState(blank)
   const [annotations, setAnnotations] = useState([])
@@ -176,8 +177,10 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
       'aria-label': entry.deleted ? t('Deleted comment') : t('Comment by {name}', { name: author(entry) }),
     },
     h('div', { className: 'wb-comment-head' },
-      h('span', { className: 'wb-comment-avatar', 'aria-hidden': true, 'data-bot': entry.authorType === 'bot' },
-        entry.deleted ? '–' : Array.from(author(entry))[0]),
+      entry.authorType === 'bot' && entry.botId
+        ? h(BotMark, { bot: roster?.byId?.[entry.botId] ?? { id: entry.botId, name: author(entry) }, size: 22 })
+        : h('span', { className: 'wb-comment-avatar', 'aria-hidden': true, 'data-bot': entry.authorType === 'bot' },
+            entry.deleted ? '–' : Array.from(author(entry))[0]),
       h('strong', null, entry.deleted ? t('Deleted comment') : author(entry)),
       h('time', { dateTime: new Date(entry.createdAt).toISOString() }, stamp(entry.createdAt)),
       entry.editedAt ? h('small', null, t('Edited')) : null,
