@@ -1,6 +1,6 @@
 // Modified for Godbot. See THIRD_PARTY_NOTICES.
 import { desktopBridge } from './desktop-bridge.js'
-import { createElement as h, Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createElement as h, Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { WorkspaceMark } from './workspace-mark.js'
 import { inkFill } from './inks.js'
@@ -882,8 +882,8 @@ export function TeamSidebar(props) {
     shown === 'hidden' ? null : h(LeftColumn, { mode: shown, width: ourWidth, onGrip: startDrag, leaving, animateOnMount: mounted.current }, content))
 }
 
-// The sidebar notice summarizes the update. Its details hold the Godbot and DSH
-// install controls, progress and release notes.
+// The wide sidebar shows the notes next to the update status. The rail shows
+// them with the install controls in its popover.
 function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate }) {
   const update = useUpdate(value => value)
   const [open, setOpen] = useState(false)
@@ -892,7 +892,6 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
   const [error, setError] = useState('')
   const [dshError, setDshError] = useState('')
   const button = useRef(null)
-  const previewId = useId()
   const focusDetails = useCallback(node => { node?.focus({ preventScroll: true }) }, [])
   useEffect(() => {
     if (!open) return undefined
@@ -919,18 +918,18 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
   const dshRow = showsDshRow(dsh, update?.app)
   const showGodbot = update?.available || phase !== 'idle'
   const notes = showGodbot && update?.notes ? update.notes.split('\n') : []
-  const preview = notes[0]
   // Hooks first: an update that turns visible after the sidebar mounted would
   // otherwise add hooks on a later render and crash the slot.
   const tick = useViewport()
   useLayoutEffect(() => {
     if (!open) return
-    const rect = button.current?.getBoundingClientRect()
+    const anchor = wide ? button.current?.closest('.bt-update-banner') : button.current
+    const rect = anchor?.getBoundingClientRect()
     if (!rect) return
-    const width = Math.min(360, window.innerWidth - 16)
+    const width = Math.min(wide ? 280 : 360, window.innerWidth - 16)
     const top = rect.bottom + 6
     setBox({ width, top, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)), maxHeight: window.innerHeight - top - 8 })
-  }, [open, tick, wide, phase, preview])
+  }, [open, tick, wide, phase, update?.notes])
   if (!update?.available && !dshRow && phase === 'idle' && dshPhase === 'idle') return null
   const cloudPhase = phase === 'installing' || dshPhase === 'installing' ? 'installing' : phase !== 'idle' ? phase : dshPhase
   // A release fetched ahead: the details explain when it installs.
@@ -973,19 +972,19 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
       : t('You have {version}.', { version: dsh?.current })
   const trigger = h('button', {
     ref: button, type: 'button', className: wide ? 'bt-update bt-update-notice' : 'bt-round bt-update',
-    'data-phase': cloudPhase, 'aria-label': summary, 'aria-describedby': wide && preview ? previewId : undefined, title: summary,
+    'data-phase': cloudPhase, 'aria-label': summary, title: summary,
     'aria-haspopup': 'dialog', 'aria-expanded': open, onClick: toggle,
   },
     h(CloudDownloadIcon, { done: phase === 'installed' || phase === 'updated' }),
-    wide ? h('span', { className: 'bt-update-copy' },
-      h('span', { className: 'bt-update-summary' }, summary),
-      preview ? h('span', { id: previewId, className: 'bt-update-preview' }, preview) : null) : null,
+    wide ? h('span', { className: 'bt-update-summary' }, summary) : null,
     wide ? h('span', { className: 'bt-update-chevron', 'aria-hidden': true }, h(ChevronRightIcon)) : null,
     !wide && (phase === 'failed' || dshPhase === 'failed' || error || dshError) ? h('span', { className: 'bt-update-dot', 'aria-hidden': true }) : null)
+  const changes = notes.length > 0 ? h('ul', { className: 'bt-update-changes', 'aria-label': t('Release notes'), tabIndex: 0 },
+    notes.map((note, index) => h('li', { key: index }, note))) : null
   return h(Fragment, null,
     wide ? h('div', { className: 'bt-update-banner' }, trigger, canDismiss ? h('button', {
       type: 'button', className: 'bt-icon-btn bt-update-dismiss', 'aria-label': t('Dismiss'), title: t('Dismiss'), onClick: dismiss,
-    }, h(CloseIcon)) : null) : trigger,
+    }, h(CloseIcon)) : null, changes) : trigger,
     shown && box ? createPortal(h('div', {
       ref: focusDetails, className: 'bt-update-pop', role: 'dialog', tabIndex: -1,
       'aria-label': showGodbot ? t('Godbot update') : t('DSH update'), style: box, 'data-leaving': leaving || undefined,
@@ -998,11 +997,8 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
             : pending ? sentences(pending, t('You have {version}.', { version: update.current }))
               : t('You have {version}.', { version: update.current })),
         message ? h('div', { className: 'bt-update-error', role: 'alert' }, t('The update did not finish: {reason}', { reason: message })) : null,
-        preview ? h('div', { className: 'bt-update-changes' },
-          h('h3', null, t("What's new")),
-          h('ul', { 'aria-label': t("What's new") }, notes.map((note, index) => h('li', { key: index }, note)))) : null,
+        !wide ? changes : null,
         h('div', { className: 'bt-update-actions' },
-          update.notesUrl ? h('a', { className: 'bt-update-notes', href: update.notesUrl, target: '_blank', rel: 'noopener noreferrer' }, t('Release notes')) : null,
           !wide && canDismiss ? h('button', { type: 'button', className: 'bt-update-go', onClick: dismiss }, t('Dismiss')) : null,
           phase === 'installed' ? restartControl : phase === 'updated' ? null : h('button', {
             type: 'button', className: 'bt-update-go', disabled: phase === 'installing', onClick: start,
@@ -1202,16 +1198,15 @@ export const SIDEBAR_CSS = `
 .bt-update{position:relative}
 .bt-update-banner,.bt-round.bt-update{animation:bt-update-in ${SPRING_SHAPE.duration}ms ${SPRING_SHAPE.easing}}
 .bt-update>svg{flex:none;width:18px;height:18px;color:var(--bt-accent)}
-.bt-update-banner{display:flex;flex:none;align-items:center;margin:8px 0 6px;border:1px solid color-mix(in srgb,var(--bt-accent) 30%,transparent);border-radius:10px;background:var(--bt-accent-soft);transition:background-color .12s ease}
-.bt-update-notice{display:flex;flex:1;min-width:0;align-items:center;gap:9px;min-height:42px;padding:8px 10px;border:0;border-radius:inherit;background:transparent;color:var(--bt-ink);font:600 13px/18px var(--bt-font);text-align:left;cursor:pointer}
+.bt-update-banner{display:grid;grid-template-columns:minmax(0,1fr) auto;flex:none;align-items:center;margin:8px 0 6px;border:1px solid color-mix(in srgb,var(--bt-accent) 30%,transparent);border-radius:10px;background:var(--bt-accent-soft)}
+.bt-update-notice{display:flex;min-width:0;align-items:center;gap:9px;min-height:42px;padding:8px 10px;border:0;border-radius:inherit;background:transparent;color:var(--bt-ink);font:600 13px/18px var(--bt-font);text-align:left;cursor:pointer;transition:background-color .12s ease}
 .bt-update-banner>.bt-update-dismiss{flex:none;margin-right:6px}
-.bt-update-copy{flex:1;min-width:0;overflow-wrap:anywhere}
-.bt-update-preview{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;margin-top:2px;font-size:12px;font-weight:400;line-height:16px;color:var(--bt-ink-2)}
+.bt-update-summary{flex:1;min-width:0;overflow-wrap:anywhere}
 .bt-update-chevron{display:inline-flex;flex:none;color:var(--bt-ink-2)}
 .bt-update-chevron svg{width:14px;height:14px}
-.bt-update-notice:focus-visible,.bt-update-dismiss:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
+.bt-update-notice:focus-visible,.bt-update-dismiss:focus-visible,.bt-update-changes:focus-visible{outline:2px solid var(--bt-accent);outline-offset:2px}
 .bt-round.bt-update{background:var(--bt-accent-soft);border-color:color-mix(in srgb,var(--bt-accent) 30%,transparent)}
-.bt-update-banner:has(.bt-update-notice:is(:hover,[aria-expanded=true])),.bt-round.bt-update:is(:hover,[aria-expanded=true]){background:color-mix(in srgb,var(--bt-accent) 24%,transparent)}
+.bt-update-notice:is(:hover,[aria-expanded=true]),.bt-round.bt-update:is(:hover,[aria-expanded=true]){background:color-mix(in srgb,var(--bt-accent) 24%,transparent)}
 .bt-update:is([data-phase=installed],[data-phase=updated])>svg{color:var(--bt-ink-2)}
 @keyframes bt-update-in{from{opacity:0;transform:translateY(-3px)}}
 .bt-update[data-phase=installing] .bt-cloud-arrow,.bt-update[data-phase=downloading] .bt-cloud-arrow{animation:bt-cloud-drop 1.1s cubic-bezier(.45,0,.55,1) infinite}
@@ -1222,14 +1217,12 @@ export const SIDEBAR_CSS = `
 @keyframes bt-update-pop{from{opacity:0;transform:scale(.96);filter:var(--bt-fx-blur-4,blur(4px))}}
 .bt-update-title{font-size:14px;line-height:20px;font-weight:600}
 .bt-update-text{margin-top:2px;font-size:12px;line-height:18px;color:var(--bt-ink-2)}
-.bt-update-changes{margin-top:12px}
-.bt-update-changes h3{margin:0;font:600 13px/18px var(--bt-font)}
-.bt-update-changes ul{margin:4px 0 0;padding:0 4px 0 18px;max-height:min(28vh,200px);overflow-y:auto;overflow-wrap:anywhere;color:var(--bt-ink-2);font-size:13px;line-height:19px;list-style:disc}
+.bt-update-changes{margin:10px 0 0;padding:0 4px 0 18px;max-height:min(28vh,200px);overflow-y:auto;overscroll-behavior:contain;overflow-wrap:anywhere;color:var(--bt-ink-2);font-size:13px;line-height:19px;list-style:disc}
+.bt-update-banner>.bt-update-changes{grid-column:1/-1;margin:0 10px 10px;max-height:min(22vh,160px)}
 .bt-update-changes li+li{margin-top:4px}
 .bt-update-error{margin-top:8px;font-size:12px;line-height:17px;color:var(--bt-danger);overflow-wrap:anywhere;max-height:90px;overflow:auto}
 .bt-update-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:12px}
-.bt-update-notes{margin-right:auto;font-size:12px;color:var(--bt-ink-2);text-decoration:none}
-.bt-update-notes:hover{color:var(--bt-ink);text-decoration:underline}
+.bt-update-actions:empty{display:none}
 .bt-update-go{height:30px;padding:0 14px;border:0;border-radius:999px;background:var(--bt-accent,#4D6BFE);color:var(--bt-accent-ink,#fff);font:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:opacity .12s ease,transform .12s ease}
 .bt-update-go:hover:not(:disabled){opacity:.9}
 .bt-update-go:active:not(:disabled){transform:scale(.96)}

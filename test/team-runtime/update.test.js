@@ -219,9 +219,8 @@ test('release notes keep published changes from generated and hand-written relea
     '修复侧栏。\n支持键盘操作。\n保留选中的会话。')
   assert.equal(notes([sourceNotice, '', changelog].join('\n')), '')
   assert.equal(notes(null), '')
-  const long = notes(Array.from({ length: 20 }, (_, i) => '- ' + i + 'x'.repeat(600)).join('\n')).split('\n')
-  assert.equal(long.length, 12)
-  assert.equal(long[0].length, 500)
+  const allChanges = Array.from({ length: 20 }, (_, i) => `Change ${i + 1} with details. ${'A longer explanation. '.repeat(30).trimEnd()}`)
+  assert.equal(notes(allChanges.map(change => '- ' + change).join('\n')), allChanges.join('\n'))
 })
 
 test('GODBOT_UPDATE_API points the release list at another server', async () => {

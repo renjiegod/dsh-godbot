@@ -77,7 +77,7 @@ export function sidecarDigest(text) {
 }
 
 // The release feed includes GitHub's generated change list or a hand-written
-// Markdown body. Keep a small plain-text excerpt for the sidebar and receipt.
+// Markdown body. Keep the change text for the sidebar and installation receipt.
 export function releaseDetails(release) {
   const notesUrl = /^https?:\/\//i.test(release.html_url ?? '') ? release.html_url : null
   const body = typeof release.body === 'string' ? release.body.replace(/\r\n?/g, '\n') : ''
@@ -93,8 +93,7 @@ export function releaseDetails(release) {
       .replace(/\[([^\]\n]+)\]\(https?:\/\/[^)\s]+\)/g, '$1')
       .replace(/\*\*|`/g, '').replace(/\s+/g, ' ').trim()
     if (!text || /^(?:https?:\/\/\S+$|The corresponding source for the bundled Mac video encoder\b)/i.test(text)) continue
-    changes.push(text.length > 500 ? text.slice(0, 499).trimEnd() + '…' : text)
-    if (changes.length === 12) break
+    changes.push(text)
   }
   return { notesUrl, notes: changes.join('\n') }
 }
