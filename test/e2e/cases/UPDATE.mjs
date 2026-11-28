@@ -5,55 +5,13 @@ import { readFile, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { pathToFileURL } from 'node:url'
 import { findExecutable } from '../../../src/drivers/external/discover.js'
 import { workspaceHome } from '../../../src/host/workspace-home.js'
 import { bumpedArchive, sha256 } from '../artifacts.mjs'
 import { EnvironmentError, until } from '../host.mjs'
 import { openBotChat, openFullTeam, openSettingsPage } from '../native-ui.mjs'
-import { startRelay } from '../phone-relay.mjs'
+import { channel, withAndroidBotChat } from '../android-chat.mjs'
 import { member } from '../tickets.mjs'
-
-async function channel(host, endpoint, payload = {}) {
-  const response = await host.page.context().request.post(host.url + '/api/godbot/team', {
-    data: { endpoint, payload }, headers: { Origin: host.url }, timeout: 15_000,
-  })
-  const result = await response.json()
-  assert.ok(response.ok() && result.ok, endpoint + ': ' + JSON.stringify(result.error))
-  return result.value
-}
-
-async function checkRestartOnAndroid(context, host, bot, turn) {
-  const app = process.env.GODBOT_ANDROID_E2E
-  const apk = process.env.GODBOT_E2E_APK
-  if (!app || !apk) return
-  const ui = await import(pathToFileURL(join(app, 'e2e/adb.mjs')).href)
-  assert.equal(ui.shell('getprop ro.kernel.qemu').trim(), '1', 'use an isolated emulator')
-  const relay = await startRelay(context.scratch, context.note)
-  const port = new URL(relay.url).port
-  let forwarded = false
-  try {
-    await channel(host, 'phone-set', { server: relay.url, on: true })
-    await until(async () => (await channel(host, 'phone-set')).status === 'online', 'host connected to the Android test relay')
-    const { pairing } = await channel(host, 'phone-pair')
-    ui.install(apk)
-    ui.adb(['reverse', 'tcp:' + port, 'tcp:' + port])
-    forwarded = true
-    ui.openUrl(pairing.uri)
-    ui.tap(await ui.waitFor(nodes => ui.find(nodes, 'Pair', '配对'), 'pair the test APK'))
-    ui.tap(await ui.waitFor(nodes => ui.find(nodes, 'Open team list', '打开团队列表'), 'open the Android team list'))
-    ui.tap(await ui.waitFor(nodes => nodes.find(node => node.text === bot.name && node.bounds.x1 < 700)
-      ?? nodes.find(node => node.clickable && node.desc.startsWith(bot.name + ',')), 'open the restarted Claude conversation'))
-    await ui.waitFor(nodes => ui.find(nodes, `Interrupted by an update restart. Continued in turn ${turn}.`,
-      `因更新重启中断，已在第 ${turn} 轮继续。`), 'Android shows the cause and the continuation turn')
-    await writeFile(join(context.reportDir, 'android-update-restart.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
-    context.note('android-update-restart', { interrupted: true, continuedTurn: turn })
-  } finally {
-    try {
-      if (forwarded) ui.adb(['reverse', '--remove', 'tcp:' + port], { timeout: 5000 })
-    } finally { await relay.close() }
-  }
-}
 
 async function checkForcedRestart(context, host, next, install) {
   const { candidate, scratch, note } = context
@@ -135,7 +93,13 @@ else await import(${JSON.stringify(fixture.href)});
   await page.getByText(new RegExp(`Continued in turn ${resumed.restart.turn}|已在第 ${resumed.restart.turn} 轮继续`, 'u')).waitFor()
   await host.capture('update-continued-turn')
   note('update-forced-restart', { originalTurn: tool.turn, continuedTurn: resumed.restart.turn, questionAnswerOnce: true, nativeSessionKept: true, toolReceiptKept: true })
-  await checkRestartOnAndroid(context, host, bot, resumed.restart.turn)
+  await withAndroidBotChat(context, host, bot, async ui => {
+    const turn = resumed.restart.turn
+    await ui.waitFor(nodes => ui.find(nodes, `Interrupted by an update restart. Continued in turn ${turn}.`,
+      `因更新重启中断，已在第 ${turn} 轮继续。`), 'Android shows the cause and the continuation turn')
+    await writeFile(join(context.reportDir, 'android-update-restart.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
+    context.note('android-update-restart', { interrupted: true, continuedTurn: turn })
+  })
 }
 
 // An installed archive updates itself from a release. The release list and the
@@ -155,15 +119,26 @@ export default async function UPDATE(context) {
   const name = `dsh-godbot-${version}.tgz`
   const asked = []
   let published = false
+  let heldAfterRestart = false
+  let pendingPolls = 0
+  const resumeFeed = Promise.withResolvers()
   let base
-  const server = createServer((req, res) => {
+  const server = createServer(async (req, res) => {
     asked.push(req.url)
     if (req.url.startsWith('/repos/renjiegod/dsh-godbot/releases?')) {
+      if (heldAfterRestart) {
+        pendingPolls++
+        await resumeFeed.promise
+      }
       res.writeHead(200, { 'content-type': 'application/json' })
       return res.end(JSON.stringify(published ? [{
         tag_name: 'v' + version, html_url: base + '/releases/tag/v' + version, draft: false, prerelease: false,
         assets: [{ name, size: data.length, digest: 'sha256:' + sha256(data), browser_download_url: base + '/download/' + name }],
       }] : []))
+    }
+    if (req.url === '/repos/renjiegod/dsh-godbot/contents/package.json?ref=v' + version) {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      return res.end(JSON.stringify(next.pkg))
     }
     if (req.url === '/download/' + name) {
       res.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': data.length })
@@ -174,13 +149,15 @@ export default async function UPDATE(context) {
   })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   base = 'http://127.0.0.1:' + server.address().port
+  // The profile patch survives an exec restart with a clean environment.
+  const feedPatch = [{ id: 'godbot', config: { teamWorkspace: { updateApi: base } } }]
   try {
     // DSH's plugin manager installs with pnpm, which a real Host finds on its PATH,
     // using the store the first install linked the profile from (the same user's).
     const pnpm = findExecutable('pnpm')
     if (!pnpm) throw new EnvironmentError('pnpm is required for the DSH plugin manager to install the update')
     const store = execFileSync(pnpm, ['store', 'path'], { encoding: 'utf8' }).trim()
-    const host = await makeHost({ linkHostPeers: false,
+    const host = await makeHost({ linkHostPeers: false, patch: feedPatch,
       env: { GODBOT_UPDATE_CHECK: '1', GODBOT_UPDATE_API: base, pnpm_config_store_dir: store, GODBOT_E2E_RELOAD_TRAP: trap },
     })
     await symlink(realpathSync(pnpm), join(host.bin, 'pnpm'))
@@ -301,12 +278,20 @@ export default async function UPDATE(context) {
       await waitButton.click()
       await cancelButton.waitFor()
       const navigated = page.waitForEvent('domcontentloaded', { timeout: 90_000 })
+      heldAfterRestart = true
       releaseTurn.resolve()
       await navigated
     } finally { releaseTurn.resolve() }
     assert.equal(new URL(page.url()).origin, host.url)
     await page.locator('.bt-head .bt-pill').waitFor({ timeout: 90_000 })
+    const requestedAt = performance.now()
     const after = await host.bot('update-check', { fresh: false })
+    const elapsedMs = Math.round(performance.now() - requestedAt)
+    await until(() => pendingPolls > 0, 'the restarted host uses the local release feed')
+    assert.ok(after.checking || after.dsh?.checking, 'the local receipt was available during discovery')
+    note('restart-status-during-discovery', { current: after.current, phase: after.phase, pendingPolls, elapsedMs })
+    heldAfterRestart = false
+    resumeFeed.resolve()
     assert.equal(after.current, version)
     assert.equal(after.phase, 'updated')
     assert.equal(after.available, false)
@@ -344,7 +329,7 @@ export default async function UPDATE(context) {
     assert.equal(await completedNotice.count(), 0, 'the installed notice stays dismissed in the rail')
     note('update-running', { version: after.current, phase: after.phase, buildId: next.buildId, automaticBrowserReload: true, asked: [...new Set(asked)] })
 
-    const forcedHost = await makeHost({ linkHostPeers: false,
+    const forcedHost = await makeHost({ linkHostPeers: false, patch: feedPatch,
       env: { GODBOT_UPDATE_CHECK: '1', GODBOT_UPDATE_API: base, pnpm_config_store_dir: store, GODBOT_E2E_RELOAD_TRAP: trap },
     })
     await symlink(realpathSync(pnpm), join(forcedHost.bin, 'pnpm'))
@@ -394,6 +379,7 @@ export default async function UPDATE(context) {
       version: liveVersion, buildId: live.buildId, needsRestart: false,
     })
   } finally {
+    resumeFeed.resolve()
     await new Promise(resolve => server.close(resolve))
   }
 }

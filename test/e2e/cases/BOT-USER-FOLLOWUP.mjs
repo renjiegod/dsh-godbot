@@ -4,8 +4,10 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { until } from '../host.mjs'
 import { openBotChat, openFullTeam } from '../native-ui.mjs'
+import { withAndroidBotChat } from '../android-chat.mjs'
 
-export default async function botUserFollowup({ makeHost, candidate, note }) {
+export default async function botUserFollowup(context) {
+  const { makeHost, candidate, note } = context
   const host = await makeHost()
   const fixture = new URL('../../external/fixtures/fake-codex.mjs', import.meta.url)
   await writeFile(join(host.bin, 'codex'), `#!/usr/bin/env node
@@ -27,7 +29,7 @@ else await import(${JSON.stringify(fixture.href)})
   }
   await openBotChat(host, worker)
   const hiddenTurns = async () => (await state()).exchangeTurns[worker.id] ?? []
-  const delegated = 'GODBOT-CODEX-EXECUTION-TRACE ' + randomUUID()
+  const delegated = 'GODBOT-CODEX-EXECUTION-TRACE ' + randomUUID() + ' GODBOT-DELIVERY-MILESTONE'
   const request = 'Delegate the release check for this fixture.'
   host.model.reply = body => JSON.stringify(body.messages?.at(-1)?.content ?? '').includes(request)
     ? [{ type: 'tool_use', name: 'message_bot', input: { to: worker.name, conversation: worker.id, message: delegated } }]
@@ -38,6 +40,34 @@ else await import(${JSON.stringify(fixture.href)})
     return turns.length && (await state()).partsRunning?.[worker.id] && turns
   }, 'the delegated Codex turn is running')
 
+  const milestone = 'Web checks passed. Android checks are running.'
+  const work = await until(async () => {
+    const snapshot = await state()
+    const work = snapshot.work.delegated?.[worker.id]
+    assert.equal(snapshot.work.delegated?.[sender.id], undefined, 'progress belongs to the receiving conversation')
+    return work?.progress?.text === milestone && work.count > 0 && work
+  }, 'the paired client can read the active request and its explicit milestone')
+  assert.equal(work.turn, delegatedTurn)
+  assert.ok(work.lastActivityAt >= work.since)
+  const progress = host.page.locator('.bt-delegated-progress')
+  await progress.getByText(milestone, { exact: true }).waitFor()
+  assert.doesNotMatch(await progress.innerText(), /fixture-trace\.txt|Codex fixture progress/u)
+  await host.capture('delegated-progress')
+  await host.page.locator('.bt-event').filter({ hasText: sender.name }).last().click()
+  const exchange = host.page.locator('.bt-exchange .bt-group-msg').filter({ hasText: delegated })
+  await exchange.locator('[data-delivery-state="accepted"]').waitFor()
+  await exchange.getByText(milestone, { exact: false }).last().waitFor()
+  await host.page.locator('.bt-exchange .bt-dialog-foot button').click()
+  await withAndroidBotChat(context, host, worker, async ui => {
+    await ui.waitFor(nodes => ui.find(nodes, milestone), 'Android shows the live delegated milestone')
+    await ui.waitFor(nodes => nodes.find(node => /Last activity|最近活动/u.test(node.text)), 'Android shows observed tool activity')
+    await writeFile(join(context.reportDir, 'android-delegated-progress.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
+    ui.tap(await ui.waitFor(nodes => ui.find(nodes, 'Bot message delivery', 'Bot 消息投递'), 'open delivery history'))
+    await ui.waitFor(nodes => nodes.find(node => node.text.includes(milestone))
+      && ui.find(nodes, 'Engine accepted', '引擎已接收'), 'Android keeps the delivery receipt alongside the milestone')
+    ui.tap(await ui.waitFor(nodes => ui.find(nodes, 'Done', '完成'), 'close delivery history'))
+    note('android-delegated-progress', { sessionId: worker.id, turn: delegatedTurn })
+  })
   const followup = 'GODBOT-CODEX-USER-FOLLOWUP Why so long?'
   await host.bot('send', { sessionId: worker.id, text: followup })
   const { page } = host
@@ -81,6 +111,8 @@ else await import(${JSON.stringify(fixture.href)})
   await webProgress()
   const delivery = (await host.bot('bot-deliveries', { botId: worker.id, sessionId: worker.id })).find(row => row.text === delegated)
   assert.equal(delivery?.state, 'stopped', 'the original request settles under its own delivery')
+  assert.equal(delivery.progress.text, milestone)
+  assert.equal((await state()).work.delegated?.[worker.id], undefined)
 
   // Recreate the old host's saved marker, using the same real log and tool
   // receipts. Verify each client's normal entry point repairs it after boot.
@@ -102,6 +134,8 @@ else await import(${JSON.stringify(fixture.href)})
   assert.deepEqual(await hiddenTurns(), [delegatedTurn], 'opening the Web chat restores only the user’s turn')
   await rebootWithLegacyMarker()
   const restored = await followupRows()
+  const senderHistory = await host.bot('bot-deliveries', { botId: sender.id, sessionId: sender.id })
+  assert.equal(senderHistory.find(row => row.id === delivery.id)?.progress.text, milestone)
   assert.deepEqual(restored.filter(row => row.kind === 'bot').map(row => row.text), [firstUpdate, secondUpdate])
   assert.equal(restored.find(row => row.kind === 'tool')?.toolId, tool.toolId)
   assert.equal(restored.find(row => row.kind === 'turn-status')?.status, 'stopped')

@@ -7,10 +7,10 @@ import { readFileSync } from 'node:fs'
 
 import { verifiedDshVersion } from '../../dsh-compatibility.js'
 import {
-  FETCH_TIMEOUT_MS, cleanVersion, encodeName, fetchJson, followsPrereleases, installSpecOf,
+  FETCH_TIMEOUT_MS, cleanVersion, encodeName, fetchJson, installSpecOf,
   newer, registryPlan, repoSlug, runningDsh, sourceOf, updatesEnabled,
 } from './update.js'
-import { createNet, newestRelease, releasesApi } from './update-release.js'
+import { createNet, releasesApi, timeUpdateLookup } from './update-release.js'
 
 const PKG = JSON.parse(readFileSync(new URL('../../../../package.json', import.meta.url), 'utf8'))
 const DSH_PACKAGE = '@deepseek-ai/dsh'
@@ -40,7 +40,7 @@ export function install(rt) {
 
   const view = () => ({
     current: status.current, verified: status.verified, kind: status.kind, blockedBy: status.blockedBy,
-    checkedAt: status.checkedAt, phase: status.phase, installed: status.installed, error: status.error,
+    checkedAt: status.checkedAt, checking: checking !== null, phase: status.phase, installed: status.installed, error: status.error,
     // Nothing is offered without a current version to compare against.
     available: status.phase !== 'installed' && target !== null && status.current !== null
       && !blocked(),
@@ -68,21 +68,25 @@ export function install(rt) {
     }
     const repo = repoSlug()
     if (!repo) return null
-    const headers = { 'user-agent': `${PKG.name}/${PKG.version}` }
+    const api = releasesApi(process.env, config.updateApi).replace(/\/+$/, '')
+    const net = rt.updateNet ?? createNet({ userAgent: `${PKG.name}/${PKG.version}`, timeoutMs: FETCH_TIMEOUT_MS })
     try {
       // A packed archive follows the releases that carry one, prereleases included
       // on a prerelease; a git install the repository's latest release.
       let tagName
       if (source.kind === 'archive') {
-        const net = rt.updateNet ?? createNet({ userAgent: headers['user-agent'], timeoutMs: FETCH_TIMEOUT_MS })
-        tagName = (await newestRelease({ repo, name: PKG.name, prerelease: followsPrereleases(config), net, api: releasesApi() }))?.tag
+        tagName = (await rt.latestArchiveRelease())?.tag
       } else {
-        tagName = (await fetchJson(`https://api.github.com/repos/${repo}/releases/latest`, headers))?.tag_name
+        tagName = (await net.json(`${api}/repos/${repo}/releases/latest`))?.tag_name
       }
       if (!cleanVersion(tagName)) return null
-      const manifest = await fetchJson(`https://raw.githubusercontent.com/${repo}/${tagName}/package.json`, headers)
+      const manifest = await timeUpdateLookup(rt, 'dsh-release-manifest', () =>
+        net.fileJson(`${api}/repos/${repo}/contents/package.json?ref=${encodeURIComponent(tagName)}`))
       return dshRequirement(manifest)
-    } catch { return null }
+    } catch (error) {
+      rt.warn('godbot: DSH release declaration lookup failed: %s', error.message)
+      return null
+    }
   }
 
   async function runCheck() {

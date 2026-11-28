@@ -271,3 +271,12 @@ body[data-gb-conversation] [data-conversation-scroll] .gb-execution-body {
 body[data-gb-conversation] [data-conversation-scroll] .gb-execution-tool[data-status=completed]:not([open]) .gb-execution-state {
   display: none;
 }
+.bt-delegated-progress {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0;
+  padding-inline: 12px;
+  color: var(--bt-ink);
+  overflow-wrap: anywhere;
+}
+.bt-delegated-progress small { color: var(--bt-ink-3); }

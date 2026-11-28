@@ -30,7 +30,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { basename, dirname, join, resolve } from 'node:path'
 import {
-  archiveManifest, compatibility, createNet, defaultArchiveDir, downloadArchive, dropPartials, newer, newestRelease, releasesApi,
+  archiveManifest, compatibility, createNet, defaultArchiveDir, downloadArchive, dropPartials, newer, newestRelease, releasesApi, timeUpdateLookup,
 } from './update-release.js'
 
 export { newer }
@@ -397,7 +397,7 @@ export function install(rt) {
   const view = () => ({
     name: status.name, current: status.current, latest: status.latest, source: status.source, notesUrl: status.notesUrl,
     repoUrl: repoUrl(), enabled, mode: settings.mode,
-    checkedAt: status.checkedAt, checkFailed: status.checkFailed, phase: status.phase, installed: status.installed, error: status.error,
+    checkedAt: status.checkedAt, checking: checking !== null, checkFailed: status.checkFailed, phase: status.phase, installed: status.installed, error: status.error,
     ...(status.phase === 'downloading' && progress !== null ? { progress: { ...progress } } : {}),
     ...(blocked !== null ? { blocked: { ...blocked } } : {}),
     ...(waiting !== null && (status.phase === 'ready' || status.phase === 'idle') ? { waiting } : {}),
@@ -444,10 +444,18 @@ export function install(rt) {
     return { version, spec: `github:${owner}/${repo}#${fragment}` }
   }
 
-  async function newestFromReleases() {
+  let listing = null
+  // The Godbot archive and DSH compatibility checks use the same release selection.
+  function latestArchiveRelease() {
     const repo = repoSlug()
     if (repo === null) return null
-    const found = await newestRelease({ repo, name: PKG.name, prerelease: followsPrereleases(config), net, api: releasesApi() })
+    return listing ??= timeUpdateLookup(rt, 'release-list', () => newestRelease({
+      repo, name: PKG.name, prerelease: followsPrereleases(config), net, api: releasesApi(process.env, config.updateApi),
+    })).finally(() => { listing = null })
+  }
+
+  async function newestFromReleases() {
+    const found = await latestArchiveRelease()
     return found === null ? null : { version: found.version, asset: found.asset, notesUrl: found.notesUrl }
   }
 
@@ -831,6 +839,6 @@ export function install(rt) {
 
   Object.assign(rt, {
     updateCheck: check, updateStart: () => start(), updateView: view, updateSettings: setSettings,
-    updateTick: tick, updatePrepare: prepare, updateBusy: busyReasons, repoStars,
+    updateTick: tick, updatePrepare: prepare, updateBusy: busyReasons, latestArchiveRelease, repoStars,
   })
 }

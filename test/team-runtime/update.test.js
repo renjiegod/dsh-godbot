@@ -9,6 +9,7 @@ import { gzipSync } from 'node:zlib'
 import { verifiedDshVersion } from '../../src/host/dsh-compatibility.js'
 import { IDLE_MS, RETRY_MS, install, profileCommand, sourceOf } from '../../src/host/team-runtime/core/update.js'
 import { install as installDshUpdate } from '../../src/host/team-runtime/core/dsh-update.js'
+import { install as installChannel } from '../../src/host/team-runtime/core/channel.js'
 import { dshRestart } from '../../src/host/team-runtime/core/dsh-restart.js'
 import {
   GITHUB_API, archiveManifest, compatibility, downloadArchive, newer, newestRelease, releasesApi, sidecarDigest,
@@ -76,6 +77,7 @@ function fakeNet(routes) {
   return {
     calls,
     async json(url) { return answer(url) },
+    async fileJson(url) { return answer(url) },
     async text(url) { return String(answer(url)) },
     async download(url, path, { onProgress } = {}) {
       const data = answer(url)
@@ -297,6 +299,34 @@ test('a newer running DSH receives no downgrade recommendation', async t => {
   const olderHost = await rt.dshUpdateCheck({ fresh: true })
   assert.equal(olderHost.verified, DSH)
   assert.equal(olderHost.available, true)
+})
+
+test('a cold status poll returns the local restart receipt while remote checks are pending', async () => {
+  const feed = Promise.withResolvers()
+  const home = scratch()
+  writeFileSync(join(home, 'update.json'), JSON.stringify({ from: '0.0.1', to: PKG.version }))
+  const { rt, net } = harness({ home, releases: [], routes: { [LIST]: () => feed.promise } })
+  installDshUpdate(rt)
+  Object.assign(rt, { state: {}, refresh: async () => {}, phoneServe() {} })
+  rt.ctx.on = () => {}
+  installChannel(rt)
+  let observed
+  const poll = rt.channelCall('update-check', { fresh: false }).then(result => { observed = result })
+  let refreshed = false
+  const manual = rt.channelCall('update-check', { fresh: true }).then(() => { refreshed = true })
+  try {
+    await settle()
+    assert.equal(observed?.value?.phase, 'updated', 'the heartbeat is independent of a stalled release feed')
+    assert.equal(observed.value.current, PKG.version)
+    assert.equal(refreshed, false, 'an explicit refresh waits for discovery')
+    assert.ok(net.calls.includes(LIST))
+    assert.equal(net.calls.filter(url => url === LIST).length, 1, 'concurrent readers share the release listing')
+  } finally {
+    feed.resolve([])
+    await Promise.all([poll, manual])
+  }
+  assert.equal(refreshed, true)
+  assert.ok((await rt.channelCall('update-check', {})).value.checkedAt > 0)
 })
 
 test('auto mode downloads a release, waits until Godbot is idle, then installs it', async () => {
