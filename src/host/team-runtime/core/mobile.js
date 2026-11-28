@@ -48,6 +48,7 @@ export const CAPABILITIES = [
   'work-board-v1',
   'work-board-management-v1',
   'work-board-discussion-v1',
+  'work-board-lifecycle-v1',
   'stop-chat',
   'bot-goals',
   'bot-deliveries',
@@ -144,9 +145,9 @@ export function roomItems(events, rowsOf = () => []) {
       if (source?.kind === 'user') {
         const imageBlocks = content.filter(block => block?.type === 'image' && block.attachment !== undefined)
         const imageRefs = imageBlocks.map(block => ({ attachmentId: block.attachment.attachmentId, mime: mediaOf(block.attachment), name: block.attachment.name }))
-        items.push({ id: `${seq}`, kind: 'user', text: textOf(content), ...(imageBlocks.length > 0 ? { images: imageBlocks.length, imageRefs } : {}), time: event.time ?? null })
+        items.push({ id: `${seq}`, kind: 'user', text: textOf(content), ...(source.workItemId ? { workItemId: source.workItemId } : {}), ...(imageBlocks.length > 0 ? { images: imageBlocks.length, imageRefs } : {}), time: event.time ?? null })
       } else if (source?.kind === 'schedule') {
-        items.push({ id: `${seq}`, kind: 'event', event: 'schedule', text: reminderText(textOf(content)), time: event.time ?? null })
+        items.push({ id: `${seq}`, kind: 'event', event: 'schedule', text: reminderText(textOf(content)), ...(source.workItemId ? { workItemId: source.workItemId } : {}), time: event.time ?? null })
       } else if (source?.kind === SOURCE_KIND && source.role === 'post') {
         // A post a running round logged shows inside that round; a member's late failure,
         // picked-up work, stopped work or finished work is an event of the round it opens.

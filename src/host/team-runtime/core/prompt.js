@@ -37,6 +37,16 @@ const REPLIES = [
   '</replies>',
 ].join('\n')
 
+const WORK_BOARD = [
+  '<work_board>',
+  'Use the work item supplied for this turn. Read its acceptance criteria and checkpoint before repeating work.',
+  'Record milestones or blockers with work_progress. Delegate independent deliverables with message_bot.',
+  'Submit verified results with work_submit, using the current requirements revision. Then reply at the original destination.',
+  'Follow any reporting instructions supplied by the current goal or assignment.',
+  'The host handles review and assignment state. If several work items share a turn, identify each explicitly in work tools.',
+  '</work_board>',
+].join('\n')
+
 const GROUPS = [
   '<groups>',
   '- You are in group chats with the user and other Bots. You speak in each from a separate conversation of yours, apart from your own chat with the user. Your turn there arrives as a "[Group chat …]" message that shows the speaking order, and your reply is posted to the group.',
@@ -98,6 +108,7 @@ export function botPrompt(bot, { main = false, inGroup = false, localAgent = fal
     instructions,
     main ? MAIN : '',
     TEAM,
+    WORK_BOARD,
     REPLIES,
     main || inGroup ? GROUPS : '',
     localAgent ? LOCAL_AGENT : MODEL_TOOLS,
@@ -172,6 +183,13 @@ export function install(rt) {
       note.fields.instructions ? `Your instructions now read:\n${bot.instructions || '(none)'}` : '',
     ].filter(line => line !== '').join('\n')
   }
+  ctx.effect(() => ctx.systemPrompt.context({
+    name: 'godbot-work-item',
+    order: 651,
+    required: true,
+    interpolate: false,
+    text: context => rt.workTracking?.prompt(context?.agent?.id) ?? '',
+  }), 'godbot: work item context')
   ctx.effect(() => ctx.systemPrompt.context({
     name: 'godbot-profile',
     order: 650,

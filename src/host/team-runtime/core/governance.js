@@ -8,7 +8,7 @@ const readTools = new Set([
   'list_bots', 'get_bot', 'read', 'read_file', 'list_files', 'grep', 'glob', 'search_files',
   'read_group_chat', 'read_bot_chat', 'recall', 'web_search', 'web_fetch', 'browser_open',
   'browser_status', 'browser_snapshot', 'browser_screenshot', 'browser_back', 'godbot_desktop_view',
-  'list_components', 'show_component', 'show_view', 'ask_user', 'ask_user_question',
+  'list_components', 'show_component', 'show_view', 'ask_user', 'ask_user_question', 'work_context', 'work_progress', 'work_submit',
 ])
 const toolPattern = /^[a-zA-Z0-9_.:@/-]{1,120}\*?$/
 

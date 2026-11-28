@@ -794,6 +794,7 @@ export function install(rt) {
       signal.addEventListener('abort', () => finish(null), { once: true })
     })
     try {
+      rt.workTracking?.enrollRoomTurn({ roomId: room.id, botId: member.id, sessionId, exchangeId, rootId: round.workItemId, text })
       await rt.deliver({ fromId: undefined, toId: member.id, sessionId, role: 'room', roomId: room.id, exchangeId, note, text, images, files, steer: busy, initiator, ...(by ? { askedBy: by } : {}) })
       // The prompt reached the member: its read position moves on.
       room.seen[member.id] = seenAt
@@ -1319,6 +1320,7 @@ export function install(rt) {
     const run = runRoundFrom(room, queued, agent, key, controller.signal, holder)
       .catch(error => rt.warn('godbot: group round in %s failed: %s', room.name, error))
       .finally(() => {
+        for (const id of holder.workItemIds ?? []) rt.workTracking?.endGroupRound(id, controller.signal.aborted)
         holder.settle(undefined)
         if (rt.roomProgress.get(key) === holder) rt.roomProgress.delete(key)
       })
@@ -1383,6 +1385,7 @@ export function install(rt) {
     const callsNobody = post => post.member === true && openingSpeakers(room, post).length === 0
     const open = posts.filter(post => post.called !== true)
     const opener = open.findLast(post => !event(post) && !callsNobody(post)) ?? open.findLast(post => !event(post)) ?? open.at(-1) ?? { text: '', quiet: true }
+    holder.workItemIds = [...new Set(posts.map(post => post.workItemId).filter(Boolean))]
     const references = posts.flatMap(post => post.references ?? [])
     // A member a Bot's post calls by name works for that Bot. The saved list is the
     // whole message; the text may be only its opening.
@@ -1416,6 +1419,7 @@ export function install(rt) {
     const draftPost = posts.find(post => post.goal === 'draft' && post !== opener)
     if (draftPost !== undefined && admin !== undefined && !speakers.some(member => member.id === admin.id)) speakers.push(admin)
     const round = {
+      workItemId: opener.workItemId,
       roomId: room.id,
       members: room.members,
       startSeq,

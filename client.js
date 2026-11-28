@@ -13414,6 +13414,8 @@ var ZH = {
   "Source record": "来源记录",
   "Earlier activity": "更早的活动",
   "Work board": "工作看板",
+  "Open work item {id}": "打开工作项 {id}",
+  "Next action by {name}": "下一步由 {name} 处理",
   "Close work board": "关闭工作看板",
   "New work item": "新建工作项",
   "Work item": "工作项",
@@ -40796,11 +40798,18 @@ function UserMessageCell({ node, sessionId, useRoster, actions, renderMessageIma
   const stamp4 = sentAt || via ? (0, import_react40.createElement)("div", { className: "bt-utime", title: clockLabel(data.time) }, via && (0, import_react40.createElement)(ViaTag, { via }), sentAt) : null;
   const room2 = roster.roomsById[sessionId], bot = roster.byId[sessionId];
   const messageId = data.seq ?? data.id ?? node.key ?? node.id;
+  const workItemId = data.source?.workItemId;
+  const workLink = /^GB-[1-9]\d{0,14}$/.test(workItemId ?? "") ? (0, import_react40.createElement)("button", {
+    type: "button",
+    className: "bt-soft bt-uwork",
+    "aria-label": t("Open work item {id}", { id: workItemId }),
+    onClick: () => actions.openWorkBoard({ id: workItemId })
+  }, workItemId) : null;
   const copy2 = text === "" ? null : (0, import_react40.createElement)(
     "div",
     { className: "bt-utools", "data-open": toolsOpen || void 0 },
     (0, import_react40.createElement)(CopyButton2, { text }),
-    !roster.readOnly && (room2 || bot) && messageId != null ? (0, import_react40.createElement)("button", {
+    !workLink && !roster.readOnly && (room2 || bot) && messageId != null ? (0, import_react40.createElement)("button", {
       type: "button",
       className: "bt-tool",
       title: t("Create work item from message"),
@@ -40816,6 +40825,7 @@ function UserMessageCell({ node, sessionId, useRoster, actions, renderMessageIma
       "div",
       { className: "bt-ustack" },
       prepared === void 0 ? (0, import_react40.createElement)(ProjectedContent, { ...fold, roster, sessionId, actions, renderMessageImages, openFile, openSkill }) : (0, import_react40.createElement)(HostContent, { ...fold, prepared, loadImage, renderFactorySlot }),
+      workLink,
       conversation ? (stamp4 || copy2) && (0, import_react40.createElement)("div", { className: "bt-umeta" }, stamp4, copy2) : stamp4
     ),
     conversation ? null : copy2
@@ -40824,6 +40834,7 @@ function UserMessageCell({ node, sessionId, useRoster, actions, renderMessageIma
 var USER_MESSAGE_CSS = `
 .bt-umsg{display:flex;flex-direction:row-reverse;align-items:center;justify-content:flex-start;gap:4px}
 .bt-ustack{min-width:0;max-width:calc(var(--bt-msg-w) * 100%);display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.bt-uwork{font-size:12px;white-space:nowrap}
 .bt-ubody{max-width:100%;box-sizing:border-box;background:var(--bt-user);color:var(--bt-user-ink);border-radius:18px;padding:7px 12px;font-size:var(--dsh-content-font-size,14px);line-height:calc(var(--dsh-content-font-size,14px) + 10px);white-space:pre-wrap;word-break:break-word;text-wrap:pretty;text-autospace:normal}
 .bt-ubody a{color:inherit}
 /* The host's content stack sits in Godbot's: the width follows --bt-msg-w (the user's
@@ -57654,7 +57665,13 @@ var sourceNames = {
   task: "Bot assignment",
   room: "Group chat",
   workflow: "Workflow",
-  run: "Team run"
+  run: "Team run",
+  chat: "Bot chat",
+  delegation: "Bot delegation",
+  group: "Group work",
+  goal: "Goal",
+  schedule: "Scheduled work",
+  terminal: "Native terminal"
 };
 var markNames = {
   draft: "Draft",
@@ -61984,8 +62001,10 @@ function WorkBoard({ initial: initial2, actions, roster, column: column2 = 0 }) 
                   (0, import_react93.createElement)("h3", null, t("Evidence")),
                   (0, import_react93.createElement)("span", { className: "wb-card-id" }, "v", item.evidenceRevision)
                 ),
-                (0, import_react93.createElement)("div", { className: "wb-mono-block" }, item.evidence)
+                (0, import_react93.createElement)("div", { className: "wb-mono-block" }, item.evidence),
+                item.evidenceRefs?.length ? (0, import_react93.createElement)("ul", null, ...item.evidenceRefs.map((ref) => (0, import_react93.createElement)("li", { key: ref }, ref))) : null
               ) : null,
+              item.lifecycleState && item.nextActor && !["done", "cancelled"].includes(item.lifecycleState) ? (0, import_react93.createElement)("p", { className: "wb-subtext" }, t("Next action by {name}", { name: item.nextActor === "user" ? t("You") : item.nextActor === "host" ? "Godbot" : roster.bots?.find((bot) => bot.id === item.nextActor)?.name ?? t("Bot") })) : null,
               item.hint && ![item.criteria, item.evidence].some((v3) => v3?.replace(/\s+/g, " ").startsWith(item.hint)) ? (0, import_react93.createElement)("div", { className: "wb-callout", "data-tone": "info" }, item.hint) : null,
               item.pending.length || item.dependencies.length || item.origin || item.execution ? (0, import_react93.createElement)(
                 "section",

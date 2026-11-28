@@ -86,7 +86,8 @@ export class BotTerminals {
         const opened = await this.pty.open({ ...launch, command: launch.file, cols, rows,
           trustClaudeFolder: (lease.agent === 'claude' || lease.agent === 'local-claude-code') && (lease.sandboxLaunch?.guestCwd ?? true) })
         id = opened.terminalId
-        entry = { key, id, agent: lease.agent, cwd: launch.cwd, nativeId: lease.sessionId, lease }
+        entry = { key, id, agent: lease.agent, cwd: launch.cwd, nativeId: lease.sessionId, lease, botId, sessionId,
+          requestedWorkItem: request.workItemId }
         this.byChat.set(key, entry)
         entry.onAbort = () => { void this.close(id).catch(() => {}) }
         lease.signal?.addEventListener('abort', entry.onAbort, { once: true })
@@ -112,7 +113,20 @@ export class BotTerminals {
 
   view(entry, info, reused) {
     return { ...info, agent: entry.agent, cwd: entry.cwd, nativeId: entry.nativeId, reused,
+      ...(entry.work ? { workItemId: entry.work.workItemId } : {}),
       ...(entry.lease.accountProfileId ? { accountProfileId: entry.lease.accountProfileId, guestCwd: entry.lease.sandboxLaunch.guestCwd } : {}) }
+  }
+
+  write(id, data) {
+    const entry = [...this.byChat.values()].find(row => row.id === id)
+    const running = entry && this.pty.info(id)
+    if (running && !running.exit && !entry.work && typeof data === 'string'
+      && Buffer.byteLength(data) <= 256 * 1024 && /[^\x00-\x20]/u.test(data)
+      && !/^(?:\x1b\[(?:[?>][\d;]*c|\??\d+;\d+R))+$/u.test(data)) {
+      entry.work = this.service.board?.lifecycle.startTerminal({ terminalId: id, nativeId: entry.nativeId,
+        botId: entry.botId, sessionId: entry.sessionId, workItemId: entry.requestedWorkItem })
+    }
+    return this.pty.write(id, data)
   }
 
   async history(id) {
@@ -133,7 +147,12 @@ export class BotTerminals {
     const entry = [...this.byChat.values()].find(row => row.id === id)
     if (entry && !entry.releasing) {
       entry.lease.signal?.removeEventListener('abort', entry.onAbort)
-      entry.releasing = Promise.resolve().then(() => entry.lease.release()).catch(error => { entry.releasing = undefined; throw error })
+      entry.releasing = Promise.resolve().then(() => {
+        try {
+          if (entry.work) this.service.board.lifecycle.endTerminal(id)
+        } catch (error) { this.service.runtime.warn?.('godbot terminal work: %s', error.code ?? error.name) }
+        return entry.lease.release()
+      }).catch(error => { entry.releasing = undefined; throw error })
     }
     return entry?.releasing
   }

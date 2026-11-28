@@ -727,7 +727,15 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
                             h('div', { className: 'wb-section-head' },
                               h('h3', null, t('Evidence')),
                               h('span', { className: 'wb-card-id' }, 'v', item.evidenceRevision)),
-                            h('div', { className: 'wb-mono-block' }, item.evidence)) : null,
+                            h('div', { className: 'wb-mono-block' }, item.evidence),
+                            item.evidenceRefs?.length
+                              ? h('ul', null, ...item.evidenceRefs.map(ref => h('li', { key: ref }, ref)))
+                              : null) : null,
+                          item.lifecycleState && item.nextActor && !['done', 'cancelled'].includes(item.lifecycleState)
+                            ? h('p', { className: 'wb-subtext' }, t('Next action by {name}', { name: item.nextActor === 'user' ? t('You')
+                              : item.nextActor === 'host' ? 'Godbot'
+                                : roster.bots?.find(bot => bot.id === item.nextActor)?.name ?? t('Bot') }))
+                            : null,
                           item.hint && ![item.criteria, item.evidence].some(v => v?.replace(/\s+/g, ' ').startsWith(item.hint))
                             ? h('div', { className: 'wb-callout', 'data-tone': 'info' }, item.hint) : null,
                           (item.pending.length || item.dependencies.length || item.origin || item.execution)

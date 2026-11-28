@@ -9,6 +9,7 @@ import { sourceSummary, sourceDetail } from './work-board-sources.js'
 import { ownConversations } from './team-runtime/core/threads.js'
 import { boardCommentTargets, readDiscussion, WorkBoardDiscussion } from './work-board-discussion.js'
 import { WorkBoardRuns } from './work-board-runs.js'
+import { lifecycleEvents, WorkBoardLifecycle } from './work-board-lifecycle.js'
 import { boardCatalog, BoardRelations, editPlanning, mutateBoardCatalog, planningFields } from './work-board-planning.js'
 
 const denied = () => Object.assign(new Error('工作项不存在或无法访问。'), { code: 'bot/not-found' })
@@ -93,6 +94,10 @@ function detailFor(service, db, req, readOnly, planning) {
     item.reviewBlocked = item.planning.waiting || (task.boardRequirementsRevision ?? 0) !== (task.reportRequirementsRevision ?? 0)
     if (item.reviewBlocked) item.actions = item.actions.filter(op => op !== 'approve')
   }
+  if (row.kind === 'work' && item.actions.includes('approve') && item.planning.waiting) {
+    item.reviewBlocked = true
+    item.actions = item.actions.filter(op => op !== 'approve')
+  }
   if (readOnly) item.actions = []
   return { ...item, readOnly }
 }
@@ -141,7 +146,9 @@ export function readBoardOnly(dir, rt, endpoint, req = {}) {
       byNumber: db.prepare('SELECT * FROM board_cards WHERE number=?'),
       source: db.prepare('SELECT * FROM board_cards WHERE kind=? AND scope=? AND source_id=?'),
     }, input => checkedRow(db, rt, input), true)
-    return detailFor({ store, runtime: rt, ...queryStatements(db) }, db, req, true, planning)
+    const row = checkedRow(db, rt, req)
+    const boardWorkEvents = row.kind === 'work' ? lifecycleEvents(db) : undefined
+    return detailFor({ store, runtime: rt, boardWorkEvents, ...queryStatements(db) }, db, req, true, planning)
   } finally {
     if (!readingRuns) db.close()
   }
@@ -163,6 +170,8 @@ export class WorkBoard {
     this.update = this.db.prepare('UPDATE board_cards SET summary=? WHERE number=?')
     this.planning = new BoardRelations(this, input => checkedRow(this.db, this.rt, input))
     this.discussion = new WorkBoardDiscussion(this, checkedRow, fingerprint)
+    this.lifecycle = new WorkBoardLifecycle(this)
+    this.rt.workTracking = this.lifecycle
     this.runs = new WorkBoardRuns(this, input => checkedRow(this.db, this.rt, input))
     this.rt.openWorkBoardConversation = (...args) => this.discussion.openConversation(...args)
     this.rt.admitWorkBoardComment = (args) => this.discussion.admit(args)
@@ -202,7 +211,9 @@ export class WorkBoard {
   close() {
     this.closed = true
     clearTimeout(this.timer)
+    this.lifecycle.close()
     this.off?.()
+    if (this.rt.workTracking === this.lifecycle) delete this.rt.workTracking
     delete this.rt.openWorkBoardConversation
     delete this.rt.admitWorkBoardComment
     delete this.rt.reconcileWorkBoardComment
@@ -238,6 +249,8 @@ export class WorkBoard {
   }
   sync() {
     if (this.closed || this.rt.readOnly()) return
+    this.lifecycle.syncInteractions()
+    const moreLegacyWork = this.lifecycle.backfillPage()
     let changed = false
     const queue = this.db.prepare('SELECT kind,source_id FROM board_dirty LIMIT 250')
     const clear = this.db.prepare('DELETE FROM board_dirty WHERE kind=? AND source_id=?')
@@ -255,6 +268,9 @@ export class WorkBoard {
     }
     if (this.roomsDirty) {
       this.roomsDirty = false
+      for (const room of Object.values(this.rt.state.rooms ?? {})) {
+        if (room.goal) this.lifecycle.syncGoal(room.goal, { room: room.id, sessionId: this.rt.sessionOfRoom?.(room) })
+      }
       const next = new Map(this.roomKeys),
         versions = new Map()
       this.store.transaction(() => {
@@ -314,7 +330,7 @@ export class WorkBoard {
     }
     if (rows.length < 250 && this.releaseWaiting()) changed = true
     if (changed) this.changed()
-    if (rows.length === 250) {
+    if (rows.length === 250 || moreLegacyWork) {
       this.schedule()
       return true
     }
@@ -412,7 +428,7 @@ export class WorkBoard {
       this.db.prepare("UPDATE board_requests SET outcome='ok' WHERE id=?").run(requestId)
       return this.item({ id: cardId(row.number) })
     }
-    const external = !editOp && op !== 'run-retry' && (op === 'note' || op === 'cancel' || row?.kind === 'run')
+    const external = row?.kind !== 'work' && !editOp && op !== 'run-retry' && (op === 'note' || op === 'cancel' || row?.kind === 'run')
     const recordRequest = (number, outcome) =>
       this.db.prepare('INSERT INTO board_requests VALUES(?,?,?,?)').run(requestId, digest, number, outcome)
     if (external) {
@@ -452,6 +468,7 @@ export class WorkBoard {
           await this.rt.save({ required: true })
           const bot = this.rt.botOf(result.task.botId)
           if (!bot || !accessOf(this.rt).allowed.has('room/' + row.scope)) throw denied()
+          this.lifecycle.bind.run('request:' + row.scope + '/work-board/' + requestId, row.number, 0)
           await this.rt.sendUser({
             sessionId: row.scope,
             requestId: 'work-board/' + requestId,
@@ -514,6 +531,8 @@ export class WorkBoard {
           }
         } else if (op === 'run-retry') {
           this.runs.retry(row, req)
+        } else if (row.kind === 'work' && op !== 'edit-fields') {
+          this.lifecycle.action(row, req)
         } else if (editOp) {
           this.editCard(row, req, access)
         } else if (row.kind === 'draft') {
@@ -636,7 +655,7 @@ export class WorkBoard {
 
   editCard(row, req, access) {
     const before = JSON.parse(row.meta)
-    const meta = { ...before }
+    const meta = row.kind === 'work' ? JSON.parse(row.meta) : { ...before }
     const base = JSON.parse(row.summary)
     let nextOwner
     if (req.op === 'complete') {
@@ -702,6 +721,7 @@ export class WorkBoard {
     meta.version = (before.version ?? 0) + 1
     meta.updated = Date.now()
     this.planning.save(row, before, meta)
+    if (row.kind === 'work') this.lifecycle.requirements(row, before, meta)
     this.store.put('boardEditHistory', {
       id: randomUUID(), number: row.number, at: meta.updated, reason: textField(req.reason, 1000), changes,
     })

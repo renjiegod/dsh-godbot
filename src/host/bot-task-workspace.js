@@ -291,13 +291,19 @@ export class BotTaskWorkspace {
     const { store, team } = this
     if (!store.get('members', delivery.botId) || this.rt.readOnly()) return this.botFailed(id, 'unknown', unavailable)
     if (taskBudgetReceipt(store, delivery.sessionId, id)?.status === 'held') return
+    const receipt = delivery.boardSubmission
+    const observedTurn = this.rt.live?.get(delivery.sessionId)?.turn
+    if (receipt?.turn === (observedTurn ?? delivery.turnId) && receipt?.evidence) text = receipt.evidence
     if (typeof text !== 'string' || !text.trim()) return this.botFailed(id, 'unknown', 'Bot 没有返回可归属到该任务的结果。')
     let submitted
     store.transaction(() => {
       const original = store.require('messages', delivery.messageId)
       const task = store.get('tasks', delivery.taskId)
       if (original.kind === 'assignment' && task?.assignmentId === id && activeTasks.has(task.status)) {
-        submitted = team.recordReport(task, original, text.trim(), delivery.botId)
+        const updated = receipt?.evidence === text && receipt?.turn === (observedTurn ?? delivery.turnId)
+          ? { ...original, boardRequirementsRevision: receipt.requirements }
+          : original
+        submitted = team.recordReport(task, updated, text.trim(), delivery.botId)
       } else if (original.kind === 'message') {
         team.deliver({ teamId: botWorkspaceId, from: delivery.botId, to: [original.from], kind: 'ack',
           replyTo: original.id, text, exchangeId: original.exchangeId }, { enqueue: false })

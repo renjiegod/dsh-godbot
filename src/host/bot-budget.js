@@ -78,6 +78,7 @@ export class BotBudget {
       }
       this.store.put(collection,{id,sessionId:agent.id,owner,origin:msg.source?.kind,
         status:'held',passive:passiveNotice(msg),message:prior?.message ?? msg, ...denied})
+      if (!passiveNotice(msg)) rt.workTracking?.budgetWait(agent.id, msg, id)
       if (msg.source?.role === 'room') rt.roomWaiters.get(msg.source.exchangeId)?.resolve({working:true})
       this.scheduleAt(denied.resetsAt)
     }
@@ -141,6 +142,7 @@ export class BotBudget {
       this.store.update(collection,row.id,{status:'releasing'})
       try {
         const message = {...row.message,id:replayId}
+        rt.workTracking?.budgetReleased(row.sessionId, row.message, message, row.id)
         if (passiveNotice(message)) agent.inject(message)
         else agent.followup(message)
         const flushed = await rt.ctx.sessions.flush(agent.session)

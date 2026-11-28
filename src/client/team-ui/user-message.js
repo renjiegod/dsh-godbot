@@ -218,8 +218,13 @@ export function UserMessageCell({ node, sessionId, useRoster, actions, renderMes
   const stamp = (sentAt || via) ? h('div', { className: 'bt-utime', title: clockLabel(data.time) }, via && h(ViaTag, { via }), sentAt) : null
   const room = roster.roomsById[sessionId], bot = roster.byId[sessionId]
   const messageId = data.seq ?? data.id ?? node.key ?? node.id
+  const workItemId = data.source?.workItemId
+  const workLink = /^GB-[1-9]\d{0,14}$/.test(workItemId ?? '')
+    ? h('button', { type: 'button', className: 'bt-soft bt-uwork', 'aria-label': t('Open work item {id}', { id: workItemId }),
+      onClick: () => actions.openWorkBoard({ id: workItemId }) }, workItemId)
+    : null
   const copy = text === '' ? null : h('div', { className: 'bt-utools', 'data-open': toolsOpen || undefined }, h(CopyButton, { text }),
-    !roster.readOnly && (room || bot) && messageId != null ? h('button',{type:'button',className:'bt-tool',title:t('Create work item from message'),'aria-label':t('Create work item from message'),
+    !workLink && !roster.readOnly && (room || bot) && messageId != null ? h('button',{type:'button',className:'bt-tool',title:t('Create work item from message'),'aria-label':t('Create work item from message'),
       onClick:()=>actions.openWorkBoard({seed:{title:text.slice(0,160),origin:{sessionId,roomId:room?.id,botId:room?undefined:bot?.id,messageId:String(messageId),turnId:data.turn}}})},'▤') : null)
   const conversation = usesConversationLayout(roster, sessionId)
   return h('div', { ref: row, className: 'bt-umsg', 'data-steering': steering || undefined },
@@ -227,6 +232,7 @@ export function UserMessageCell({ node, sessionId, useRoster, actions, renderMes
       prepared === undefined
         ? h(ProjectedContent, { ...fold, roster, sessionId, actions, renderMessageImages, openFile, openSkill })
         : h(HostContent, { ...fold, prepared, loadImage, renderFactorySlot }),
+      workLink,
       conversation ? ((stamp || copy) && h('div', { className: 'bt-umeta' }, stamp, copy)) : stamp),
     conversation ? null : copy)
 }
@@ -234,6 +240,7 @@ export function UserMessageCell({ node, sessionId, useRoster, actions, renderMes
 export const USER_MESSAGE_CSS = `
 .bt-umsg{display:flex;flex-direction:row-reverse;align-items:center;justify-content:flex-start;gap:4px}
 .bt-ustack{min-width:0;max-width:calc(var(--bt-msg-w) * 100%);display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.bt-uwork{font-size:12px;white-space:nowrap}
 .bt-ubody{max-width:100%;box-sizing:border-box;background:var(--bt-user);color:var(--bt-user-ink);border-radius:18px;padding:7px 12px;font-size:var(--dsh-content-font-size,14px);line-height:calc(var(--dsh-content-font-size,14px) + 10px);white-space:pre-wrap;word-break:break-word;text-wrap:pretty;text-autospace:normal}
 .bt-ubody a{color:inherit}
 /* The host's content stack sits in Godbot's: the width follows --bt-msg-w (the user's
