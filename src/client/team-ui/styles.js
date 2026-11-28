@@ -1320,6 +1320,7 @@ body[data-bt-goal] [class*="_scroll"]:has(> [class*="_column"]){padding-top:calc
 [data-composer-card]:has(> [data-slot="conversation.input.attachments"] > [class*="_rail"]) [class*="_tools"]{order:2!important}
 [data-composer-card]:has(> [data-slot="conversation.input.attachments"] > [class*="_rail"]) [class*="_trailing"]{margin-left:auto!important}
 [data-composer-card] [data-composer-input]{min-height:24px!important;padding:2px 0!important}
+[data-composer-chip="godbot"]>span{color:var(--bt-accent);background:var(--bt-accent-soft);border-radius:6px;gap:1px;font-weight:600}
 [data-composer-card] [data-composer-placeholder]{left:0!important;top:2px!important}
 [data-composer-placeholder]{font-size:0!important;line-height:0!important}
 /* The name sits on ::before so that ::after stays free for other composer skins. */

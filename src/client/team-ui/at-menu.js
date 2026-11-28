@@ -21,14 +21,25 @@ const conversationOf = (roster, sessionId) => {
   return self ? { self } : null
 }
 
+function botsFor(roster, here) {
+  return here.room
+    ? here.room.members.map(id => roster.byId[id]).filter(Boolean)
+    : roster.bots.filter(bot => bot.id !== here.self.id)
+}
+
+function mentionNames(roster, sessionId) {
+  const here = conversationOf(roster, sessionId)
+  if (here === null) return undefined
+  const names = botsFor(roster, here).map(bot => bot.name)
+  return here.room && names.length > 1 ? [...names, ...ROOM_ALL] : names
+}
+
 // What "@query" offers: a group's members and "everyone", or in a Bot's chat every
 // other Bot. Null outside the team, so a plain Session keeps the shell's menu alone.
 export function mentionRows(roster, sessionId, query = '') {
   const here = conversationOf(roster, sessionId)
   if (here === null) return null
-  const bots = here.room
-    ? here.room.members.map(id => roster.byId[id]).filter(Boolean)
-    : roster.bots.filter(bot => bot.id !== here.self.id)
+  const bots = botsFor(roster, here)
   const needle = query.trim().toLowerCase()
   const rows = bots.filter(bot => bot.name.toLowerCase().includes(needle)).map(bot => ({ bot, text: `@${bot.name} ` }))
   const everyone = t('Everyone')
@@ -85,10 +96,26 @@ export function atSources({ roster, sessions, launched, iconFor }) {
         ...(row.room ? { description: t('{count} members', { count: row.room.members.length }) } : {}),
         icon: iconFor(row),
         section: t('Bots'),
-        value: row.text,
+        value: row.text.trimEnd(),
       }))
     },
-    onPick: ({ candidate }) => (candidate.value ? { text: candidate.value } : undefined),
+    lexicon: session => mentionNames(roster.getSnapshot(), session.sessionId),
+    subscribeLexicon(session, invalidate) {
+      const read = () => JSON.stringify(mentionNames(roster.getSnapshot(), session.sessionId))
+      let names = read()
+      return roster.subscribe(() => {
+        const next = read()
+        if (next === names) return
+        names = next
+        invalidate()
+      })
+    },
+    onPick({ candidate }) {
+      const ref = candidate.value
+      if (ref) return { insert: { source: BOTS_SOURCE, ref, label: ref.slice(1), clipboardText: ref } }
+    },
+    // The editor draws and copies a chip, and the host receives the same @Name it routes today.
+    codec: { clipboardText: ref => ref, serialize: ref => Promise.resolve(ref) },
   }
   const chats = {
     trigger: '@',

@@ -44,10 +44,18 @@ export default async function check({ makeHost, candidate, reportDir, note }) {
   await page.getByRole('button', { name: /^(讨论|Discussion)$/ }).click()
   assert.deepEqual(await drawer.boundingBox(), bounds, 'switching tabs keeps the same drawer geometry')
   const input = page.getByRole('textbox', { name: /^(评论|Comment)$/ })
+  const mention = page.getByRole('button', { name: /^(?:@ Bot|Mention a Bot)$/ })
+  const dropdown = page.getByRole('listbox', { name: /^(?:@ Bot|Mention a Bot)$/ })
+  await mention.click()
+  await dropdown.getByRole('option', { name: '@Discussion Worker', exact: true }).waitFor()
+  assert.equal(await input.inputValue(), '', 'opening the picker leaves the draft intact')
+  await input.press('Escape')
+  await dropdown.waitFor({ state: 'hidden' })
   await input.fill('@Discussion')
-  await page.getByRole('button', { name: '@Discussion Worker', exact: true }).click()
+  await dropdown.getByRole('option', { name: '@Discussion Worker', exact: true }).waitFor()
+  await input.press('Enter')
   assert.equal(await input.inputValue(), '@Discussion Worker ')
-  await input.fill('@Discussion Worker LOOK_AT_BOARD')
+  await page.keyboard.insertText('LOOK_AT_BOARD')
   await page.getByText(/将唤醒 Discussion Worker|Will wake Discussion Worker/).waitFor()
   await page.locator('.wb-discussion input[type="file"]').setInputFiles({
     name: 'proof.txt', mimeType: 'text/plain', buffer: Buffer.from('proof from Web'),
@@ -100,10 +108,15 @@ export default async function check({ makeHost, candidate, reportDir, note }) {
   await page.locator('[data-board-comment="' + final.id + '"][data-linked]').waitFor()
   assert.equal((await read({ thread: root.id })).entries.length, 3)
   await page.setViewportSize({ width: 420, height: 850 })
+  await mention.click()
+  await dropdown.getByRole('option', { name: '@Discussion Worker', exact: true }).waitFor()
+  await dropdown.screenshot({ path: join(reportDir, 'discussion-mention-narrow.png') })
   assert.equal(await drawer.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true)
+  await dropdown.getByRole('option', { name: '@Discussion Worker', exact: true }).click()
+  assert.equal(await input.inputValue(), '@Discussion Worker ')
   await page.screenshot({ path: join(reportDir, 'discussion-narrow.png') })
   note('work-board-discussion', {
     id: draft.id, executionConversationReused: true, sameTaskEvidence: true,
-    attachmentBytesMatch: true, preservedAfterRestart: true, linkedReply: final.id,
+    attachmentBytesMatch: true, preservedAfterRestart: true, linkedReply: final.id, keyboardAndPointerPicker: true,
   })
 }
