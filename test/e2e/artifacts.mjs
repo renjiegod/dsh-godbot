@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rename, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -96,5 +96,12 @@ export async function bumpedArchive(candidate, scratch, version, { trap = false 
 
 export async function saveEvidence(dir, filename, data) {
   await mkdir(dir, { recursive: true, mode: 0o700 })
-  await writeFile(join(dir, filename), JSON.stringify(data, null, 2) + '\n', { mode: 0o600 })
+  const path = join(dir, filename)
+  const temporary = path + '.' + randomUUID() + '.tmp'
+  try {
+    await writeFile(temporary, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 })
+    await rename(temporary, path)
+  } finally {
+    await rm(temporary, { force: true })
+  }
 }

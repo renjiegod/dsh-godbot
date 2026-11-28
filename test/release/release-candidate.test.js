@@ -46,6 +46,15 @@ async function fixture(version = '0.9.1') {
   return { ...built, candidate, verified: verification(strictReport(candidate), candidate) }
 }
 
+test('an interrupted checkpoint or a report from another revision cannot authorize release', async () => {
+  const { candidate } = await fixture()
+  const report = strictReport(candidate, { checkpointVersion: 1, suite: 'release', revision: COMMIT })
+  assert.equal(verification(report, candidate).result, 'passed')
+  for (const override of [{ result: 'interrupted' }, { endedAt: undefined }, { revision: OTHER }, { suite: 'all' }]) {
+    assert.throws(() => verification({ ...report, ...override }, candidate), /did not finish/)
+  }
+})
+
 test('describe names the archive, its commit, hash and Host build', async () => {
   const { file, bytes } = archive('0.9.1')
   const candidate = await describe(file, { commit: COMMIT })

@@ -98,16 +98,21 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
   await run(git, ['init', '-q', workspace])
   await run(git, ['-C', workspace, '-c', 'user.name=Godbot E2E', '-c', 'user.email=fixture@localhost',
     '-c', 'commit.gpgSign=false', 'commit', '-q', '--allow-empty', '-m', 'fixture workspace'])
+  const port = await freePort()
   const model = await startModel()
-  let context
-  try { context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'zh-CN' }) }
-  catch (error) { await model.close(); throw error }
-  const page = await context.newPage()
-  page.setDefaultTimeout(20_000)
-  const notice = page.getByRole('dialog', { name: /预览版说明|Preview Notice/u })
-  await page.addLocatorHandler(notice, () => notice.getByRole('button', { name: /继续|Continue/u }).click())
-  const later = page.getByRole('button', { name: /稍后配置|Set up later/u })
-  await page.addLocatorHandler(later, () => later.click())
+  let context, page
+  try {
+    context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'zh-CN' })
+    page = await context.newPage()
+    page.setDefaultTimeout(20_000)
+    const notice = page.getByRole('dialog', { name: /预览版说明|Preview Notice/u })
+    await page.addLocatorHandler(notice, () => notice.getByRole('button', { name: /继续|Continue/u }).click())
+    const later = page.getByRole('button', { name: /稍后配置|Set up later/u })
+    await page.addLocatorHandler(later, () => later.click())
+  } catch (error) {
+    try { await context?.close() } finally { await model.close() }
+    throw error
+  }
   let boot
   const pendingSources = new Set()
   const wrongSources = []
@@ -127,7 +132,6 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
   })
   const warnings = []
   page.on('pageerror', error => warnings.push(redact(error.stack || error.message).slice(0, 2600)))
-  const port = await freePort()
   let child, exited, output = '', secretUrl
   let startupMarker
   const url = 'http://127.0.0.1:' + port
@@ -252,9 +256,9 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
       note('screenshot', { file: name + '.png' })
     },
     async close() {
-      await host.stop()
-      await context.close()
-      await model.close()
+      try { await host.stop() } finally {
+        try { await context.close() } finally { await model.close() }
+      }
       await Promise.allSettled([...pendingSources])
       if (warnings.length) note('page-errors', { errors: warnings.slice(-8) })
       if (wrongSources.length) throw new Error('Detected a different browser client registration: ' + JSON.stringify(wrongSources))
