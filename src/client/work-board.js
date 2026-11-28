@@ -20,6 +20,7 @@ import { assigneeChoices, boardGroupName, BoardLayouts, PlanningFields, useBoard
 import { BoardArtifactsPanel, BoardRunsPanel, PlanningDetails } from './work-board-detail.js'
 import { DateChip, OwnerMark, PriorityBadge, StatusPill, statusLabel } from './work-board-ui.js'
 import { filterLink, priorities, viewDisplay } from '../team/work-board-planning.js'
+import { botNativeTarget, nativeTabs } from './native-agent-target.js'
 
 const button = (label, onClick, props = {}) => h('button', { type: 'button', onClick, ...props }, label)
 const option = (value, label) => h('option', { key: value, value }, label)
@@ -353,6 +354,13 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
     const id = anchor?.sessionId || anchor?.roomId
     if (!id) return
     setAnchor(anchor)
+  }
+  const terminalTarget = item?.canContinueInTerminal && item.execution
+    ? botNativeTarget(roster.bots?.find(bot => bot.id === item.execution.botId), item.execution.sessionId, roster)
+    : null
+  const continueInTerminal = () => {
+    actions.openSession(terminalTarget.sessionId)
+    actions.showDetails(terminalTarget.sessionId, nativeTabs.terminal, item.id)
   }
   const toggle = card => setChecked(old => {
     const next = new Map(old)
@@ -727,7 +735,15 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
                             h('div', { className: 'wb-section-head' },
                               h('h3', null, t('Evidence')),
                               h('span', { className: 'wb-card-id' }, 'v', item.evidenceRevision)),
-                            h('div', { className: 'wb-mono-block' }, item.evidence)) : null,
+                            h('div', { className: 'wb-mono-block' }, item.evidence),
+                            item.evidenceRefs?.length
+                              ? h('ul', null, ...item.evidenceRefs.map(ref => h('li', { key: ref }, ref)))
+                              : null) : null,
+                          item.lifecycleState && item.nextActor && !['done', 'cancelled'].includes(item.lifecycleState)
+                            ? h('p', { className: 'wb-subtext' }, t('Next action by {name}', { name: item.nextActor === 'user' ? t('You')
+                              : item.nextActor === 'host' ? 'Godbot'
+                                : roster.bots?.find(bot => bot.id === item.nextActor)?.name ?? t('Bot') }))
+                            : null,
                           item.hint && ![item.criteria, item.evidence].some(v => v?.replace(/\s+/g, ' ').startsWith(item.hint))
                             ? h('div', { className: 'wb-callout', 'data-tone': 'info' }, item.hint) : null,
                           (item.pending.length || item.dependencies.length || item.origin || item.execution)
@@ -741,7 +757,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
                                   )),
                                   ...item.dependencies.map((d) => button(d.id + ' · ' + d.title, () => pick(d.id), { key: d.id, className: 'wb-btn wb-btn-soft' })),
                                   item.origin ? button(t('Open source conversation'), () => original(item.origin), { className: 'wb-btn' }) : null,
-                                  item.execution ? button(t('Open execution conversation'), () => original(item.execution), { className: 'wb-btn' }) : null)) : null,
+                                  item.execution ? button(t('Open execution conversation'), () => original(item.execution), { className: 'wb-btn' }) : null,
+                                  terminalTarget ? button(t('Continue in native terminal'), continueInTerminal, { className: 'wb-btn' }) : null)) : null,
                           renderRunChildren(item),
                           item.events.length
                             ? h(

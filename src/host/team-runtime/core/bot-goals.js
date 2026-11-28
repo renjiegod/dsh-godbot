@@ -106,6 +106,7 @@ export function install(rt) {
         throw failure
       }
       if (next.status !== 'active') waitingReasons.delete(next.id)
+      rt.workTracking?.syncGoal(next, { sessionId: next.attempt?.sessionId ?? headOf(next)?.sessionId })
       return next
     })
     commits = run.catch(() => {})

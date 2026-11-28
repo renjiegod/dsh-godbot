@@ -751,7 +751,7 @@ export function BotPanel({ pane, leaving, room, overlay, roster, actions, useSes
             h(MemberWorkView, { roomId: pane.id, at: work, roster, actions: panelActions, useWork }))
           : h('div', { key: `details:${pane.id}:${pane.renaming ? 'rename' : ''}:${native ? 'native-agent' : pane.tab ?? ''}`, className: 'bt-panel-view' },
             h(DetailsDrawer, {
-              sessionId: pane.id, startRenaming: pane.renaming, startTab: pane.tab, hasStrip,
+              sessionId: pane.id, startRenaming: pane.renaming, startTab: pane.tab, terminalWorkItem: pane.terminalWorkItem, hasStrip,
               roster, actions: panelActions, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer,
             })))
 }

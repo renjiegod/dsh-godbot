@@ -81,6 +81,18 @@ export class WorkBoardRuns {
     const allowed = board.discussion.allowed(row)
     const result = this.comments.all(row.number).filter(run => allowed.has(run.bot_id))
       .map(run => ({ ...this.comment(run), createdAt: run.created }))
+    if (row.kind === 'work') {
+      const turns = board.lifecycle?.byCard ?? board.db.prepare('SELECT * FROM board_work_turns WHERE number=? ORDER BY at DESC LIMIT 100')
+      for (const run of turns.all(row.number)) {
+        if (!allowed.has(run.bot_id)) continue
+        result.push({ id: 'work-turn/' + run.session_id + '/' + run.turn_id, kind: 'work',
+          number: row.number, botId: run.bot_id, sessionId: run.session_id, turnId: run.turn_id,
+          status: run.status, attempt: run.attempt, createdAt: run.at, lastActivityAt: run.updated,
+          tools: run.tools, lastTool: run.last_tool,
+          canStop: run.status === 'running' && Boolean(board.lifecycle?.canStop(run.session_id, run.turn_id, row.number)),
+        })
+      }
+    }
     if (row.kind === 'task') {
       const task = store.get('tasks', row.source_id)
       for (const record of this.messages.all(row.source_id)) {
@@ -188,7 +200,8 @@ export class WorkBoardRuns {
       const latest = this.get(this.checked({ id: cardId(row.number) }), run.id)
       if (latest.sessionId !== run.sessionId || !latest.canStop || latest.turnId !== run.turnId) throw denied()
     }
-    if (run.sessionId) await stopBoardWork(this.rt, run.sessionId, run.workId ?? run.id, run.turnId, assertCurrent)
+    if (run.kind === 'work') await this.board.lifecycle.stopRun(run, assertCurrent)
+    else if (run.sessionId) await stopBoardWork(this.rt, run.sessionId, run.workId ?? run.id, run.turnId, assertCurrent)
     else assertCurrent()
     if (run.kind === 'assignment') this.board.service.botTasks.botFailed(run.id, 'stopped', '从工作看板停止。')
     if (run.kind === 'comment') this.board.discussion.stopRun(run.id)

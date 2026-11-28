@@ -373,6 +373,7 @@ export class WorkBoardDiscussion {
     if (this.board.closed || this.rt.readOnly()) return
     const task = row.kind === 'task' && this.board.store.get('tasks', row.source_id)
     const anchor = (task?.boardSessionOwner === bot.id && task.boardSession)
+      || (detail.execution?.botId === bot.id && detail.execution.sessionId)
       || (detail.origin?.botId === bot.id && detail.origin.sessionId)
     const sessionId = await this.openConversation(run.number, bot, detail.title, anchor)
     if (this.rt.nativeTerminals?.()[sessionId]) return this.update(run.id, 'terminal')

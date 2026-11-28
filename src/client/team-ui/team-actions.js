@@ -83,7 +83,7 @@ export function teamActions({ call, after, partFor, roster, ui, live, cards, hel
         return { ...state, details: id, view, renaming: false, tab: null }
       })
     },
-    showDetails: (id, tab = null) => { ui.set(state => ({ ...state, details: id, view: 'details', renaming: false, tab, panelYield: yieldTo(state, 'details') })) },
+    showDetails: (id, tab = null, terminalWorkItem = null) => { ui.set(state => ({ ...state, details: id, view: 'details', renaming: false, tab, terminalWorkItem, panelYield: yieldTo(state, 'details') })) },
     // A group member's work, in the panel beside the group: the turn `at` names (a group
     // line's), else the one it runs there now. The panel follows the group's current
     // part, as its details do.

@@ -168,7 +168,7 @@ export async function apply(ctx, config = {}) {
       return scope.existing({ write: true }).terminals.open(request)
     },
     terminalRead: ({ terminalId, cursor, waitMs }, signal) => terminal(false).pty.read(terminalId, { cursor, waitMs, signal }),
-    terminalWrite: ({ terminalId, data }) => terminal(true).pty.write(terminalId, data),
+    terminalWrite: ({ terminalId, data }) => terminal(true).write(terminalId, data),
     terminalResize: ({ terminalId, cols, rows }) => terminal(true).pty.resize(terminalId, cols, rows),
     terminalClose: ({ terminalId }) => terminal(false).close(terminalId),
     slashCommands: async target => (await service()).slashCommands(target),

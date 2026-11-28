@@ -242,6 +242,10 @@ export function install(rt) {
     parameters: {
       to: { type: 'string', required: true, description: 'Exact Bot name from list_bots' },
       message: { type: 'string', required: true, description: 'Self-contained message; the other Bot cannot see this conversation' },
+      work_intent: { type: 'string', enum: ['delegate', 'follow-up', 'information'],
+        description: 'Use delegate for a deliverable, follow-up for an existing work item, information for a message that asks for no new work.' },
+      work_item_id: { type: 'string', description: 'The recipient’s work item for follow-up.' },
+      acceptance: { type: 'string', description: 'How to verify a delegated deliverable. Defaults to the request.' },
       reply_to: {
         type: 'string',
         enum: ['me', 'user'],
@@ -294,6 +298,9 @@ export function install(rt) {
           message: String(args.message ?? '').replace(/\r\n?/g, '\n').trim(),
           reply_to: args.reply_to === 'user' ? 'user' : 'me',
           when: args.when === 'queue' ? 'queue' : 'now',
+          ...(args.work_intent ? { work_intent: args.work_intent } : {}),
+          ...(args.work_item_id ? { work_item_id: args.work_item_id } : {}),
+          ...(args.acceptance ? { acceptance: args.acceptance } : {}),
           ...(newConversation ? { new_conversation: true } : {}),
           ...(given !== '' ? { conversation: given } : {}),
         },
@@ -353,7 +360,7 @@ export function install(rt) {
         const initiator = rt.governance?.delegate(fromPart ?? rt.chatOf(sender.id), sender.id)
         await rt.bootBotInbox()
         return rt.routeBotMessage(target, route, async (sessionId, { steer, created }) => {
-          const earlier = originPart === undefined ? rt.unreadBotDelivery(sessionId, {
+          const earlier = originPart === undefined && args.work_intent !== 'delegate' && !args.work_item_id ? rt.unreadBotDelivery(sessionId, {
             fromId: sender.id, fromPart, toId: target.id, work, toUser, steer: route.steer, text, initiator,
           }) : undefined
           const combined = earlier ? `${earlier.fullText ?? earlier.args.text}\n\n${text}` : undefined
@@ -377,6 +384,7 @@ export function install(rt) {
             fromId: sender.id, toId: target.id, sessionId, fromPart,
             text: body.text, files: body.files, length: body.length,
             role: 'request', steer, exchangeId, title,
+            ...(args.work_intent ? { workIntent: args.work_intent } : {}),
             ...(created ? { opensConversation: true } : {}),
             ...(toUser ? { audience: 'user' } : {}),
             ...(!created && destination?.by ? { addressed: destination.by } : {}),
@@ -389,11 +397,21 @@ export function install(rt) {
             if (row) return rt.inboxReceipt(row.id, receipt(true))
           }
           const exchangeId = randomUUID()
-          const row = await rt.enqueueBotDelivery(argsOf(exchangeId, original, title), {
-            fullText: original.length ? text : undefined,
-            request, receipt: receipt(false),
-            ...(!toUser ? { openWork: { from: sender.id, to: target.id, parent: work, fromPart } } : {}),
-          })
+          const delivery = argsOf(exchangeId, original, title)
+          const tracking = rt.workTracking
+          const tracked = tracking?.delegate({ ...delivery, text, criteria: args.acceptance, workItemId: args.work_item_id },
+            tracking.current(exec.agent?.id), args.work_intent)
+          let row
+          try {
+            row = await rt.enqueueBotDelivery(delivery, {
+              fullText: original.length ? text : undefined,
+              request, receipt: receipt(false),
+              ...(!toUser ? { openWork: { from: sender.id, to: target.id, parent: work, fromPart } } : {}),
+            })
+          } catch (error) {
+            if (tracked) tracking.admissionFailed(exchangeId)
+            throw error
+          }
           return rt.inboxReceipt(row.id, receipt(false))
         })
       }

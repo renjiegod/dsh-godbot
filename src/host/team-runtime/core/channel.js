@@ -877,6 +877,7 @@ export function install(rt) {
           await rt.load()
           await rt.sendUser({
             sessionId: body.sessionId,
+            ...(typeof body.requestId === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(body.requestId) ? { requestId: body.requestId } : {}),
             content: [
               ...(text === '' ? [] : [{ type: 'text', text }]),
               ...images.map(({ mediaType, data }) => ({ type: 'image', mediaType, data })),

@@ -81,6 +81,7 @@ export class GodbotService {
   }
 
   async start(ctx) {
+    this.board.lifecycle.attach(this.runtime.ctx ?? ctx)
     this.automation.full.attach(this.runtime)
     this.budgets.attach(ctx)
     this.automation.github.restore()

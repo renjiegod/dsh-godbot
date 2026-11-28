@@ -78,7 +78,7 @@ export function questionReply(question, answer) {
   const given = { id: question.id, selected, ...(custom !== '' ? { custom } : {}) }
   return {
     text: JSON.stringify({ kind: 'answer_to_pending_question', tool: 'ask_user', callId, questions: [asked], answers: [given] }),
-    source: { kind: REPLY_KIND, callId, outcome: 'answered' },
+    source: { kind: REPLY_KIND, callId, questionId: question.id, outcome: 'answered' },
   }
 }
 
@@ -1036,6 +1036,7 @@ export function install(rt) {
       const exchangeId = message.source?.exchangeId
       if (exchangeId !== undefined && pending.some(queued => queued.source?.exchangeId === exchangeId)) continue
       const copy = createUserMessage({ content: message.content, ...(message.source ? { source: message.source } : {}) })
+      rt.workTracking?.aliasInput(message, copy)
       if (kind === 'user' || kind === SOURCE_KIND || kind === REPLY_KIND) agent.followup(copy)
       else agent.inject(copy)
       pending.push(copy)
@@ -1888,13 +1889,14 @@ export function install(rt) {
       }
       if (event.type !== 'user/message') continue
       const source = event.data?.source
+      const workLink = source?.workItemId ? { workItemId: source.workItemId } : {}
       if (source?.kind === 'user') {
         const content = Array.isArray(event.data.content) ? event.data.content : []
         const imageRefs = content.filter(block => block?.type === 'image' && block.attachment !== undefined)
           .map(block => ({ attachmentId: block.attachment.attachmentId, mime: block.attachment.mediaType ?? block.attachment.mime ?? block.attachment.mimeType, name: block.attachment.name }))
         const images = content.filter(block => block?.type === 'image').length
         const via = viaOf(source)
-        stamp(event, { kind: 'user', text: textOf(content), ...(images > 0 ? { images } : {}), ...(imageRefs.length > 0 ? { imageRefs } : {}), ...(via ? { via } : {}), time: event.time })
+        stamp(event, { kind: 'user', text: textOf(content), ...workLink, ...(images > 0 ? { images } : {}), ...(imageRefs.length > 0 ? { imageRefs } : {}), ...(via ? { via } : {}), time: event.time })
       } else if (source?.kind === REPLY_KIND) {
         const text = textOf(event.data.content)
         const reply = readReply(text)
@@ -1918,10 +1920,10 @@ export function install(rt) {
           time: event.time,
         })
       } else if (source?.kind === SOURCE_KIND && source.handoff !== true && source.deferred !== true && ['request', 'reply', 'report', 'stopped'].includes(source.role)) {
-        stamp(event, { kind: 'event', role: source.role, botId: source.senderSessionId ?? null, name: source.senderName ?? null, roomId: source.roomId ?? null, time: event.time })
+        stamp(event, { kind: 'event', role: source.role, botId: source.senderSessionId ?? null, name: source.senderName ?? null, roomId: source.roomId ?? null, ...workLink, time: event.time })
       } else if (source?.kind === 'schedule') {
         const prompts = reminderPrompts(textOf(event.data.content))
-        stamp(event, { kind: 'event', role: 'schedule', text: prompts.join(' · ').slice(0, 120), time: event.time })
+        stamp(event, { kind: 'event', role: 'schedule', text: prompts.join(' · ').slice(0, 120), ...workLink, time: event.time })
       }
     }
     for (const entry of presented) {

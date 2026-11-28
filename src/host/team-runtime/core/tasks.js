@@ -85,16 +85,39 @@ export function install(rt) {
   const owner = task => rt.botOf(task.botId)
   const touch = room => { room.workBoardTasksRevision = (room.workBoardTasksRevision ?? 0) + 1 }
 
-  rt.teamTools.push(defineTool({
-    name: 'work_progress', description: 'Record a short milestone or blocker on the active Bot message or work board assignment. The user sees it while the work continues.',
-    parameters: { text: { type:'string', required:true, description:'Progress or reason for a blocker' },
-      blocked: { type:'boolean', description:'Whether work is blocked' } }, output,
-    async execute(args, exec) {
-      const sessionId = exec.agent?.id
-      if (await rt.recordInboxProgress?.(sessionId, args.text, args.blocked)) return 'Progress recorded.'
-      return rt.workBoardProgress({ sessionId, botId:rt.selfOf(sessionId), text:args.text, blocked:args.blocked })
-    },
-  }))
+  const id = { type: 'string', description: 'The work item ID. Omit it when this turn has one work item.' }
+  const requiredText = description => ({ type: 'string', required: true, description })
+  const tools = {
+    context: ['Read the current work item, its acceptance criteria, dependencies and next action.', { id }],
+    open: ['Record an independent deliverable within the current work. If a Bot will own it, delegate with message_bot.', {
+      id, title: requiredText('Short deliverable title'), criteria: requiredText('How the result can be verified'),
+      description: { type: 'string' }, required: { type: 'boolean', description: 'Whether this child blocks its parent' },
+    }],
+    progress: ['Record a milestone or blocker on the work item and its delivery.', {
+      id, text: requiredText('Milestone or blocker'), blocked: { type: 'boolean' },
+      next_actor: { type: 'string', enum: ['bot', 'user'] },
+    }],
+    submit: ['Submit the verified result for review. Continue the conversation with your normal reply.', {
+      id, summary: requiredText('Result and what you verified'),
+      requirements_revision: { type: 'number', description: 'Current requirements revision from work_context' },
+      evidence_refs: { type: 'array', items: { type: 'string' }, description: 'References to verification evidence' },
+    }],
+  }
+  for (const [op, [description, parameters]] of Object.entries(tools)) {
+    rt.teamTools.push(defineTool({
+      name: 'work_' + op, description, parameters, output,
+      async execute(args, exec) {
+        await rt.load()
+        const sessionId = exec.agent?.id
+        if (!rt.selfOf(sessionId)) throw new Error('This tool is available to team Bots.')
+        const result = await rt.workTracking?.tool(sessionId, op, args, exec.callId)
+        if (op !== 'progress') return JSON.stringify(result ?? { error: 'The work board is unavailable.' })
+        const inbox = await rt.recordInboxProgress?.(sessionId, args.text, args.blocked)
+        if (result || inbox) return result ? JSON.stringify(result) : 'Progress recorded.'
+        return rt.workBoardProgress({ sessionId, botId: rt.selfOf(sessionId), text: args.text, blocked: args.blocked })
+      },
+    }))
+  }
 
   // What the tool answers with: the current board, not only the task it touched.
   const ledger = (room, self) => {

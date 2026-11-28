@@ -3,7 +3,7 @@
 export function attachTerminal({ client, target, terminal, refit, options, status }) {
   let detached = false, terminalId, cursor = 0, historical = 0
   let writing, submitting = false, input = '', canInput = false, ended = false, generation = 0
-  let sentSize, resizePending = false
+  let sentSize, workItemId, resizePending = false
   const reader = new AbortController()
   const stale = n => detached || n !== generation
 
@@ -25,7 +25,11 @@ export function attachTerminal({ client, target, terminal, refit, options, statu
         if (end < input.length && /[\uD800-\uDBFF]/u.test(input[end - 1])) end--
         const data = input.slice(0, end)
         input = input.slice(end)
-        await client.terminalWrite({ terminalId, data })
+        const receipt = await client.terminalWrite({ terminalId, data })
+        if (!stale(n) && receipt?.workItemId && receipt.workItemId !== workItemId) {
+          workItemId = receipt.workItemId
+          status({ workItemId })
+        }
       }
     } catch (error) {
       // Acceptance after a transport failure is unknown. Never resend keystrokes.
@@ -89,6 +93,7 @@ export function attachTerminal({ client, target, terminal, refit, options, statu
     let { replay, ...info } = await client.terminalOpen({ ...target, cols, rows, ...options, ...(acceptsReplay && { includeReplay: true }) })
     if (stale(n)) return
     terminalId = info.terminalId
+    workItemId = info.workItemId
     sentSize = { cols: info.cols, rows: info.rows }
     historical = info.reused ? info.cursor : 0
     canInput = !historical && !info.exit

@@ -36,7 +36,7 @@ export function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useA
     previous.current = current
     if (current) actions.followPanel?.(current)
   }, [current])
-  const open = ui.details ? { id: ui.details, view: ui.view ?? 'details', renaming: ui.renaming, tab: ui.tab, side: ui.side, work: ui.work } : null
+  const open = ui.details ? { id: ui.details, view: ui.view ?? 'details', renaming: ui.renaming, tab: ui.tab, side: ui.side, work: ui.work, terminalWorkItem: ui.terminalWorkItem } : null
   // A panel that no longer fits folds away: its state stays open, it just is not
   // mounted — the usual exit plays and the webview goes with it — until the room
   // returns and it shows again on its own.
@@ -51,7 +51,7 @@ export function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useA
     if (shown) { setKept(shown); return undefined }
     const timer = setTimeout(() => setKept(null), reducedMotion() ? 0 : PANEL_LINGER_MS)
     return () => clearTimeout(timer)
-  }, [ui.details, ui.view, ui.renaming, ui.tab, ui.work, shown === null])
+  }, [ui.details, ui.view, ui.renaming, ui.tab, ui.work, ui.terminalWorkItem, shown === null])
   const pane = shown ?? kept
   // The settings shell draws the dialog while Godbot holds the seat.
   const shellHeld = useSettingsShellHeld ? useSettingsShellHeld(value => value) : false

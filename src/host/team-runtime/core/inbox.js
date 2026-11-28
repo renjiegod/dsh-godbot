@@ -98,6 +98,7 @@ export function install(rt) {
   function blocked(row, reason, { retry = false, check = false } = {}) {
     row.state = 'blocked'
     row.reason = reason
+    rt.workTracking?.noteInbox(row)
     delete row.retryAt
     delete row.check
     if (retry) {
@@ -118,6 +119,7 @@ export function install(rt) {
     row.state = 'accepted'
     row.acceptedAt ??= row.resume?.acceptedAt ?? Date.now()
     if (native) row.attempt.native = { ...row.attempt.native, ...native }
+    rt.workTracking?.noteInbox(row)
     delete row.reason
     delete row.retryAt
     delete row.check
@@ -139,6 +141,7 @@ export function install(rt) {
 
   function stop(row) {
     row.state = 'stopped'
+    rt.workTracking?.noteInbox(row)
     delete row.reason
     delete row.check
     delete row.retryAt
@@ -195,7 +198,8 @@ export function install(rt) {
   function statusReceipt(id, receipt) {
     const row = get(id)
     if (!row) return receipt
-    return `${statusLine(row)} · message ${id} · queue #${row.sequence}. Recipient conversation ${row.args.sessionId}. ${receipt ?? ''}`.trim()
+    const card = rt.workTracking?.exchangeCard(id)
+    return `${statusLine(row)} · message ${id} · queue #${row.sequence}. Recipient conversation ${row.args.sessionId}.${card ? ' Work item ' + card + '.' : ''} ${receipt ?? ''}`.trim()
   }
 
   async function offer(row) {

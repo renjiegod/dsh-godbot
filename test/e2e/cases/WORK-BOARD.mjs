@@ -155,14 +155,10 @@ export default async function check({ makeHost, candidate, previous, note }) {
     text: message,
   })
   const bubble = page.locator('.bt-umsg').filter({ hasText: message }).last()
-  await bubble.hover()
-  const convert = bubble.getByRole('button', { name: /从消息建工作项|Create work item from message/ })
-  await convert.click()
-  assert.equal(await page.locator('.wb-editor').getByRole('textbox', { name: /^(Title|标题)$/ }).inputValue(), message)
-  await page.locator('.wb-editor button[type=submit]').click()
+  await bubble.getByRole('button', { name: /^Open work item GB-\d+$|^打开工作项 GB-\d+$/ }).click()
   const linked = await until(
     async () => (await board()).columns.flatMap((c) => c.items).find((c) => c.title === message),
-    'message conversion created a card',
+    'the chat request created a card',
   )
   const source = await item(linked.id)
   assert.ok(source.origin?.messageId)
@@ -188,9 +184,7 @@ export default async function check({ makeHost, candidate, previous, note }) {
   const groupText = 'Group work should stay linked to this message'
   await host.bot('send', { sessionId: group.id, text: groupText })
   const groupBubble = page.locator('.bt-umsg').filter({ hasText: groupText }).last()
-  await groupBubble.hover()
-  await groupBubble.getByRole('button', { name: /从消息建工作项|Create work item from message/ }).click()
-  await page.locator('.wb-editor button[type=submit]').click()
+  await groupBubble.getByRole('button', { name: /^Open work item GB-\d+$|^打开工作项 GB-\d+$/ }).click()
   const groupCard = await until(
     async () => (await board()).columns.flatMap((c) => c.items).find((c) => c.title === groupText),
     'group message on the same board',
@@ -274,6 +268,10 @@ export default async function check({ makeHost, candidate, previous, note }) {
   await page.emulateMedia({ colorScheme: 'light' })
   note('board-ui', { keyboardOpenAndReturn: true, darkTheme: true, longTitleWidth: 360 })
   if (previous) {
+    const savedSource = await until(async () => {
+      const card = await item(linked.id)
+      return card.lifecycleState === 'review' && card
+    }, 'chat evidence settles before rollback')
     await host.stop()
     await host.install(previous)
     await host.start()
@@ -282,7 +280,10 @@ export default async function check({ makeHost, candidate, previous, note }) {
     await host.stop()
     await host.install(candidate)
     await host.start()
-    assert.equal((await item(linked.id)).mark, 'draft')
+    const restoredSource = await item(linked.id)
+    assert.equal(restoredSource.lifecycleState, savedSource.lifecycleState)
+    assert.equal(restoredSource.evidenceRevision, savedSource.evidenceRevision)
+    assert.equal(restoredSource.origin.messageId, savedSource.origin.messageId)
   }
   note('board-round-trip', {
     id: draft.id,

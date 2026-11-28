@@ -1,6 +1,7 @@
 import { botWorkspaceId, pendingFor } from './bot-task-workspace.js'
 import { taskBudgetReceipt } from './bot-budget.js'
 import { millis } from './work-board-index.js'
+import { lifecycleDetail, lifecycleSummary } from './work-board-lifecycle.js'
 
 const clip = (value) =>
   String(value ?? '')
@@ -42,6 +43,7 @@ function summarizeSource(service, row, meta) {
     version: String(meta.version || 1),
   }
   if (base.room) base.refs.push('room/' + base.room)
+  if (row.kind === 'work') return { ...base, ...lifecycleSummary(meta) }
   if (row.kind === 'draft') {
     if (base.owner) base.refs.push('bot/' + base.owner)
     return {
@@ -211,6 +213,7 @@ export function sourceDetail(service, row, meta, card, before = Number.MAX_SAFE_
     actions: [],
     pending: [],
   }
+  if (row.kind === 'work') return lifecycleDetail(service, row, meta, detail, before)
   if (row.kind === 'draft') {
     detail.actions = meta.archived ? [] : ['edit', 'dispatch', 'archive']
     return detail
