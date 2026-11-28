@@ -1,13 +1,13 @@
 import { createElement as h, useEffect, useRef, useState } from 'react'
 import { call } from './team-ui/api.js'
 import { t, dateLocale } from './team-ui/i18n.js'
+import { ClockIcon, CloseIcon, PlusIcon, SearchIcon } from './team-ui/icons.js'
 import {
   actionNames,
   activityByAttempt,
   boardInput,
   currentReview,
   defaultFilters,
-  markNames,
   phaseIcons,
   phaseNames,
   sourceNames,
@@ -16,8 +16,9 @@ import {
 import style from './work-board.css'
 import { BoardAnchor } from './work-board-anchor.js'
 import { WorkBoardDiscussionPanel } from './work-board-discussion.js'
-import { assigneeChoices, BoardControls, BoardLayouts, PlanningFields } from './work-board-management.js'
+import { assigneeChoices, boardGroupName, BoardLayouts, PlanningFields, useBoardControls } from './work-board-management.js'
 import { BoardArtifactsPanel, BoardRunsPanel, PlanningDetails } from './work-board-detail.js'
+import { DateChip, OwnerMark, PriorityBadge, StatusPill, statusLabel } from './work-board-ui.js'
 import { filterLink, priorities, viewDisplay } from '../team/work-board-planning.js'
 
 const button = (label, onClick, props = {}) => h('button', { type: 'button', onClick, ...props }, label)
@@ -25,6 +26,9 @@ const option = (value, label) => h('option', { key: value, value }, label)
 const label = (dict, key) => t(dict[key] ?? key ?? 'Unknown')
 const when = (value) => (value ? new Date(value).toLocaleString(dateLocale()) : '—')
 const storageKey = 'godbot.work-board.preferences.v1'
+const SECONDARY_OPS = new Set(['edit-fields', 'archive', 'reopen', 'withdraw', 'transfer'])
+const DANGER_OPS = new Set(['reject', 'cancel'])
+
 function prefs() {
   try {
     return JSON.parse(localStorage.getItem(storageKey)) ?? {}
@@ -39,6 +43,7 @@ function subscribe(fn) {
   }
   return () => events.close()
 }
+
 function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) {
   const { op, base, child } = form
   const patch = (key, value) => setForm((f) => ({ ...f, [key]: value }))
@@ -105,7 +110,7 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
           op === 'dispatch'
             ? h(
                 'p',
-                null,
+                { className: 'wb-callout', 'data-tone': 'info' },
                 form.origin?.botId === form.owner
                   ? t('Dispatch to the source conversation')
                   : t('Dispatch to a dedicated task conversation'),
@@ -127,9 +132,9 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
     review
       ? h(
           'section',
-          null,
+          { className: 'wb-section-card' },
           h('h3', null, t('Evidence'), ' · v', child?.evidenceRevision ?? base?.evidenceRevision),
-          h('pre', null, child?.evidence ?? base?.evidence),
+          h('div', { className: 'wb-mono-block' }, child?.evidence ?? base?.evidence),
         )
       : null,
     review || op === 'note'
@@ -143,7 +148,7 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
           }),
         )
       : null,
-    op === 'note' ? h('p', null, t('This posts a message to the source group and mentions the owner.')) : null,
+    op === 'note' ? h('p', { className: 'wb-subtext' }, t('This posts a message to the source group and mentions the owner.')) : null,
     different
       ? h(
           'p',
@@ -155,7 +160,7 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
                   current: updated.child?.evidenceRevision ?? item.evidenceRevision,
                 }),
                 ' ',
-                button(t('Review current evidence'), () => setForm(updated), { key: 'review' }),
+                button(t('Review current evidence'), () => setForm(updated), { key: 'review', className: 'wb-btn' }),
               ]
             : t('This work item changed. Reopen the action to review the current evidence.'),
         )
@@ -163,7 +168,7 @@ function Editor({ form, setForm, view, busy, offline, onSubmit, onBack, item }) 
     h(
       'footer',
       null,
-      button(t('Back'), onBack),
+      button(t('Back'), onBack, { className: 'wb-btn' }),
       h(
         'button',
         { className: 'wb-primary', type: 'submit', disabled: busy || offline || different },
@@ -222,6 +227,10 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
   }, [accessGone])
   const readOnly = !!(roster.readOnly || view?.readOnly || !reachable)
   const editFilter = (k, v) => setFilter((f) => ({ ...f, [k]: v }))
+  const resetFilters = () => {
+    setViewId('')
+    setFilter({ ...defaultFilters })
+  }
   const applyView = saved => {
     setViewId(saved?.id ?? '')
     setFilter({ ...defaultFilters, ...saved?.filters })
@@ -396,58 +405,91 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
   const filterSelect = (k, name, options) =>
     h(
       'select',
-      { 'aria-label': t(name), value: filter[k], onChange: (e) => editFilter(k, e.target.value) },
+      {
+        className: 'wb-pill-select',
+        'aria-label': t(name),
+        'data-active': Boolean(filter[k]) || undefined,
+        value: filter[k],
+        onChange: (e) => editFilter(k, e.target.value),
+      },
       option('', t(name)),
       ...options,
     )
-  const ownerName = (id) => view?.bots.find((b) => b.id === id)?.name || t('Unassigned')
-  const cardOwner = (card) => {
-    const assignee = view?.catalog?.assignees.find(a => a.id === card.assignee)
-    return assignee ? t(assignee.name) : ownerName(card.owner)
-  }
   function card(c) {
+    const chips = [
+      c.dueDate ? h(DateChip, { key: 'due', value: c.dueDate, phase: c.phase }) : null,
+      !c.dueDate && c.startDate ? h(DateChip, { key: 'start', value: c.startDate, phase: c.phase, prefix: 'start' }) : null,
+      ...(c.labels ?? []).slice(0, 3).map((tag, i) => h('span', { key: 'l' + i, className: 'wb-chip' }, tag)),
+      c.labels?.length > 3 ? h('span', { key: 'more', className: 'wb-chip' }, '+', c.labels.length - 3) : null,
+    ].filter(Boolean)
     return h('div', { key: c.id, className: selecting ? 'wb-select-card' : undefined },
       selecting ? h('input', { type: 'checkbox', 'aria-label': t('Select') + ' ' + c.id,
         checked: checked.has(c.id), onChange: () => toggle(c) }) : null,
       h(
-      'button',
-      {
-        type: 'button',
-        className: 'wb-card',
-        key: c.id,
-        'data-work-id': c.id,
-        draggable: !readOnly && (c.source === 'draft' || (c.phase === 'review' && c.source !== 'run')),
-        onDragStart: (e) => e.dataTransfer.setData('application/x-godbot-work', c.id),
-        onClick: () => pick(c.id),
-      },
-      h('small', null, c.id, c.priority !== 0 && priorities[c.priority] ? h('b', null, t(priorities[c.priority])) : null),
-      h('strong', null, c.title),
-      c.hint ? h('span', { className: 'wb-hint' }, c.hint) : null,
-      h('span', { className: 'wb-meta' }, cardOwner(c),
-        h('em', null, (view?.catalog?.statuses ?? []).find(status => status.id === c.statusId)?.name || label(markNames, c.mark))),
-      c.dueDate || c.labels?.length ? h('span', { className: 'wb-subtext' }, [c.dueDate, ...(c.labels ?? [])].filter(Boolean).join(' · ')) : null,
-    ))
+        'button',
+        {
+          type: 'button',
+          className: 'wb-card',
+          key: c.id,
+          'data-work-id': c.id,
+          'data-phase': c.phase,
+          draggable: !readOnly && (c.source === 'draft' || (c.phase === 'review' && c.source !== 'run')),
+          onDragStart: (e) => e.dataTransfer.setData('application/x-godbot-work', c.id),
+          onClick: () => selecting ? toggle(c) : pick(c.id),
+        },
+        h('div', { className: 'wb-card-top' },
+          h('span', { className: 'wb-card-id' }, c.id),
+          h(PriorityBadge, { priority: c.priority })),
+        h('strong', null, c.title),
+        c.hint ? h('span', { className: 'wb-hint' }, c.hint) : null,
+        chips.length ? h('div', { className: 'wb-card-chips' }, ...chips) : null,
+        h('div', { className: 'wb-card-foot' },
+          h(OwnerMark, { target: c, view, roster, size: 18 }),
+          h(StatusPill, { phase: c.phase, label: statusLabel(c, view?.catalog) })),
+      ))
   }
-  function actionButtons(d) {
-    return d.source === 'run'
-      ? d.children
-          .filter((c) => c.status === 'reported')
-          .map((c) =>
-            h(
-              'div',
-              { key: c.id },
-              h('strong', null, c.target, ' · v', c.evidenceRevision),
-              h('pre', null, c.evidence),
-              ...d.actions.map((op) => button(label(actionNames, op), () => begin(op, d, c), { key: op })),
-            ),
-          )
-      : d.actions.map((op) =>
-          button(label(actionNames, op), () => begin(op, d), {
-            key: op,
-            className: ['approve', 'dispatch'].includes(op) ? 'wb-primary' : '',
-          }),
-        )
+  const opClass = op => ['approve', 'dispatch', 'complete'].includes(op) ? 'wb-primary'
+    : DANGER_OPS.has(op) ? 'wb-btn wb-btn-danger' : 'wb-btn wb-btn-soft'
+
+  function renderRunChildren(d) {
+    const reported = d.children.filter((c) => c.status === 'reported')
+    if (!d.children.length) return null
+    return h('section', { className: 'wb-section-card' },
+      h('h3', null, t('Team run'), ' · ', d.children.length),
+      ...d.children.map((c) => h('div', { key: c.id, className: 'wb-section-card' },
+        h('div', { className: 'wb-section-head' },
+          h('strong', null, c.target),
+          h(StatusPill, { phase: c.status === 'reported' ? 'review' : c.status === 'completed' ? 'done' : 'doing',
+            label: c.status + (c.evidenceRevision ? ' · v' + c.evidenceRevision : '') })),
+        c.evidence ? h('div', { className: 'wb-mono-block' }, c.evidence) : null,
+        c.status === 'reported' && !readOnly ? h('div', { className: 'wb-tools' },
+          ...d.actions.map((op) => button(label(actionNames, op), () => begin(op, d, c), { key: op, className: opClass(op) }))) : null)))
   }
+
+  const activeChips = [
+    filter.owner && ['owner', t('Owner'), filter.owner === 'unassigned' ? t('Unassigned') : (view?.bots?.find(b => b.id === filter.owner)?.name ?? filter.owner)],
+    filter.room && ['room', t('Group'), view?.rooms?.find(r => r.id === filter.room)?.name ?? filter.room],
+    filter.section && ['section', t('Section'), roster.sections?.find(s => s.id === filter.section)?.name ?? filter.section],
+    filter.source && ['source', t('Source'), label(sourceNames, filter.source)],
+    filter.assignee && ['assignee', t('Owner'), boardGroupName(filter.assignee, 'assignee', view?.catalog)],
+    filter.statusId && ['statusId', t('Task status'), boardGroupName(filter.statusId, 'status', view?.catalog)],
+    filter.priority && ['priority', t('Priority'), t(priorities[filter.priority] ?? filter.priority)],
+    filter.label && ['label', t('Label'), filter.label],
+    filter.startBefore && ['startBefore', t('Start on or before'), filter.startBefore],
+    filter.dueBefore && ['dueBefore', t('Due on or before'), filter.dueBefore],
+    filter.property && ['property', view?.catalog?.properties?.find(p => p.id === filter.property)?.name ?? filter.property, filter.propertyValue || '*'],
+  ].filter(Boolean)
+
+  const boardMgmt = useBoardControls({
+    catalog: view?.catalog, filters: filter, display, setDisplay, setFilter, onApplyView: applyView, refresh, readOnly,
+    selection: viewId, selectedItems: Array.from(checked, ([id, version]) => ({ id, version })),
+    enabled: selecting, setEnabled: setSelecting, clearSelection: ids => setChecked(old => {
+      const latest = new Map((view?.columns ?? []).flatMap(col => col.items).map(row => [row.id, row.version]))
+      return new Map(ids.map(id => [id, latest.get(id) ?? old.get(id)]))
+    }),
+    error: managementError, setError: setManagementError, sections: roster.sections ?? [], resetFilters,
+  })
+
   const cards = view?.columns ?? []
   const freshBoard =
     Object.keys(defaultFilters).every((k) => filter[k] === defaultFilters[k]) && !view?.counts.history
@@ -457,6 +499,11 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
     last.current = item.id
     route(item.id, commentFocus)
   }, [selection, item, commentFocus])
+
+  const secondaryActions = item && item.source !== 'run' ? item.actions.filter(op => SECONDARY_OPS.has(op)) : []
+  const primaryActions = item && item.source !== 'run' ? item.actions.filter(op => !SECONDARY_OPS.has(op)) : []
+  const showDetailFooter = !readOnly && item && !form && !anchor && !discussion && !extra
+
   return h(
     'section',
     { className: 'wb-shell', style: { left: column }, 'aria-label': t('Work board') },
@@ -467,74 +514,71 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
       h(
         'header',
         { className: 'wb-head' },
-        h('h1', null, t('Work board')),
-        button(
-          t('New work item'),
-          () => {
-            opener.current = document.activeElement
-            setForm(createForm())
-          },
-          { className: 'wb-primary', disabled: readOnly },
-        ),
-        button('×', actions.closeWorkBoard, { 'aria-label': t('Close work board') }),
-      ),
-      h(
-        'nav',
-        { className: 'wb-tabs' },
-        ...Object.entries({ all: 'All work', mine: 'Needs my action', history: 'History' }).map(([k, v]) =>
-          button(t(v) + ' ' + (view?.counts[k] ?? '…'), () => editFilter('tab', k), {
-            key: k,
-            'aria-pressed': filter.tab === k,
-          }),
-        ),
+        h('div', { className: 'wb-head-left' },
+          h('h1', null, t('Work board')),
+          h(
+            'nav',
+            { className: 'wb-tabs' },
+            ...Object.entries({ all: 'All work', mine: 'Needs my action', history: 'History' }).map(([k, v]) =>
+              button(
+                [h('span', { key: 't' }, t(v)), h('span', { key: 'c', className: 'wb-tab-badge' }, view?.counts[k] ?? '…')],
+                () => editFilter('tab', k),
+                { key: k, 'aria-pressed': filter.tab === k },
+              ),
+            ),
+          )),
+        h('div', { className: 'wb-head-right' },
+          button(
+            [h(PlusIcon, { key: 'i' }), h('span', { key: 'l' }, t('New work item'))],
+            () => {
+              opener.current = document.activeElement
+              setForm(createForm())
+            },
+            { className: 'wb-primary', disabled: readOnly },
+          ),
+          button(h(CloseIcon), actions.closeWorkBoard, { className: 'wb-icon-close', 'aria-label': t('Close work board') })),
       ),
       h(
         'div',
-        { className: 'wb-tools' },
-        h('input', {
-          type: 'search',
-          value: filter.search,
-          placeholder: t('Search work and comments'),
-          'aria-label': t('Search work and comments'),
-          onChange: (e) => editFilter('search', e.target.value),
-        }),
-        filterSelect('owner', 'All owners', [
-          option('unassigned', t('Unassigned')),
-          ...(view?.bots ?? []).map((b) => option(b.id, b.name)),
-        ]),
-        filterSelect(
-          'room',
-          'All groups',
-          (view?.rooms ?? []).map((r) => option(r.id, r.name)),
-        ),
-        filterSelect(
-          'section',
-          'All sections',
-          (roster.sections ?? []).map((r) => option(r.id, r.name)),
-        ),
-        filterSelect(
-          'source',
-          'All sources',
-          Object.keys(sourceNames).map((k) => option(k, label(sourceNames, k))),
-        ),
+        { className: 'wb-toolbar' },
+        h('div', { className: 'wb-toolbar-left' },
+          h('div', { className: 'wb-search-wrap' },
+            h('span', { className: 'wb-search-icon' }, h(SearchIcon)),
+            h('input', {
+              type: 'search',
+              value: filter.search,
+              placeholder: t('Search work and comments'),
+              'aria-label': t('Search work and comments'),
+              onChange: (e) => editFilter('search', e.target.value),
+            }),
+            filter.search ? button('×', () => editFilter('search', ''), { className: 'wb-search-clear', 'aria-label': t('Clear') }) : null),
+          filterSelect('owner', 'All owners', [
+            option('unassigned', t('Unassigned')),
+            ...(view?.bots ?? []).map((b) => option(b.id, b.name)),
+          ]),
+          filterSelect(
+            'room',
+            'All groups',
+            (view?.rooms ?? []).map((r) => option(r.id, r.name)),
+          )),
+        boardMgmt.controls,
       ),
-      h(BoardControls, {
-        catalog: view?.catalog, filters: filter, display, setDisplay, setFilter, onApplyView: applyView, refresh, readOnly,
-        selection: viewId, selectedItems: Array.from(checked, ([id, version]) => ({ id, version })),
-        enabled: selecting, setEnabled: setSelecting, clearSelection: ids => setChecked(old => {
-          const latest = new Map((view?.columns ?? []).flatMap(col => col.items).map(row => [row.id, row.version]))
-          return new Map(ids.map(id => [id, latest.get(id) ?? old.get(id)]))
-        }),
-        error: managementError, setError: setManagementError,
-      }),
-      roster.readOnly || view?.readOnly ? h('p', { role: 'status' }, t('Read only')) : null,
-      !view && !error ? h('p', { role: 'status' }, t('Loading…')) : null,
+      boardMgmt.popover,
+      activeChips.length ? h('div', { className: 'wb-active-chips' },
+        ...activeChips.map(([key, kindLabel, val]) => button(
+          `${kindLabel}: ${val} ×`,
+          () => setFilter(old => key === 'property' ? { ...old, property: '', propertyValue: '' } : { ...old, [key]: '' }),
+          { key, className: 'wb-active-chip' },
+        )),
+        button(t('Clear filters'), resetFilters, { className: 'wb-btn wb-btn-soft' })) : null,
+      roster.readOnly || view?.readOnly ? h('p', { role: 'status', className: 'wb-callout', 'data-tone': 'info' }, t('Read only')) : null,
+      !view && !error ? h('p', { role: 'status', className: 'wb-subtext' }, t('Loading…')) : null,
       view && cards.every((c) => !c.total)
         ? h(
-            'p',
-            { className: 'wb-empty' },
-            freshBoard ? t('No work items yet') : t('No matching work items'),
-            freshBoard ? null : button(t('Clear filters'), () => setFilter({ ...defaultFilters })),
+            'div',
+            { className: 'wb-empty-state' },
+            h('span', null, freshBoard ? t('No work items yet') : t('No matching work items')),
+            freshBoard ? null : button(t('Clear filters'), resetFilters, { className: 'wb-btn' }),
           )
         : null,
       (['list', 'board'].includes(layout) && display.groupBy === 'phase') ? h(
@@ -559,16 +603,15 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
             h(
               'h2',
               null,
-              h('span', { 'aria-hidden': true }, phaseIcons[c.phase]),
-              ' ',
-              label(phaseNames, c.phase),
+              h('span', { className: 'wb-lane-glyph', 'aria-hidden': true }, phaseIcons[c.phase]),
+              h('span', null, label(phaseNames, c.phase)),
               h('small', null, c.total),
             ),
             ...c.items.map(card),
-            c.next ? button(t('Load more'), () => more(c)) : null,
+            c.next ? button(t('Load more'), () => more(c), { className: 'wb-btn wb-btn-soft' }) : null,
           ),
         ),
-      ) : h(BoardLayouts, { display, columns: cards, catalog: view?.catalog, renderCard: card,
+      ) : h(BoardLayouts, { display, columns: cards, catalog: view?.catalog, view, roster, renderCard: card,
         open: pick, more, toggle, enabled: selecting, selected: checked }),
     ),
     focused
@@ -593,125 +636,153 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
             h(
               'header',
               null,
-              h('small', null, item?.id || t('Work item')),
-              button('×', closeDetail, { 'aria-label': t('Close') }),
+              h('div', { className: 'wb-detail-head-meta' },
+                h('span', { className: 'wb-card-id' }, item?.id || t('Work item')),
+                item ? h('span', { className: 'wb-chip' }, label(sourceNames, item.source)) : null),
+              button(h(CloseIcon), closeDetail, { className: 'wb-icon-close', 'aria-label': t('Close') }),
             ),
-            anchor && item
-              ? h(BoardAnchor, { anchor, actions, back: () => setAnchor(null) })
-              : form
-                ? h(Editor, {
-                    form,
-                    setForm,
-                    view,
-                    busy,
-                    offline: readOnly,
-                    onSubmit: submit,
-                    onBack: closeDetail,
-                    item,
-                  })
-                : !item
-                  ? h('p', null, t('Loading…'))
-                  : h(
-                      'div',
-                      null,
-                      h('h2', null, item.title),
-                      h(
-                        'p',
-                        null,
-                        label(markNames, item.mark),
-                        ' · ',
-                        cardOwner(item),
-                        ' · ',
-                        label(sourceNames, item.source),
-                      ),
-                      h('div', { className: 'wb-detail-tabs', 'aria-label': t('Work item') },
-                        button(t('Details'), () => {
-                          setDiscussion(false)
-                          setExtra('')
-                          setCommentFocus(null)
-                          route(item.id)
-                        }, { 'aria-pressed': !discussion && !extra }),
-                        button(t('Discussion'), () => { setDiscussion(true); setExtra('') }, { 'aria-pressed': discussion }),
-                        button(t('Runs'), () => runPanel(null), { 'aria-pressed': extra === 'runs' }),
-                        button(t('Artifacts'), () => { setDiscussion(false); setExtra('artifacts') }, { 'aria-pressed': extra === 'artifacts' })),
-                      h(WorkBoardDiscussionPanel, {
-                        key: item.id, id: item.id, active: discussion, offline: readOnly, focus: commentFocus,
-                        subscribe, openExecution: original, openRun: runPanel, quote,
-                        openComment: id => openComment(item.id, id),
-                        createSubtask: entry => seed({ parent: item.id, commentId: entry.id, title: entry.body.split('\n')[0].slice(0, 110) }),
-                      }),
-                      extra === 'runs' ? h(BoardRunsPanel, { key: item.id + '/' + initialRun, id: item.id, initialRun,
-                        subscribe, readOnly, openExecution: original, openComment, modify: change => act({
-                          ...change, id: item.id, version: item.version,
-                        }, () => crypto.randomUUID()) }) : null,
-                      extra === 'artifacts' ? h(BoardArtifactsPanel, { key: item.id, id: item.id, subscribe, openComment }) : null,
-                      h('div', { hidden: discussion || Boolean(extra) },
-                      h('small', null, when(item.updated)),
-                      h(PlanningDetails, { key: item.id, item, catalog: view?.catalog, pick, seed, openComment, annotate, readOnly }),
-                      h('h3', null, t('Acceptance criteria')),
-                      h('pre', null, item.criteria || '—'),
-                      item.evidence
-                        ? h(
-                            'section',
-                            null,
-                            h('h3', null, t('Evidence'), ' · v', item.evidenceRevision),
-                            h('pre', null, item.evidence),
-                          )
-                        : null,
-                      item.hint ? h('p', null, item.hint) : null,
-                      ...item.pending.map((p) =>
-                        button(
-                          t(p.type === 'question' ? 'Answer question' : 'Review approval'),
-                          () => actions.openWorkSession(p),
-                          { key: p.id },
+            h('div', { className: 'wb-detail-scroll' },
+              anchor && item
+                ? h('div', { className: 'wb-detail-anchor' }, h(BoardAnchor, { anchor, actions, back: () => setAnchor(null) }))
+                : form
+                  ? h(Editor, {
+                      form,
+                      setForm,
+                      view,
+                      busy,
+                      offline: readOnly,
+                      onSubmit: submit,
+                      onBack: closeDetail,
+                      item,
+                    })
+                  : !item
+                    ? h('p', { className: 'wb-subtext' }, t('Loading…'))
+                    : h(
+                        'div',
+                        { className: 'wb-detail-body-stack' },
+                        h('div', { className: 'wb-detail-hero' },
+                          h('div', { className: 'wb-detail-badges' },
+                            h(StatusPill, { phase: item.phase, label: statusLabel(item, view?.catalog) }),
+                            h(PriorityBadge, { priority: item.priority, showNormal: true }),
+                            h('span', { className: 'wb-chip' }, h(ClockIcon), h('span', null, when(item.updated)))),
+                          h('h2', null, item.title),
+                          h('div', { className: 'wb-detail-tabs', 'aria-label': t('Work item') },
+                            button(t('Details'), () => {
+                              setDiscussion(false)
+                              setExtra('')
+                              setCommentFocus(null)
+                              route(item.id)
+                            }, { 'aria-pressed': !discussion && !extra }),
+                            button(t('Discussion'), () => { setDiscussion(true); setExtra('') }, { 'aria-pressed': discussion }),
+                            button(t('Runs'), () => runPanel(null), { 'aria-pressed': extra === 'runs' }),
+                            button(t('Artifacts'), () => { setDiscussion(false); setExtra('artifacts') }, { 'aria-pressed': extra === 'artifacts' }))),
+                        h(WorkBoardDiscussionPanel, {
+                          key: item.id, id: item.id, active: discussion, offline: readOnly, focus: commentFocus,
+                          subscribe, openExecution: original, openRun: runPanel, quote, roster,
+                          openComment: id => openComment(item.id, id),
+                          createSubtask: entry => seed({ parent: item.id, commentId: entry.id, title: entry.body.split('\n')[0].slice(0, 110) }),
+                        }),
+                        extra === 'runs' ? h(BoardRunsPanel, { key: item.id + '/' + initialRun, id: item.id, initialRun,
+                          subscribe, readOnly, openExecution: original, openComment, modify: change => act({
+                            ...change, id: item.id, version: item.version,
+                          }, () => crypto.randomUUID()) }) : null,
+                        extra === 'artifacts' ? h(BoardArtifactsPanel, { key: item.id, id: item.id, subscribe, openComment }) : null,
+                        h('div', { hidden: discussion || Boolean(extra), className: 'wb-detail-body-stack' },
+                          h('section', { className: 'wb-prop-grid', 'aria-label': t('Properties') },
+                            h('div', { className: 'wb-prop-item' },
+                              h('span', { className: 'wb-prop-label' }, t('Owner')),
+                              h('div', { className: 'wb-prop-value' }, h(OwnerMark, { target: item, view, roster, size: 20, live: true }))),
+                            h('div', { className: 'wb-prop-item' },
+                              h('span', { className: 'wb-prop-label' }, t('Task status')),
+                              h('div', { className: 'wb-prop-value' }, h(StatusPill, { phase: item.phase, label: statusLabel(item, view?.catalog) }))),
+                            h('div', { className: 'wb-prop-item' },
+                              h('span', { className: 'wb-prop-label' }, t('Priority')),
+                              h('div', { className: 'wb-prop-value' }, h(PriorityBadge, { priority: item.priority, showNormal: true }))),
+                            h('div', { className: 'wb-prop-item' },
+                              h('span', { className: 'wb-prop-label' }, t('Source')),
+                              h('div', { className: 'wb-prop-value' }, label(sourceNames, item.source))),
+                            item.fields?.startDate ? h('div', { className: 'wb-prop-item' },
+                              h('span', { className: 'wb-prop-label' }, t('Start date')),
+                              h('div', { className: 'wb-prop-value' }, h(DateChip, { value: item.fields.startDate, phase: item.phase, prefix: 'start' }))) : null,
+                            item.fields?.dueDate ? h('div', { className: 'wb-prop-item' },
+                              h('span', { className: 'wb-prop-label' }, t('Due date')),
+                              h('div', { className: 'wb-prop-value' }, h(DateChip, { value: item.fields.dueDate, phase: item.phase }))) : null,
+                            item.fields?.labels?.length ? h('div', { className: 'wb-prop-item', 'data-wide': 'true' },
+                              h('span', { className: 'wb-prop-label' }, t('Labels')),
+                              h('div', { className: 'wb-prop-value' }, ...item.fields.labels.map((tag, i) => h('span', { key: i, className: 'wb-chip' }, tag)))) : null,
+                            ...(view?.catalog?.properties ?? [])
+                              .filter(property => !property.archived && item.fields?.customValues && Object.hasOwn(item.fields.customValues, property.id))
+                              .map(property => {
+                                const val = item.fields.customValues[property.id]
+                                const format = v => ['person', 'people'].includes(property.kind) ? boardGroupName(v, 'assignee', view?.catalog) : String(v)
+                                return h('div', { key: property.id, className: 'wb-prop-item' },
+                                  h('span', { className: 'wb-prop-label' }, property.name),
+                                  h('div', { className: 'wb-prop-value' }, Array.isArray(val) ? val.map(format).join(', ') : format(val)))
+                              })),
+                          h(PlanningDetails, { key: item.id, item, pick, seed, openComment, annotate, readOnly }),
+                          h('section', { className: 'wb-section-card' },
+                            h('h3', null, t('Acceptance criteria')),
+                            h('div', { className: 'wb-criteria-body' }, item.criteria || '—')),
+                          item.evidence ? h('section', { className: 'wb-section-card' },
+                            h('div', { className: 'wb-section-head' },
+                              h('h3', null, t('Evidence')),
+                              h('span', { className: 'wb-card-id' }, 'v', item.evidenceRevision)),
+                            h('div', { className: 'wb-mono-block' }, item.evidence)) : null,
+                          item.hint && ![item.criteria, item.evidence].some(v => v?.replace(/\s+/g, ' ').startsWith(item.hint))
+                            ? h('div', { className: 'wb-callout', 'data-tone': 'info' }, item.hint) : null,
+                          (item.pending.length || item.dependencies.length || item.origin || item.execution)
+                            ? h('section', { className: 'wb-section-card' },
+                                h('h3', null, t('Links & conversations')),
+                                h('div', { className: 'wb-tools' },
+                                  ...item.pending.map((p) => button(
+                                    t(p.type === 'question' ? 'Answer question' : 'Review approval'),
+                                    () => actions.openWorkSession(p),
+                                    { key: p.id, className: 'wb-primary' },
+                                  )),
+                                  ...item.dependencies.map((d) => button(d.id + ' · ' + d.title, () => pick(d.id), { key: d.id, className: 'wb-btn wb-btn-soft' })),
+                                  item.origin ? button(t('Open source conversation'), () => original(item.origin), { className: 'wb-btn' }) : null,
+                                  item.execution ? button(t('Open execution conversation'), () => original(item.execution), { className: 'wb-btn' }) : null)) : null,
+                          renderRunChildren(item),
+                          item.events.length
+                            ? h(
+                                'details',
+                                { className: 'wb-section-card' },
+                                h('summary', null, t('Activity'), ' · ', item.events.length),
+                                ...activityByAttempt(item.events).map((group) => {
+                                  const entries = group.events.map((e, i) =>
+                                    h(
+                                      'div',
+                                      { key: i, className: 'wb-activity-item' },
+                                      h('small', { className: 'wb-subtext' }, e.kind, ' · ', when(e.at), e.version ? ' · v' + e.version : ''),
+                                      h('div', { className: 'wb-mono-block' }, e.text),
+                                      e.execution
+                                        ? button(t('Open execution conversation'), () => original(e.execution), { className: 'wb-btn' })
+                                        : null,
+                                    ),
+                                  )
+                                  return group.attempt
+                                    ? h(
+                                        'details',
+                                        { key: group.attempt },
+                                        h('summary', null, t('Attempt {number}', { number: group.attempt })),
+                                        ...entries,
+                                      )
+                                    : h('div', { key: 0 }, ...entries)
+                                }),
+                                item.eventNext ? button(t('Earlier activity'), earlier, { className: 'wb-btn wb-btn-soft' }) : null,
+                              )
+                            : null,
                         ),
                       ),
-                      item.dependencies.map((d) =>
-                        button(d.id + ' · ' + d.title, () => pick(d.id), { key: d.id }),
-                      ),
-                      item.origin ? button(t('Open source conversation'), () => original(item.origin)) : null,
-                      item.execution
-                        ? button(t('Open execution conversation'), () => original(item.execution))
-                        : null,
-                      item.events.length
-                        ? h(
-                            'details',
-                            null,
-                            h('summary', null, t('Activity'), ' · ', item.events.length),
-                            ...activityByAttempt(item.events).map((group) => {
-                              const entries = group.events.map((e, i) =>
-                                h(
-                                  'div',
-                                  { key: i },
-                                  h('small', null, e.kind, ' · ', when(e.at), e.version ? ' · v' + e.version : ''),
-                                  h('pre', null, e.text),
-                                  e.execution
-                                    ? button(t('Open execution conversation'), () => original(e.execution))
-                                    : null,
-                                ),
-                              )
-                              return group.attempt
-                                ? h(
-                                    'details',
-                                    { key: group.attempt },
-                                    h('summary', null, t('Attempt {number}', { number: group.attempt })),
-                                    ...entries,
-                                  )
-                                : h('div', { key: 0 }, ...entries)
-                            }),
-                          )
-                        : null,
-                      item.eventNext ? button(t('Earlier activity'), earlier) : null,
-                      item.children.length
-                        ? h(
-                            'ul',
-                            null,
-                            ...item.children.map((c) => h('li', { key: c.id }, c.target, ' · ', c.status)),
-                          )
-                        : null,
-                      !readOnly ? h('footer', null, button(t('Edit work item'), () => begin('edit-fields', item)), ...actionButtons(item)) : null,
-                      ),
-                    ),
+            ),
+            showDetailFooter
+              ? h('footer', { className: 'wb-detail-footer' },
+                  h('div', { className: 'wb-detail-footer-group' },
+                    button(t('Edit work item'), () => begin('edit-fields', item), { className: 'wb-btn wb-btn-soft' }),
+                    ...secondaryActions.map((op) => button(label(actionNames, op), () => begin(op, item), { key: op, className: opClass(op) }))),
+                  primaryActions.length ? h('div', { className: 'wb-detail-footer-group' },
+                    ...primaryActions.map((op) => button(label(actionNames, op), () => begin(op, item), { key: op, className: opClass(op) }))) : null)
+              : null,
           ),
         )
       : null,
@@ -719,9 +790,8 @@ export function WorkBoard({ initial, actions, roster, column = 0 }) {
       ? h(
           'div',
           { className: 'wb-error', role: 'alert' },
-          error,
-          refreshAt ? ' · ' + when(refreshAt) : '',
-          button(t('Refresh'), refresh),
+          h('span', null, error, refreshAt ? ' · ' + when(refreshAt) : ''),
+          button(t('Refresh'), refresh, { className: 'wb-btn' }),
         )
       : null,
   )
