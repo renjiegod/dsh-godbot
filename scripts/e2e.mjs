@@ -1,21 +1,23 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { release as osRelease, tmpdir } from 'node:os'
+import { join, relative, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { buildArchive, inspectArchive, repository, saveEvidence } from '../test/e2e/artifacts.mjs'
+import { buildArchive, inspectArchive, repository, saveEvidence, sha256 } from '../test/e2e/artifacts.mjs'
 import { createHost, EnvironmentError, installedVersions, openBrowser, redact } from '../test/e2e/host.mjs'
 import { all, androidCases, connectorCases, live, needsRelay, routineFiles, suites } from '../test/e2e/suites.mjs'
 
-const usage = 'node scripts/e2e.mjs [--case E0|--suite release|all|live-connectors|live-routines] [--artifact <tgz>] [--previous <tgz>] [--report-dir <output>]\n' +
+import { completedPrefix } from '../test/e2e/release-checkpoint.mjs'
+
+const usage = 'node scripts/e2e.mjs [--case E0|--suite release|all|live-connectors|live-routines] [--artifact <tgz>] [--previous <tgz>] [--report-dir <output>] [--resume-from <interrupted release report>]\n' +
   '  [--strict [--allow-skip <case> ... --waiver-reason <text>]] [--retries <0-3>]\n\n' +
   '--strict      a skipped case fails the run unless --allow-skip names it (a release verdict needs --strict)\n' +
   '--retries n   run a failed case again on the same archive, up to n more times; every attempt stays in the report'
 
 const { values } = parseArgs({ options: {
   case: { type: 'string' }, suite: { type: 'string' }, artifact: { type: 'string' },
-  previous: { type: 'string' }, 'report-dir': { type: 'string' }, help: { type: 'boolean', short: 'h' },
+  previous: { type: 'string' }, 'resume-from': { type: 'string' }, 'report-dir': { type: 'string' }, help: { type: 'boolean', short: 'h' },
   strict: { type: 'boolean' }, retries: { type: 'string' }, 'allow-skip': { type: 'string', multiple: true }, 'waiver-reason': { type: 'string' },
 } })
 if (values.help) {
@@ -46,10 +48,17 @@ if (values.help) {
   for (const id of allowSkip) if (!cases.includes(id)) throw new Error('--allow-skip names a case this run does not include: ' + id)
   const reportDir = values['report-dir'] ? resolve(values['report-dir']) : await mkdtemp(join(tmpdir(), 'godbot-e2e-report-'))
   await mkdir(reportDir, { recursive: true, mode: 0o700 })
+  const suite = values.case ? null : values.suite ?? 'release'
+  const strictRelease = suite === 'release' && values.strict === true
+  const sourceReport = values['resume-from'] && resolve(values['resume-from'])
+  if (sourceReport && (!strictRelease || !values.artifact || !values.previous || !values['report-dir'])) {
+    throw new Error('--resume-from needs a strict release suite, an archive, a previous archive and a new report directory')
+  }
+  if (sourceReport && existsSync(join(reportDir, 'report.json'))) throw new Error('Use a new report directory to preserve the earlier evidence')
   const scratch = await mkdtemp(join(tmpdir(), 'godbot-e2e-'))
   const report = { startedAt: new Date().toISOString(), revision: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repository, encoding: 'utf8' }).trim(),
     platform: process.platform + '-' + process.arch, versions: installedVersions(), cases: cases.map(id => ({ id, status: 'not-run', evidence: [] })),
-    strict: values.strict === true, retries, waived: allowSkip.map(id => ({ id, reason: waiverReason })),
+    suite, ...(strictRelease ? { checkpointVersion: 1, osRelease: osRelease() } : {}), strict: values.strict === true, retries, waived: allowSkip.map(id => ({ id, reason: waiverReason })),
     level: values.case === 'SANDBOX-SETUP' ? 'packaged DSH Web / browser / disposable Lima guest and provider CLI'
       : androidCases.includes(values.case) ? 'packaged Android app / emulator / relay / packaged DSH Web / fixture agents'
       : cases.some(id => live.includes(id)) ? 'packaged DSH Web / browser / authenticated native CLI / local test application' : 'packaged DSH Web / browser / fixture models' }
@@ -57,9 +66,20 @@ if (values.help) {
     let version = null
     try { version = execFileSync(process.env.GODBOT_RELAY_BIN, ['version'], { encoding: 'utf8', timeout: 10_000 }).trim() } catch { /* reported as unknown */ }
     report.relay = { version }
+    if (strictRelease && existsSync(process.env.GODBOT_RELAY_BIN)) report.relay.sha256 = sha256(await readFile(process.env.GODBOT_RELAY_BIN))
   }
   await saveEvidence(reportDir, 'report.json', report)
   let browser
+  let interrupted = false
+  const interrupt = () => {
+    interrupted = true
+    process.off('SIGINT', interrupt)
+    process.off('SIGTERM', interrupt)
+  }
+  if (strictRelease) {
+    process.on('SIGINT', interrupt)
+    process.on('SIGTERM', interrupt)
+  }
   try {
     const candidate = values.artifact ? await inspectArchive(values.artifact) : await buildArchive(scratch)
     report.archive = { sha256: candidate.sha256, buildId: candidate.buildId, version: candidate.version }
@@ -71,6 +91,21 @@ if (values.help) {
     browser = launch.browser
     report.browser = { engine: browser.browserType().name(), version: browser.version(), source: launch.source }
     console.log('Browser: ' + report.browser.engine + ' ' + report.browser.version + ' (' + launch.source + ')')
+
+    let reused = 0
+    if (sourceReport) {
+      const prior = JSON.parse(await readFile(sourceReport, 'utf8'))
+      const prefix = completedPrefix(report, prior, candidate.clientSha256)
+      reused = prefix.length
+      if (reused) {
+        report.continuedAt = report.startedAt
+        report.startedAt = prior.startedAt
+        report.resumedFrom = { report: relative(reportDir, sourceReport), cases: prefix.map(row => row.id) }
+        report.cases.splice(0, reused, ...prefix)
+      }
+      console.log('Continuing with ' + reused + ' previously passed release cases and ' + (cases.length - reused) + ' to run')
+    }
+    await saveEvidence(reportDir, 'report.json', report)
 
     // One run of a scenario. Each attempt gets its own evidence folder: the first
     // keeps the case's name, a retry adds .attempt-<n>, so a failure is never
@@ -100,13 +135,13 @@ if (values.help) {
         }
         record.status = 'passed'
       } catch (error) {
-        record.status = error instanceof EnvironmentError ? 'environment-failure' : 'failed'
+        record.status = interrupted ? 'interrupted' : error instanceof EnvironmentError ? 'environment-failure' : 'failed'
         record.reason = redact(error.stack ?? error)
         console.error(record.reason)
         for (const [index, host] of hosts.entries()) await host.capture('failure-' + index).catch(() => {})
       } finally {
         for (const host of hosts.reverse()) {
-          try { await host.close() } catch (error) { record.status = 'environment-failure'; record.cleanupError = redact(error.message) }
+          try { await host.close() } catch (error) { record.status = interrupted ? 'interrupted' : 'environment-failure'; record.cleanupError = redact(error.message) }
         }
         record.endedAt = new Date().toISOString()
         row.status = record.status
@@ -121,7 +156,8 @@ if (values.help) {
       }
     }
 
-    for (const row of report.cases) {
+    for (const row of report.cases.slice(reused)) {
+      if (interrupted) break
       const { id } = row
       const scenarioFile = connectorCases.includes(id) ? 'live-connectors.mjs' : (routineFiles[id] ?? 'cases/' + id + '.mjs')
       const file = new URL('../test/e2e/' + scenarioFile, import.meta.url)
@@ -144,7 +180,7 @@ if (values.help) {
       row.attempts = []
       for (let number = 1; ; number++) {
         await attempt(row, file, number)
-        if (row.status === 'passed' || number > retries) break
+        if (interrupted || row.status === 'passed' || number > retries) break
         console.log('Running ' + id + ' again on the same archive (' + (number + 1) + ' of ' + (retries + 1) + ')')
       }
     }
@@ -160,7 +196,7 @@ if (values.help) {
     // release verdict: scripts/release-candidate.mjs only accepts strict reports.
     const waived = new Set(report.waived.map(item => item.id))
     const blocking = report.cases.filter(row => row.status !== 'passed' && !(row.status === 'skipped' && (!report.strict || waived.has(row.id))))
-    report.result = report.environmentFailure || blocking.length || report.cases.length !== cases.length ? 'failed' : 'passed'
+    report.result = interrupted ? 'interrupted' : report.environmentFailure || blocking.length || report.cases.length !== cases.length ? 'failed' : 'passed'
     await saveEvidence(reportDir, 'report.json', report)
     const count = status => report.cases.filter(row => row.status === status).length
     console.log('Godbot E2E: ' + report.result + ' (' + count('passed') + ' passed, ' + count('failed') + ' failed, ' +
@@ -170,6 +206,10 @@ if (values.help) {
     if (blocking.length) console.log('Not passed: ' + blocking.map(row => row.id + ' ' + row.status).join(', '))
     if (!report.strict && count('skipped')) console.log('Skipped cases do not fail a run without --strict; this report is not a release verdict')
     console.log('Godbot E2E report: ' + join(reportDir, 'report.json'))
-    if (report.result !== 'passed') process.exitCode = 1
+    if (strictRelease) {
+      process.off('SIGINT', interrupt)
+      process.off('SIGTERM', interrupt)
+    }
+    if (report.result !== 'passed') process.exitCode = interrupted ? 130 : 1
   }
 }

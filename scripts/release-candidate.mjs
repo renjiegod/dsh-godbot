@@ -83,6 +83,9 @@ export function verificationProblems(verified, candidate) {
 export function verification(report, candidate, reruns = []) {
   const problems = []
   if (report?.archive?.sha256 !== candidate.archive.sha256) problems.push(`The report tested the archive ${report?.archive?.sha256}, not ${candidate.archive.sha256}`)
+  if (report?.checkpointVersion && (report.suite !== 'release' || report.revision !== candidate.commit || !report.endedAt || !['passed', 'failed'].includes(report.result))) {
+    problems.push('The release suite for this candidate commit did not finish')
+  }
   if (report?.environmentFailure) problems.push('The run stopped with an environment failure')
   const attemptsOf = row => (Array.isArray(row.attempts) && row.attempts.length ? row.attempts : [{ status: row.status }]).map(item => item.status)
   const rows = new Map((report?.cases ?? []).map(row => [row.id, { id: row.id, status: row.status, attempts: attemptsOf(row) }]))
