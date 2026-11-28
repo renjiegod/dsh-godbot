@@ -54,9 +54,12 @@ export default async function E5({ makeHost, candidate, note }) {
   }
   await host.start()
   assert.deepEqual(await ci.cli(...args), a)
-  assert.equal((await ci.cli('wait', runId)).code, 5)
-  assert.equal(seen.size, 1)
+  const recovered = await ci.lookup(runId, row => row.tasks?.some(task => task.status === 'reported'))
+  assert.equal((await ci.cli('wait', runId)).code, 3)
+  assert.equal(recovered.tasks.length, 1)
+  assert.equal(recovered.tasks[0].attempt, 1)
+  assert.equal(seen.size, 2)
   const snapshot = await host.snapshot()
   assert.equal(snapshot.tasks.filter((t) => t.runId === runId).length, 1)
-  note('unknown-after-crash', { runId, fixtureSubmissions: seen.size, tasks: 1 })
+  note('resumed-after-crash', { runId, fixtureSubmissions: seen.size, tasks: 1 })
 }
