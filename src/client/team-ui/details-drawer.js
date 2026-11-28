@@ -295,7 +295,7 @@ export function DetailsDrawer(props) {
   useEscape(close)
   const bot = roster.byId[sessionId]
   const mode = nativeMode(startTab)
-  if (mode) return actions.godbot.nativePane(bot, sessionId, roster, close, mode, actions)
+  if (mode) return actions.godbot.nativePane(bot, sessionId, roster, close, mode, actions, props.terminalWorkItem)
   return h(ConversationDetails, { ...props, close })
 }
 

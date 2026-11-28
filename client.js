@@ -13462,6 +13462,7 @@ var ZH = {
   "Unassigned": "未指派",
   "Open source conversation": "打开发起会话",
   "Open execution conversation": "打开执行会话",
+  "Continue in native terminal": "在原生终端继续",
   "Dispatch to the source conversation": "任务将派到发起此工作的会话。",
   "Dispatch to a dedicated task conversation": "任务将派到负责 Bot 的专用任务会话。",
   "This work item changed. Reopen the action to review the current evidence.": "工作项已更新。请返回详情核对最新证据后再操作。",
@@ -16368,8 +16369,8 @@ function teamActions({ call: call3, after, partFor, roster, ui: ui3, live, cards
         return { ...state, details: id, view, renaming: false, tab: null };
       });
     },
-    showDetails: (id, tab = null) => {
-      ui3.set((state) => ({ ...state, details: id, view: "details", renaming: false, tab, panelYield: yieldTo(state, "details") }));
+    showDetails: (id, tab = null, terminalWorkItem = null) => {
+      ui3.set((state) => ({ ...state, details: id, view: "details", renaming: false, tab, terminalWorkItem, panelYield: yieldTo(state, "details") }));
     },
     // A group member's work, in the panel beside the group: the turn `at` names (a group
     // line's), else the one it runs there now. The panel follows the group's current
@@ -34253,7 +34254,7 @@ var xterm_default = `/**
 function attachTerminal({ client, target, terminal, refit, options: options2, status }) {
   let detached = false, terminalId, cursor = 0, historical = 0;
   let writing, submitting = false, input4 = "", canInput = false, ended = false, generation = 0;
-  let sentSize, resizePending = false;
+  let sentSize, workItemId, resizePending = false;
   const reader = new AbortController();
   const stale = (n) => detached || n !== generation;
   function failed(error) {
@@ -34272,7 +34273,11 @@ function attachTerminal({ client, target, terminal, refit, options: options2, st
         if (end < input4.length && /[\uD800-\uDBFF]/u.test(input4[end - 1])) end--;
         const data = input4.slice(0, end);
         input4 = input4.slice(end);
-        await client.terminalWrite({ terminalId, data });
+        const receipt = await client.terminalWrite({ terminalId, data });
+        if (!stale(n) && receipt?.workItemId && receipt.workItemId !== workItemId) {
+          workItemId = receipt.workItemId;
+          status({ workItemId });
+        }
       }
     } catch (error) {
       if (!stale(n)) failed(error);
@@ -34335,6 +34340,7 @@ function attachTerminal({ client, target, terminal, refit, options: options2, st
     let { replay, ...info } = await client.terminalOpen({ ...target, cols, rows: rows2, ...options2, ...acceptsReplay && { includeReplay: true } });
     if (stale(n)) return;
     terminalId = info.terminalId;
+    workItemId = info.workItemId;
     sentSize = { cols: info.cols, rows: info.rows };
     historical = info.reused ? info.cursor : 0;
     canInput = !historical && !info.exit;
@@ -56080,7 +56086,7 @@ function DetailsDrawer(props) {
   useEscape(close);
   const bot = roster.byId[sessionId];
   const mode = nativeMode(startTab);
-  if (mode) return actions.godbot.nativePane(bot, sessionId, roster, close, mode, actions);
+  if (mode) return actions.godbot.nativePane(bot, sessionId, roster, close, mode, actions, props.terminalWorkItem);
   return (0, import_react81.createElement)(ConversationDetails, { ...props, close });
 }
 function ConversationDetails({ sessionId, startRenaming, startTab, hasStrip, roster, actions, close, useSessions, useSessionStatus, useActivity, useWork, useBrowserTabs, useBrowserPages, useComputer }) {
@@ -57277,6 +57283,7 @@ function BotPanel({ pane, leaving, room: room2, overlay, roster, actions, useSes
         sessionId: pane.id,
         startRenaming: pane.renaming,
         startTab: pane.tab,
+        terminalWorkItem: pane.terminalWorkItem,
         hasStrip,
         roster,
         actions: panelActions,
@@ -61515,6 +61522,11 @@ function WorkBoard({ initial: initial2, actions, roster, column: column2 = 0 }) 
     if (!id) return;
     setAnchor(anchor2);
   }
+  const terminalTarget = item?.canContinueInTerminal && item.execution ? botNativeTarget(roster.bots?.find((bot) => bot.id === item.execution.botId), item.execution.sessionId, roster) : null;
+  const continueInTerminal = () => {
+    actions.openSession(terminalTarget.sessionId);
+    actions.showDetails(terminalTarget.sessionId, nativeTabs.terminal, item.id);
+  };
   const toggle = (card2) => setChecked((old) => {
     const next = new Map(old);
     if (next.has(card2.id)) next.delete(card2.id);
@@ -62020,7 +62032,8 @@ function WorkBoard({ initial: initial2, actions, roster, column: column2 = 0 }) 
                   )),
                   ...item.dependencies.map((d) => button4(d.id + " · " + d.title, () => pick2(d.id), { key: d.id, className: "wb-btn wb-btn-soft" })),
                   item.origin ? button4(t("Open source conversation"), () => original(item.origin), { className: "wb-btn" }) : null,
-                  item.execution ? button4(t("Open execution conversation"), () => original(item.execution), { className: "wb-btn" }) : null
+                  item.execution ? button4(t("Open execution conversation"), () => original(item.execution), { className: "wb-btn" }) : null,
+                  terminalTarget ? button4(t("Continue in native terminal"), continueInTerminal, { className: "wb-btn" }) : null
                 )
               ) : null,
               renderRunChildren(item),
@@ -62092,7 +62105,7 @@ function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity
     previous.current = current2;
     if (current2) actions.followPanel?.(current2);
   }, [current2]);
-  const open = ui3.details ? { id: ui3.details, view: ui3.view ?? "details", renaming: ui3.renaming, tab: ui3.tab, side: ui3.side, work: ui3.work } : null;
+  const open = ui3.details ? { id: ui3.details, view: ui3.view ?? "details", renaming: ui3.renaming, tab: ui3.tab, side: ui3.side, work: ui3.work, terminalWorkItem: ui3.terminalWorkItem } : null;
   const layout = frameLayout({
     viewport: frameSnap.viewport,
     sidebarWidth: frameSnap.sidebarWidth,
@@ -62109,7 +62122,7 @@ function Overlays({ useRoster, useUi, useSessions, useSessionStatus, useActivity
     }
     const timer = setTimeout(() => setKept(null), reducedMotion() ? 0 : PANEL_LINGER_MS);
     return () => clearTimeout(timer);
-  }, [ui3.details, ui3.view, ui3.renaming, ui3.tab, ui3.work, shown === null]);
+  }, [ui3.details, ui3.view, ui3.renaming, ui3.tab, ui3.work, ui3.terminalWorkItem, shown === null]);
   const pane = shown ?? kept;
   const shellHeld = useSettingsShellHeld ? useSettingsShellHeld((value) => value) : false;
   const [settings2, settingsLeaving] = useLinger(shellHeld ? null : ui3.settings, DIALOG_EXIT_MS2);
@@ -67004,7 +67017,7 @@ function saveHighlight(on2) {
 function openLink2(url) {
   if (/^https?:\/\//iu.test(url)) window.open(url, "_blank", "noopener,noreferrer");
 }
-function TerminalSession({ client, target, close, mode, onModeChange }) {
+function TerminalSession({ client, target, close, mode, onModeChange, openWork }) {
   const view = (0, import_react102.useRef)(null), wire = (0, import_react102.useRef)(null), termRef = (0, import_react102.useRef)(null), highlighter = (0, import_react102.useRef)(null);
   const [attempt, setAttempt] = (0, import_react102.useState)({ number: 0 });
   const [state, setState] = (0, import_react102.useState)({ phase: "opening" });
@@ -67014,7 +67027,7 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
   const conversation = mode === "conversation";
   const highlighting = (0, import_react102.useRef)(highlight && !conversation);
   highlighting.current = highlight && !conversation;
-  const { memberId, botId, sessionId, agent, label: label2 } = target;
+  const { memberId, botId, sessionId, agent, label: label2, workItemId } = target;
   (0, import_react102.useLayoutEffect)(() => {
     const node = view.current;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -67094,7 +67107,12 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
       client,
       terminal,
       refit: resize,
-      target: { ...memberId ? { memberId } : { botId }, ...sessionId ? { sessionId } : {}, agent },
+      target: {
+        ...memberId ? { memberId } : { botId },
+        ...sessionId ? { sessionId } : {},
+        agent,
+        ...workItemId ? { workItemId } : {}
+      },
       options: attempt.options,
       status: (patch) => setState((previous) => ({ ...previous, ...patch }))
     });
@@ -67115,7 +67133,7 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
       terminal.dispose();
       shadow.replaceChildren();
     };
-  }, [client, memberId, botId, sessionId, agent, attempt]);
+  }, [client, memberId, botId, sessionId, agent, workItemId, attempt]);
   (0, import_react102.useLayoutEffect)(() => {
     const terminal = termRef.current;
     if (!conversation) {
@@ -67240,15 +67258,16 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
       { className: "gb-term-foot" },
       (0, import_react102.createElement)("span", { className: "gb-term-state", role: "status" }, (0, import_react102.createElement)("i", { "data-live": state.phase === "live" || void 0 }), states2[state.phase]),
       output ? (0, import_react102.createElement)("span", { className: "gb-term-output", role: state.phase === "error" ? "alert" : void 0 }, output) : (0, import_react102.createElement)("span", { className: "gb-term-path", title: state.info?.cwd }, state.info?.cwd),
+      openWork && (state.workItemId ?? state.info?.workItemId) ? (0, import_react102.createElement)("button", { type: "button", onClick: () => openWork(state.workItemId ?? state.info.workItemId) }, state.workItemId ?? state.info.workItemId) : null,
       state.phase === "error" && (0, import_react102.createElement)("button", { type: "button", onClick: () => retry(false) }, "重新连接"),
       state.phase === "exited" && (0, import_react102.createElement)("button", { type: "button", onClick: () => retry(true) }, "重开终端")
     )
   );
 }
-function TerminalPanel({ client, target, close, mode = "terminal", onModeChange }) {
+function TerminalPanel({ client, target, close, mode = "terminal", onModeChange, openWork }) {
   if (!target) return null;
-  const key = JSON.stringify([target.botId, target.memberId, target.sessionId, target.agent]);
-  return (0, import_react102.createElement)(TerminalSession, { key, client, target, close, mode, onModeChange });
+  const key = JSON.stringify([target.botId, target.memberId, target.sessionId, target.agent, target.workItemId]);
+  return (0, import_react102.createElement)(TerminalSession, { key, client, target, close, mode, onModeChange, openWork });
 }
 
 // src/client/team-ui/agent-form.js
@@ -76190,14 +76209,15 @@ function mountProduct(ctx, client, navigation, target, ready) {
       const target2 = botNativeTarget(bot, id, state);
       return target2 && (0, import_react132.createElement)(NativeAgentButton, { key: "native:" + id, target: target2, active: terminalActive, actions });
     },
-    nativePane(bot, id, state, close, mode, actions) {
+    nativePane(bot, id, state, close, mode, actions, workItemId) {
       const target2 = botNativeTarget(bot, id, state);
       return target2 ? (0, import_react132.createElement)(TerminalPanel, {
         client,
-        target: target2,
+        target: { ...target2, workItemId },
         close,
         mode,
-        onModeChange: (next) => actions.showDetails(id, nativeTabs[next])
+        onModeChange: (next) => actions.showDetails(id, nativeTabs[next], workItemId),
+        openWork: (id2) => actions.openWorkBoard({ id: id2 })
       }) : (0, import_react132.createElement)("p", { role: "status" }, "请选择当前 Bot 的 CLI 会话。");
     },
     useExecutionTools: (botId, sessionId, turn, enabled) => useExecutionTools(client, botId, sessionId, turn, enabled),

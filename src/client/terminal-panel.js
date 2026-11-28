@@ -25,7 +25,7 @@ function openLink(url) {
   if (/^https?:\/\//iu.test(url)) window.open(url, '_blank', 'noopener,noreferrer')
 }
 
-function TerminalSession({ client, target, close, mode, onModeChange }) {
+function TerminalSession({ client, target, close, mode, onModeChange, openWork }) {
   const view = useRef(null), wire = useRef(null), termRef = useRef(null), highlighter = useRef(null)
   const [attempt, setAttempt] = useState({ number: 0 })
   const [state, setState] = useState({ phase: 'opening' })
@@ -35,7 +35,7 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
   const conversation = mode === 'conversation'
   const highlighting = useRef(highlight && !conversation)
   highlighting.current = highlight && !conversation
-  const { memberId, botId, sessionId, agent, label } = target
+  const { memberId, botId, sessionId, agent, label, workItemId } = target
   useLayoutEffect(() => {
     const node = view.current
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -106,7 +106,8 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
     setState({ phase: 'opening' })
     const connection = attachTerminal({
       client, terminal, refit: resize,
-      target: { ...(memberId ? { memberId } : { botId }), ...(sessionId ? { sessionId } : {}), agent },
+      target: { ...(memberId ? { memberId } : { botId }), ...(sessionId ? { sessionId } : {}), agent,
+        ...(workItemId ? { workItemId } : {}) },
       options: attempt.options,
       status: patch => setState(previous => ({ ...previous, ...patch })),
     })
@@ -127,7 +128,7 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
       terminal.dispose()
       shadow.replaceChildren()
     }
-  }, [client, memberId, botId, sessionId, agent, attempt])
+  }, [client, memberId, botId, sessionId, agent, workItemId, attempt])
 
   useLayoutEffect(() => {
     const terminal = termRef.current
@@ -207,13 +208,16 @@ function TerminalSession({ client, target, close, mode, onModeChange }) {
       h('span', { className: 'gb-term-state', role: 'status' }, h('i', { 'data-live': state.phase === 'live' || undefined }), states[state.phase]),
       output ? h('span', { className: 'gb-term-output', role: state.phase === 'error' ? 'alert' : undefined }, output)
         : h('span', { className: 'gb-term-path', title: state.info?.cwd }, state.info?.cwd),
+      openWork && (state.workItemId ?? state.info?.workItemId)
+        ? h('button', { type: 'button', onClick: () => openWork(state.workItemId ?? state.info.workItemId) }, state.workItemId ?? state.info.workItemId)
+        : null,
       state.phase === 'error' && h('button', { type: 'button', onClick: () => retry(false) }, '重新连接'),
       state.phase === 'exited' && h('button', { type: 'button', onClick: () => retry(true) }, '重开终端')))
 }
 
 /** Unmounting hides this view and leaves its Host PTY running. */
-export function TerminalPanel({ client, target, close, mode = 'terminal', onModeChange }) {
+export function TerminalPanel({ client, target, close, mode = 'terminal', onModeChange, openWork }) {
   if (!target) return null
-  const key = JSON.stringify([target.botId, target.memberId, target.sessionId, target.agent])
-  return h(TerminalSession, { key, client, target, close, mode, onModeChange })
+  const key = JSON.stringify([target.botId, target.memberId, target.sessionId, target.agent, target.workItemId])
+  return h(TerminalSession, { key, client, target, close, mode, onModeChange, openWork })
 }

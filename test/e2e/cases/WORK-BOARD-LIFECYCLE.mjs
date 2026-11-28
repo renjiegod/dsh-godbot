@@ -37,6 +37,7 @@ export default async function check({ makeHost, candidate, note }) {
   let revised = false
   host.model.reply = async (body, call) => {
     const input = JSON.stringify(body.messages)
+    if (input.includes('LIFECYCLE_DISCUSSION')) return 'The delegated verification checked a second equation.'
     if (input.includes(childTitle) && call.sessionId !== lead.id) return 'Verification evidence: 3 + 4 equals 7.'
     if (input.includes('LIFECYCLE_CORRECTION')) {
       revised = true
@@ -79,6 +80,18 @@ export default async function check({ makeHost, candidate, note }) {
     const childReview = await cardIn(child.id, 'review')
     assert.equal(childReview.owner, worker.id)
     assert.match(childReview.evidence, /3 \+ 4/)
+    const discussion = await channel(host, 'board-comment', {
+      id: child.id, op: 'post', body: 'LIFECYCLE_DISCUSSION What did the verification cover?',
+      requestId: 'lifecycle-child-comment',
+    })
+    const reply = await until(async () => {
+      const thread = await channel(host, 'board-discussion', { id: child.id, thread: discussion.commentId })
+      return thread.entries.find(entry => entry.body === 'The delegated verification checked a second equation.')
+    }, 'the Bot answers the triggering comment')
+    assert.equal(reply.parentId, discussion.commentId)
+    const discussionRuns = await channel(host, 'board-runs', { id: child.id })
+    assert.equal(discussionRuns.runs.find(run => run.commentId === discussion.commentId).sessionId, childReview.execution.sessionId)
+    assert.equal((await inspect(child.id)).evidenceRevision, childReview.evidenceRevision)
     const submitted = await cardIn(first.id, 'review')
     assert.equal(submitted.attempt, 1)
     const children = (await inspect(first.id)).planning.children

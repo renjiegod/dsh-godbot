@@ -361,10 +361,11 @@ function mountProduct(ctx, client, navigation, target, ready) {
       const target = botNativeTarget(bot, id, state)
       return target && h(NativeAgentButton, { key: 'native:' + id, target, active: terminalActive, actions })
     },
-    nativePane(bot, id, state, close, mode, actions) {
+    nativePane(bot, id, state, close, mode, actions, workItemId) {
       const target = botNativeTarget(bot, id, state)
-      return target ? h(TerminalPanel, { client, target, close, mode,
-        onModeChange: next => actions.showDetails(id, nativeTabs[next]) }) : h('p', { role: 'status' }, '请选择当前 Bot 的 CLI 会话。')
+      return target ? h(TerminalPanel, { client, target: { ...target, workItemId }, close, mode,
+        onModeChange: next => actions.showDetails(id, nativeTabs[next], workItemId),
+        openWork: id => actions.openWorkBoard({ id }) }) : h('p', { role: 'status' }, '请选择当前 Bot 的 CLI 会话。')
     },
     useExecutionTools: (botId, sessionId, turn, enabled) => useExecutionTools(client, botId, sessionId, turn, enabled),
     inlineExecution: (key, botId, sessionId, turn, running, events) => h(InlineExecution, {

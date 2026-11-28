@@ -33,7 +33,7 @@ export class BotTerminals {
   }
 
   async open(request = {}) {
-    const { memberId, botId, sessionId, agent, cols, rows, restart, terminalId } = request
+    const { memberId, botId, sessionId, agent, cols, rows, restart, terminalId, workItemId } = request
     if (memberId != null || typeof botId !== 'string' || !botId || typeof sessionId !== 'string' || !sessionId || this.stopping)
       throw new Error('请选择当前 Bot 的私聊。')
     const key = JSON.stringify([botId, sessionId])
@@ -63,13 +63,19 @@ export class BotTerminals {
         if (previous.lease.signal?.aborted || previous.lease.stillCurrent?.() === false)
           throw new Error('该 Bot 的原生会话已切换，请重新打开。')
         if (info.closing) throw new Error('终端正在交还控制权。')
-        if (reattach) return { ...this.view(previous, info, true), stale: agent !== previous.agent }
+        if (reattach) {
+          const current = previous.work?.workItemId ?? previous.requestedWorkItem
+          if (workItemId != null && current !== workItemId)
+            throw new Error('请先交还当前终端，再打开指定工作项。')
+          return { ...this.view(previous, info, true), stale: agent !== previous.agent }
+        }
         if (!info.exit) throw new Error('请先交还正在运行的终端。')
         await this.pty.close(previous.id)
         this.byChat.delete(key)
       } else if (restart && terminalId) {
         throw new Error('终端已关闭，请重新打开当前聊天的终端。')
       }
+      if (workItemId != null) this.service.board.lifecycle.terminalWork(workItemId, botId, sessionId)
       const lease = await this.service.runtime.claimAgentTerminal(botId, sessionId)
       let id, entry
       try {
@@ -87,7 +93,7 @@ export class BotTerminals {
           trustClaudeFolder: (lease.agent === 'claude' || lease.agent === 'local-claude-code') && (lease.sandboxLaunch?.guestCwd ?? true) })
         id = opened.terminalId
         entry = { key, id, agent: lease.agent, cwd: launch.cwd, nativeId: lease.sessionId, lease, botId, sessionId,
-          requestedWorkItem: request.workItemId }
+          requestedWorkItem: workItemId }
         this.byChat.set(key, entry)
         entry.onAbort = () => { void this.close(id).catch(() => {}) }
         lease.signal?.addEventListener('abort', entry.onAbort, { once: true })
@@ -112,12 +118,13 @@ export class BotTerminals {
   }
 
   view(entry, info, reused) {
+    const workItemId = entry.work?.workItemId ?? entry.requestedWorkItem
     return { ...info, agent: entry.agent, cwd: entry.cwd, nativeId: entry.nativeId, reused,
-      ...(entry.work ? { workItemId: entry.work.workItemId } : {}),
+      ...(workItemId ? { workItemId } : {}),
       ...(entry.lease.accountProfileId ? { accountProfileId: entry.lease.accountProfileId, guestCwd: entry.lease.sandboxLaunch.guestCwd } : {}) }
   }
 
-  write(id, data) {
+  async write(id, data) {
     const entry = [...this.byChat.values()].find(row => row.id === id)
     const running = entry && this.pty.info(id)
     if (running && !running.exit && !entry.work && typeof data === 'string'
@@ -126,7 +133,8 @@ export class BotTerminals {
       entry.work = this.service.board?.lifecycle.startTerminal({ terminalId: id, nativeId: entry.nativeId,
         botId: entry.botId, sessionId: entry.sessionId, workItemId: entry.requestedWorkItem })
     }
-    return this.pty.write(id, data)
+    const written = await this.pty.write(id, data)
+    return entry?.work ? { written, workItemId: entry.work.workItemId } : written
   }
 
   async history(id) {

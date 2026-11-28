@@ -268,6 +268,10 @@ export default async function check({ makeHost, candidate, previous, note }) {
   await page.emulateMedia({ colorScheme: 'light' })
   note('board-ui', { keyboardOpenAndReturn: true, darkTheme: true, longTitleWidth: 360 })
   if (previous) {
+    const savedSource = await until(async () => {
+      const card = await item(linked.id)
+      return card.lifecycleState === 'review' && card
+    }, 'chat evidence settles before rollback')
     await host.stop()
     await host.install(previous)
     await host.start()
@@ -276,7 +280,10 @@ export default async function check({ makeHost, candidate, previous, note }) {
     await host.stop()
     await host.install(candidate)
     await host.start()
-    assert.equal((await item(linked.id)).mark, 'draft')
+    const restoredSource = await item(linked.id)
+    assert.equal(restoredSource.lifecycleState, savedSource.lifecycleState)
+    assert.equal(restoredSource.evidenceRevision, savedSource.evidenceRevision)
+    assert.equal(restoredSource.origin.messageId, savedSource.origin.messageId)
   }
   note('board-round-trip', {
     id: draft.id,

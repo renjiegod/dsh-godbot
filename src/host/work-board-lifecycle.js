@@ -36,6 +36,8 @@ const keyOf = (session, turn) => JSON.stringify([session, turn])
 const clean = (text, max) => typeof text === 'string' ? headOf(text.trim(), max) : ''
 const reference = row => row && { workItemId: cardId(row.number), workAttempt: row.attempt }
 const validCard = id => typeof id === 'string' && /^GB-[1-9]\d{0,14}$/.test(id)
+const canContinueInTerminal = (work) => work.state === 'waiting' && !work.terminal
+  && Object.keys(work.waits).length === 1 && !!work.waits.report
 
 export function workTransition(state, command) {
   return Object.hasOwn(edges, state) && Object.hasOwn(edges[state], command) ? edges[state][command] : undefined
@@ -116,6 +118,7 @@ export function lifecycleDetail(service, row, meta, detail, before) {
     requirementsRevision: work.requirements, evidence: work.evidence || '', evidenceRefs: work.evidenceRefs ?? [],
     review: work.review || '', blocker: work.blocker || Object.values(work.waits)[0]?.reason || '',
     lifecycleState: work.state, nextActor: lifecycleSummary(meta).nextActor,
+    canContinueInTerminal: !meta.room && !!execution && canContinueInTerminal(work),
     failure: work.blockerCode ? { kind: work.blockerCode, reason: work.blocker } : undefined,
     events: events.slice(0, 40).map(event => JSON.parse(event.data)).reverse(),
     eventNext: events.length > 40 ? events[39].seq : null,
@@ -970,6 +973,14 @@ export class WorkBoardLifecycle {
     else delete root.work.waits.children
   }
 
+  terminalWork(workItemId, botId, sessionId) {
+    const bound = this.scoped(workItemId, botId)
+    const meta = bound && this.state(this.row(bound.number))
+    if (!meta || (meta.work.sessionId ?? meta.work.execution?.sessionId) !== sessionId
+      || !canContinueInTerminal(meta.work) || this.liveForCard.get(bound.number)) throw stale()
+    return bound
+  }
+
   startTerminal({ terminalId, nativeId, sessionId, botId, workItemId }) {
     if (!this.writable() || this.ownerOf(sessionId) !== botId) throw denied()
     return this.store.transaction(() => {
@@ -977,14 +988,11 @@ export class WorkBoardLifecycle {
       const previous = this.fromAlias(key)
       if (previous) return reference(previous)
       const title = (this.rt.botOf(botId)?.name || 'Bot') + ' native terminal work'
-      const bound = workItemId ? this.scoped(workItemId, botId) : this.create(key, {
+      const bound = workItemId ? this.terminalWork(workItemId, botId, sessionId) : this.create(key, {
         title, criteria: 'Carry out the requested work in the native terminal and submit the result.',
         owner: botId, sessionId, source: 'terminal',
       })
-      if (!bound || this.liveForCard.get(bound.number)) throw stale()
       const row = this.row(bound.number), meta = this.state(row), { work } = meta
-      if (!workTransition(work.state, 'start') && work.state !== 'planned') throw stale()
-      if (work.state === 'planned') this.move(row, meta, 'queue', { actor: 'user' })
       work.execution = { botId, sessionId }
       work.terminal = { id: terminalId, nativeId, openedAt: Date.now() }
       delete work.waits.report
