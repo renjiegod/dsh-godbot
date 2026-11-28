@@ -19,7 +19,7 @@ import { replaceFile } from './files.js'
 import { answerSender, cutOffText, failureLine, turnFailure } from './turns.js'
 import { textOf } from './text.js'
 import { conversationHead } from './threads.js'
-import { restartInterrupted } from '../shared/turn-outcome.js'
+import { legacyNativeClose, restartInterrupted } from '../shared/turn-outcome.js'
 
 // Long enough for DSH to finish opening its workspaces after a start.
 export const RESUME_DELAY_MS = 3000
@@ -41,6 +41,7 @@ export async function readDeliveryEvents(rt, sessionId) {
 export const resumeText = record => [
   'DeepSeek Harness restarted while you were working on this, so your last turn stopped before it finished.',
   record.approval ? `You were waiting for the user's approval to run ${record.approval.tool || 'a tool'}${record.approval.reason ? ` (${record.approval.reason})` : ''}; that request is gone, so ask again if you still need it.` : '',
+  record.questionReplies?.length ? 'The user already answered the question card. Read the saved answer in this conversation before continuing.' : '',
   'Check what is already done (files, commands, messages) before you repeat anything, then finish the task and give your reply.',
 ].filter(Boolean).join(' ')
 
@@ -170,15 +171,18 @@ export function install(rt) {
   rt.restartTurnContext = (id, turn) => {
     const record = turns[id] ?? interrupted.turns[id]
     if (!record || record.turn !== undefined && record.turn !== turn) return
-    const { approval, joined } = record
-    return { ...(approval ? { approval } : {}), ...(joined?.length ? { joined } : {}) }
+    const { approval, joined, questionReplies, goalId } = record
+    return { ...(approval ? { approval } : {}), ...(joined?.length ? { joined } : {}),
+      ...(questionReplies?.length ? { questionReplies } : {}), ...(goalId ? { goalId } : {}) }
   }
   let writing = Promise.resolve()
+  let writeFailure
   let stopped = false
   let latest
   let due = false
   rt.stopRestartWork = id => {
     if (!pending.delete(id)) return false
+    rt.executionHistory?.markRestartNeedsRetry(id, interrupted.turns[id]?.turn)
     delete interrupted.turns[id]
     delete queued[id]
     delete inputs[id]
@@ -204,7 +208,9 @@ export function install(rt) {
       await writeFile(temp, snapshot, { encoding: 'utf8', mode: 0o600 })
       check()
       await replaceFile(temp, file, check)
+      writeFailure = undefined
     }).catch(async error => {
+      writeFailure = error
       await unlink(temp).catch(() => {})
       rt.warn('godbot: noting running turns failed: %s', error)
     })
@@ -215,6 +221,10 @@ export function install(rt) {
     if (next === undefined) delete turns[id]
     else turns[id] = next
     persist()
+  }
+  rt.flushRestartNotes = async () => {
+    await writing
+    if (writeFailure) throw writeFailure
   }
   const forgetQueued = (exchangeId) => {
     for (const [sessionId, list] of Object.entries(queued)) {
@@ -339,9 +349,13 @@ export function install(rt) {
       }
       case 'user/message': {
         const source = event.data?.source
-        if (isBotGoalSource(source) || source?.role === BACKGROUND_ROLE) {
-          // Goals recover from their own attempt records. A display turn for an
-          // unsolicited native result has no prompt to continue.
+        if (isBotGoalSource(source)) {
+          // The goal owns recovery. Keep its identity for the interruption receipt.
+          update(id, record => record && { ...record, goalId: source.goalId })
+          break
+        }
+        if (source?.role === BACKGROUND_ROLE) {
+          // An unsolicited native result has no prompt to continue.
           update(id, () => undefined)
           break
         }
@@ -354,13 +368,18 @@ export function install(rt) {
           ...(info !== undefined && record.trigger === undefined ? { trigger: triggerOf(info) } : {}),
           ...(joined?.length ? { joined } : {}),
           ...(initiator ? { initiator } : {}),
+          ...(source?.kind === REPLY_KIND && source.outcome === 'answered' && event.data.id ? {
+            questionReplies: [...(record.questionReplies ?? []), {
+              messageId: event.data.id, ...(source.callId ? { callId: source.callId } : {}),
+            }],
+          } : {}),
         })
         break
       }
       case 'turn/end': {
         // DSH stops every turn as it shuts down; that one is picked up at the next start.
         const reason = event.data?.reason
-        if (restartInterrupted(reason)) break
+        if (restartInterrupted(reason) || legacyNativeClose(reason) && rt.executionHistory?.restartCheckpoint(id, event.data?.turn)) break
         discardInput(id, item => item.turn === event.data?.turn)
         update(id, () => undefined)
         break
@@ -374,10 +393,18 @@ export function install(rt) {
 
   async function resumeTurn(sessionId, record, events) {
     const bot = rt.botOf(record.botId)
-    if (bot === undefined || rt.inboxHas?.(record.trigger?.exchangeId)) return
+    if (bot === undefined) {
+      rt.executionHistory?.markRestartNeedsRetry(sessionId, record.turn)
+      return
+    }
+    if (rt.inboxHas?.(record.trigger?.exchangeId)) return
     const resumeOf = sessionId + ':' + (record.turn ?? record.since)
-    if (events.some(event => event.type === 'user/message' && event.data?.source?.resumeOf === resumeOf)
-      || Object.values(queued).some(list => list.some(item => item.args.resumeOf === resumeOf))) return
+    const existing = turnsOf(events).find(turn => turn.took.some(source => source.resumeOf === resumeOf))
+    if (existing !== undefined) {
+      rt.executionHistory?.observeRestartContinuation(sessionId, existing.turn, { resumeOf })
+      return
+    }
+    if (Object.values(queued).some(list => list.some(item => item.args.resumeOf === resumeOf))) return
     const trigger = record.trigger
     const work = rt.workOf(trigger)
     const failover = trigger?.exchangeId && rt.failoverHandoff?.(sessionId, trigger.exchangeId)
@@ -389,7 +416,10 @@ export function install(rt) {
     }
     if (record.roomId !== undefined) {
       const room = rt.roomOf(record.roomId)
-      if (room === undefined || !room.members.includes(bot.id) || room.sessions?.[bot.id] !== sessionId) return
+      if (room === undefined || !room.members.includes(bot.id) || room.sessions?.[bot.id] !== sessionId) {
+        rt.executionHistory?.markRestartNeedsRetry(sessionId, record.turn)
+        return
+      }
       await rt.deliver({
         ...continuation, role: 'room', roomId: room.id, note: 'picking up after a restart',
         ...(trigger?.exchangeId ? { exchangeId: trigger.exchangeId } : {}),
@@ -398,7 +428,10 @@ export function install(rt) {
       await rt.postToRoom(room, bot, '', { resumed: true, quiet: true })
       return
     }
-    if (rt.selfOf(sessionId) !== bot.id || !rt.isBotSession(sessionId)) return
+    if (rt.selfOf(sessionId) !== bot.id || !rt.isBotSession(sessionId)) {
+      rt.executionHistory?.markRestartNeedsRetry(sessionId, record.turn)
+      return
+    }
     if ((trigger?.role === 'request' || trigger?.role === 'stopped') && trigger.senderSessionId && rt.botOf(trigger.senderSessionId)) {
       // Keep the conversation, exchange, and audience of the interrupted request.
       await rt.deliver({ ...continuation, fromId: trigger.senderSessionId, fromPart: trigger.senderPart,
@@ -591,15 +624,18 @@ export function install(rt) {
         if (ended && agent.status !== 'running') rt.executionHistory?.observe(sessionId, ended)
         if (started.reason === undefined && started === last && agent.status === 'running') {
           turns[sessionId] ??= record
-        } else if (started.reason === undefined || restartInterrupted(started.reason)) {
+        } else if (started.reason === undefined || restartInterrupted(started.reason)
+          || legacyNativeClose(started.reason) && rt.executionHistory?.restartCheckpoint(sessionId, started.turn)) {
           if (started.turn === last?.turn) {
             if (agent.status === 'running') return false
             if (started.hasInput) {
               const initiator = record.initiator ?? started.took.findLast(source => source.godbotInitiator)?.godbotInitiator
                 ?? rt.governance?.lastOrigin(sessionId)
               await resumeTurn(sessionId, { ...record, initiator }, events)
+            } else {
+              rt.executionHistory?.markRestartNeedsRetry(sessionId, started.turn)
             }
-          }
+          } else rt.executionHistory?.markRestartNeedsRetry(sessionId, started.turn)
         } else {
           await reconcileEnded(sessionId, record, events, started)
         }

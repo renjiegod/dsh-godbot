@@ -34,7 +34,7 @@ import { ProcessIcon, processLabel } from './process-activity.js'
 import { skillNameFromPath, toolKind } from '../../host/team-runtime/shared/tool-kind.js'
 import { commandLabel } from '../../host/team-runtime/tool-activity.js'
 import { hasProcess, workAt } from './member-work-model.js'
-import { turnOutcome } from '../../host/team-runtime/shared/turn-outcome.js'
+import { canBeUpdateRestart, turnOutcome } from '../../host/team-runtime/shared/turn-outcome.js'
 
 export { clockLabel }
 
@@ -923,6 +923,25 @@ function useTurnOutcome(location, roster, sessionId, actions) {
   return interrupted === undefined ? outcome : { status: 'interrupted', exitCode: interrupted.exitCode }
 }
 
+function useRestartStatus(botId, sessionId, turn, enabled) {
+  const [receipt, setReceipt] = useState(null)
+  useEffect(() => {
+    if (!enabled || !botId || !Number.isSafeInteger(turn)) return undefined
+    const lifetime = new AbortController()
+    let timer
+    const update = async () => {
+      const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(5000)])
+      const restart = await call('turn-restart', { botId, sessionId, turn }, signal, { quiet: true }).catch(() => undefined)
+      if (lifetime.signal.aborted) return
+      if (restart !== undefined) setReceipt({ sessionId, turn, restart })
+      if (restart === undefined || restart?.phase === 'waiting') timer = setTimeout(update, 2000)
+    }
+    void update()
+    return () => { lifetime.abort(); clearTimeout(timer) }
+  }, [botId, sessionId, turn, enabled])
+  return enabled && receipt?.sessionId === sessionId && receipt?.turn === turn ? receipt.restart : null
+}
+
 export function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useUi, useTurnClock, actions }) {
   const open = turnProcess === undefined || !turnProcess.foldable || turnProcess.open
   useEffect(() => {
@@ -1019,12 +1038,16 @@ export function TurnTailCell({ turn: location, sessionId, useRoster, useTurnCloc
   const [showAttempt, setShowAttempt] = useState(false)
   const showOutcome = Boolean(roster.byId[sessionId]) && !roster.roomsById[sessionId] && !isHiddenTurn(roster, sessionId, turn) &&
     (outcome?.status === 'stopped' || outcome?.status === 'interrupted')
-  const detail = outcome?.cause === 'steered' ? t('Continued with the new message')
+  const restart = useRestartStatus(roster.byId[sessionId]?.id, sessionId, turn, showOutcome && canBeUpdateRestart(location?.end?.data?.reason))
+  const restartDetail = restart?.phase === 'resumed' ? t('Interrupted by an update restart. Continued in turn {turn}.', { turn: restart.turn })
+    : restart?.phase === 'retry' ? t('Interrupted by an update restart. Automatic continuation did not start.')
+      : restart ? t('Interrupted by an update restart. Waiting to continue.') : null
+  const detail = restartDetail ?? (outcome?.cause === 'steered' ? t('Continued with the new message')
     : outcome?.cause === 'output-limit' ? t('Reached the output limit')
-      : outcome?.exitCode === undefined ? undefined : t('Exit code {code}', { code: outcome.exitCode })
+      : outcome?.exitCode === undefined ? undefined : t('Exit code {code}', { code: outcome.exitCode }))
   if (!label && !fresh && !showOutcome) return null
   const nativeAttempt = showOutcome && ownExecutionChat(roster, sessionId) &&
-    ['LOCAL_AGENT_INTERRUPTED', 'LOCAL_AGENT_EXIT'].includes(outcome.code)
+    (restart || ['LOCAL_AGENT_INTERRUPTED', 'LOCAL_AGENT_EXIT'].includes(outcome.code))
   return h(Fragment, null,
     showOutcome ? h('div', { className: 'gb-turn-outcome', 'data-outcome': outcome.status, role: 'status' },
       h('span', { className: 'gb-turn-outcome-label' }, t(outcome.status === 'stopped' ? 'Turn stopped' : 'Turn interrupted')),

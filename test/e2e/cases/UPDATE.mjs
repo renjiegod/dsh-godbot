@@ -4,11 +4,139 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs'
 import { readFile, symlink, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { pathToFileURL } from 'node:url'
 import { findExecutable } from '../../../src/drivers/external/discover.js'
 import { workspaceHome } from '../../../src/host/workspace-home.js'
 import { bumpedArchive, sha256 } from '../artifacts.mjs'
 import { EnvironmentError, until } from '../host.mjs'
-import { openFullTeam, openSettingsPage } from '../native-ui.mjs'
+import { openBotChat, openFullTeam, openSettingsPage } from '../native-ui.mjs'
+import { startRelay } from '../phone-relay.mjs'
+import { member } from '../tickets.mjs'
+
+async function channel(host, endpoint, payload = {}) {
+  const response = await host.page.context().request.post(host.url + '/api/godbot/team', {
+    data: { endpoint, payload }, headers: { Origin: host.url }, timeout: 15_000,
+  })
+  const result = await response.json()
+  assert.ok(response.ok() && result.ok, endpoint + ': ' + JSON.stringify(result.error))
+  return result.value
+}
+
+async function checkRestartOnAndroid(context, host, bot, turn) {
+  const app = process.env.GODBOT_ANDROID_E2E
+  const apk = process.env.GODBOT_E2E_APK
+  if (!app || !apk) return
+  const ui = await import(pathToFileURL(join(app, 'e2e/adb.mjs')).href)
+  assert.equal(ui.shell('getprop ro.kernel.qemu').trim(), '1', 'use an isolated emulator')
+  const relay = await startRelay(context.scratch, context.note)
+  const port = new URL(relay.url).port
+  let forwarded = false
+  try {
+    await channel(host, 'phone-set', { server: relay.url, on: true })
+    await until(async () => (await channel(host, 'phone-set')).status === 'online', 'host connected to the Android test relay')
+    const { pairing } = await channel(host, 'phone-pair')
+    ui.install(apk)
+    ui.adb(['reverse', 'tcp:' + port, 'tcp:' + port])
+    forwarded = true
+    ui.openUrl(pairing.uri)
+    ui.tap(await ui.waitFor(nodes => ui.find(nodes, 'Pair', '配对'), 'pair the test APK'))
+    ui.tap(await ui.waitFor(nodes => ui.find(nodes, 'Open team list', '打开团队列表'), 'open the Android team list'))
+    ui.tap(await ui.waitFor(nodes => nodes.find(node => node.text === bot.name && node.bounds.x1 < 700)
+      ?? nodes.find(node => node.clickable && node.desc.startsWith(bot.name + ',')), 'open the restarted Claude conversation'))
+    await ui.waitFor(nodes => ui.find(nodes, `Interrupted by an update restart. Continued in turn ${turn}.`,
+      `因更新重启中断，已在第 ${turn} 轮继续。`), 'Android shows the cause and the continuation turn')
+    await writeFile(join(context.reportDir, 'android-update-restart.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
+    context.note('android-update-restart', { interrupted: true, continuedTurn: turn })
+  } finally {
+    try {
+      if (forwarded) ui.adb(['reverse', '--remove', 'tcp:' + port], { timeout: 5000 })
+    } finally { await relay.close() }
+  }
+}
+
+async function checkForcedRestart(context, host, next, install) {
+  const { candidate, scratch, note } = context
+  const fixture = new URL('../../external/fixtures/fake-claude-turns.mjs', import.meta.url)
+  await writeFile(join(host.bin, 'claude'), `#!/usr/bin/env node
+process.env.GODBOT_E2E_RESTART_DIR = ${JSON.stringify(scratch)};
+if (process.argv.includes('--version')) console.log('2.1.331 fixture');
+else if (process.argv.includes('status')) console.log(JSON.stringify({ loggedIn: true }));
+else await import(${JSON.stringify(fixture.href)});
+`, { mode: 0o700 })
+  await host.install(candidate)
+  await host.start()
+  await openFullTeam(host)
+  await install(host)
+  const bot = await member(host, 'Claude Restart Fixture', 'local-claude-code/default')
+  const { page } = host
+  const part = (await host.bot('state')).bots.find(row => row.id === bot.id).sessionId ?? bot.sessionId
+  const send = text => host.bot('send', { sessionId: part, text })
+  const chat = async () => (await host.bot('chat', { botId: bot.id, inlineTools: true, turnStatuses: true })).items
+  const status = async () => (await channel(host, 'update-check')).restart
+  await until(async () => !(await host.bot('state')).partsRunning?.[part], 'the Claude test Bot is idle')
+
+  await send('TASK')
+  const background = await until(async () => {
+    const state = await status()
+    return state.work.some(item => item.kind === 'background' && item.sessionId === part)
+      && state.work.every(item => item.kind !== 'turn') && state
+  }, 'the Claude background task is the only work')
+  assert.equal((await channel(host, 'update-restart')).phase, 'waiting', 'a background task alone blocks the default restart')
+  await new Promise(resolve => setTimeout(resolve, 1300))
+  assert.equal((await status()).boot, background.boot)
+  await channel(host, 'update-restart-cancel')
+
+  await send('UPDATE-RESTART-ASK')
+  const question = await until(async () => (await host.bot('state')).questions?.[part], 'the native Claude question card')
+  await host.bot('answer-question', { sessionId: part, questionId: question.id, answer: { selected: ['Proceed'] } })
+  const tool = await until(async () => (await chat()).find(item => item.kind === 'tool' && item.turn
+    && item.name === 'Bash' && item.status === 'completed'), 'Claude completed the tool after receiving the answer')
+  const answersPath = join(scratch, 'answered.jsonl')
+  const answer = JSON.parse((await readFile(answersPath, 'utf8')).trim())
+  assert.equal(answer.selected, 'Proceed')
+  await openSettingsPage(host, /^(关于 Godbot|About Godbot)$/u)
+  await page.getByRole('list', { name: /^(重启 DSH 会影响的任务|Work affected by restarting DSH)$/u })
+    .getByText(/Turn \d+ in progress|第 \d+ 轮进行中/u).first().waitFor()
+  await page.locator('.bt-settings-layer').evaluate(layer => Promise.allSettled(layer.getAnimations({ subtree: true })
+    .filter(animation => animation.effect?.getTiming().iterations !== Infinity).map(animation => animation.finished)))
+  await host.capture('update-active-work')
+  await Promise.all([
+    page.waitForEvent('domcontentloaded', { timeout: 90_000 }),
+    page.getByRole('button', { name: /^(立即中断并重启|Interrupt work and restart now)$/u }).click(),
+  ])
+  await until(async () => (await host.snapshot()).buildId === next.buildId, 'the upgraded host is running')
+  const resumed = await until(async () => {
+    const items = await chat()
+    return items.some(item => item.text === 'Resumed the selected work without repeating its tool.')
+      && items.find(item => item.kind === 'turn-status' && item.turn === tool.turn && item.restart?.phase === 'resumed')
+  }, 'the same conversation shows its interruption and continuation', 35_000)
+  assert.equal(resumed.cause, 'update-restart')
+  assert.equal(resumed.status, 'interrupted')
+  assert.ok(resumed.restart.turn > tool.turn)
+  assert.ok((await chat()).some(item => item.toolId === tool.toolId && item.turn === tool.turn && item.status === 'completed'))
+  assert.equal((await readFile(answersPath, 'utf8')).trim().split('\n').length, 1)
+  assert.deepEqual(JSON.parse((await readFile(join(scratch, 'continued.jsonl'), 'utf8')).trim()), { sessionId: answer.sessionId })
+  const db = new DatabaseSync(join(workspaceHome(join(host.home, 'godbot', 'web')), 'execution.sqlite'), { readOnly: true })
+  try {
+    const saved = JSON.parse(db.prepare('SELECT checkpoint FROM execution_restarts WHERE part=? AND turn=?').get(part, tool.turn).checkpoint)
+    assert.equal(saved.source, 'web')
+    assert.equal(saved.mode, 'now')
+    assert.equal(saved.godbotVersion, next.version)
+    assert.equal(saved.nativeSessionId, answer.sessionId)
+    assert.equal(saved.lastTool.id, tool.toolId)
+    assert.equal(saved.lastTool.status, 'completed')
+    assert.equal(saved.questionReplies.length, 1)
+    assert.equal(saved.questionReplies[0].callId, question.callId)
+    assert.ok(saved.questionReplies[0].messageId)
+    assert.match(await host.bot('diagnostics-log'), new RegExp('restartId="' + saved.restartId + '"', 'u'))
+  } finally { db.close() }
+  await openBotChat(host, bot)
+  await page.getByText(new RegExp(`Continued in turn ${resumed.restart.turn}|已在第 ${resumed.restart.turn} 轮继续`, 'u')).waitFor()
+  await host.capture('update-continued-turn')
+  note('update-forced-restart', { originalTurn: tool.turn, continuedTurn: resumed.restart.turn, questionAnswerOnce: true, nativeSessionKept: true, toolReceiptKept: true })
+  await checkRestartOnAndroid(context, host, bot, resumed.restart.turn)
+}
 
 // An installed archive updates itself from a release. The release list and the
 // archive come from a local server shaped like GitHub's (GODBOT_UPDATE_API); the
@@ -17,7 +145,8 @@ import { openFullTeam, openSettingsPage } from '../native-ui.mjs'
 // DSH never loads the update: the release here cannot be imported into it (the
 // reload trap), the way rc.16 could not after pnpm moved a dependency it had
 // already resolved, and Godbot keeps answering until the restart.
-export default async function UPDATE({ makeHost, candidate, scratch, note }) {
+export default async function UPDATE(context) {
+  const { makeHost, candidate, scratch, note } = context
   const [major, minor, patch] = candidate.version.split('-')[0].split('.').map(Number)
   const version = `${major}.${minor}.${patch + 1}`
   const next = await bumpedArchive(candidate, scratch, version, { trap: true })
@@ -156,13 +285,25 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     await page.locator('button.bt-settings-close:visible').click()
     await installedNotice.click()
 
-    // Leave the trap in place. Only a new DSH with a fresh environment can load the release.
+    // The default queues a restart while a turn is running and can be cancelled.
+    const releaseTurn = Promise.withResolvers()
+    host.model.reply = async () => { await releaseTurn.promise; return 'The task finished before the restart.' }
+    await host.bot('send', { sessionId: mainBot, text: 'Finish this task before restarting' })
+    const waitButton = details.getByRole('button', { name: /^(任务结束后重启|Restart when work finishes)$/u })
+    const cancelButton = details.getByRole('button', { name: /^(取消计划重启|Cancel scheduled restart)$/u })
     const before = await host.bot('hello')
-    await Promise.all([
-      page.waitForEvent('domcontentloaded', { timeout: 90_000 }),
-      sidebarRestart.click(),
-      details.getByRole('button', { name: /^(正在重启 DSH…|Restarting DSH…)$/u }).waitFor(),
-    ])
+    try {
+      await waitButton.click()
+      await cancelButton.waitFor()
+      assert.equal((await channel(host, 'update-check')).restart.phase, 'waiting')
+      assert.equal((await host.bot('hello')).boot, before.boot)
+      await cancelButton.click()
+      await waitButton.click()
+      await cancelButton.waitFor()
+      const navigated = page.waitForEvent('domcontentloaded', { timeout: 90_000 })
+      releaseTurn.resolve()
+      await navigated
+    } finally { releaseTurn.resolve() }
     assert.equal(new URL(page.url()).origin, host.url)
     await page.locator('.bt-head .bt-pill').waitFor({ timeout: 90_000 })
     const after = await host.bot('update-check', { fresh: false })
@@ -172,6 +313,7 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     assert.equal((await host.snapshot()).buildId, next.buildId)
     assert.notEqual((await host.bot('hello')).boot, before.boot)
     assert.equal((await host.bot('state')).mainBotId, mainBot, 'the restarted browser still uses the same profile')
+    assert.ok((await host.bot('chat', { botId: mainBot })).items.some(item => item.text === 'The task finished before the restart.'))
     const completedLabel = new RegExp('^Godbot ' + v + ' (已生效。|is running\\.)$', 'u')
     const completedNotice = page.getByRole('button', { name: completedLabel })
     await completedNotice.waitFor()
@@ -201,6 +343,18 @@ export default async function UPDATE({ makeHost, candidate, scratch, note }) {
     await page.locator('.bt-leftcol[data-left=rail]').waitFor()
     assert.equal(await completedNotice.count(), 0, 'the installed notice stays dismissed in the rail')
     note('update-running', { version: after.current, phase: after.phase, buildId: next.buildId, automaticBrowserReload: true, asked: [...new Set(asked)] })
+
+    const forcedHost = await makeHost({ linkHostPeers: false,
+      env: { GODBOT_UPDATE_CHECK: '1', GODBOT_UPDATE_API: base, pnpm_config_store_dir: store, GODBOT_E2E_RELOAD_TRAP: trap },
+    })
+    await symlink(realpathSync(pnpm), join(forcedHost.bin, 'pnpm'))
+    await checkForcedRestart(context, forcedHost, next, async current => {
+      await current.bot('update-settings', { mode: 'notify' })
+      await current.bot('update-check', { fresh: true })
+      await until(async () => (await current.bot('update-check')).phase === 'ready', 'the forced-restart host downloaded the update', 60_000)
+      await current.bot('update-install')
+      await until(async () => (await current.bot('update-check')).phase === 'installed', 'the forced-restart host installed the update', 180_000)
+    })
 
     // DSH may apply a bundle in the running process, or defer it when pnpm moved
     // packages the running module resolution still owns. Verify the receipt and

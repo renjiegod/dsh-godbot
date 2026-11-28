@@ -10,6 +10,8 @@ export const legacyNativeClose = reason => reason?.kind === 'error'
   && reason.error?.code === NATIVE_INTERRUPTED
   && reason.error.message === 'Godbot closed the native agent session before the turn finished.'
 
+export const canBeUpdateRestart = reason => restartInterrupted(reason) || legacyNativeClose(reason)
+
 export function turnOutcome(reason) {
   switch (reason?.kind) {
     case 'aborted': {

@@ -944,7 +944,8 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
         : dshPhase === 'installed' ? t('Restart DSH to start using DSH {version}.', { version: dsh.installed ?? dsh.verified })
           : pending ?? (update?.available ? t('Godbot {version} is available', { version: update.latest })
             : t('DSH {version} is available', { version: dsh?.verified }))
-  const statusSummary = update?.restart?.pending ? t('Restarting DSH…')
+  const statusSummary = update?.restart?.phase === 'restarting' ? t('Restarting DSH…')
+    : update?.restart?.phase === 'waiting' ? t('Waiting for work to finish before restarting.')
     : phase === 'failed' || error ? t('Godbot update failed')
       : dshPhase === 'failed' || dshError ? t('DSH update failed')
         : null
@@ -1007,7 +1008,8 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
                 : h('button', {
                   type: 'button', className: 'bt-update-go', disabled: dshPhase === 'installing', onClick: startDsh,
                 }, dshPhase === 'installing' ? t('Updating…') : dshPhase === 'failed' ? t('Try again') : t('Update')))) : null,
-      update?.restart?.error ? h('div', { className: 'bt-update-error', role: 'alert' }, update.restart.error) : null), document.body) : null)
+      update?.restartError || update?.restart?.error ? h('div', { className: 'bt-update-error', role: 'alert' },
+        update.restartError ?? hostText(update.restart.error)) : null), document.body) : null)
 }
 
 // Account seat of the Settings trigger: the visible label stays for assistive tech only.

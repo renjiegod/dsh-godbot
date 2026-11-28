@@ -524,7 +524,7 @@ test('the start that runs the new version reports the update', () => {
 
 test('the restart endpoint refuses a version that is already running', () => {
   const running = { phase: 'installed', current: `v${PKG.version}`, installed: PKG.version }
-  const restart = dshRestart({ updateView: () => running, dshUpdateView: () => running })
+  const restart = dshRestart({ ctx: { effect() {} }, updateView: () => running, dshUpdateView: () => running })
   assert.equal(restart.available(running, running), false)
   assert.throws(() => restart.schedule(), /No installed update is ready/)
 })

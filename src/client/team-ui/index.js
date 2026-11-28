@@ -319,17 +319,26 @@ export function apply(ctx, godbot) {
   // Keep a window current as the host discovers and applies updates. Its release
   // cache is shared by all windows, including ones that wake after being hidden.
   const update = createSource({ available: false, phase: 'idle' })
-  const takeUpdate = value => update.set(previous => ({
-    ...value,
-    phase: value.phase === 'installed' && sameVersion(value.current, value.installed) ? 'updated' : value.phase,
-    app: previous.app, ownApp: previous.ownApp, restart: previous.restart,
-  }))
+  const takeUpdate = value => {
+    const previous = update.getSnapshot()
+    const before = previous.restart?.boot
+    if (before && value.restart?.boot && before !== value.restart.boot && (previous.canRestartDsh || previous.restart.phase)) {
+      window.location.reload()
+      return
+    }
+    update.set(current => ({
+      ...value,
+      phase: value.phase === 'installed' && sameVersion(value.current, value.installed) ? 'updated' : value.phase,
+      app: current.app, ownApp: current.ownApp, restartError: current.restartError, restartSubmitting: current.restartSubmitting,
+    }))
+  }
   let wakeUpdate = () => {}
   ctx.effect(() => {
     const lifetime = new AbortController()
     let running = false
     let again = false
     let timer
+    let reconnectBy = 0
     const loop = async () => {
       clearTimeout(timer)
       if (lifetime.signal.aborted) return
@@ -340,13 +349,24 @@ export function apply(ctx, godbot) {
         const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(30_000)])
         const value = await call('update-check', { fresh: false }, signal, { quiet: true }).catch(() => null)
         if (value) checkedAt = Date.now()
-        if (!lifetime.signal.aborted && !again && value) takeUpdate(value)
+        if (!lifetime.signal.aborted && !again) {
+          if (value) {
+            takeUpdate(value)
+            reconnectBy = value.restart?.phase === 'restarting' ? reconnectBy || Date.now() + 60_000 : 0
+          } else if (update.getSnapshot().restart?.phase === 'restarting') {
+            reconnectBy ||= Date.now() + 60_000
+            if (Date.now() > reconnectBy && !update.getSnapshot().restartError) {
+              update.set(current => ({ ...current, restartError: t('DSH did not reconnect. Restart it from the terminal, then reload this page.') }))
+            }
+          }
+        }
       } finally {
         running = false
         if (!lifetime.signal.aborted) {
-          const { phase, dsh } = update.getSnapshot()
+          const { phase, dsh, restart, canRestartDsh } = update.getSnapshot()
           const moving = phase === 'installing' || phase === 'downloading' || dsh?.phase === 'installing'
-          timer = setTimeout(loop, again ? 0 : document.hidden ? 60_000 : moving ? 2000 : 15_000)
+          const delay = restart?.phase ? 1000 : document.hidden ? 60_000 : canRestartDsh || moving ? 2000 : 15_000
+          timer = setTimeout(loop, again ? 0 : delay)
         }
       }
     }
@@ -1021,25 +1041,21 @@ export function apply(ctx, godbot) {
     update.set(previous => ({ ...previous, dsh }))
     wakeUpdate()
   }
-  actions.restartDsh = async () => {
-    if (update.getSnapshot().restart?.pending) return
-    update.set(previous => ({ ...previous, restart: { pending: true } }))
+  const changeRestart = async (endpoint, payload) => {
+    if (update.getSnapshot().restartSubmitting) return
+    update.set(previous => ({ ...previous, restartSubmitting: true, restartError: undefined }))
     try {
-      const { boot } = await call('update-restart')
-      const deadline = Date.now() + 60_000
-      while (Date.now() < deadline) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        const hello = await call('hello', {}, AbortSignal.timeout(2500), { quiet: true }).catch(() => null)
-        if (hello?.boot && hello.boot !== boot) {
-          window.location.reload()
-          return
-        }
-      }
-      throw new Error(t('DSH did not reconnect. Restart it from the terminal, then reload this page.'))
+      const restart = await call(endpoint, payload)
+      update.set(previous => ({ ...previous, restart }))
     } catch (error) {
-      update.set(previous => ({ ...previous, restart: { error: error.message } }))
+      update.set(previous => ({ ...previous, restartError: error.message }))
+    } finally {
+      update.set(previous => ({ ...previous, restartSubmitting: false }))
+      wakeUpdate()
     }
   }
+  actions.restartDsh = (mode = 'when-idle') => changeRestart('update-restart', { mode })
+  actions.cancelDshRestart = () => changeRestart('update-restart-cancel')
   // The app's panel installs whatever its updater found by now, so it opens only
   // while that is still the verified version.
   actions.openAppUpdates = async (verified) => {
