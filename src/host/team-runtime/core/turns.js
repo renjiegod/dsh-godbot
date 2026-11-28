@@ -499,6 +499,7 @@ export function install(rt) {
   const noteStep = (entry, callId, step) => {
     const recent = entry.recent ??= []
     const at = recent.findIndex(item => item.id === callId)
+    if (at < 0 || recent[at].status !== step.status) entry.lastToolAt = Date.now()
     if (at !== -1) recent[at] = { ...recent[at], ...step }
     else if (step.tool !== undefined) {
       recent.push({ id: callId, ...step })
@@ -745,6 +746,22 @@ export function install(rt) {
     }
     return bots
   }
+  // Private requests can run simultaneously in different parts of the same Bot.
+  // Publish only activity metadata and the milestone explicitly written for this request.
+  const delegatedWorkView = () => {
+    const result = {}
+    for (const [id, entry] of live) {
+      const info = entry.info
+      if (entry.turn === undefined || !rt.chatOwners.has(id) || info?.role !== 'request' || !info.senderSessionId || answersUser(info)
+        || !state.exchangeTurns[id]?.includes(entry.turn)) continue
+      const progress = state.botInbox?.[info.exchangeId]?.progress
+      result[id] = { turn: entry.turn, since: entry.since, fromId: info.senderSessionId, count: entry.toolCount ?? 0,
+        lastActivityAt: Math.max(entry.since, entry.lastToolAt ?? 0, progress?.at ?? 0),
+        ...(entry.tool ? { tool: entry.tool } : {}), ...(progress ? { progress } : {}) }
+    }
+    return result
+  }
+  rt.delegatedWorkView = delegatedWorkView
 
   // Per Session, when its running turn began.
   const turnsView = () => Object.fromEntries([...live]
@@ -1057,6 +1074,7 @@ export function install(rt) {
         setActivity(id, 'thinking')
         entry.turn = event.data.turn
         entry.since = event.time ?? Date.now()
+        entry.lastToolAt = undefined
         entry.texts = []
         entry.shown = 0
         entry.step = undefined

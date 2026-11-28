@@ -4,6 +4,32 @@ import { test } from 'node:test'
 import { install } from '../../src/host/team-runtime/core/inbox.js'
 import { SOURCE_KIND } from '../../src/host/team-runtime/core/constants.js'
 
+test('only the executing recipient records milestones on an accepted request', async () => {
+  const info = { role: 'request', exchangeId: 'message' }
+  const row = { id: 'message', state: 'accepted', attempt: { sessionId: 'part', turn: 3 },
+    args: { role: 'request', fromId: 'sender', toId: 'worker', sessionId: 'part' } }
+  const rt = {
+    ctx: { on() {}, effect() {} }, state: { botInbox: { message: row } },
+    own: (table, key) => table[key], readOnly: () => undefined, selfOf: () => 'worker',
+    live: new Map([['part', { turn: 3, info }], ['other', { turn: 3, info }]]),
+    save: async () => {}, redactSecrets: line => line.replace('fixture-key', '[hidden]'),
+  }
+  install(rt)
+  assert.equal(await rt.recordInboxProgress('other', 'wrong conversation'), false)
+  await assert.rejects(rt.recordInboxProgress('part', '  '), /Write a progress update/u)
+  assert.equal(await rt.recordInboxProgress('part', 'Waiting for\nfixture-key', true), true)
+  const saved = row.progress
+  assert.equal(saved.text, 'Waiting for [hidden]')
+  assert.equal(saved.blocked, true)
+  assert.equal(row.state, 'accepted')
+  assert.deepEqual(rt.inboxExchanges('sender', 'worker')[0].delivery.progress, saved)
+  rt.save = async () => { throw new Error('disk unavailable') }
+  await assert.rejects(rt.recordInboxProgress('part', 'replacement'), /disk unavailable/u)
+  assert.equal(row.progress, saved)
+  row.state = 'replied'
+  assert.equal(await rt.recordInboxProgress('part', 'late result'), false)
+})
+
 test('an accepted delivery retries recovery when preparing its reply fails', async t => {
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: 1000 })
   const args = {

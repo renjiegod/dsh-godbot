@@ -86,11 +86,12 @@ export function install(rt) {
   const touch = room => { room.workBoardTasksRevision = (room.workBoardTasksRevision ?? 0) + 1 }
 
   rt.teamTools.push(defineTool({
-    name: 'work_progress', description: 'Report a short progress update or blocker for the formal assignment executing in this Bot turn.',
+    name: 'work_progress', description: 'Record a short milestone or blocker on the active Bot message or work board assignment. The user sees it while the work continues.',
     parameters: { text: { type:'string', required:true, description:'Progress or reason for a blocker' },
       blocked: { type:'boolean', description:'Whether work is blocked' } }, output,
     async execute(args, exec) {
       const sessionId = exec.agent?.id
+      if (await rt.recordInboxProgress?.(sessionId, args.text, args.blocked)) return 'Progress recorded.'
       return rt.workBoardProgress({ sessionId, botId:rt.selfOf(sessionId), text:args.text, blocked:args.blocked })
     },
   }))

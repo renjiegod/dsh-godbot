@@ -25,13 +25,27 @@ const cleanVersion = value => VERSION.exec(String(value ?? '').trim())?.[1] ?? n
 
 export const GITHUB_API = 'https://api.github.com'
 
+export async function timeUpdateLookup(rt, stage, lookup) {
+  const started = performance.now()
+  let outcome = 'completed'
+  try { return await lookup() }
+  catch (error) { outcome = 'failed'; throw error }
+  finally {
+    const elapsedMs = Math.round(performance.now() - started)
+    if (outcome === 'failed' || elapsedMs >= 3000) rt.noteFailure?.({
+      source: 'update', level: outcome === 'failed' ? 'warn' : 'info', text: 'Update source lookup',
+      where: stage, elapsedMs, outcome,
+    })
+  }
+}
+
 /**
  * The GitHub API the release list is read from. GODBOT_UPDATE_API points it at
  * another server with the same answers, for testing an update against a local
  * one; the archive is still checked against the SHA-256 that answer states.
  */
-export function releasesApi(env = process.env) {
-  const value = String(env.GODBOT_UPDATE_API ?? '').trim()
+export function releasesApi(env = process.env, configured) {
+  const value = String(configured ?? env.GODBOT_UPDATE_API ?? '').trim()
   return /^https?:\/\/[^\s]+$/i.test(value) ? value : GITHUB_API
 }
 
@@ -203,6 +217,9 @@ export function createNet({ userAgent, timeoutMs = 8000, fetch: fetchImpl = glob
   return {
     async json(url) {
       return (await get(url, 'application/vnd.github+json, application/json', AbortSignal.timeout(timeoutMs))).json()
+    },
+    async fileJson(url) {
+      return (await get(url, 'application/vnd.github.raw+json', AbortSignal.timeout(timeoutMs))).json()
     },
     async text(url) {
       return (await get(url, 'text/plain, */*', AbortSignal.timeout(timeoutMs))).text()

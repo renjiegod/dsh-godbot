@@ -363,8 +363,8 @@ export function apply(ctx, godbot) {
       } finally {
         running = false
         if (!lifetime.signal.aborted) {
-          const { phase, dsh, restart, canRestartDsh } = update.getSnapshot()
-          const moving = phase === 'installing' || phase === 'downloading' || dsh?.phase === 'installing'
+          const { phase, checking, dsh, restart, canRestartDsh } = update.getSnapshot()
+          const moving = checking || dsh?.checking || phase === 'installing' || phase === 'downloading' || dsh?.phase === 'installing'
           const delay = restart?.phase ? 1000 : document.hidden ? 60_000 : canRestartDsh || moving ? 2000 : 15_000
           timer = setTimeout(loop, again ? 0 : delay)
         }

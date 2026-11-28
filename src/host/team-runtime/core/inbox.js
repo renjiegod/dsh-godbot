@@ -8,6 +8,7 @@ import { relatedBotMessages } from './conversation-routing.js'
 import { readDeliveryEvents, resumeText, turnsOf } from './resume.js'
 import { conversationHead, ownConversations } from './threads.js'
 import { headOf } from './text.js'
+import { cleanText } from './diagnostics.js'
 import { turnFailure } from './turns.js'
 import { INBOX_DELIVERY } from '../shared/inbox-delivery.js'
 import { legacyNativeClose, restartInterrupted, turnOutcome } from '../shared/turn-outcome.js'
@@ -36,6 +37,7 @@ const publicStatus = row => ({
   ...(row.reason ? { reason: row.reason } : {}),
   ...(row.acceptedAt || row.resume?.acceptedAt ? { acceptedAt: row.acceptedAt ?? row.resume.acceptedAt } : {}),
   ...(row.repliedAt ? { repliedAt: row.repliedAt } : {}),
+  ...(row.progress ? { progress: row.progress } : {}),
 })
 const statusLine = row => {
   const state = publicStatus(row).state
@@ -723,6 +725,27 @@ export function install(rt) {
     unreadBotDelivery: unread,
     inboxReceipt: statusReceipt,
     inboxHas: id => get(id) !== undefined,
+    async recordInboxProgress(sessionId, text, blocked) {
+      const entry = rt.live.get(sessionId)
+      const source = entry?.info
+      const row = source?.role === 'request' && source.audience !== 'user' ? get(source.exchangeId) : undefined
+      if (!row?.args.fromId || !current(row) || !active(row, sessionId, entry.turn) || row.state !== 'accepted'
+        || row.args.toId !== rt.selfOf(sessionId)) return false
+      const line = cleanText(String(text ?? ''), { redact: rt.redactSecrets }).replace(/\s+/gu, ' ').trim().slice(0, 500)
+      if (!line) throw new Error('Write a progress update.')
+      const previous = row.progress
+      const progress = { at: Date.now(), text: line, blocked: blocked === true }
+      row.progress = progress
+      try { await save() }
+      catch (error) {
+        if (row.progress === progress) {
+          if (previous) row.progress = previous
+          else delete row.progress
+        }
+        throw error
+      }
+      return true
+    },
     inboxCanAnswer: id => {
       const row = get(id)
       return row === undefined || row.state === 'accepted'

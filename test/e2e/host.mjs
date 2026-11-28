@@ -16,7 +16,9 @@ import { clientRegistrations } from './artifacts.mjs'
 const run = promisify(execFile)
 const dsh = findExecutable('dsh')
 const peerCache = new Map()
-export const redact = value => String(value).replace(/([?&]token=)[^\s&#]+/giu, '$1[redacted]').replace(/(Bearer\s+)[A-Za-z0-9+/=_-]+/giu, '$1[redacted]')
+export const redact = value => String(value).replace(/([?&]token=)[^\s&#]+/giu, '$1[redacted]')
+  .replace(/(Bearer\s+)[A-Za-z0-9+/=_-]+/giu, '$1[redacted]')
+  .replace(/(\b(?:set-cookie|cookie):\s*)[^\r\n]+/giu, '$1[redacted]')
 export async function until(check, explanation, timeout = 30_000) {
   const end = Date.now() + timeout
   let error
@@ -231,7 +233,12 @@ export async function createHost({ scratch, browser, reportDir, note }, options 
     async bot(endpoint, payload = {}) {
       // The upgrade scenario also drives the RPC shipped in the older test archive.
       const method = host.artifact.pkg.dependencies?.['ds-bot'] ? 'dsBot/call' : 'godbotTeam/call'
-      const result = await host.rpc(method, { endpoint, payload })
+      const started = performance.now()
+      const result = await host.rpc(method, { endpoint, payload }).catch(error => {
+        if (error.name === 'TimeoutError' || /Timeout \d+ms exceeded/u.test(error.message))
+          note('bot-rpc-timeout', { endpoint, elapsedMs: Math.round(performance.now() - started) })
+        throw error
+      })
       if (!result?.ok) throw new Error('Bot ' + endpoint + ': ' + (result?.error?.message ?? 'invalid response'))
       return result.value
     },

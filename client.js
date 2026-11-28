@@ -13518,6 +13518,10 @@ var ZH = {
   "Exit code {code}": "退出码 {code}",
   "The native agent stopped before finishing this turn.": "原生 Agent 在本轮完成前停止了。",
   "{count} tool calls": "{count} 次工具调用",
+  "Delegated work · {tool}": "正在处理派工 · {tool}",
+  "Working on the request": "正在处理派工",
+  "Last activity {time}": "最近活动 {time}",
+  "Blocked · {text}": "遇到阻塞 · {text}",
   "{count} running": "{count} 项进行中",
   "A new reply is waiting": "有一条新回复",
   "Waiting for your answer": "等你回答",
@@ -42457,6 +42461,18 @@ function ToolCell({ node, sessionId, useRoster, useTurnTriggers, useTurnContext,
   );
 }
 
+// src/team/delegated-progress.js
+function delegatedProgressLabels(work, t2, formatTime) {
+  return {
+    activity: work.tool ? t2("Delegated work · {tool}", { tool: work.tool }) : t2("Working on the request"),
+    detail: [
+      t2("{count} tool calls", { count: work.count }),
+      t2("Last activity {time}", { time: formatTime(work.lastActivityAt) })
+    ].join(" · "),
+    milestone: work.progress?.blocked ? t2("Blocked · {text}", { text: work.progress.text }) : work.progress?.text
+  };
+}
+
 // src/client/team-ui/activity-row.js
 var PHRASE_HOLD_MS = 800;
 var drawPhrase = (pool) => t(pool[Math.min(pool.length - 1, Math.floor(Math.random() * pool.length))]);
@@ -42554,6 +42570,7 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
   const roster = useRoster((value) => value);
   const running = useSessionStatus((map) => map.get(sessionId)?.running === true);
   const turnAt = useWork?.((work) => work.turns?.[sessionId]);
+  const delegated = useWork?.((work) => work.delegated?.[sessionId]);
   const runAt = (0, import_react43.useRef)(0);
   if (!running) runAt.current = 0;
   else if (runAt.current === 0) runAt.current = Date.now();
@@ -42625,13 +42642,23 @@ function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useLive, us
     if (!running) actions.clearLive(sessionId);
   }, [running, sessionId]);
   useRowEntrances(() => leaving.current || Date.now() - endedAt.current < 300);
-  const host = useRunningHost(running || background || moveAt !== 0);
+  const host = useRunningHost(running || background || moveAt !== 0 || !!delegated);
   if (host && waitingForTerminal) return (0, import_react_dom5.createPortal)((0, import_react43.createElement)(
     "div",
     { className: "bt-terminal-wait" },
     (0, import_react43.createElement)("span", { role: "status" }, "消息正在等待。将原生终端交还聊天后继续执行。"),
     (0, import_react43.createElement)("button", { type: "button", className: "bt-soft bt-soft-sm", onClick: openTerminal }, "打开终端并交还")
   ), host);
+  if (host && delegated) {
+    const { activity: activity2, detail, milestone } = delegatedProgressLabels(delegated, t, messageClock);
+    return (0, import_react_dom5.createPortal)((0, import_react43.createElement)(
+      "div",
+      { className: "bt-delegated-progress", role: "status" },
+      (0, import_react43.createElement)("strong", null, activity2),
+      milestone ? (0, import_react43.createElement)("span", null, milestone) : null,
+      (0, import_react43.createElement)("small", null, detail)
+    ), host);
+  }
   if (!host || phase === null || !shown) return null;
   return (0, import_react_dom5.createPortal)((0, import_react43.createElement)(
     "div",
@@ -54481,7 +54508,14 @@ function ExchangeDialog({ pair, paneLeft, roster, actions }) {
                 className: "bt-group-name",
                 "data-delivery-state": entry.delivery.state,
                 style: { color: "var(--bt-ink-3)" }
-              }, t(deliveryLabels[entry.delivery.state]), entry.delivery.reason ? ` · ${entry.delivery.reason}` : "") : null
+              }, t(deliveryLabels[entry.delivery.state]), entry.delivery.reason ? ` · ${entry.delivery.reason}` : "") : null,
+              entry.delivery?.progress ? (0, import_react76.createElement)(
+                "div",
+                { className: "bt-hint" },
+                (0, import_react76.createElement)("time", { dateTime: new Date(entry.delivery.progress.at).toISOString() }, messageClock(entry.delivery.progress.at)),
+                " · ",
+                entry.delivery.progress.blocked ? t("Blocked · {text}", { text: entry.delivery.progress.text }) : entry.delivery.progress.text
+              ) : null
             )
           );
         })
@@ -64443,6 +64477,15 @@ body[data-gb-conversation] [data-conversation-scroll] .gb-execution-body {
 body[data-gb-conversation] [data-conversation-scroll] .gb-execution-tool[data-status=completed]:not([open]) .gb-execution-state {
   display: none;
 }
+.bt-delegated-progress {
+  display: grid;
+  gap: 3px;
+  margin: 8px 0;
+  padding-inline: 12px;
+  color: var(--bt-ink);
+  overflow-wrap: anywhere;
+}
+.bt-delegated-progress small { color: var(--bt-ink-3); }
 `;
 
 // src/client/team-ui/draft-hold.js
@@ -64755,8 +64798,8 @@ function apply(ctx, godbot) {
       } finally {
         running = false;
         if (!lifetime.signal.aborted) {
-          const { phase, dsh, restart, canRestartDsh } = update.getSnapshot();
-          const moving = phase === "installing" || phase === "downloading" || dsh?.phase === "installing";
+          const { phase, checking, dsh, restart, canRestartDsh } = update.getSnapshot();
+          const moving = checking || dsh?.checking || phase === "installing" || phase === "downloading" || dsh?.phase === "installing";
           const delay = restart?.phase ? 1e3 : document.hidden ? 6e4 : canRestartDsh || moving ? 2e3 : 15e3;
           timer = setTimeout(loop, again ? 0 : delay);
         }

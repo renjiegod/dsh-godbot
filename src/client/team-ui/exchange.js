@@ -1,6 +1,6 @@
 import { createElement as h, Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { inkText } from './inks.js'
-import { dayLabel } from './text.js'
+import { dayLabel, messageClock } from './text.js'
 import { colorOf, BotMark } from './mark.js'
 import { Bubbles } from './cells.js'
 import { stripLongNote } from './fold.js'
@@ -76,7 +76,10 @@ export function ExchangeDialog({ pair, paneLeft, roster, actions }) {
                   entry.delivery && deliveryLabels[entry.delivery.state] ? h('div', {
                     className: 'bt-group-name', 'data-delivery-state': entry.delivery.state,
                     style: { color: 'var(--bt-ink-3)' },
-                  }, t(deliveryLabels[entry.delivery.state]), entry.delivery.reason ? ` · ${entry.delivery.reason}` : '') : null))
+                  }, t(deliveryLabels[entry.delivery.state]), entry.delivery.reason ? ` · ${entry.delivery.reason}` : '') : null,
+                  entry.delivery?.progress ? h('div', { className: 'bt-hint' },
+                    h('time', { dateTime: new Date(entry.delivery.progress.at).toISOString() }, messageClock(entry.delivery.progress.at)), ' · ',
+                    entry.delivery.progress.blocked ? t('Blocked · {text}', { text: entry.delivery.progress.text }) : entry.delivery.progress.text) : null))
 
             })),
       h('div', { className: 'bt-dialog-foot' }, h('button', { type: 'button', className: 'bt-soft', onClick: close }, t('Close Chat')))))

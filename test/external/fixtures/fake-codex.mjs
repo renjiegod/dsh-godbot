@@ -169,6 +169,13 @@ function runTurn(thread, turnId, text, effort, images = []) {
     emit('item/started', { item: { ...item, status: 'inProgress' } })
     textItem('trace-during', 'Codex fixture progress while the command runs.')
     void (async () => {
+      if (text.includes('GODBOT-DELIVERY-MILESTONE')) {
+        const { rpc } = await import('../../e2e/fixtures/ticket-client.mjs')
+        const result = await rpc(thread.params.config.mcp_servers.godbot, 'tools/call', {
+          name: 'work_progress', arguments: { text: 'Web checks passed. Android checks are running.' },
+        })
+        if (result.isError) throw new Error('Could not record fixture milestone: ' + JSON.stringify(result.content))
+      }
       while (!existsSync(join(dir, 'codex-execution-trace-release'))) await delay(60)
       emit('item/commandExecution/outputDelta', { itemId: item.id, delta: 'Codex fixture ' })
       emit('item/commandExecution/outputDelta', { itemId: item.id, delta: 'command output' })

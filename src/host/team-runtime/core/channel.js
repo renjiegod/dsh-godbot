@@ -226,7 +226,7 @@ export function install(rt) {
     partTitles: Object.fromEntries(Object.values(state.bots).flatMap(bot => rt.chatPartTitles?.(bot) ?? [])),
     partActivity: Object.fromEntries(Object.values(state.bots).flatMap(bot => ownChatParts(bot)
       .filter(id => sessionActivity.has(id)).map(id => [id, sessionActivity.get(id)]))),
-    work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {} },
+    work: { bots: rt.workView(), rooms: rt.roomWorkView(), approvals: rt.approvalsView(), waiting: rt.waitingView?.() ?? {}, turns: rt.turnsView?.() ?? {}, steered: rt.steeredView?.() ?? {}, delegated: rt.delegatedWorkView() },
     memoryNews: rt.memoryNews(),
     memoryReviews: rt.memoryReviews(),
     learning: rt.learningView(),
@@ -917,9 +917,15 @@ export function install(rt) {
         }
         case 'update-check': {
           const fresh = body.fresh === true
-          const update = await rt.updateCheck({ fresh })
-          const dsh = (fresh || update.mode !== 'off'
-            ? await rt.dshUpdateCheck?.({ fresh }) : rt.dshUpdateView?.()) ?? null
+          if (fresh || rt.updateView().mode !== 'off') {
+            const discovery = Promise.all([rt.updateCheck({ fresh }), rt.dshUpdateCheck?.({ fresh })])
+            // A status poll also drives discovery on an open window. The local
+            // installation and restart receipt are available even if the feed stalls.
+            if (fresh) await discovery
+            else void discovery.catch(error => rt.warn('godbot: background update check failed: %s', error.message))
+          }
+          const update = rt.updateView()
+          const dsh = rt.dshUpdateView?.() ?? null
           const canRestartDsh = browser && readOnly === undefined && restart.available(update, dsh)
           return ok({ ...update, dsh, ...(browser ? { canRestartDsh, restart: restart.view(canRestartDsh) } : {}) })
         }

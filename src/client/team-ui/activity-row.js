@@ -6,6 +6,8 @@ import { noteClientError } from './diagnostics.js'
 import { worksInBackground } from './bot-sessions.js'
 import { reducedEffects, reducedMotion } from './motion.js'
 import { t } from './i18n.js'
+import { messageClock } from './text.js'
+import { delegatedProgressLabels } from '../../team/delegated-progress.js'
 
 // -------------------------------------------------------------------------
 // The activity row: the Bot's mark and a shimmering phrase at the transcript
@@ -115,6 +117,7 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   const roster = useRoster(value => value)
   const running = useSessionStatus(map => map.get(sessionId)?.running === true)
   const turnAt = useWork?.(work => work.turns?.[sessionId])
+  const delegated = useWork?.(work => work.delegated?.[sessionId])
   // Until the host reports the turn's start, the clock counts from when this window
   // saw the run begin.
   const runAt = useRef(0)
@@ -199,10 +202,16 @@ export function ActivityIndicator({ sessionId, useRoster, useSessionStatus, useL
   useEffect(() => { if (!running) actions.clearLive(sessionId) }, [running, sessionId])
   // Only rows that take the activity row's place grow out of it.
   useRowEntrances(() => leaving.current || Date.now() - endedAt.current < 300)
-  const host = useRunningHost(running || background || moveAt !== 0)
+  const host = useRunningHost(running || background || moveAt !== 0 || !!delegated)
   if (host && waitingForTerminal) return createPortal(h('div', { className: 'bt-terminal-wait' },
     h('span', { role: 'status' }, '消息正在等待。将原生终端交还聊天后继续执行。'),
     h('button', { type: 'button', className: 'bt-soft bt-soft-sm', onClick: openTerminal }, '打开终端并交还')), host)
+  if (host && delegated) {
+    const { activity, detail, milestone } = delegatedProgressLabels(delegated, t, messageClock)
+    return createPortal(h('div', { className: 'bt-delegated-progress', role: 'status' },
+      h('strong', null, activity), milestone ? h('span', null, milestone) : null,
+      h('small', null, detail)), host)
+  }
   if (!host || phase === null || !shown) return null
   return createPortal(h('div', { className: 'bt-typing', 'data-exiting': phase === 'out' ? '' : undefined, 'aria-hidden': true },
     bot ? h(BotMark, { bot, size: 28, state: markState.current, live: true, pokeable: true }) : h(RoomAvatar, { room, roster, size: 28 }),
