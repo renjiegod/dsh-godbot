@@ -1378,8 +1378,7 @@
   max-width: 100%;
 }
 
-.wb-comment-tools [aria-pressed='true'],
-.wb-discussion .wb-mention-active {
+.wb-comment-tools [aria-pressed='true'] {
   color: var(--bt-accent);
   border-color: var(--bt-accent);
 }
@@ -1416,10 +1415,58 @@
   justify-content: space-between;
 }
 
-.wb-mention-options {
-  display: flex;
-  flex-wrap: wrap;
+.wb-comment-address {
+  display: grid;
   gap: 6px;
+  min-width: 0;
+}
+
+.wb-comment-address button.wb-mention-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 4px;
+}
+
+.wb-mention-trigger[aria-expanded='true'] svg {
+  rotate: 180deg;
+}
+
+.wb-mention-options {
+  display: grid;
+  max-height: 186px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 1px solid var(--bt-line-2);
+  border-radius: 9px;
+  background: var(--bt-card);
+}
+
+.wb-mention-options button[role='option'] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: start;
+}
+
+.wb-mention-options button[role='option']:hover,
+.wb-mention-options button[aria-selected='true'] {
+  background: var(--bt-accent-soft);
+  color: var(--bt-accent);
+}
+
+.wb-mention-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .wb-config,

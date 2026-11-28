@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { setTimeout as wait } from 'node:timers/promises'
+import { join } from 'node:path'
 import { PNG } from 'pngjs'
 import { openFullTeam, verifyModalTheme } from '../native-ui.mjs'
 import { until } from '../host.mjs'
@@ -38,7 +39,7 @@ async function checkInboxDialog(host, note) {
   note('inbox-modal-theme-and-focus', { botLight, botDark })
 }
 
-export default async function E9({ makeHost, candidate, note }) {
+export default async function E9({ makeHost, candidate, note, reportDir }) {
   const host = await makeHost()
   host.model.models = ['deepseek-flash', 'deepseek-v4-pro']
   await host.install(candidate)
@@ -128,7 +129,16 @@ export default async function E9({ makeHost, candidate, note }) {
   await host.page.locator(`[data-room-id="${room.id}"]`).click()
   const composer = host.page.locator('[data-composer-card]')
   const input = composer.locator('[role="textbox"]')
-  await input.fill('@Publisher ' + imagePrompt)
+  await input.fill('@Publisher')
+  await input.locator('[data-composer-text-ref]').filter({ hasText: /^@Publisher$/ }).waitFor()
+  await input.fill('@Publ')
+  await host.page.getByRole('option', { name: /^Publisher Publish release/ }).click()
+  const mention = input.locator('[data-composer-chip="godbot"] > span')
+  await mention.waitFor()
+  assert.equal(await mention.getAttribute('title'), 'Publisher')
+  assert.notEqual(await mention.evaluate(el => getComputedStyle(el).backgroundColor), 'rgba(0, 0, 0, 0)')
+  await host.page.keyboard.insertText(imagePrompt)
+  await composer.screenshot({ path: join(reportDir, 'room-mention.png') })
   await input.evaluate((element, data) => {
     const clipboardData = new DataTransfer()
     clipboardData.items.add(new File([Uint8Array.from(atob(data), char => char.charCodeAt(0))], 'room.png', { type: 'image/png' }))

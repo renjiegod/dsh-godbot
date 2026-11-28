@@ -1,6 +1,7 @@
-import { createElement as h, useEffect, useMemo, useRef, useState } from 'react'
+import { createElement as h, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { call } from './team-ui/api.js'
 import { dateLocale, mdLabels, t } from './team-ui/i18n.js'
+import { ChevronDownIcon } from './team-ui/icons.js'
 import { BotMark } from './team-ui/mark.js'
 import { MarkdownText, writeClipboard } from './team-ui/dsh-primitives.js'
 import { useWorkBoardDiscussion } from '../host/team-runtime/shared/work-board-discussion.js'
@@ -37,14 +38,15 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
   const [error, setError] = useState(null)
   const [selectedAction, setSelectedAction] = useState(null)
   const [target, setTarget] = useState(focus)
-  const [cursor, setCursor] = useState(0)
+  const [selection, setSelection] = useState({ start: 0, end: 0 })
   const [optionIndex, setOptionIndex] = useState(0)
-  const [editingAddress, setEditingAddress] = useState(false)
+  const [mentionMenu, setMentionMenu] = useState(null)
   const [picking, setPicking] = useState(false)
   const [copied, setCopied] = useState(null)
   const input = useRef(null)
   const filesInput = useRef(null)
   const section = useRef(null)
+  const menuId = useId()
   const bots = state.roots?.bots ?? noBots
   const root = state.replies?.root ?? state.roots?.entries.find(entry => entry.id === draft.parent?.rootId)
   const plan = useMemo(() => commentPlan(draft.body, bots, {
@@ -52,7 +54,10 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
   }), [draft.body, bots, draft.parent, root, state.roots?.assignee, draft.quiet, draft.edit])
   const notified = plan.ids.filter(botId => !draft.edit?.runs.some(run => run.botId === botId))
   const disabled = offline || !state.roots || !state.reachable || state.roots.readOnly || state.busy || picking
-  const suggestions = editingAddress && !disabled ? commentAddress(draft.body, cursor, bots) : null
+  const address = mentionMenu && selection.start === selection.end ? commentAddress(draft.body, selection.start, bots) : null
+  const options = disabled ? noBots : mentionMenu === 'button' ? bots : address?.options ?? noBots
+  const activeOption = options[optionIndex] ?? options[0]
+  const optionId = bot => `${menuId}-${bot.id}`
 
   useEffect(() => {
     if (!active || !target) return
@@ -69,23 +74,35 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
 
   function reply(to) {
     setDraft((prior) => ({ ...(prior.edit ? blank() : prior), parent: to }))
+    setMentionMenu(null)
     state.openThread(to.rootId)
     moveInput()
   }
 
   function edit(entry) {
     setDraft({ ...blank(), body: entry.body, edit: entry, keep: entry.attachments, quiet: entry.quiet })
+    setMentionMenu(null)
     moveInput()
   }
 
   function choose(bot) {
-    const selected = chooseCommentAddress(draft.body, suggestions, bot)
-    setDraft({ ...draft, body: selected.body })
-    setEditingAddress(false)
+    const range = address ?? selection
+    const prefix = !address && /[\p{L}\p{N}_./\\@]$/u.test(draft.body.slice(0, range.start)) ? ' ' : ''
+    const selected = chooseCommentAddress(draft.body, range, bot)
+    if (selected.body.length + prefix.length > commentLength) return
+    const body = selected.body.slice(0, range.start) + prefix + selected.body.slice(range.start)
+    const cursor = selected.cursor + prefix.length
+    setDraft(prior => ({ ...prior, body }))
+    setMentionMenu(null)
     requestAnimationFrame(() => {
       input.current?.focus()
-      input.current?.setSelectionRange(selected.cursor, selected.cursor)
+      input.current?.setSelectionRange(cursor, cursor)
+      setSelection({ start: cursor, end: cursor })
     })
+  }
+
+  function trackSelection(node) {
+    setSelection({ start: node.selectionStart, end: node.selectionEnd })
   }
 
   async function attach(files) {
@@ -159,7 +176,7 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
       setAnnotations([])
       setAnnotation(null)
       setTarget(result.commentId)
-      setEditingAddress(false)
+      setMentionMenu(null)
     }
   }
 
@@ -292,38 +309,57 @@ export function WorkBoardDiscussionPanel({ id, active, offline, focus, subscribe
         button(t('Remove annotation'), () => setAnnotations(old => old.filter((_, index) => index !== i))))),
       draft.edit || draft.parent ? h('div', { className: 'wb-comment-target' },
         draft.edit ? t('Edit comment') : t('Reply to {name}', { name: author(draft.parent) }),
-        button(t('Cancel'), () => { setDraft(blank()); setAnnotations([]); setAnnotation(null); setModes({}) }),
+        button(t('Cancel'), () => { setDraft(blank()); setMentionMenu(null); setAnnotations([]); setAnnotation(null); setModes({}) }),
       ) : null,
-      h('textarea', {
-        ref: input, value: draft.body, disabled, rows: 3, maxLength: commentLength,
-        placeholder: t('Write a comment…'), 'aria-label': t('Comment'),
-        'aria-autocomplete': 'list', 'aria-controls': suggestions ? 'wb-comment-mentions' : undefined,
-        onChange: (event) => {
-          setDraft({ ...draft, body: event.target.value })
-          setCursor(event.target.selectionStart)
+      h('div', { className: 'wb-comment-address', onBlur: event => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setMentionMenu(null)
+      } },
+        h('textarea', {
+          ref: input, value: draft.body, disabled, rows: 3, maxLength: commentLength,
+          placeholder: t('Write a comment…'), 'aria-label': t('Comment'),
+          'aria-autocomplete': 'list', 'aria-controls': activeOption ? menuId : undefined,
+          'aria-activedescendant': activeOption ? optionId(activeOption) : undefined,
+          onChange: event => {
+            setDraft({ ...draft, body: event.target.value })
+            trackSelection(event.target)
+            setOptionIndex(0)
+            setMentionMenu(event.nativeEvent.isComposing ? null : 'typing')
+          },
+          onCompositionEnd: () => setMentionMenu('typing'),
+          onSelect: event => trackSelection(event.target),
+          onKeyDownCapture: event => {
+            if (!activeOption || event.nativeEvent.isComposing) return
+            if (event.key === 'Escape') {
+              setMentionMenu(null)
+              event.stopPropagation()
+            } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              const size = options.length
+              const index = (options.indexOf(activeOption) + (event.key === 'ArrowDown' ? 1 : size - 1)) % size
+              setOptionIndex(index)
+              document.getElementById(optionId(options[index]))?.scrollIntoView({ block: 'nearest' })
+            } else if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault()
+              choose(activeOption)
+            }
+          },
+        }),
+        button([t('Mention a Bot'), h(ChevronDownIcon, { key: 'chevron' })], () => {
+          if (input.current) trackSelection(input.current)
           setOptionIndex(0)
-          setEditingAddress(true)
-        },
-        onSelect: (event) => setCursor(event.target.selectionStart),
-        onKeyDown: (event) => {
-          if (!suggestions || event.nativeEvent.isComposing) return
-          if (event.key === 'Escape') {
-            setEditingAddress(false)
-            event.stopPropagation()
-          } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            event.preventDefault()
-            const size = suggestions.options.length
-            setOptionIndex((index) => (index + (event.key === 'ArrowDown' ? 1 : size - 1)) % size)
-          } else if (event.key === 'Enter' && !event.shiftKey) {
-            event.preventDefault()
-            choose(suggestions.options[optionIndex] ?? suggestions.options[0])
-          }
-        },
-      }),
-      suggestions ? h('div', { className: 'wb-mention-options', id: 'wb-comment-mentions', 'aria-label': t('Mention a Bot') },
-        ...suggestions.options.map((bot, index) => button('@' + bot.name, () => choose(bot), {
-          key: bot.id, className: index === optionIndex ? 'wb-mention-active' : undefined,
-        }))) : null,
+          setMentionMenu(mentionMenu === 'button' ? null : 'button')
+          input.current?.focus()
+        }, { className: 'wb-mention-trigger', disabled: disabled || !bots.length,
+          'aria-haspopup': 'listbox', 'aria-expanded': !!activeOption, 'aria-controls': activeOption ? menuId : undefined }),
+        activeOption ? h('div', { className: 'wb-mention-options', id: menuId, role: 'listbox', 'aria-label': t('Mention a Bot') },
+          ...options.map(bot => button([
+            h(BotMark, { key: 'mark', bot: roster?.byId?.[bot.id] ?? bot, size: 20 }),
+            h('span', { key: 'name', className: 'wb-mention-name' }, '@' + bot.name),
+          ], () => choose(bot), {
+            key: bot.id, id: optionId(bot), role: 'option', 'aria-selected': bot.id === activeOption.id, tabIndex: -1,
+            onMouseDown: event => event.preventDefault(),
+          }))) : null,
+      ),
       draft.files.length || draft.keep.length ? h('div', { className: 'wb-comment-tools' },
         ...[...draft.keep, ...draft.files].map((file, index) => button(file.name + ' ×',
           () => setDraft(prior => ({ ...prior, keep: prior.keep.filter(f => f !== file), files: prior.files.filter(f => f !== file) })),

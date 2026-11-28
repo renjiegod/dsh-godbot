@@ -20,10 +20,12 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     const host = await makeHost()
     await host.install(candidate)
     await host.start()
-    await openFullTeam(host)
+    const main = await openFullTeam(host)
     const worker = await host.bot('create-bot', { name: 'Mobile Reviewer', model: 'deepseek-official/deepseek-flash' })
     await until(async () => (await host.bot('chat', { botId: worker.id })).items.some(item => item.kind === 'bot'), 'worker kickoff')
-    host.model.reply = () => 'I have read the phone comment.'
+    const room = await host.bot('create-room', { name: 'Mobile mention check', members: [main, worker.id], admin: main })
+    const roomReply = 'The selected group Bot received the mention.'
+    host.model.reply = body => JSON.stringify(body.messages).includes('ANDROID_MENTION_PROBE') ? roomReply : 'I have read the phone comment.'
     const draft = await channel(host, 'board-action', { op: 'create', title: 'Shared discussion fixture', requestId: 'draft' })
     await host.page.goto(host.url + '/#/godbot/work/' + draft.id)
     await host.page.getByRole('button', { name: /^(讨论|Discussion)$/ }).click()
@@ -41,15 +43,38 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     ui.openUrl(pairing.uri)
     await tap('confirm pairing', 'Pair', '配对')
     await ui.waitFor(nodes => nodes.some(node => node.cls.endsWith('EditText')), 'paired app', { timeout: 65000 })
+
+    await tap('open team list', 'Open team list', '打开团队列表')
+    ui.tap(await ui.waitFor(nodes => nodes.find(node => node.clickable && node.desc.startsWith(room.name + ','))
+      ?? nodes.find(node => node.text === room.name && node.bounds.y1 > 330), 'group in the Android team list'))
+    ui.tap(await ui.waitFor(nodes => nodes.find(node => node.cls.endsWith('EditText')
+      && (node.desc + node.hint + node.text).includes(room.name)), 'group composer'))
+    ui.typeText('@Mobile')
+    await ui.hideKeyboard()
+    await tap('pick the group Bot from the suggestions', '@Mobile Reviewer')
+    await ui.waitFor(nodes => nodes.some(node => node.cls.endsWith('EditText') && node.text.trim() === '@Mobile Reviewer'),
+      'Android chat input kept the full Bot name')
+    await writeFile(join(reportDir, 'chat-mention-android.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
+    ui.typeText('ANDROID_MENTION_PROBE')
+    await ui.hideKeyboard()
+    await tap('send the group mention', 'Send', '发送')
+    const chat = await until(async () => {
+      const view = await channel(host, 'room-chat', { roomId: room.id })
+      return !view.running && view.items.some(row => row.text === roomReply) && view
+    }, 'Android chat mention reached the Bot')
+    assert.deepEqual(chat.items.filter(row => row.text === roomReply).map(row => row.botId), [worker.id])
+    assert.ok(chat.items.some(row => row.kind === 'user' && row.text === '@Mobile Reviewer ANDROID_MENTION_PROBE'))
+
     const hostId = new URL(pairing.uri).searchParams.get('host')
     assert.ok(hostId)
     ui.openUrl('godbot://work/' + draft.id + '/comment/' + root.id + '?host=' + encodeURIComponent(hostId))
     await ui.waitFor(nodes => ui.find(nodes, 'Question from the Web client'), 'Web comment opened from its Android link')
 
     await tap('reply to Web comment', 'Reply', '回复')
-    ui.tap(await scroll('Comment', '评论', 'Write a comment…', '写评论…'))
-    ui.typeText('@Mobile')
     await ui.hideKeyboard()
+    ui.tap(await scroll('@ Bot', 'Mention a Bot'))
+    await ui.waitFor(nodes => ui.find(nodes, '@Mobile Reviewer'), 'the Android comment dropdown opened')
+    await writeFile(join(reportDir, 'discussion-mention-android.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
     ui.tap(await scroll('@Mobile Reviewer'))
     await ui.waitFor(nodes => nodes.some(node => node.cls.endsWith('EditText') && node.text.trim() === '@Mobile Reviewer'),
       'selection inserted the full Bot name')
@@ -98,7 +123,7 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     await writeFile(join(reportDir, 'discussion-android.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
     note('paired-board-discussion', {
       id: draft.id, webToAndroid: true, androidToWeb: true, executionReceipt: posted.runs[0].state,
-      attachmentBytesMatch: true, targetBot: worker.id, directCommentLink: true,
+      attachmentBytesMatch: true, targetBot: worker.id, directCommentLink: true, groupMention: true, commentDropdown: true,
     })
   } finally {
     try { ui.adb(['reverse', '--remove', 'tcp:' + port]) } catch {}
