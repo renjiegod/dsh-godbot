@@ -370,7 +370,7 @@ export function install(rt) {
     if (status.installed !== null && marker?.to === status.installed) {
       installedRelease = {
         notesUrl: /^https?:\/\//i.test(marker.notesUrl ?? '') ? marker.notesUrl : null,
-        releaseNotes: Array.isArray(marker.releaseNotes) ? marker.releaseNotes.filter(note => typeof note === 'string') : [],
+        notes: typeof marker.notes === 'string' ? marker.notes : '',
       }
     }
   }
@@ -410,7 +410,7 @@ export function install(rt) {
     const notesUrl = release?.notesUrl ?? (version && repository ? `${repository}/releases/tag/v${version}` : defaultNotesUrl)
     return {
       name: status.name, current: status.current, latest: status.latest, source: status.source,
-      notesUrl, releaseNotes: release?.releaseNotes ?? [], repoUrl: repository, enabled, mode: settings.mode,
+      notesUrl, notes: release?.notes ?? '', repoUrl: repository, enabled, mode: settings.mode,
       checkedAt: status.checkedAt, checking: checking !== null, checkFailed: status.checkFailed, phase: status.phase, installed: status.installed, error: status.error,
       ...(status.phase === 'downloading' && progress !== null ? { progress: { ...progress } } : {}),
       ...(blocked !== null ? { blocked: { ...blocked } } : {}),
@@ -497,12 +497,12 @@ export function install(rt) {
       return
     }
     status.latest = found.version
-    if (found.version === status.installed && found.releaseNotes) installedRelease = found
+    if (found.version === status.installed && typeof found.notes === 'string') installedRelease = found
     const next = newer(found.version, status.current) ? found : null
     if (next === null) { retire(); return }
     // The same release keeps what was already fetched for it.
     if (target !== null && target.version === next.version && target.asset?.sha256 === next.asset?.sha256) {
-      Object.assign(target, { notesUrl: next.notesUrl, releaseNotes: next.releaseNotes })
+      Object.assign(target, { notesUrl: next.notesUrl, notes: next.notes })
       return
     }
     retire()
@@ -659,7 +659,7 @@ export function install(rt) {
       try {
         writeFileSync(markerPath, JSON.stringify({
           from: PKG.version, to: chosen.version, spec: chosen.spec, startedAt: new Date().toISOString(), ...(auto ? { auto: true } : {}),
-          notesUrl: chosen.notesUrl, releaseNotes: chosen.releaseNotes,
+          notesUrl: chosen.notesUrl, notes: chosen.notes,
           ...(error === undefined ? {} : { error: String(error).slice(0, 600) }),
         }))
       } catch { /* a note that cannot be written just is not there */ }

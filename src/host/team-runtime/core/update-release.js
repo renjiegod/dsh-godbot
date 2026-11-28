@@ -87,16 +87,16 @@ export function releaseDetails(release) {
     .replace(/^#{1,6}[ \t]+.*$/gm, '\n')
     .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, '\n\n')
     .split(/\n[ \t]*\n/)
-  const releaseNotes = []
+  const changes = []
   for (const paragraph of paragraphs) {
     const text = paragraph.trim().replace(/\s+by @\S+ in https:\/\/github\.com\/\S+\/pull\/\d+$/i, '')
       .replace(/\[([^\]\n]+)\]\(https?:\/\/[^)\s]+\)/g, '$1')
       .replace(/\*\*|`/g, '').replace(/\s+/g, ' ').trim()
     if (!text || /^(?:https?:\/\/\S+$|The corresponding source for the bundled Mac video encoder\b)/i.test(text)) continue
-    releaseNotes.push(text.length > 500 ? text.slice(0, 499).trimEnd() + '…' : text)
-    if (releaseNotes.length === 12) break
+    changes.push(text.length > 500 ? text.slice(0, 499).trimEnd() + '…' : text)
+    if (changes.length === 12) break
   }
-  return { notesUrl, releaseNotes }
+  return { notesUrl, notes: changes.join('\n') }
 }
 
 /**

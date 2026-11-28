@@ -44201,8 +44201,8 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
   const dshPhase = dsh?.phase ?? "idle";
   const dshRow = showsDshRow(dsh, update?.app);
   const showGodbot = update?.available || phase !== "idle";
-  const notes = showGodbot ? update?.releaseNotes : null;
-  const preview = notes?.[0];
+  const notes = showGodbot && update?.notes ? update.notes.split("\n") : [];
+  const preview = notes[0];
   const tick = useViewport();
   (0, import_react47.useLayoutEffect)(() => {
     if (!open) return;

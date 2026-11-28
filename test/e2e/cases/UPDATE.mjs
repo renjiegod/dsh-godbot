@@ -303,7 +303,7 @@ export default async function UPDATE(context) {
     const elapsedMs = Math.round(performance.now() - requestedAt)
     await until(() => pendingPolls > 0, 'the restarted host uses the local release feed')
     assert.ok(after.checking || after.dsh?.checking, 'the local receipt was available during discovery')
-    assert.deepEqual(after.releaseNotes, changes, 'the local receipt includes the installed version’s changes')
+    assert.equal(after.notes, changes.join('\n'), 'the local receipt includes the installed version’s changes')
     note('restart-status-during-discovery', { current: after.current, phase: after.phase, pendingPolls, elapsedMs })
     heldAfterRestart = false
     resumeFeed.resolve()

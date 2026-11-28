@@ -199,10 +199,10 @@ test('the newest release carrying the archive wins, prereleases only on that cha
   assert.equal(found.version, '0.3.0')
   assert.equal(found.asset.sha256, sha(stable.data))
   assert.equal(found.notesUrl, stable.body.html_url)
-  assert.deepEqual(found.releaseNotes, ['Stable change'])
+  assert.equal(found.notes, 'Stable change')
   const preview = await newestRelease({ repo: REPO, name: PKG.name, prerelease: true, net })
   assert.equal(preview.version, '0.4.0-rc.1')
-  assert.deepEqual(preview.releaseNotes, ['Preview change'])
+  assert.equal(preview.notes, 'Preview change')
   assert.deepEqual(net.calls, [LIST, LIST])
   assert.equal(await newestRelease({ repo: REPO, name: PKG.name, prerelease: false, net: fakeNet({ [LIST]: [] }) }), null)
 })
@@ -210,16 +210,16 @@ test('the newest release carrying the archive wins, prereleases only on that cha
 test('release notes keep published changes from generated and hand-written releases', () => {
   const sourceNotice = 'The corresponding source for the bundled Mac video encoder is attached as an archive.'
   const changelog = '**Full Changelog**: https://github.com/example/project/compare/v1...v2'
-  const notes = body => releaseDetails({ body }).releaseNotes
-  assert.deepEqual(notes([sourceNotice, "## What's Changed", '### Improvements',
+  const notes = body => releaseDetails({ body }).notes
+  assert.equal(notes([sourceNotice, "## What's Changed", '### Improvements',
     '* Show **Bot mentions** by @example in https://github.com/example/project/pull/1',
     '- Keep [work](https://example.org/work) running', '  across restarts.', changelog,
-    '## New Contributors', '* @example made a first contribution'].join('\r\n')), ['Show Bot mentions', 'Keep work running across restarts.'])
-  assert.deepEqual(notes('# 更新说明\n\n修复侧栏。\n\n### 其他改进\n1. 支持键盘操作。\n2. 保留选中的会话。'),
-    ['修复侧栏。', '支持键盘操作。', '保留选中的会话。'])
-  assert.deepEqual(notes([sourceNotice, '', changelog].join('\n')), [])
-  assert.deepEqual(notes(null), [])
-  const long = notes(Array.from({ length: 20 }, (_, i) => '- ' + i + 'x'.repeat(600)).join('\n'))
+    '## New Contributors', '* @example made a first contribution'].join('\r\n')), 'Show Bot mentions\nKeep work running across restarts.')
+  assert.equal(notes('# 更新说明\n\n修复侧栏。\n\n### 其他改进\n1. 支持键盘操作。\n2. 保留选中的会话。'),
+    '修复侧栏。\n支持键盘操作。\n保留选中的会话。')
+  assert.equal(notes([sourceNotice, '', changelog].join('\n')), '')
+  assert.equal(notes(null), '')
+  const long = notes(Array.from({ length: 20 }, (_, i) => '- ' + i + 'x'.repeat(600)).join('\n')).split('\n')
   assert.equal(long.length, 12)
   assert.equal(long[0].length, 500)
 })
@@ -339,7 +339,7 @@ test('a cold status poll returns the local restart receipt while remote checks a
     await settle()
     assert.equal(observed?.value?.phase, 'updated', 'the heartbeat is independent of a stalled release feed')
     assert.equal(observed.value.current, PKG.version)
-    assert.deepEqual(observed.value.releaseNotes, [], 'older update receipts have no saved notes')
+    assert.equal(observed.value.notes, '', 'older update receipts have no saved notes')
     assert.equal(observed.value.notesUrl, `https://github.com/${REPO}/releases/tag/v${PKG.version}`)
     assert.equal(refreshed, false, 'an explicit refresh waits for discovery')
     assert.ok(net.calls.includes(LIST))
@@ -350,7 +350,7 @@ test('a cold status poll returns the local restart receipt while remote checks a
   }
   assert.equal(refreshed, true)
   assert.ok((await rt.channelCall('update-check', {})).value.checkedAt > 0)
-  assert.deepEqual(rt.updateView().releaseNotes, ['Changes in the running version'])
+  assert.equal(rt.updateView().notes, 'Changes in the running version')
 })
 
 test('auto mode downloads a release, waits until Godbot is idle, then installs it', async () => {
@@ -393,8 +393,8 @@ test('auto mode downloads a release, waits until Godbot is idle, then installs i
   assert.equal(marker.from, PKG.version)
   assert.equal(marker.to, NEXT)
   assert.equal(marker.auto, true)
-  assert.deepEqual(marker.releaseNotes, ['Retain active work after a restart.'])
-  assert.deepEqual(view.releaseNotes, marker.releaseNotes)
+  assert.equal(marker.notes, 'Retain active work after a restart.')
+  assert.equal(view.notes, marker.notes)
   assert.equal(marker.notesUrl, next.body.html_url)
 })
 
@@ -550,21 +550,21 @@ test('a newer release found mid-download replaces the one being fetched', async 
   hangOn(net, next.url)
   await rt.updateTick()
   assert.equal(rt.updateView().phase, 'downloading')
-  assert.deepEqual(rt.updateView().releaseNotes, ['First change'])
+  assert.equal(rt.updateView().notes, 'First change')
   net.json = async () => [later.body, next.body]
   await rt.updateCheck({ fresh: true })
   await rt.updatePrepare()
   const view = rt.updateView()
   assert.equal(view.latest, later.body.tag_name.slice(1))
   assert.equal(view.phase, 'ready')
-  assert.deepEqual(view.releaseNotes, ['Later change'])
+  assert.equal(view.notes, 'Later change')
   assert.deepEqual(readdirSync(archives).filter(name => name.endsWith('.tgz')), [`${PKG.name}-${view.latest}-${sha(later.data).slice(0, 12)}.tgz`])
   later.body.body = 'Revised change'
   await rt.updateCheck({ fresh: true })
-  assert.deepEqual(rt.updateView().releaseNotes, ['Revised change'])
+  assert.equal(rt.updateView().notes, 'Revised change')
   net.json = async () => []
   await rt.updateCheck({ fresh: true })
-  assert.deepEqual(rt.updateView().releaseNotes, [])
+  assert.equal(rt.updateView().notes, '')
   assert.notEqual(rt.updateView().notesUrl, later.body.html_url)
 })
 
