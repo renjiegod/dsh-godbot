@@ -58,7 +58,8 @@ export function entryLine(entry) {
   const code = entry.code ? ` [${entry.code}${entry.status ? ` ${entry.status}` : ''}]` : ''
   const facts = ['sessionId', 'turn', 'route', 'nativeSessionId', 'nativeTurnId', 'nativeEvent', 'nativeSubtype', 'nativeStopReason',
     'nativeOrigin', 'nativeError', 'nativeDurationMs', 'disposition', 'cause', 'outcome', 'pendingTools', 'toolId', 'toolName',
-    'exitCode', 'processId', 'processExitCode', 'signal', 'timedOut', 'late', 'elapsedMs', 'requestedTimeoutMs', 'adapterState']
+    'exitCode', 'processId', 'processExitCode', 'signal', 'timedOut', 'late', 'elapsedMs', 'requestedTimeoutMs', 'adapterState',
+    'restartId', 'restartSource', 'mode', 'boot', 'godbotVersion', 'dshVersion', 'affected']
     .filter(key => entry[key] != null).map(key => key + '=' + JSON.stringify(entry[key])).join(' ')
   return `${new Date(entry.time).toISOString()} ${entry.level.toUpperCase()} ${entry.source}${where ? ` (${where})` : ''}${code} ${entry.text}${facts ? ' ' + facts : ''}`
 }

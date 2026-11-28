@@ -18,6 +18,8 @@
 //   runs as the next turn.
 // Any other message is answered with "reply: <its last line>".
 import { randomUUID } from 'node:crypto'
+import { appendFile, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
 const resumeAt = process.argv.indexOf('--resume')
@@ -66,10 +68,49 @@ function startTask(entry, ms) {
   }, ms)
 }
 
+async function updateRestartFixture(text) {
+  const dir = process.env.GODBOT_E2E_RESTART_DIR
+  if (!dir) return false
+  if (text.includes('DeepSeek Harness restarted while you were working on this')) {
+    const entries = (await readFile(join(dir, 'answered.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line))
+    const original = entries.find(row => row.sessionId === sessionId)
+    await appendFile(join(dir, 'continued.jsonl'), JSON.stringify({ sessionId }) + '\n')
+    await say(original?.selected === 'Proceed' ? 'Resumed the selected work without repeating its tool.' : 'The original answer or native session was missing.')
+    return true
+  }
+  if (text.includes('answer_to_pending_question') && text.includes('Restart fixture choice')) {
+    const selected = /"selected"\s*:\s*\["Proceed"\]/u.test(text) ? 'Proceed' : null
+    await appendFile(join(dir, 'answered.jsonl'), JSON.stringify({ sessionId, selected }) + '\n')
+    const tool = 'toolu_' + randomUUID()
+    send({ type: 'assistant', message: { id: 'msg_' + randomUUID(), stop_reason: 'tool_use', content: [
+      { type: 'tool_use', id: tool, name: 'Bash', input: { command: 'fixture-check-before-restart' } },
+    ] } })
+    send({ type: 'user', message: { content: [
+      { type: 'tool_result', tool_use_id: tool, is_error: false, content: 'Fixture completed the check.' },
+    ] } })
+    await delay(60_000)
+    return true
+  }
+  if (!text.includes('UPDATE-RESTART-ASK')) return false
+  const config = JSON.parse(process.argv[process.argv.indexOf('--mcp-config') + 1])
+  const { rpc } = await import('../../e2e/fixtures/ticket-client.mjs')
+  const asked = await rpc(config.mcpServers.godbot, 'tools/call', {
+    name: 'ask_user', arguments: { question: 'Restart fixture choice', options: [{ label: 'Proceed' }, { label: 'Stop' }] },
+  })
+  if (asked.isError) throw new Error('The restart fixture could not open its question card')
+  await say('Choose an option to continue.')
+  return true
+}
+
 async function turnFor({ uuid, text }) {
   lifecycle(uuid, 'started')
   init()
   requesting([uuid])
+  if (await updateRestartFixture(text)) {
+    result({ stop_reason: 'end_turn' })
+    lifecycle(uuid, 'completed')
+    return
+  }
   const last = text.trim().split('\n').at(-1)
   const outcome = Array.from(text.matchAll(/\b(OUTCOME-(?:QUIET|LATE|FAILED|RECOVERED|HOLD))\b/gu)).at(-1)?.[1]
   if (outcome !== undefined) {

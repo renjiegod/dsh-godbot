@@ -106,7 +106,7 @@ export function install(rt) {
   }
 
   function relayMessage({ fromId, fromName: senderName, text, role, replyTo, roomId, audience, note,
-    exchangeId, inboxAttempt, deferred = false, resumed = false, resumeOf, retried = false, resent = false, abandoned = false,
+    exchangeId, inboxAttempt, deferred = false, resumed = false, resumeOf, restartOfTurn, retried = false, resent = false, abandoned = false,
     askedBy, fromRoomId, fromPart, images = [], files = [], work, initiator, title, boardInline, joined }) {
     const from = rt.botOf(fromId)
     const fromName = senderName ?? from?.name ?? 'You'
@@ -130,6 +130,7 @@ export function install(rt) {
       ...(deferred ? { deferred: true } : {}),
       ...(resumed ? { resumed: true } : {}),
       ...(resumeOf ? { resumeOf } : {}),
+      ...(Number.isSafeInteger(restartOfTurn) ? { restartOfTurn } : {}),
       ...(joined?.length ? { joined } : {}),
       ...(retried ? { retried: true } : {}),
       ...(askedBy ? { askedBy } : {}),

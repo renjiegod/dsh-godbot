@@ -27,7 +27,7 @@ import { RESUME_DELAY_MS } from './resume.js'
 import { clip, createClock, escapeRegExp, estimateTokens, reminderPrompts, splitRef, stripLongNote, textOf } from './text.js'
 import { pageThinkingMs } from './thinking.js'
 import { mobileToolRows, openChatPage, withInterruptedAttempts, withLiveAttempt } from '../mobile-tool-timeline.js'
-import { turnOutcome } from '../shared/turn-outcome.js'
+import { canBeUpdateRestart, turnOutcome } from '../shared/turn-outcome.js'
 import { viaOf } from '../shared/im-platforms.js'
 import { addBackgroundConversation, conversationHead, currentConversationParts, earlierPlace, focusOpenPart, isOpenPart, openEarlierBeside, openEarlierOfThread, ownChatSessions, pushThreadPart, reopenBackgroundConversation, sessionFloor, startOpenPart, successorOfMovedPart, threadCurrent, threadCurrentOfPart, threadOf, threadOfPart, threadStart } from './threads.js'
 import { firstPrompt, partTitle, requestTitle } from './part-titles.js'
@@ -1802,7 +1802,9 @@ export function install(rt) {
         const legacy = recovered?.get(owner)
         const outcome = legacy === undefined ? turnOutcome(event.data?.reason) : { status: 'interrupted', exitCode: legacy.exitCode }
         if (!hidden.has(owner) && outcome && outcome.status !== 'completed') {
+          const restart = canBeUpdateRestart(event.data?.reason) ? rt.executionHistory?.restartStatus(partId, owner) : undefined
           stamp(event, { kind: 'turn-status', ...outcome, time: event.time,
+            ...(restart ? { cause: 'update-restart', restart } : {}),
             timelineId: JSON.stringify([partId, owner, 'outcome']) })
         }
         continue

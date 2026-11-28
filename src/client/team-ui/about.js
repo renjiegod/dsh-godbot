@@ -97,11 +97,29 @@ function dshHint(dsh, shown) {
 const linkProps = href => ({ className: 'bt-soft bt-soft-sm bt-about-link', href, target: '_blank', rel: 'noopener noreferrer' })
 
 export function RestartDshButton({ update, actions, className }) {
-  const pending = update.restart?.pending === true
+  const phase = update.restart?.phase
+  const pending = phase === 'restarting'
+  const waiting = phase === 'waiting'
+  const work = update.restart?.work ?? []
   if (!update.canRestartDsh && !pending) return null
-  return h('button', {
-    type: 'button', className, disabled: pending, 'aria-live': 'polite', onClick: actions.restartDsh,
+  if (pending || (!waiting && !work.length)) return h('button', {
+    type: 'button', className, disabled: pending || update.restartSubmitting, 'aria-live': 'polite', onClick: () => actions.restartDsh(),
   }, pending ? t('Restarting DSH…') : t('Restart DSH'))
+  return h('div', { className: 'bt-restart-options' },
+    waiting ? h('span', { role: 'status' }, t('Waiting for work to finish before restarting.')) : null,
+    work.length ? h('ul', { 'aria-label': t('Work affected by restarting DSH') },
+      work.map(item => h('li', { key: `${item.sessionId}:${item.kind}` },
+        h('strong', null, item.bot ?? t('DSH conversation')), ' · ',
+        item.kind === 'terminal' ? t('Native terminal open')
+          : item.kind === 'background' ? t('{count} background tasks', { count: item.count })
+            : item.turn !== undefined ? t('Turn {turn} in progress', { turn: item.turn }) : t('Working')))) : null,
+    h('div', { className: 'bt-restart-buttons' },
+      waiting ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm', disabled: update.restartSubmitting,
+        onClick: actions.cancelDshRestart }, t('Cancel scheduled restart'))
+        : h('button', { type: 'button', className, disabled: update.restartSubmitting, onClick: () => actions.restartDsh() },
+          t('Restart when work finishes')),
+      work.length ? h('button', { type: 'button', className: 'bt-soft bt-soft-sm bt-restart-interrupt',
+        disabled: update.restartSubmitting, onClick: () => actions.restartDsh('now') }, t('Interrupt work and restart now')) : null))
 }
 
 export function AboutPage({ useUpdate, actions, run, Section, Row }) {
@@ -162,7 +180,7 @@ export function AboutPage({ useUpdate, actions, run, Section, Row }) {
       h(Row, { label: 'Godbot', hint: ownRow?.hint ?? botHint(update) }, botControl, update.available && update.notesUrl ? h('a', linkProps(update.notesUrl), t("What's new")) : null),
       modeControl,
       dsh?.current ? h(Row, { label: 'DeepSeek Harness', hint: dshHint(dsh, dshShown) }, dshControl) : null,
-      update.restart?.error ? h('div', { className: 'bt-error', role: 'alert' }, update.restart.error) : null),
+      update.restartError || update.restart?.error ? h('div', { className: 'bt-error', role: 'alert' }, update.restartError ?? hostText(update.restart.error)) : null),
     h(Section, { key: 'links', title: t('Links') },
       repo ? h(Row, { label: t('Source code'), hint: repo.replace(/^https:\/\//, '') }, h('a', linkProps(repo), h(GitHubMark), t('Open'))) : null,
       update.notesUrl ? h(Row, { label: t('Release notes') }, h('a', linkProps(update.notesUrl), t('Open'))) : null,
@@ -171,6 +189,11 @@ export function AboutPage({ useUpdate, actions, run, Section, Row }) {
 }
 
 export const ABOUT_CSS = `
+.bt-restart-options{display:grid;gap:8px;min-width:0;max-width:100%;font-size:12px}
+.bt-update-actions>.bt-restart-options{flex:1 1 100%}
+.bt-restart-options ul{display:grid;gap:4px;margin:0;padding-inline-start:18px;overflow-wrap:anywhere;max-height:128px;overflow:auto}
+.bt-restart-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.bt-restart-interrupt{color:var(--bt-danger, #b23a3a)}
 .bt-about-hero{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid var(--bt-line);border-radius:12px;background:var(--bt-card)}
 .bt-about-mark{display:block;flex:none;border-radius:12px}
 .bt-about-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}

@@ -9,6 +9,7 @@ import { skillNameFromPath, toolKind } from './shared/tool-kind.js'
 import { commandLabel } from './tool-activity.js'
 import { turnOutcome } from './shared/turn-outcome.js'
 import { interruptedAttemptContent, withInterruptedAttempts } from './mobile-tool-timeline.js'
+import { isBotGoalSource } from './core/constants.js'
 
 const fieldLimit = 256 * 1024
 const turnPageSize = 12
@@ -231,7 +232,12 @@ export class ExecutionHistory {
           seq INTEGER PRIMARY KEY, part TEXT NOT NULL, turn INTEGER NOT NULL, identity TEXT NOT NULL, data TEXT NOT NULL,
           UNIQUE(part, turn, identity)
         ) STRICT;
-        CREATE INDEX IF NOT EXISTS execution_by_turn ON execution_events(part, turn, seq);`)
+        CREATE INDEX IF NOT EXISTS execution_by_turn ON execution_events(part, turn, seq);
+        CREATE TABLE IF NOT EXISTS execution_restarts (
+          part TEXT NOT NULL, turn INTEGER NOT NULL, checkpoint TEXT NOT NULL,
+          resumed_turn INTEGER, needs_retry INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY(part, turn)
+        ) STRICT;`)
     } catch (error) {
       db.close()
       throw error
@@ -258,6 +264,7 @@ export class ExecutionHistory {
       this.tryWrite(db => db.prepare('INSERT OR IGNORE INTO execution_turns(part, turn, started_at) VALUES (?, ?, ?)').run(sessionId, turn, eventTime(event)))
       return
     }
+    if (event.type === 'user/message') this.observeRestartContinuation(sessionId, turn, event.data?.source)
     if (event.type === 'turn/end') {
       const outcome = turnOutcome(event.data?.reason)?.status
       const attempt = this.attempts.get(sessionId)
@@ -282,6 +289,87 @@ export class ExecutionHistory {
     else if (event.type === 'assistant/message') this.attempts.delete(sessionId)
     const item = turnEvent(event)
     if (item) this.record(sessionId, item, turn)
+  }
+
+  recordUpdateRestart(restart, work) {
+    const affected = work.filter(item => item.kind === 'turn' && Number.isSafeInteger(item.turn) && this.ownerOf(item.sessionId))
+    if (affected.length === 0) return
+    const db = this.database()
+    const latestTool = db.prepare(`SELECT json_extract(data, '$.id') AS id, json_extract(data, '$.name') AS name,
+      json_extract(data, '$.status') AS status, json_extract(data, '$.exitCode') AS exitCode
+      FROM execution_events WHERE part=? AND turn=? AND identity LIKE 'tool:%'
+        AND json_extract(data, '$.status') IN ('completed','failed','interrupted','declined')
+      ORDER BY coalesce(json_extract(data, '$.receivedAt'), 0) DESC, seq DESC LIMIT 1`)
+    const write = db.prepare(`INSERT INTO execution_restarts(part, turn, checkpoint, needs_retry) VALUES (?, ?, ?, ?)
+      ON CONFLICT(part, turn) DO UPDATE SET checkpoint=excluded.checkpoint, needs_retry=excluded.needs_retry`)
+    const checkpoints = affected.map(({ sessionId, turn }) => {
+      const lastTool = latestTool.get(sessionId, turn)
+      const context = this.rt.restartTurnContext(sessionId, turn)
+      const { questionReplies, goalId } = context ?? {}
+      const managed = this.rt.inboxOwnsTurn?.(sessionId, turn) || this.rt.runningBotGoal?.(sessionId)
+      return { sessionId, turn, needsRetry: context === undefined && !managed, checkpoint: {
+        restartId: restart.id, source: 'web', mode: restart.mode, boot: restart.boot,
+        ...restart.target, at: Date.now(),
+        nativeSessionId: this.rt.state.localAgents?.sessions?.[sessionId]?.cliSessionId,
+        questionReplies, goalId, lastTool,
+      } }
+    })
+    db.exec('BEGIN IMMEDIATE')
+    try {
+      for (const { sessionId, turn, needsRetry, checkpoint } of checkpoints) {
+        write.run(sessionId, turn, JSON.stringify(checkpoint), Number(needsRetry))
+      }
+      db.exec('COMMIT')
+    } catch (error) {
+      db.exec('ROLLBACK')
+      throw error
+    }
+    for (const { sessionId, turn, checkpoint } of checkpoints) this.rt.noteFailure({
+      source: 'update', level: 'info', text: 'Godbot saved a turn before restarting DSH', cause: 'update-restart',
+      restartId: restart.id, sessionId, turn, nativeSessionId: checkpoint.nativeSessionId,
+      toolId: checkpoint.lastTool?.id, toolName: checkpoint.lastTool?.name,
+    })
+  }
+
+  restartCheckpoint(sessionId, turn) {
+    if (this.closed || !this.ownerOf(sessionId) || !Number.isSafeInteger(turn)) return undefined
+    const row = this.database().prepare('SELECT checkpoint FROM execution_restarts WHERE part=? AND turn=?').get(sessionId, turn)
+    return row && JSON.parse(row.checkpoint)
+  }
+
+  restartStatus(sessionId, turn, botId) {
+    if (this.closed || typeof sessionId !== 'string' || !Number.isSafeInteger(turn) || !this.ownerOf(sessionId)
+      || botId !== undefined && this.ownerOf(sessionId) !== botId) return undefined
+    const row = this.database().prepare('SELECT resumed_turn, needs_retry FROM execution_restarts WHERE part=? AND turn=?').get(sessionId, turn)
+    if (!row) return undefined
+    if (row.resumed_turn !== null) return { phase: 'resumed', turn: row.resumed_turn }
+    return { phase: row.needs_retry === 1 ? 'retry' : 'waiting' }
+  }
+
+  markRestartNeedsRetry(sessionId, turn) {
+    if (this.closed || !this.ownerOf(sessionId) || !Number.isSafeInteger(turn)) return
+    this.tryWrite(db => {
+      const result = db.prepare('UPDATE execution_restarts SET needs_retry=1 WHERE part=? AND turn=? AND resumed_turn IS NULL AND needs_retry=0')
+        .run(sessionId, turn)
+      if (result.changes > 0) this.rt.chatTimelineChanged?.(sessionId, turn)
+    })
+  }
+
+  observeRestartContinuation(sessionId, turn, source) {
+    const prefix = sessionId + ':'
+    const plain = typeof source?.resumeOf === 'string' && source.resumeOf.startsWith(prefix)
+      ? Number(source.resumeOf.slice(prefix.length)) : undefined
+    if (plain === undefined && source?.restartOfTurn === undefined && !isBotGoalSource(source)) return
+    this.tryWrite(db => {
+      const original = plain ?? source.restartOfTurn ?? (typeof source.goalId === 'string'
+        ? db.prepare(`SELECT turn FROM execution_restarts WHERE part=? AND turn<? AND resumed_turn IS NULL AND needs_retry=0
+            AND json_extract(checkpoint, '$.goalId')=? ORDER BY turn DESC LIMIT 1`).get(sessionId, turn, source.goalId)?.turn
+        : undefined)
+      if (!Number.isSafeInteger(original) || original >= turn) return
+      const result = db.prepare('UPDATE execution_restarts SET resumed_turn=? WHERE part=? AND turn=? AND resumed_turn IS NULL')
+        .run(turn, sessionId, original)
+      if (result.changes > 0) this.rt.chatTimelineChanged?.(sessionId, original)
+    })
   }
 
   tryWrite(write) {
@@ -331,7 +419,12 @@ export class ExecutionHistory {
     if (!key) return
     this.tryWrite(db => {
       const prior = db.prepare('SELECT data FROM execution_events WHERE part=? AND turn=? AND identity=?').get(sessionId, turn, key)
-      const row = protect(this.rt, mergeEvent(prior && JSON.parse(prior.data), event))
+      const previous = prior && JSON.parse(prior.data)
+      const row = protect(this.rt, mergeEvent(previous, event))
+      if (row.type === 'tool') {
+        if (['completed', 'failed', 'interrupted', 'declined'].includes(event.status)) row.receivedAt = Date.now()
+        else if (previous?.receivedAt !== undefined) row.receivedAt = previous.receivedAt
+      }
       db.prepare('INSERT OR IGNORE INTO execution_turns(part, turn, started_at) VALUES (?, ?, ?)').run(sessionId, turn, now())
       db.prepare(`INSERT INTO execution_events(part, turn, identity, data) VALUES (?, ?, ?, ?)
         ON CONFLICT(part, turn, identity) DO UPDATE SET data=excluded.data`).run(sessionId, turn, key, JSON.stringify(row))

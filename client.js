@@ -13510,6 +13510,9 @@ var ZH = {
   "Completed in {duration}": "已完成，用时 {duration}",
   "Turn stopped": "回合已停止",
   "Turn interrupted": "回合已中断",
+  "Interrupted by an update restart. Continued in turn {turn}.": "因更新重启中断，已在第 {turn} 轮继续。",
+  "Interrupted by an update restart. Automatic continuation did not start.": "因更新重启中断，未自动续跑。",
+  "Interrupted by an update restart. Waiting to continue.": "因更新重启中断，等待续跑。",
   "Work before the interruption": "中断前的执行记录",
   "Continued with the new message": "已接续新消息",
   "Exit code {code}": "退出码 {code}",
@@ -14551,6 +14554,15 @@ var ZH = {
   "Update installed": "更新已安装",
   "Restart DSH": "重启 DSH",
   "Restarting DSH…": "正在重启 DSH…",
+  "Restart when work finishes": "任务结束后重启",
+  "Waiting for work to finish before restarting.": "等待任务结束后重启。",
+  "Work affected by restarting DSH": "重启 DSH 会影响的任务",
+  "DSH conversation": "DSH 会话",
+  "Native terminal open": "已接管原生终端",
+  "{count} background tasks": "{count} 个后台任务",
+  "Turn {turn} in progress": "第 {turn} 轮进行中",
+  "Cancel scheduled restart": "取消计划重启",
+  "Interrupt work and restart now": "立即中断并重启",
   "No installed update is ready for a restart.": "没有需要重启生效的更新。",
   "Restart DSH from the terminal to apply the update.": "请在终端重启 DSH 以应用更新。",
   "DSH did not reconnect. Restart it from the terminal, then reload this page.": "DSH 未能重新连接。请在终端重启 DSH，然后刷新此页面。",
@@ -40916,6 +40928,9 @@ function commandLabel(value) {
 // src/host/team-runtime/shared/turn-outcome.js
 var NATIVE_INTERRUPTED = "LOCAL_AGENT_INTERRUPTED";
 var RUNTIME_INTERRUPTED = "INTERRUPTED";
+var restartInterrupted = (reason) => reason?.kind === "interrupted" || reason?.kind === "aborted" && reason.reason?.kind === "disposed" || reason?.kind === "error" && reason.error?.code === RUNTIME_INTERRUPTED;
+var legacyNativeClose = (reason) => reason?.kind === "error" && reason.error?.code === NATIVE_INTERRUPTED && reason.error.message === "Godbot closed the native agent session before the turn finished.";
+var canBeUpdateRestart = (reason) => restartInterrupted(reason) || legacyNativeClose(reason);
 function turnOutcome(reason) {
   switch (reason?.kind) {
     case "aborted": {
@@ -41840,6 +41855,27 @@ function useTurnOutcome(location2, roster, sessionId, actions) {
   const interrupted = receipts.find((tool) => tool.recoveredInterruption);
   return interrupted === void 0 ? outcome : { status: "interrupted", exitCode: interrupted.exitCode };
 }
+function useRestartStatus(botId, sessionId, turn, enabled) {
+  const [receipt, setReceipt] = (0, import_react42.useState)(null);
+  (0, import_react42.useEffect)(() => {
+    if (!enabled || !botId || !Number.isSafeInteger(turn)) return void 0;
+    const lifetime = new AbortController();
+    let timer;
+    const update = async () => {
+      const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(5e3)]);
+      const restart = await call("turn-restart", { botId, sessionId, turn }, signal, { quiet: true }).catch(() => void 0);
+      if (lifetime.signal.aborted) return;
+      if (restart !== void 0) setReceipt({ sessionId, turn, restart });
+      if (restart === void 0 || restart?.phase === "waiting") timer = setTimeout(update, 2e3);
+    };
+    void update();
+    return () => {
+      lifetime.abort();
+      clearTimeout(timer);
+    };
+  }, [botId, sessionId, turn, enabled]);
+  return enabled && receipt?.sessionId === sessionId && receipt?.turn === turn ? receipt.restart : null;
+}
 function TurnProcessCell({ node, sessionId, turnProcess, useRoster, useUi, useTurnClock, actions }) {
   const open = turnProcess === void 0 || !turnProcess.foldable || turnProcess.open;
   (0, import_react42.useEffect)(() => {
@@ -41923,9 +41959,11 @@ function TurnTailCell({ turn: location2, sessionId, useRoster, useTurnClock, use
   const outcome = useTurnOutcome(location2, roster, sessionId, actions);
   const [showAttempt, setShowAttempt] = (0, import_react42.useState)(false);
   const showOutcome = Boolean(roster.byId[sessionId]) && !roster.roomsById[sessionId] && !isHiddenTurn(roster, sessionId, turn) && (outcome?.status === "stopped" || outcome?.status === "interrupted");
-  const detail = outcome?.cause === "steered" ? t("Continued with the new message") : outcome?.cause === "output-limit" ? t("Reached the output limit") : outcome?.exitCode === void 0 ? void 0 : t("Exit code {code}", { code: outcome.exitCode });
+  const restart = useRestartStatus(roster.byId[sessionId]?.id, sessionId, turn, showOutcome && canBeUpdateRestart(location2?.end?.data?.reason));
+  const restartDetail = restart?.phase === "resumed" ? t("Interrupted by an update restart. Continued in turn {turn}.", { turn: restart.turn }) : restart?.phase === "retry" ? t("Interrupted by an update restart. Automatic continuation did not start.") : restart ? t("Interrupted by an update restart. Waiting to continue.") : null;
+  const detail = restartDetail ?? (outcome?.cause === "steered" ? t("Continued with the new message") : outcome?.cause === "output-limit" ? t("Reached the output limit") : outcome?.exitCode === void 0 ? void 0 : t("Exit code {code}", { code: outcome.exitCode }));
   if (!label2 && !fresh && !showOutcome) return null;
-  const nativeAttempt = showOutcome && ownExecutionChat(roster, sessionId) && ["LOCAL_AGENT_INTERRUPTED", "LOCAL_AGENT_EXIT"].includes(outcome.code);
+  const nativeAttempt = showOutcome && ownExecutionChat(roster, sessionId) && (restart || ["LOCAL_AGENT_INTERRUPTED", "LOCAL_AGENT_EXIT"].includes(outcome.code));
   return (0, import_react42.createElement)(
     import_react42.Fragment,
     null,
@@ -42889,15 +42927,54 @@ function dshHint(dsh, shown) {
 }
 var linkProps = (href) => ({ className: "bt-soft bt-soft-sm bt-about-link", href, target: "_blank", rel: "noopener noreferrer" });
 function RestartDshButton({ update, actions, className }) {
-  const pending = update.restart?.pending === true;
+  const phase = update.restart?.phase;
+  const pending = phase === "restarting";
+  const waiting2 = phase === "waiting";
+  const work = update.restart?.work ?? [];
   if (!update.canRestartDsh && !pending) return null;
-  return (0, import_react45.createElement)("button", {
+  if (pending || !waiting2 && !work.length) return (0, import_react45.createElement)("button", {
     type: "button",
     className,
-    disabled: pending,
+    disabled: pending || update.restartSubmitting,
     "aria-live": "polite",
-    onClick: actions.restartDsh
+    onClick: () => actions.restartDsh()
   }, pending ? t("Restarting DSH…") : t("Restart DSH"));
+  return (0, import_react45.createElement)(
+    "div",
+    { className: "bt-restart-options" },
+    waiting2 ? (0, import_react45.createElement)("span", { role: "status" }, t("Waiting for work to finish before restarting.")) : null,
+    work.length ? (0, import_react45.createElement)(
+      "ul",
+      { "aria-label": t("Work affected by restarting DSH") },
+      work.map((item) => (0, import_react45.createElement)(
+        "li",
+        { key: `${item.sessionId}:${item.kind}` },
+        (0, import_react45.createElement)("strong", null, item.bot ?? t("DSH conversation")),
+        " · ",
+        item.kind === "terminal" ? t("Native terminal open") : item.kind === "background" ? t("{count} background tasks", { count: item.count }) : item.turn !== void 0 ? t("Turn {turn} in progress", { turn: item.turn }) : t("Working")
+      ))
+    ) : null,
+    (0, import_react45.createElement)(
+      "div",
+      { className: "bt-restart-buttons" },
+      waiting2 ? (0, import_react45.createElement)("button", {
+        type: "button",
+        className: "bt-soft bt-soft-sm",
+        disabled: update.restartSubmitting,
+        onClick: actions.cancelDshRestart
+      }, t("Cancel scheduled restart")) : (0, import_react45.createElement)(
+        "button",
+        { type: "button", className, disabled: update.restartSubmitting, onClick: () => actions.restartDsh() },
+        t("Restart when work finishes")
+      ),
+      work.length ? (0, import_react45.createElement)("button", {
+        type: "button",
+        className: "bt-soft bt-soft-sm bt-restart-interrupt",
+        disabled: update.restartSubmitting,
+        onClick: () => actions.restartDsh("now")
+      }, t("Interrupt work and restart now")) : null
+    )
+  );
 }
 function AboutPage({ useUpdate, actions, run: run2, Section: Section2, Row: Row4 }) {
   const update = useUpdate((value) => value) ?? {};
@@ -42963,7 +43040,7 @@ function AboutPage({ useUpdate, actions, run: run2, Section: Section2, Row: Row4
       (0, import_react45.createElement)(Row4, { label: "Godbot", hint: ownRow?.hint ?? botHint(update) }, botControl, update.available && update.notesUrl ? (0, import_react45.createElement)("a", linkProps(update.notesUrl), t("What's new")) : null),
       modeControl,
       dsh?.current ? (0, import_react45.createElement)(Row4, { label: "DeepSeek Harness", hint: dshHint(dsh, dshShown) }, dshControl) : null,
-      update.restart?.error ? (0, import_react45.createElement)("div", { className: "bt-error", role: "alert" }, update.restart.error) : null
+      update.restartError || update.restart?.error ? (0, import_react45.createElement)("div", { className: "bt-error", role: "alert" }, update.restartError ?? hostText(update.restart.error)) : null
     ),
     (0, import_react45.createElement)(
       Section2,
@@ -42975,6 +43052,11 @@ function AboutPage({ useUpdate, actions, run: run2, Section: Section2, Row: Row4
   ];
 }
 var ABOUT_CSS = `
+.bt-restart-options{display:grid;gap:8px;min-width:0;max-width:100%;font-size:12px}
+.bt-update-actions>.bt-restart-options{flex:1 1 100%}
+.bt-restart-options ul{display:grid;gap:4px;margin:0;padding-inline-start:18px;overflow-wrap:anywhere;max-height:128px;overflow:auto}
+.bt-restart-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.bt-restart-interrupt{color:var(--bt-danger, #b23a3a)}
 .bt-about-hero{display:flex;align-items:center;gap:14px;padding:16px;border:1px solid var(--bt-line);border-radius:12px;background:var(--bt-card)}
 .bt-about-mark{display:block;flex:none;border-radius:12px}
 .bt-about-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -44109,7 +44191,7 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
     void actions.installDshUpdate().catch((failure) => setDshError(hostText(failure?.message ?? String(failure))));
   };
   const label2 = phase === "installing" ? t("Updating Godbot…") : dshPhase === "installing" ? t("Updating DSH…") : phase === "installed" ? t("Godbot {version} is installed. Restart DSH to use it.", { version: update.installed ?? update.latest }) : phase === "updated" ? t("Godbot {version} is running.", { version: update.current }) : dshPhase === "installed" ? t("Restart DSH to start using DSH {version}.", { version: dsh.installed ?? dsh.verified }) : pending ?? (update?.available ? t("Godbot {version} is available", { version: update.latest }) : t("DSH {version} is available", { version: dsh?.verified }));
-  const statusSummary = update?.restart?.pending ? t("Restarting DSH…") : phase === "failed" || error ? t("Godbot update failed") : dshPhase === "failed" || dshError ? t("DSH update failed") : null;
+  const statusSummary = update?.restart?.phase === "restarting" ? t("Restarting DSH…") : update?.restart?.phase === "waiting" ? t("Waiting for work to finish before restarting.") : phase === "failed" || error ? t("Godbot update failed") : dshPhase === "failed" || dshError ? t("DSH update failed") : null;
   const summary = statusSummary ?? (phase === "ready" ? t("Godbot {version} is ready to install", { version: update.latest }) : label2);
   const canDismiss = phase === "updated" && installedVersion != null && dshPhase !== "installing" && statusSummary === null;
   const dismiss = () => {
@@ -44197,7 +44279,11 @@ function UpdateNotice({ wide, useUpdate, actions, dismissedUpdate, dismissUpdate
           }, dshPhase === "installing" ? t("Updating…") : dshPhase === "failed" ? t("Try again") : t("Update"))
         )
       ) : null,
-      update?.restart?.error ? (0, import_react47.createElement)("div", { className: "bt-update-error", role: "alert" }, update.restart.error) : null
+      update?.restartError || update?.restart?.error ? (0, import_react47.createElement)(
+        "div",
+        { className: "bt-update-error", role: "alert" },
+        update.restartError ?? hostText(update.restart.error)
+      ) : null
     ), document.body) : null
   );
 }
@@ -64618,13 +64704,22 @@ function apply(ctx, godbot) {
     };
   }, "godbot: roster poll");
   const update = createSource({ available: false, phase: "idle" });
-  const takeUpdate = (value) => update.set((previous) => ({
-    ...value,
-    phase: value.phase === "installed" && sameVersion(value.current, value.installed) ? "updated" : value.phase,
-    app: previous.app,
-    ownApp: previous.ownApp,
-    restart: previous.restart
-  }));
+  const takeUpdate = (value) => {
+    const previous = update.getSnapshot();
+    const before = previous.restart?.boot;
+    if (before && value.restart?.boot && before !== value.restart.boot && (previous.canRestartDsh || previous.restart.phase)) {
+      window.location.reload();
+      return;
+    }
+    update.set((current2) => ({
+      ...value,
+      phase: value.phase === "installed" && sameVersion(value.current, value.installed) ? "updated" : value.phase,
+      app: current2.app,
+      ownApp: current2.ownApp,
+      restartError: current2.restartError,
+      restartSubmitting: current2.restartSubmitting
+    }));
+  };
   let wakeUpdate = () => {
   };
   ctx.effect(() => {
@@ -64632,6 +64727,7 @@ function apply(ctx, godbot) {
     let running = false;
     let again = false;
     let timer;
+    let reconnectBy = 0;
     const loop = async () => {
       clearTimeout(timer);
       if (lifetime.signal.aborted) return;
@@ -64645,13 +64741,24 @@ function apply(ctx, godbot) {
         const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(3e4)]);
         const value = await call("update-check", { fresh: false }, signal, { quiet: true }).catch(() => null);
         if (value) checkedAt = Date.now();
-        if (!lifetime.signal.aborted && !again && value) takeUpdate(value);
+        if (!lifetime.signal.aborted && !again) {
+          if (value) {
+            takeUpdate(value);
+            reconnectBy = value.restart?.phase === "restarting" ? reconnectBy || Date.now() + 6e4 : 0;
+          } else if (update.getSnapshot().restart?.phase === "restarting") {
+            reconnectBy ||= Date.now() + 6e4;
+            if (Date.now() > reconnectBy && !update.getSnapshot().restartError) {
+              update.set((current2) => ({ ...current2, restartError: t("DSH did not reconnect. Restart it from the terminal, then reload this page.") }));
+            }
+          }
+        }
       } finally {
         running = false;
         if (!lifetime.signal.aborted) {
-          const { phase, dsh } = update.getSnapshot();
+          const { phase, dsh, restart, canRestartDsh } = update.getSnapshot();
           const moving = phase === "installing" || phase === "downloading" || dsh?.phase === "installing";
-          timer = setTimeout(loop, again ? 0 : document.hidden ? 6e4 : moving ? 2e3 : 15e3);
+          const delay = restart?.phase ? 1e3 : document.hidden ? 6e4 : canRestartDsh || moving ? 2e3 : 15e3;
+          timer = setTimeout(loop, again ? 0 : delay);
         }
       }
     };
@@ -65311,25 +65418,21 @@ function apply(ctx, godbot) {
     update.set((previous) => ({ ...previous, dsh }));
     wakeUpdate();
   };
-  actions.restartDsh = async () => {
-    if (update.getSnapshot().restart?.pending) return;
-    update.set((previous) => ({ ...previous, restart: { pending: true } }));
+  const changeRestart = async (endpoint, payload) => {
+    if (update.getSnapshot().restartSubmitting) return;
+    update.set((previous) => ({ ...previous, restartSubmitting: true, restartError: void 0 }));
     try {
-      const { boot } = await call("update-restart");
-      const deadline = Date.now() + 6e4;
-      while (Date.now() < deadline) {
-        await new Promise((resolve2) => setTimeout(resolve2, 1e3));
-        const hello = await call("hello", {}, AbortSignal.timeout(2500), { quiet: true }).catch(() => null);
-        if (hello?.boot && hello.boot !== boot) {
-          window.location.reload();
-          return;
-        }
-      }
-      throw new Error(t("DSH did not reconnect. Restart it from the terminal, then reload this page."));
+      const restart = await call(endpoint, payload);
+      update.set((previous) => ({ ...previous, restart }));
     } catch (error) {
-      update.set((previous) => ({ ...previous, restart: { error: error.message } }));
+      update.set((previous) => ({ ...previous, restartError: error.message }));
+    } finally {
+      update.set((previous) => ({ ...previous, restartSubmitting: false }));
+      wakeUpdate();
     }
   };
+  actions.restartDsh = (mode = "when-idle") => changeRestart("update-restart", { mode });
+  actions.cancelDshRestart = () => changeRestart("update-restart-cancel");
   actions.openAppUpdates = async (verified) => {
     const app = await appUpdates?.status?.();
     if (app) update.set((previous) => ({ ...previous, app }));

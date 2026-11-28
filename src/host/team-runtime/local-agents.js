@@ -835,6 +835,20 @@ export function install(rt) {
     const terminals = adapter.terminalLeases.claims.size
     return terminals > 0 ? { kind: 'terminals', count: terminals } : null
   })
+  rt.restartNativeWork = () => {
+    const adapters = [adapter, ...Array.from(sandboxes.parts.values(), entry => entry.adapter),
+      ...Array.from(adapter.fallbackAdapters.values()).flatMap(routes => [...routes.values()])]
+    const work = []
+    for (const current of adapters) {
+      for (const sessionId of current.terminalLeases.claims.keys()) work.push({ kind: 'terminal', sessionId })
+      for (const [sessionId, live] of current.live) {
+        if (!current.backgroundWork(sessionId)) continue
+        const count = live.engineSession === undefined ? 0 : live.engine.backgroundTasks?.(live.engineSession)?.length ?? 0
+        work.push({ kind: 'background', sessionId, count: count || 1 })
+      }
+    }
+    return work
+  }
   let registration
   // A message that arrives during handoff stays in its original DSH step, even
   // if its source is another agent or a scheduled job. Release resumes it once.

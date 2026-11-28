@@ -256,7 +256,7 @@ export function install(rt) {
       if (!current(row) || !available(row) || rt.hostClosing?.()) return
       if (agent.status !== 'idle') return
       const token = randomUUID()
-      const continuation = row.resume && { resumed: true, resumeOf: row.resume.id,
+      const continuation = row.resume && { resumed: true, resumeOf: row.resume.id, restartOfTurn: row.resume.turn,
         text: resumeText(row.resume) + ' Continue the work associated with message ' + row.id + ' in this conversation.',
         files: [], images: [], joined: row.resume.joined }
       const message = rt.relayMessage({ ...row.args, ...continuation, inboxAttempt: token })
