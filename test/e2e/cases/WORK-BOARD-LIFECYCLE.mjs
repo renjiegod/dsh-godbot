@@ -29,19 +29,30 @@ export default async function check({ makeHost, candidate, note }) {
 
   const title = 'LIFECYCLE_REQUEST verify the sample calculation'
   const childTitle = 'LIFECYCLE_CHILD verify the second addition'
+  const independentTitle = 'Record the two verification cases for reuse'
+  const revisedEvidence = 'Revised evidence: 2 + 5 equals 7 and 3 + 4 equals 7.'
   let release
   const gate = new Promise(resolve => { release = resolve })
   let sawGate = false
   let delegated = false
   let ask = true
-  let revised = false
+  let correctionStep = 0
   host.model.reply = async (body, call) => {
     const input = JSON.stringify(body.messages)
     if (input.includes('LIFECYCLE_DISCUSSION')) return 'The delegated verification checked a second equation.'
     if (input.includes(childTitle) && call.sessionId !== lead.id) return 'Verification evidence: 3 + 4 equals 7.'
     if (input.includes('LIFECYCLE_CORRECTION')) {
-      revised = true
-      return 'Revised evidence: 2 + 5 equals 7 and 3 + 4 equals 7.'
+      correctionStep++
+      if (correctionStep === 1) return submit('work_context', {})
+      if (correctionStep === 2) {
+        assert.match(input, /requirementsRevision/)
+        return submit('work_open', { title: independentTitle, criteria: 'Save both cases as examples.' })
+      }
+      if (correctionStep === 3) return submit('work_progress', { text: 'Both example calculations were verified.' })
+      if (correctionStep === 4) return submit('work_submit', {
+        summary: revisedEvidence, requirements_revision: 1, evidence_refs: ['fixture:sample-equations'],
+      })
+      return 'Both checks are recorded on the work item.'
     }
     if (input.includes(title) && ask) {
       sawGate = true
@@ -101,9 +112,15 @@ export default async function check({ makeHost, candidate, note }) {
       const card = await inspect(first.id)
       return card.lifecycleState === 'review' && card.evidenceRevision === 2 && card
     }, 'rework submits a new evidence version')
-    assert.ok(revised)
+    assert.equal(correctionStep, 5)
     assert.equal(second.attempt, 2)
     assert.equal(second.execution.sessionId, first.execution.sessionId)
+    assert.equal(second.evidence, revisedEvidence)
+    assert.deepEqual(second.evidenceRefs, ['fixture:sample-equations'])
+    assert.ok(second.events.some(event => event.kind === 'progress' && event.text === 'Both example calculations were verified.'))
+    const independent = await find(independentTitle)
+    assert.equal(independent.parent, first.id)
+    assert.equal(independent.lifecycleState, 'planned')
     await assert.rejects(action({ ...second, evidenceRevision: 1 }, 'approve', 'lifecycle-stale'))
     await action(second, 'approve', 'lifecycle-approved')
     const done = await cardIn(first.id, 'done')
