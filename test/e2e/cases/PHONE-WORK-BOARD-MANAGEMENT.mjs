@@ -70,7 +70,9 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     await channel(host, 'board-comment', { id: work.id, op: 'resolve', resolved: true, commentId: first.commentId,
       conclusionId: second.commentId, requestId: 'phone-conclusion' })
     ui.tap(await ui.scrollTo(n => ui.find(n, 'Artifacts', '交付文件'), 'Android artifacts tab'))
-    await ui.scrollTo(n => ui.find(n, /proof\.txt · v2/), 'Android reads both attachment versions')
+    await ui.scrollTo(n => ui.find(n, 'proof.txt'), 'Android reads the attachment')
+    await ui.scrollTo(n => ui.find(n, /^v2 ·/), 'Android reads the latest attachment version')
+    await ui.scrollTo(n => ui.find(n, /^v1 ·/), 'Android reads the earlier attachment version')
     await writeFile(join(reportDir, 'android-artifacts.png'), ui.adb(['exec-out', 'screencap', '-p'], { binary: true }))
     await tap('Android discussion tab', 'Discussion', '讨论')
     await ui.scrollTo(n => ui.find(n, /Conclusion.*Revised paragraph|讨论结论.*Revised paragraph/), 'Android reads the marked conclusion')
@@ -91,7 +93,7 @@ export default async function check({ makeHost, candidate, reportDir, scratch, n
     const hostId = new URL(pairing.uri).searchParams.get('host')
     assert.ok(hostId)
     ui.openUrl('godbot://work/view/' + shared.id + '?host=' + encodeURIComponent(hostId))
-    await ui.waitFor(n => ui.find(n, /Paired acceptance timeline/) && ui.find(n, /Timeline view|甘特图/), 'open the shared timeline on Android')
+    await ui.waitFor(n => ui.find(n, 'Work board', '工作看板') && ui.find(n, /\d{4}-\d{2}-\d{2} → \d{4}-\d{2}-\d{2}/), 'open the shared timeline on Android')
     await ui.scrollTo(n => ui.find(n, ownedCard), 'the timeline includes the matching card')
     assert.ok(!ui.find(ui.dumpUi().nodes, new RegExp(outside.id + '.*Excluded')))
     note('android-board-management', { id: work.id, descriptionBothWays: true, attachmentVersions: 2, conclusion: second.commentId,
